@@ -494,17 +494,15 @@
       "installation": "安装 ID",
       "version": "适配器版本",
       "expires": "过期时间",
-      "resolve": "继续",
       "approve": "批准",
       "deny": "拒绝",
-      "pending": "等待你的决定。",
+      "pending": "请求正在等待你的决定。查看权限，然后批准或拒绝。",
       "approved": "已批准授权，请返回 Agent。",
       "denied": "已拒绝授权。",
       "expired": "此授权码已过期。",
       "consumed": "此授权码已使用。",
       "password_required": "请先设置 Dashboard 密码，再批准 Agent 访问。",
-      "network_error": "无法连接 aio-proxy，请检查服务后重试。",
-      "retry": "使用其他授权码"
+      "network_error": "无法连接 aio-proxy，请检查服务后重试。"
     },
     "menus": {
       "observability": "观测",

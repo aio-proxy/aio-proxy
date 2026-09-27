@@ -494,17 +494,15 @@
       "installation": "설치 ID",
       "version": "어댑터 버전",
       "expires": "만료",
-      "resolve": "계속",
       "approve": "승인",
       "deny": "거부",
-      "pending": "결정을 기다리는 중입니다.",
+      "pending": "요청은 당신의 결정을 기다리고 있습니다. 권한을 확인한 뒤 승인하거나 거부하세요.",
       "approved": "승인이 완료되었습니다. Agent로 돌아가세요.",
       "denied": "승인이 거부되었습니다.",
       "expired": "이 승인 코드는 만료되었습니다.",
       "consumed": "이 승인 코드는 이미 사용되었습니다.",
       "password_required": "Agent 액세스를 승인하기 전에 Dashboard 비밀번호를 설정하세요.",
-      "network_error": "aio-proxy에 연결할 수 없습니다. 서버를 확인하고 다시 시도하세요.",
-      "retry": "다른 코드 사용"
+      "network_error": "aio-proxy에 연결할 수 없습니다. 서버를 확인하고 다시 시도하세요."
     },
     "menus": {
       "observability": "관측성",

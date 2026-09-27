@@ -1,23 +1,15 @@
 import { AioProxyLogo } from '@aio-proxy/brand';
 import { m } from '@aio-proxy/i18n';
 import type { AgentAuthorizationDetails } from '@aio-proxy/types';
+import { Alert, AlertDescription } from '@aio-proxy/ui/components/alert';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
-import { Field, FieldError } from '@aio-proxy/ui/components/field';
+import { Field, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
 import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from '@aio-proxy/ui/components/input-otp';
-import {
-  Item,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemMedia,
-  ItemSeparator,
-  ItemTitle,
-} from '@aio-proxy/ui/components/item';
 import { toast } from '@aio-proxy/ui/components/toast';
 import { useForm } from '@tanstack/react-form';
 import { Clock, Fingerprint, List, Sparkles, Tag, User } from 'lucide-react';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import { useAgentAuthorization } from '../../hooks/use-agent-authorization';
@@ -38,13 +30,6 @@ const terminalMessage = (status: TerminalStatus): string => {
   return m['dashboard.agent_authorization.consumed']();
 };
 
-const requestErrorMessage = (error: unknown): string =>
-  typeof AgentAuthorizationRequestError === 'function' &&
-  error instanceof AgentAuthorizationRequestError &&
-  error.code === 'authorization_unavailable'
-    ? m['dashboard.agent_authorization.password_required']()
-    : m['dashboard.agent_authorization.network_error']();
-
 const reportTerminal = (status: TerminalStatus): void => {
   toast.add({
     type: status === 'approved' ? 'success' : 'error',
@@ -52,7 +37,7 @@ const reportTerminal = (status: TerminalStatus): void => {
   });
 };
 
-// Captured before the mount effect strips the hash, so a link code never flashes the entry step.
+// Captured before the mount effect strips the hash, so a link code is pre-filled without flashing an empty entry.
 const linkCodeFromLocation = (): string | undefined => {
   const code = new URLSearchParams(window.location.hash.slice(1)).get('code');
   if (code === null) return undefined;
@@ -62,206 +47,232 @@ const linkCodeFromLocation = (): string | undefined => {
 
 export const CodeEntry: React.FC = () => {
   const { resolve, approve, deny } = useAgentAuthorization();
-  const resolveCode = resolve.mutate;
   const [linkCode] = useState<string | undefined>(linkCodeFromLocation);
-  const [submittedCode, setSubmittedCode] = useState<string>();
-  const [pending, setPending] = useState<PendingAuthorization>();
-  const linkResolveStarted = useRef(false);
+  // The resolved challenge is only offered for the code still in the entry, so editing the code returns the screen to entry mode.
+  const [pending, setPending] = useState<{ readonly code: string; readonly details: PendingAuthorization }>();
+  // The footer buttons record their decision here before submitting; the auto-resolve and a bare Enter submit resolve only.
+  const selectedAction = useRef<'resolve' | 'approve' | 'deny'>('resolve');
+  // The last complete code handed to the resolver, so auto-resolve fires once per code.
+  const autoResolved = useRef('');
   const form = useForm({
-    defaultValues: { userCode: '' },
-    onSubmit: ({ value }) => {
-      resolveCode(value.userCode, {
-        onSuccess: (details) => {
-          if (details.status !== 'pending') {
-            reportTerminal(details.status);
-            return;
-          }
-          setSubmittedCode(value.userCode);
-          setPending(details);
-        },
-      });
+    defaultValues: { userCode: linkCode ?? '' },
+    onSubmit: async ({ value }) => {
+      const action = selectedAction.current;
+      selectedAction.current = 'resolve';
+      let details: PendingAuthorization | undefined;
+      try {
+        const resolved = await resolve.mutateAsync(value.userCode);
+        if (resolved.status !== 'pending') {
+          setPending(undefined);
+          reportTerminal(resolved.status);
+          return;
+        }
+        details = resolved;
+        setPending({ code: value.userCode, details: resolved });
+      } catch {
+        // resolve.error renders the alert below the entry
+        return;
+      }
+      if (action === 'resolve') return;
+      try {
+        await (action === 'approve' ? approve : deny).mutateAsync(details.deviceId);
+      } catch {
+        // The decision error renders the alert; the entry stays for a retry
+      }
     },
   });
 
+  const autoResolve = (code: string): void => {
+    if (!codeSchema.safeParse(code).success) {
+      autoResolved.current = '';
+      return;
+    }
+    if (autoResolved.current === code || resolve.isPending) return;
+    autoResolved.current = code;
+    selectedAction.current = 'resolve';
+    void form.handleSubmit();
+  };
+
   useEffect(() => {
     const raw = new URLSearchParams(window.location.hash.slice(1)).get('code');
-    if (raw !== null && linkCode === undefined) form.setFieldValue('userCode', normalizeAgentUserCode(raw));
+    if (raw === null) return;
+    const normalized = normalizeAgentUserCode(raw);
+    if (linkCode === undefined) form.setFieldValue('userCode', normalized);
     if (window.location.hash !== '')
       window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
-    if (linkCode === undefined || linkResolveStarted.current) return;
-    linkResolveStarted.current = true;
-    resolveCode(linkCode, {
-      onSuccess: (details) => {
-        if (details.status === 'pending') {
-          setPending(details);
-          return;
-        }
-        reportTerminal(details.status);
-      },
-    });
-  }, [form, linkCode, resolveCode]);
+    // A URL code is only pre-filled; the same auto-resolve flow applies as to typed codes.
+    autoResolve(normalized);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, linkCode]);
+
+  const submitDecision = (action: 'approve' | 'deny'): void => {
+    if (resolve.isPending) return;
+    selectedAction.current = action;
+    void form.handleSubmit();
+  };
 
   const decision = approve.data ?? deny.data;
   if (decision !== undefined) return <Result status={decision.status} />;
 
-  const knownCode = submittedCode ?? linkCode;
-  const showRequest = knownCode !== undefined && (linkCode !== undefined || pending !== undefined);
-  const description =
-    showRequest && pending !== undefined
-      ? m['dashboard.agent_authorization.pending']()
-      : showRequest
-        ? undefined
-        : m['dashboard.agent_authorization.instructions']();
   const error = approve.error ?? deny.error ?? resolve.error;
-  const rows =
-    pending === undefined
-      ? []
-      : [
-          { icon: User, label: m['dashboard.agent_authorization.target'](), value: pending.target },
-          {
-            icon: Fingerprint,
-            label: m['dashboard.agent_authorization.installation'](),
-            value: pending.installationId,
-          },
-          { icon: Tag, label: m['dashboard.agent_authorization.version'](), value: pending.adapterVersion },
-          {
-            icon: Clock,
-            label: m['dashboard.agent_authorization.expires'](),
-            value: new Date(pending.expiresAt).toLocaleString(),
-          },
-          { icon: List, label: m['dashboard.agent_authorization.permission_catalog']() },
-          { icon: Sparkles, label: m['dashboard.agent_authorization.permission_inference']() },
-        ];
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle>
-          <h1 className="flex items-center gap-2 text-xl font-semibold">
-            {m['dashboard.agent_authorization.title']()}
-            <AioProxyLogo className="text-xl" />
-          </h1>
-        </CardTitle>
-        {description === undefined ? null : <CardDescription>{description}</CardDescription>}
-      </CardHeader>
-      {showRequest && knownCode !== undefined ? (
-        <>
-          <CardContent className="flex flex-col gap-6">
-            <p
-              aria-label={m['dashboard.agent_authorization.code_label']()}
-              className="text-center text-2xl font-semibold tracking-widest"
-            >
-              {knownCode}
-            </p>
-            {rows.length === 0 ? null : (
-              <section aria-label={m['dashboard.agent_authorization.permissions_title']()}>
-                <ItemGroup className="gap-0">
-                  {rows.map((row, index) => {
-                    const Icon = row.icon;
-                    return (
-                      <Fragment key={row.label}>
-                        <Item size="xs">
-                          <ItemMedia variant="icon">
-                            <Icon />
-                          </ItemMedia>
-                          <ItemContent>
-                            <ItemTitle>{row.label}</ItemTitle>
-                          </ItemContent>
-                          {row.value === undefined ? null : (
-                            <ItemContent>
-                              <ItemDescription>{row.value}</ItemDescription>
-                            </ItemContent>
-                          )}
-                        </Item>
-                        {index === rows.length - 1 ? null : <ItemSeparator className="my-0" />}
-                      </Fragment>
-                    );
-                  })}
-                </ItemGroup>
-              </section>
-            )}
-            {error === null || error === undefined ? null : (
-              <p role="alert" className="text-sm text-destructive">
-                {requestErrorMessage(error)}
-              </p>
-            )}
-          </CardContent>
-          {pending === undefined ? null : (
-            <CardFooter className="justify-end gap-2">
-              <Button
-                variant="outline"
-                disabled={approve.isPending || deny.isPending}
-                onClick={() => deny.mutate(pending.deviceId)}
-              >
-                {m['dashboard.agent_authorization.deny']()}
-              </Button>
-              <Button disabled={approve.isPending || deny.isPending} onClick={() => approve.mutate(pending.deviceId)}>
-                {m['dashboard.agent_authorization.approve']()}
-              </Button>
-            </CardFooter>
-          )}
-        </>
-      ) : (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void form.handleSubmit();
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void form.handleSubmit();
+      }}
+    >
+      <Card className="mb-16 w-full max-w-sm">
+        <form.Subscribe selector={(state) => state.values.userCode}>
+          {(inputCode) => {
+            const details = pending !== undefined && pending.code === inputCode ? pending.details : undefined;
+            const complete = codeSchema.safeParse(inputCode).success;
+            const busy = resolve.isPending || approve.isPending || deny.isPending;
+            const decideDisabled = !complete || busy;
+            return (
+              <>
+                <CardHeader>
+                  <CardTitle>
+                    <h1 className="flex items-center gap-2 text-xl font-semibold">
+                      {m['dashboard.agent_authorization.title']()}
+                      <AioProxyLogo className="text-xl" />
+                    </h1>
+                  </CardTitle>
+                  <CardDescription>
+                    {details === undefined
+                      ? m['dashboard.agent_authorization.instructions']()
+                      : m['dashboard.agent_authorization.pending']()}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-6">
+                  {details === undefined ? null : (
+                    <section className="flex flex-col gap-3">
+                      <h2 className="text-sm font-medium">{m['dashboard.agent_authorization.permissions_title']()}</h2>
+                      {[
+                        { icon: User, label: m['dashboard.agent_authorization.target'](), value: details.target },
+                        {
+                          icon: Fingerprint,
+                          label: m['dashboard.agent_authorization.installation'](),
+                          value: details.installationId,
+                        },
+                        {
+                          icon: Tag,
+                          label: m['dashboard.agent_authorization.version'](),
+                          value: details.adapterVersion,
+                        },
+                        {
+                          icon: Clock,
+                          label: m['dashboard.agent_authorization.expires'](),
+                          value: new Date(details.expiresAt).toLocaleString(),
+                        },
+                        { icon: List, label: m['dashboard.agent_authorization.permission_catalog']() },
+                        { icon: Sparkles, label: m['dashboard.agent_authorization.permission_inference']() },
+                      ].map((row) => {
+                        const Icon = row.icon;
+                        return (
+                          <div key={row.label} className="flex flex-col gap-0.5">
+                            <div
+                              className={
+                                row.value === undefined
+                                  ? 'flex items-center gap-1.5 text-sm'
+                                  : 'flex items-center gap-1.5 text-xs text-muted-foreground'
+                              }
+                            >
+                              <Icon className="size-3.5 shrink-0" />
+                              <span className="break-words">{row.label}</span>
+                            </div>
+                            {row.value === undefined ? null : <div className="text-sm break-words">{row.value}</div>}
+                          </div>
+                        );
+                      })}
+                    </section>
+                  )}
+                  {error === null || error === undefined ? null : (
+                    <Alert variant="destructive">
+                      <AlertDescription>
+                        {typeof AgentAuthorizationRequestError === 'function' &&
+                        error instanceof AgentAuthorizationRequestError &&
+                        error.code === 'authorization_unavailable'
+                          ? m['dashboard.agent_authorization.password_required']()
+                          : m['dashboard.agent_authorization.network_error']()}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  <form.Field
+                    name="userCode"
+                    validators={{
+                      onSubmit: ({ value }) =>
+                        codeSchema.safeParse(value).success
+                          ? undefined
+                          : m['dashboard.agent_authorization.code_invalid'](),
+                    }}
+                  >
+                    {(field) => (
+                      <Field data-invalid={field.state.meta.errors.length > 0 || undefined}>
+                        <FieldLabel className="mx-auto" htmlFor="agent-user-code">
+                          {m['dashboard.agent_authorization.code_label']()}
+                        </FieldLabel>
+                        <div className="flex justify-center">
+                          <InputOTP
+                            id="agent-user-code"
+                            aria-label={m['dashboard.agent_authorization.code_label']()}
+                            containerClassName="gap-2"
+                            maxLength={8}
+                            autoComplete="one-time-code"
+                            inputMode="text"
+                            aria-invalid={field.state.meta.errors.length > 0 || undefined}
+                            value={field.state.value.replaceAll('-', '')}
+                            pasteTransformer={(pasted) => normalizeAgentUserCode(pasted).replaceAll('-', '')}
+                            onBlur={field.handleBlur}
+                            onChange={(value) => {
+                              const normalized = normalizeAgentUserCode(value);
+                              field.handleChange(normalized);
+                              autoResolve(normalized);
+                            }}
+                          >
+                            <InputOTPGroup>
+                              {otpSlots.slice(0, 4).map((index) => (
+                                <InputOTPSlot key={index} index={index} />
+                              ))}
+                            </InputOTPGroup>
+                            <InputOTPSeparator />
+                            <InputOTPGroup>
+                              {otpSlots.slice(4).map((index) => (
+                                <InputOTPSlot key={index} index={index} />
+                              ))}
+                            </InputOTPGroup>
+                          </InputOTP>
+                        </div>
+                        <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
+                      </Field>
+                    )}
+                  </form.Field>
+                </CardContent>
+                <CardFooter className="flex flex-col gap-2">
+                  <Button
+                    className="w-full"
+                    type="button"
+                    disabled={decideDisabled}
+                    onClick={() => submitDecision('approve')}
+                  >
+                    {m['dashboard.agent_authorization.approve']()}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    type="button"
+                    disabled={decideDisabled}
+                    onClick={() => submitDecision('deny')}
+                  >
+                    {m['dashboard.agent_authorization.deny']()}
+                  </Button>
+                </CardFooter>
+              </>
+            );
           }}
-        >
-          <CardContent>
-            <form.Field
-              name="userCode"
-              validators={{
-                onSubmit: ({ value }) =>
-                  codeSchema.safeParse(value).success ? undefined : m['dashboard.agent_authorization.code_invalid'](),
-              }}
-            >
-              {(field) => (
-                <Field data-invalid={field.state.meta.errors.length > 0 || undefined}>
-                  <div className="flex justify-center">
-                    <InputOTP
-                      id="agent-user-code"
-                      aria-label={m['dashboard.agent_authorization.code_label']()}
-                      containerClassName="gap-2"
-                      maxLength={8}
-                      autoComplete="one-time-code"
-                      inputMode="text"
-                      aria-invalid={field.state.meta.errors.length > 0 || undefined}
-                      value={field.state.value.replaceAll('-', '')}
-                      pasteTransformer={(pasted) => normalizeAgentUserCode(pasted).replaceAll('-', '')}
-                      onBlur={field.handleBlur}
-                      onChange={(value) => field.handleChange(normalizeAgentUserCode(value))}
-                    >
-                      <InputOTPGroup>
-                        {otpSlots.slice(0, 4).map((index) => (
-                          <InputOTPSlot key={index} index={index} />
-                        ))}
-                      </InputOTPGroup>
-                      <InputOTPSeparator />
-                      <InputOTPGroup>
-                        {otpSlots.slice(4).map((index) => (
-                          <InputOTPSlot key={index} index={index} />
-                        ))}
-                      </InputOTPGroup>
-                    </InputOTP>
-                  </div>
-                  <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
-                </Field>
-              )}
-            </form.Field>
-            {resolve.error === null || resolve.error === undefined ? null : (
-              <p role="alert" className="text-sm text-destructive">
-                {requestErrorMessage(resolve.error)}
-              </p>
-            )}
-          </CardContent>
-          <CardFooter className="justify-end">
-            <Button type="submit" disabled={resolve.isPending}>
-              {m['dashboard.agent_authorization.resolve']()}
-            </Button>
-          </CardFooter>
-        </form>
-      )}
-    </Card>
+        </form.Subscribe>
+      </Card>
+    </form>
   );
 };
