@@ -10,7 +10,7 @@ import { Link } from '@tanstack/react-router';
 import { ChevronRightIcon } from 'lucide-react';
 
 import { AGENT_DISPLAY_NAMES, authorizationCounts } from '../../lib/agent-state';
-import { AgentIcon } from '../agent-icon';
+import { AGENT_ICONS } from '../agent-icons';
 import { AgentStatusBadge } from '../agent-status-badge';
 
 interface AgentCardProps {
@@ -28,6 +28,7 @@ const VIA: Readonly<Record<AgentIntegrationKind, () => string>> = {
 /** The whole card links to the Agent's details page inside aio-proxy; it never launches the Agent. */
 export const AgentCard: React.FC<AgentCardProps> = ({ descriptor, local, installations }) => {
   const active = authorizationCounts(installations).active;
+  const Icon = AGENT_ICONS[descriptor.target];
   return (
     <Card
       render={<Link to="/agents/$target" params={{ target: descriptor.target }} />}
@@ -36,7 +37,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({ descriptor, local, install
     >
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <AgentIcon target={descriptor.target} className="shrink-0" />
+          <Icon size={20} className="shrink-0" />
           {AGENT_DISPLAY_NAMES[descriptor.target]}
         </CardTitle>
         <CardDescription>{VIA[descriptor.integrationKind]()}</CardDescription>

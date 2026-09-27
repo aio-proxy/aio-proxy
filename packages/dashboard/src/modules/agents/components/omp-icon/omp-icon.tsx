@@ -1,26 +1,13 @@
-import type { AgentTarget } from '@aio-proxy/types';
 import { useId } from 'react';
 
-import { LobeIcon } from '@/components/lobe-icon';
-
-interface AgentIconProps {
-  readonly target: AgentTarget;
+interface OmpIconProps {
   readonly size?: number;
   readonly className?: string;
 }
 
-// oh-my-pi has no lobehub icon, so its own mark (omp.sh favicon) is drawn inline below.
-const SLUGS: Readonly<Record<Exclude<AgentTarget, 'omp'>, string>> = {
-  opencode: 'opencode',
-  pi: 'pi',
-  codex: 'codex-color',
-  grok: 'grok',
-};
-
-export const AgentIcon: React.FC<AgentIconProps> = ({ target, size = 20, className }) => {
+/** oh-my-pi's own mark (the omp.sh favicon); lobehub publishes no icon for it. */
+export const OmpIcon: React.FC<OmpIconProps> = ({ size, className }) => {
   const gradient = useId();
-  if (target !== 'omp')
-    return <LobeIcon slug={SLUGS[target]} size={size} {...(className === undefined ? {} : { className })} />;
   return (
     <svg viewBox="0 0 64 64" width={size} height={size} className={className} aria-hidden="true">
       <defs>

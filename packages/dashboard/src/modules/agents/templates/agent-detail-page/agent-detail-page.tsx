@@ -4,7 +4,7 @@ import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 
 import { PageContainer } from '@/components/page-container';
 
-import { AgentIcon } from '../../components/agent-icon';
+import { AGENT_ICONS } from '../../components/agent-icons';
 import { AgentNotes } from '../../components/agent-notes';
 import { AgentSetupPanel } from '../../components/agent-setup-panel';
 import { AgentStatusPanel } from '../../components/agent-status-panel';
@@ -25,6 +25,7 @@ const REMOVABLE = new Set<AgentLocalStatus>(['configured', 'outdated', 'modified
 export const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ target }) => {
   const descriptor = agentDescriptor(target);
   const name = AGENT_DISPLAY_NAMES[target];
+  const Icon = AGENT_ICONS[target];
   const snapshot = useAgentsSnapshot();
   const content = (() => {
     if (snapshot.isLoading) return <Skeleton className="h-64 w-full" />;
@@ -88,7 +89,7 @@ export const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ target }) => {
     <PageContainer
       title={
         <span className="flex items-center gap-2">
-          <AgentIcon target={target} size={24} className="shrink-0" />
+          <Icon size={24} className="shrink-0" />
           {name}
         </span>
       }
