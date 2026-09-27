@@ -1,4 +1,4 @@
-import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
+import type { DashboardRoutingModel, DashboardRoutingModelsResponse, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -14,7 +14,9 @@ const mocks = rs.hoisted(() => ({
   enableBeforeUnload: undefined as (() => boolean) | undefined,
   mutationError: null as Error | null,
   mutationPending: false,
-  callbacks: undefined as { onError?: (error: Error) => void; onSuccess?: () => void } | undefined,
+  callbacks: undefined as
+    | { onError?: (error: Error) => void; onSuccess?: (data: DashboardRoutingModelsResponse) => void }
+    | undefined,
 }));
 
 rs.mock('@tanstack/react-router', () => ({
@@ -160,7 +162,10 @@ const renderEditor = (
   } = {},
 ) => {
   mocks.mutate.mockImplementation(
-    (_body: unknown, callbacks?: { onError?: (error: Error) => void; onSuccess?: () => void }) => {
+    (
+      _body: unknown,
+      callbacks?: { onError?: (error: Error) => void; onSuccess?: (data: DashboardRoutingModelsResponse) => void },
+    ) => {
       mocks.callbacks = callbacks;
     },
   );
@@ -183,6 +188,11 @@ const renderEditor = (
     rejectWithStale: () =>
       mocks.callbacks?.onError?.(Object.assign(new Error('stale routing model'), { code: 'stale_revision' })),
   };
+};
+
+/** Resolves the pending save the way the real PUT does: with the inventory it just wrote. */
+const resolveSave = (saved: DashboardRoutingModel) => {
+  mocks.callbacks?.onSuccess?.({ writable: true, models: [saved] });
 };
 
 const blockerEnabledFor = () => mocks.shouldBlock?.() ?? false;
@@ -404,7 +414,7 @@ test('returns to clean after a successful save without discarding edited values'
   act(() => result.current.metadataForm.setFieldValue('metadata', { touched: true, value: { name: 'kept' } }));
 
   await act(() => result.current.save());
-  act(() => mocks.callbacks?.onSuccess?.());
+  act(() => resolveSave({ ...model(), revision: 'rev-2' }));
   expect(result.current.dirtyTabs).toEqual([]);
   expect(result.current.form.state.values.providers[0]?.weight).toBe(3);
   expect(result.current.form.state.isDirty).toBe(false);
@@ -426,7 +436,7 @@ test('keeps saved values when rerendered with an equivalent model object', async
 
   act(() => result.current.form.setFieldValue('providers[0].weight', 3));
   await act(() => result.current.save());
-  act(() => mocks.callbacks?.onSuccess?.());
+  act(() => resolveSave({ ...model(), revision: 'rev-2' }));
 
   rerender({ model: model() });
 
@@ -479,7 +489,7 @@ test('reload merges new provider rows when the mounted model id is unchanged', a
   expect(providerIds).toContain('openai');
 });
 
-test('discard resets to the reconciled model after reload', async () => {
+test('keeps reloaded edits dirty, and discards them to the new revision', async () => {
   const reloaded = {
     ...modelWithOpenai(),
     revision: 'rev-2',
@@ -501,12 +511,20 @@ test('discard resets to the reconciled model after reload', async () => {
     { providerId: 'openai' },
   ]);
 
+  // The rebased edits are still unsaved, so they must keep reading as dirty. Making them the reset
+  // baseline left the form pristine: the markers and the navigation guard vanished and Cancel had
+  // nothing to fall back to.
+  expect(result.current.dirtyTabs).toEqual(['topology']);
+  expect(blockerEnabledFor()).toBe(true);
+
   act(() => result.current.discard());
 
+  // And Cancel lands on the revision that was just reloaded, never the stale one it replaced.
   expect(result.current.form.state.values.providers).toEqual([
-    { providerId: 'anthropic', weight: 3 },
+    { providerId: 'anthropic', weight: 7 },
     { providerId: 'openai' },
   ]);
+  expect(result.current.dirtyTabs).toEqual([]);
 });
 
 test('reload drops a late payload when the mounted model id has changed', async () => {
@@ -566,4 +584,59 @@ test('reports no save in flight while idle', () => {
   const { result } = renderEditor();
 
   expect(result.current.saving).toBe(false);
+});
+
+test('submits the revision the draft was based on, not the one now rendered', async () => {
+  // When the query refreshes under a dirty draft the draft is deliberately kept. Sending the newly
+  // rendered revision would tell the server the stale draft was written against the latest policy,
+  // so the concurrency check would pass and quietly overwrite whatever changed underneath it.
+  const { result, rerender, mutate } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+  rerender({ model: { ...model(), revision: 'rev-9' } });
+
+  // The draft survived the refresh, which is what makes the revision matter.
+  expect(result.current.form.state.values.providers[0]?.weight).toBe(3);
+
+  await act(() => result.current.save());
+
+  expect(mutate.mock.calls[0]?.[0]).toMatchObject({ revision: 'rev-1' });
+});
+
+test('advances the save basis to the revision the save produced', async () => {
+  // Without this the next save would replay the pre-save revision and be rejected as stale.
+  const { result, mutate } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+  await act(() => result.current.save());
+  act(() => resolveSave({ ...model(), revision: 'rev-2' }));
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 5));
+  mutate.mockClear();
+  await act(() => result.current.save());
+
+  expect(mutate.mock.calls[0]?.[0]).toMatchObject({ revision: 'rev-2' });
+});
+
+test('refuses to discard while a save is in flight', () => {
+  // mutation.reset() only clears the observer; the request still lands. Discarding here would report
+  // the editor as idle, unlock the controls, and let the write the user just abandoned commit anyway.
+  mocks.mutationPending = true;
+  const { result } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+  act(() => result.current.discard());
+
+  expect(result.current.form.state.values.providers[0]?.weight).toBe(3);
+  expect(result.current.dirtyTabs).toEqual(['topology']);
+  expect(mocks.reset).not.toHaveBeenCalled();
+});
+
+test('discards normally once no save is in flight', () => {
+  const { result } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+  act(() => result.current.discard());
+
+  expect(result.current.dirtyTabs).toEqual([]);
 });

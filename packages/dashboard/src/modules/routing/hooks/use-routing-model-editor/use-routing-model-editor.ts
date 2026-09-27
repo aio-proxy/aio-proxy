@@ -7,22 +7,16 @@ import {
   mergeRoutingMutationDrafts,
   reconcileRoutingMetadataValues,
   routingDirtyTabs,
-  routingMetadataFormValues,
   routingMetadataTouched,
   routingOverrideDraftsValid,
   type RoutingMetadataFormValues,
 } from '../../lib/routing-metadata-draft';
 import { explicitRoutingOverrides } from '../../lib/routing-summary';
 import { isStaleRoutingError } from '../../services/routing-service';
-import {
-  reconcileRoutingFormRows,
-  routingDraftRecord,
-  routingFormValues,
-  type RoutingFormValues,
-  useRoutingForm,
-} from '../use-routing-form';
+import { reconcileRoutingFormRows, routingDraftRecord, useRoutingForm } from '../use-routing-form';
 import { useRoutingMetadataForm } from '../use-routing-metadata-form';
 import { useRoutingMutation } from '../use-routing-mutation';
+import { routingEditorBaseline, type RoutingEditorBaseline } from './routing-editor-baseline';
 
 interface UseRoutingModelEditorOptions {
   readonly model: DashboardRoutingModel;
@@ -47,10 +41,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   const mutation = useRoutingMutation();
   const [stale, setStale] = useState(false);
   const [metadataValid, setMetadataValid] = useState(true);
-  const [formDefaults, setFormDefaults] = useState<RoutingFormValues>(() => routingFormValues(model));
-  const [metadataDefaults, setMetadataDefaults] = useState<RoutingMetadataFormValues>(() =>
-    routingMetadataFormValues(model),
-  );
+  const [baseline, setBaseline] = useState<RoutingEditorBaseline>(() => routingEditorBaseline(model));
   const reloadGeneration = useRef(0);
   const latestModel = useRef(model);
   const previousModelIdentity = useRef({ modelId: model.modelId, revision: model.revision });
@@ -58,7 +49,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   const previousReloadModelId = useRef(model.modelId);
   // oxlint-disable-next-line react/refs -- the adoption effect must read the newest same-key model without depending on object identity
   latestModel.current = model;
-  const metadataForm = useRoutingMetadataForm(model, metadataDefaults);
+  const metadataForm = useRoutingMetadataForm(model, baseline.metadata);
   const form = useRoutingForm(
     model,
     (value, submittedForm) => {
@@ -68,19 +59,26 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
       mutation.mutate(
         {
           modelId: model.modelId,
-          revision: model.revision,
-          baselineProviderIds: model.baselineProviderIds,
+          revision: baseline.revision,
+          baselineProviderIds: baseline.baselineProviderIds,
           ...mergeRoutingMutationDrafts(
             explicitRoutingOverrides(routingDraftRecord(value.providers)),
             metadataAtSubmit,
           ),
         },
         {
-          onSuccess: () => {
+          onSuccess: (saved) => {
             mutation.reset();
             setStale(false);
-            setFormDefaults(savedTopology);
-            setMetadataDefaults(savedMetadata);
+            // The PUT answers with the refreshed inventory, so the next save is checked against the
+            // revision this one produced instead of the one it was based on.
+            const next = saved.models.find((entry) => entry.modelId === model.modelId);
+            setBaseline((previous) => ({
+              form: savedTopology,
+              metadata: savedMetadata,
+              revision: next?.revision ?? previous.revision,
+              baselineProviderIds: next?.baselineProviderIds ?? previous.baselineProviderIds,
+            }));
             submittedForm.reset(savedTopology);
             metadataForm.reset(savedMetadata);
           },
@@ -90,7 +88,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
         },
       );
     },
-    formDefaults,
+    baseline.form,
   );
   useEffect(() => {
     const nextModel = latestModel.current;
@@ -105,12 +103,10 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
 
     if (form.state.isDirty || routingMetadataTouched(metadataForm.state.values)) return;
 
-    const nextFormDefaults = routingFormValues(nextModel);
-    const nextMetadataDefaults = routingMetadataFormValues(nextModel);
-    setFormDefaults(nextFormDefaults);
-    setMetadataDefaults(nextMetadataDefaults);
-    form.reset(nextFormDefaults);
-    metadataForm.reset(nextMetadataDefaults);
+    const next = routingEditorBaseline(nextModel);
+    setBaseline(next);
+    form.reset(next.form);
+    metadataForm.reset(next.metadata);
   }, [form, metadataForm, model.modelId, model.revision]);
 
   useEffect(() => {
@@ -152,12 +148,16 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   });
 
   const discard = () => {
+    // mutation.reset() only clears the observer; it cannot abort the request. Discarding mid-flight
+    // would unlock the controls and let the original write land anyway, persisting the very snapshot
+    // the user just threw away.
+    if (mutation.isPending) return;
     reloadGeneration.current += 1;
     setStale(false);
     mutation.reset();
     setMetadataValid(true);
-    form.reset(formDefaults);
-    metadataForm.reset(metadataDefaults);
+    form.reset(baseline.form);
+    metadataForm.reset(baseline.metadata);
   };
 
   const save = () => {
@@ -175,6 +175,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   };
 
   const reload = () => {
+    if (mutation.isPending) return;
     const generation = ++reloadGeneration.current;
     const initiatedId = model.modelId;
     void Promise.resolve(onReload()).then((next) => {
@@ -182,14 +183,21 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
       if (next == null || next.modelId !== initiatedId) return;
       if (latestModel.current.modelId !== initiatedId) return;
       appliedReloadIdentity.current = { modelId: next.modelId, revision: next.revision };
-      const nextFormDefaults = {
-        providers: reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next),
-      } satisfies RoutingFormValues;
-      const nextMetadataDefaults = reconcileRoutingMetadataValues(metadataForm.state.values, next);
-      setFormDefaults(nextFormDefaults);
-      setMetadataDefaults(nextMetadataDefaults);
-      form.reset(nextFormDefaults);
-      metadataForm.reset(nextMetadataDefaults);
+      const providers = reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next);
+      const metadata = reconcileRoutingMetadataValues(metadataForm.state.values, next);
+      const fresh = routingEditorBaseline(next);
+      setBaseline(fresh);
+      // The baseline is what the server holds; the preserved edits go back on top as changes. Making
+      // them the baseline instead would leave the form pristine, so the dirty markers and the
+      // navigation guard would vanish while the edits were still unsaved, and Cancel would have
+      // nothing to fall back to.
+      form.reset(fresh.form);
+      form.setFieldValue('providers', providers);
+      metadataForm.reset(fresh.metadata);
+      if (routingMetadataTouched(metadata)) {
+        metadataForm.setFieldValue('metadata', metadata.metadata);
+        metadataForm.setFieldValue('overrides', metadata.overrides);
+      }
     });
   };
 

@@ -390,6 +390,9 @@ test('stops accepting edits while a save is in flight', async () => {
   // The config is still writable — the lock is about the in-flight request, not permissions, so the
   // read-only notice must stay away.
   expect(screen.queryByText(m['dashboard.routing.read_only']())).not.toBeInTheDocument();
+
+  // Cancel cannot call off a request already sent, so it must not offer to.
+  expect(screen.getByRole('button', { name: m['dashboard.routing.editor.cancel']() })).toBeDisabled();
 });
 
 test('accepts edits again once no save is in flight', async () => {

@@ -102,11 +102,13 @@ export const RoutingModelPageEditor: React.FC<RoutingModelPageEditorProps> = ({
             {m['dashboard.routing.editor.save_failed']()}
           </p>
         ) : null}
-        <Button type="button" variant="outline" onClick={() => editor.discard()}>
+        {/* Cancel cannot call off a request already in flight, so it stays out of reach until the
+            save settles rather than reporting the write as abandoned while it commits. */}
+        <Button type="button" variant="outline" disabled={editor.saving} onClick={() => editor.discard()}>
           {m['dashboard.routing.editor.cancel']()}
         </Button>
         {editor.stale ? (
-          <Button type="button" variant="outline" onClick={() => editor.reload()}>
+          <Button type="button" variant="outline" disabled={editor.saving} onClick={() => editor.reload()}>
             {m['dashboard.routing.editor.reload']()}
           </Button>
         ) : null}
