@@ -60,3 +60,23 @@ test('an unmatched id falls back to OpenRouter by full or bare model id', () => 
 test('an unknown id has no fallback slug', () => {
   expect(resolveModelEntry(providerMap, 'mystery-model')).toBeUndefined();
 });
+
+test('survives a cached provider entry that has no models at all', () => {
+  // The cache is parsed without a schema, so `provider.models` is a compile-time fiction and a
+  // hand-edited or truncated file really can hold this shape. Indexing it threw, and because the
+  // routing inventory awaits this lookup unguarded, one malformed entry took the whole routing page
+  // down instead of merely omitting that model's catalog facts.
+  const malformed = { anthropic: {} } as unknown as ProviderMap;
+
+  // The explicit provider/model path, the provider-glob path, and the OpenRouter fallback.
+  expect(resolveModelEntry(malformed, 'anthropic/claude-x')).toBeUndefined();
+  expect(resolveModelEntry(malformed, 'claude-3-5-sonnet')).toBeUndefined();
+  expect(resolveModelEntry({ openrouter: {} } as unknown as ProviderMap, 'gpt-5')).toBeUndefined();
+});
+
+test('still resolves the healthy providers beside a malformed one', () => {
+  // Degrading must not mean giving up on the rest of the catalog.
+  const mixed = { broken: {}, anthropic: provider('anthropic', { 'claude-x': model('claude-x') }) } as ProviderMap;
+
+  expect(resolveModelEntry(mixed, 'anthropic/claude-x')?.slug).toBe('anthropic/claude-x');
+});
