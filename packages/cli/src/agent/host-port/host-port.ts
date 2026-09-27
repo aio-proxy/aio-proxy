@@ -31,8 +31,9 @@ const ERROR_MESSAGES: ReadonlyArray<readonly [RegExp, AgentOperationErrorCode]> 
   [/ is not installed$/u, 'host_missing'],
   [/^managed installation is required$/u, 'not_configured'],
   [/^CODEX_(SETUP_ENDPOINT_CHANGED|AUTH_ENDPOINT_OR_PROVIDER_CHANGED)$/u, 'endpoint_changed'],
-  [/^CODEX_AUTH_OPERATION_PENDING$/u, 'recovery_required'],
-  [/operation is pending$|lock/iu, 'locked'],
+  // A blocked revocation leaves a recovery journal behind, like an interrupted authorization.
+  [/^CODEX_AUTH_(OPERATION_PENDING|REVOKE_BLOCKED)$/u, 'recovery_required'],
+  [/operation is pending$|^Timed out waiting for process lock: |^Grok lock unverifiable$/u, 'locked'],
   [/ is occupied$/u, 'occupied_provider_id'],
 ];
 

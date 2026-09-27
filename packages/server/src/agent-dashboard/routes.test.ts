@@ -343,6 +343,48 @@ test('cancelling withdraws an approval already given on the authorize page', asy
   expect(((await token.json()) as { error?: string }).error).toBe('access_denied');
 });
 
+test('cancelling after the Agent already redeemed its approval lets the setup finish', async () => {
+  const approved = deferred();
+  const codes: { userCode?: string } = {};
+  const device: { code?: string } = {};
+  let deviceCode: () => Promise<string> = async () => '';
+  const f = await fixture({ host: codexHost(approved, codes, () => deviceCode()) });
+  deviceCode = async () => {
+    const response = await f.app.request(
+      '/oauth/device/code',
+      form({ client_id: 'aio-proxy-codex', agent: 'codex', installation_id: INSTALLATION, adapter_version: '1.2.3' }),
+      loopbackServer,
+    );
+    const body = (await response.json()) as { user_code: string; device_code: string };
+    device.code = body.device_code;
+    return body.user_code;
+  };
+  const { operationId } = (await (await codexOperation(f)).json()) as AgentOperationState;
+  await f.until(operationId, 'awaiting_approval');
+  const authorizations = `${LOCAL_ORIGIN}/dashboard/api/agent-authorizations`;
+  const resolved = await (
+    await f.app.request(`${authorizations}/resolve`, post({ userCode: codes.userCode }), loopbackServer)
+  ).json();
+  await f.app.request(`${authorizations}/${resolved.deviceId}/approve`, post(), loopbackServer);
+  const token = await f.app.request(
+    '/oauth/token',
+    form({
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+      client_id: 'aio-proxy-codex',
+      device_code: device.code!,
+    }),
+    loopbackServer,
+  );
+  expect(((await token.json()) as { access_token?: string }).access_token).toBeDefined();
+
+  const cancelled = (await (
+    await f.request(`/operations/${operationId}/cancel`, post())
+  ).json()) as AgentOperationState;
+  expect(cancelled.status).not.toBe('failed');
+  approved.resolve();
+  await f.until(operationId, 'succeeded');
+});
+
 test('an unfinished operation is listed even when local inspection fails', async () => {
   const codes: { userCode?: string } = {};
   let deviceCode: () => Promise<string> = async () => '';

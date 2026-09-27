@@ -168,6 +168,11 @@ test('classifyAgentError maps known CLI failures and leaves the rest unknown', (
   expect(classifyAgentError(new Error('Codex provider aio is occupied'))?.code).toBe('occupied_provider_id');
   expect(classifyAgentError(new AgentOperationError('plan_stale'))?.code).toBe('plan_stale');
   expect(classifyAgentError(Object.assign(new Error('denied'), { code: 'EACCES' }))?.code).toBe('path_unavailable');
+  expect(classifyAgentError(new Error('Timed out waiting for process lock: /home/me/.grok/.lock'))?.code).toBe(
+    'locked',
+  );
+  // "BLOCKED" contains "LOCK" but is a blocked revocation, not a held lock.
+  expect(classifyAgentError(new Error('CODEX_AUTH_REVOKE_BLOCKED'))?.code).toBe('recovery_required');
   expect(classifyAgentError(new Error('disk full'))).toBeUndefined();
 });
 

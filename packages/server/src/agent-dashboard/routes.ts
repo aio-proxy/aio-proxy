@@ -117,8 +117,12 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
     try {
       if (decision === 'cancel') {
         // Even an approval given on the authorize page is withdrawn, so no credential is minted afterwards.
-        challenges.cancel(deviceId);
-        return context.json(operations.stop(operationId, 'cancelled')!);
+        // Once the Agent has redeemed it the credential exists, so the setup is let finish rather than
+        // reported as cancelled while it keeps writing.
+        const outcome = challenges.cancel(deviceId);
+        return context.json(
+          (outcome === 'consumed' ? operations.resume(operationId) : operations.stop(operationId, 'cancelled'))!,
+        );
       }
       const status = challenges[decision](deviceId, requestPeer(context));
       // A challenge decided on the authorize page first keeps that decision.

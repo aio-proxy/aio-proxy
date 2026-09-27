@@ -43,6 +43,13 @@ const createColumns = (canRevoke: boolean): ColumnDef<DataTableFeatures, AgentIn
     header: tableHead(() => m['dashboard.agents.table.adapter']()),
   },
   {
+    id: 'createdAt',
+    meta: { label: () => m['dashboard.agents.table.created']() },
+    accessorKey: 'createdAt',
+    header: tableHead(() => m['dashboard.agents.table.created']()),
+    cell: ({ row }) => formatTime(row.original.createdAt),
+  },
+  {
     id: 'lastAuthorizedAt',
     meta: { label: () => m['dashboard.agents.table.last_authorized']() },
     accessorKey: 'lastAuthorizedAt',
