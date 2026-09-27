@@ -4,6 +4,7 @@ import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 
 import { PageContainer } from '@/components/page-container';
 
+import { AgentIcon } from '../../components/agent-icon';
 import { AgentNotes } from '../../components/agent-notes';
 import { AgentSetupPanel } from '../../components/agent-setup-panel';
 import { AgentStatusPanel } from '../../components/agent-status-panel';
@@ -85,7 +86,12 @@ export const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ target }) => {
   })();
   return (
     <PageContainer
-      title={name}
+      title={
+        <span className="flex items-center gap-2">
+          <AgentIcon target={target} size={24} className="shrink-0" />
+          {name}
+        </span>
+      }
       breadcrumbs={[
         { label: m['dashboard.menus.configuration']() },
         { label: m['dashboard.agents.title'](), to: '/agents' },

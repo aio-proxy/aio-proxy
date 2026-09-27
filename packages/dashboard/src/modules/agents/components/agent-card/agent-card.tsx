@@ -10,6 +10,7 @@ import { Link } from '@tanstack/react-router';
 import { ChevronRightIcon } from 'lucide-react';
 
 import { AGENT_DISPLAY_NAMES, authorizationCounts } from '../../lib/agent-state';
+import { AgentIcon } from '../agent-icon';
 import { AgentStatusBadge } from '../agent-status-badge';
 
 interface AgentCardProps {
@@ -36,7 +37,10 @@ export const AgentCard: React.FC<AgentCardProps> = ({ descriptor, local, install
     >
       <Card className="h-full transition-shadow group-hover/agent-card:shadow-md group-hover/agent-card:ring-foreground/15">
         <CardHeader>
-          <CardTitle>{AGENT_DISPLAY_NAMES[descriptor.target]}</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <AgentIcon target={descriptor.target} className="shrink-0" />
+            {AGENT_DISPLAY_NAMES[descriptor.target]}
+          </CardTitle>
           <CardDescription>{VIA[descriptor.integrationKind]()}</CardDescription>
           <CardAction>
             <ChevronRightIcon
