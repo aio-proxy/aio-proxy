@@ -640,3 +640,40 @@ test('discards normally once no save is in flight', () => {
 
   expect(result.current.dirtyTabs).toEqual([]);
 });
+
+test('rebases a reload field by field instead of replaying the whole draft', async () => {
+  // Reload after a stale save used to replay every draft row over the fresh model, so a change
+  // another operator made to a Provider this user never touched was reverted — and the next save
+  // committed that as intent. Only the fields this draft actually changed may survive.
+  const reloaded = {
+    ...modelWithOpenai(),
+    revision: 'rev-2',
+    providers: [
+      // The other operator raised anthropic's priority and openai's weight.
+      providerWithOverride('anthropic', { priority: routingNumber(5, 5) }),
+      providerWithOverride('openai', { weight: routingNumber(4, 4) }),
+    ],
+  };
+  let resolveReload!: (value: DashboardRoutingModel) => void;
+  const reloadPromise = new Promise<DashboardRoutingModel>((resolve) => {
+    resolveReload = resolve;
+  });
+  const { result, rerender } = renderEditor({
+    model: modelWithOpenai(),
+    onReload: rs.fn().mockReturnValue(reloadPromise),
+  });
+
+  // This user only touched anthropic's weight.
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+
+  act(() => result.current.reload());
+  await act(async () => resolveReload(reloaded));
+  rerender({ model: reloaded });
+
+  expect(result.current.form.state.values.providers).toEqual([
+    // Their priority survives beside this user's weight.
+    { providerId: 'anthropic', priority: 5, weight: 3 },
+    // A Provider this user never touched keeps the other operator's value.
+    { providerId: 'openai', weight: 4 },
+  ]);
+});

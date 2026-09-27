@@ -183,7 +183,9 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
       if (next == null || next.modelId !== initiatedId) return;
       if (latestModel.current.modelId !== initiatedId) return;
       appliedReloadIdentity.current = { modelId: next.modelId, revision: next.revision };
-      const providers = reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next);
+      // The pre-reload baseline is the common ancestor: without it every untouched row would be
+      // replayed over the server's, reverting concurrent changes the user never made.
+      const providers = reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next, baseline.form.providers);
       const metadata = reconcileRoutingMetadataValues(metadataForm.state.values, next);
       const fresh = routingEditorBaseline(next);
       setBaseline(fresh);
