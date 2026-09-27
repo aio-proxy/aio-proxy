@@ -75,6 +75,8 @@ export type DeviceChallengeStore = {
     target: AgentTarget,
     installationId: string,
   ) => PendingInstallationChallenge | undefined;
+  /** Called once a challenge is redeemed for a credential, so a waiting dashboard operation can move on. */
+  readonly onConsumed: (listener: (deviceId: string) => void) => () => void;
   /**
    * Denies one challenge even when it was already approved. A challenge the Agent already redeemed
    * cannot be withdrawn, so that is reported as `consumed` instead.
@@ -294,7 +296,16 @@ export function createDeviceChallengeStore(input: DeviceChallengeStoreInput): De
     }
     challenge.nextPollAt = timestamp + challenge.intervalSeconds * 1_000;
     if (challenge.status === 'pending') return { ok: false, error: 'authorization_pending' };
-    return consumeApproved(input.identity, maps, challenge, timestamp);
+    const result = consumeApproved(input.identity, maps, challenge, timestamp);
+    if (result.ok)
+      for (const listener of consumedListeners) {
+        try {
+          listener(challenge.deviceId);
+        } catch {
+          // A dashboard listener must never fail the Agent's token response.
+        }
+      }
+    return result;
   }
 
   function pendingForInstallation(
@@ -325,6 +336,8 @@ export function createDeviceChallengeStore(input: DeviceChallengeStoreInput): De
       : undefined;
   }
 
+  const consumedListeners = new Set<(deviceId: string) => void>();
+
   function cancel(deviceId: string): 'cancelled' | 'consumed' {
     const challenge = maps.byDeviceId.get(deviceId);
     if (challenge?.status === 'consumed') return 'consumed';
@@ -342,6 +355,10 @@ export function createDeviceChallengeStore(input: DeviceChallengeStoreInput): De
   return {
     create,
     resolve,
+    onConsumed: (listener) => {
+      consumedListeners.add(listener);
+      return () => consumedListeners.delete(listener);
+    },
     cancel,
     cancelForInstallation,
     pendingForInstallation,

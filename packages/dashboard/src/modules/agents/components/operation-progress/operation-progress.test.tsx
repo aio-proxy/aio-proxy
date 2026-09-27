@@ -22,6 +22,20 @@ test('an operation awaiting approval shows the device code and routes each decis
   expect(onDecide.mock.calls).toEqual([['approve'], ['deny']]);
 });
 
+test('a decision that was not applied is explained beside the approval controls', () => {
+  const state: AgentOperationState = {
+    ...base,
+    status: 'awaiting_approval',
+    installationId: '0f4dcb50-d68c-4b99-8af1-da32480ddd09',
+    userCode: 'ABCD-EFGH',
+    expiresAt: '2026-09-26T00:10:00.000Z',
+  };
+  render(
+    <OperationProgress state={state} onDecide={rs.fn()} deciding={false} decideError="AIO Proxy is unavailable" />,
+  );
+  expect(screen.getByRole('alert').textContent).toBe('AIO Proxy is unavailable');
+});
+
 test('a failed operation explains the closed error code', () => {
   render(
     <OperationProgress

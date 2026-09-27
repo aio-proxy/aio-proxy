@@ -95,6 +95,9 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
         errorType: serverErrorType(error),
       }),
   });
+  // Approval on the authorize page does not pass through this route; redemption is what shows the
+  // setup has moved past authorization, so it ends the operation's awaiting state right away.
+  challenges.onConsumed((deviceId) => operations.redeemed(deviceId));
   const inspectLocal = async (): Promise<readonly AgentLocalState[] | undefined> => {
     try {
       const rows = await host?.inspect();

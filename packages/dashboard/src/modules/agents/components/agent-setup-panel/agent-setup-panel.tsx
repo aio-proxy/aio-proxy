@@ -98,7 +98,12 @@ export const AgentSetupPanel: React.FC<AgentSetupPanelProps> = ({
         </p>
       )}
       {state === undefined ? null : (
-        <OperationProgress state={state} onDecide={operation.decide} deciding={operation.isDeciding} />
+        <OperationProgress
+          state={state}
+          onDecide={operation.decide}
+          deciding={operation.isDeciding}
+          decideError={operation.decideError === undefined ? undefined : requestError(operation.decideError)}
+        />
       )}
       {loginInstallationId === undefined || descriptor.loginCommand === undefined ? null : (
         <LoginPanel

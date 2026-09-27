@@ -343,7 +343,7 @@ test('cancelling withdraws an approval already given on the authorize page', asy
   expect(((await token.json()) as { error?: string }).error).toBe('access_denied');
 });
 
-test('cancelling after the Agent already redeemed its approval lets the setup finish', async () => {
+test('once the Agent redeems its approval the setup is no longer cancellable and finishes', async () => {
   const approved = deferred();
   const codes: { userCode?: string } = {};
   const device: { code?: string } = {};
@@ -377,10 +377,12 @@ test('cancelling after the Agent already redeemed its approval lets the setup fi
   );
   expect(((await token.json()) as { access_token?: string }).access_token).toBeDefined();
 
-  const cancelled = (await (
-    await f.request(`/operations/${operationId}/cancel`, post())
-  ).json()) as AgentOperationState;
-  expect(cancelled.status).not.toBe('failed');
+  // Redemption moves the operation past approval at once, so a later Cancel has nothing to withdraw,
+  // however long the setup keeps running afterwards.
+  expect(((await (await f.request(`/operations/${operationId}`)).json()) as AgentOperationState).status).toBe(
+    'running',
+  );
+  expect((await f.request(`/operations/${operationId}/cancel`, post())).status).toBe(409);
   approved.resolve();
   await f.until(operationId, 'succeeded');
 });

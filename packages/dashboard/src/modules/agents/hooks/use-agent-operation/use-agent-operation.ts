@@ -50,8 +50,12 @@ export const useAgentOperation = (target: AgentTarget, kinds: readonly AgentOper
     start: (request: AgentOperationRequest) => start.mutate(request),
     startError: start.error,
     isStarting: start.isPending,
-    decide: (decision: 'approve' | 'deny' | 'cancel') => decide.mutate(decision),
+    decide: (decision: 'approve' | 'deny' | 'cancel') => {
+      decide.reset();
+      decide.mutate(decision);
+    },
     isDeciding: decide.isPending,
+    decideError: decide.error ?? undefined,
     busy: start.isPending || (state !== undefined && !finished),
     reset: () => {
       setStartedId(undefined);

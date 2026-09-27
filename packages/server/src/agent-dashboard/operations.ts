@@ -51,6 +51,8 @@ export type AgentOperations = {
   /** The device awaiting approval for this operation, if it is in that state. */
   readonly device: (operationId: string) => string | undefined;
   readonly resume: (operationId: string) => AgentOperationState | undefined;
+  /** Resumes the operation waiting on this device challenge once the Agent has redeemed it. */
+  readonly redeemed: (deviceId: string) => void;
   readonly stop: (operationId: string, outcome: StopOutcome) => AgentOperationState | undefined;
   /** Settles every in-flight operation; used by tests and shutdown. */
   readonly settled: () => Promise<void>;
@@ -150,6 +152,13 @@ export function createAgentOperations(input: AgentOperationsInput): AgentOperati
       const { operationId: id, target, kind } = entry.state;
       entry.state = { operationId: id, target, kind, status: 'running' };
       return entry.state;
+    },
+    redeemed: (deviceId) => {
+      for (const entry of entries.values())
+        if (entry.state.status === 'awaiting_approval' && entry.deviceId === deviceId) {
+          const { operationId: id, target, kind } = entry.state;
+          entry.state = { operationId: id, target, kind, status: 'running' };
+        }
     },
     stop: (operationId, outcome) => {
       const entry = lookup(operationId);

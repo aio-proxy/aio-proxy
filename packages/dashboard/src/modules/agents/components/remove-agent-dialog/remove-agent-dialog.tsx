@@ -57,7 +57,18 @@ export const RemoveAgentDialog: React.FC<RemoveAgentDialogProps> = ({ target, re
           <AlertDialogDescription>{m['dashboard.agents.remove.description']()}</AlertDialogDescription>
         </AlertDialogHeader>
         {operation.state === undefined ? null : (
-          <OperationProgress state={operation.state} onDecide={operation.decide} deciding={operation.isDeciding} />
+          <OperationProgress
+            state={operation.state}
+            onDecide={operation.decide}
+            deciding={operation.isDeciding}
+            decideError={
+              operation.decideError === undefined
+                ? undefined
+                : errorMessage(
+                    operation.decideError instanceof AgentsRequestError ? operation.decideError.code : 'request_failed',
+                  )
+            }
+          />
         )}
         {operation.startError === null ? null : (
           <p role="alert" className="text-sm text-destructive">

@@ -10,6 +10,8 @@ interface OperationProgressProps {
   readonly state: AgentOperationState;
   readonly onDecide: (decision: 'approve' | 'deny' | 'cancel') => void;
   readonly deciding: boolean;
+  /** Why the last approve, deny, or cancel request was not applied. */
+  readonly decideError?: string | undefined;
 }
 
 const INCOMPLETE = new Set<AgentOperationResult['status']>(['partial', 'blocked', 'cancelled']);
@@ -63,7 +65,7 @@ const detailLines = (result: AgentOperationResult): readonly string[] => {
   ];
 };
 
-export const OperationProgress: React.FC<OperationProgressProps> = ({ state, onDecide, deciding }) => {
+export const OperationProgress: React.FC<OperationProgressProps> = ({ state, onDecide, deciding, decideError }) => {
   if (state.status === 'running')
     return (
       <p className="flex items-center gap-2 text-sm" role="status">
@@ -87,6 +89,11 @@ export const OperationProgress: React.FC<OperationProgressProps> = ({ state, onD
             {m['dashboard.agents.action.cancel']()}
           </Button>
         </div>
+        {decideError === undefined ? null : (
+          <p role="alert" className="text-sm text-destructive">
+            {decideError}
+          </p>
+        )}
       </div>
     );
   if (state.status === 'failed')
