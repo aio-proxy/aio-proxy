@@ -29,10 +29,18 @@ const host = (target: AgentTarget, detected: boolean): AgentHost => ({
   support: detected ? 'supported' : 'unknown',
 });
 
-function portFixture(options: { readonly codexRecovery?: boolean; readonly codexDetected?: boolean } = {}) {
+function portFixture(
+  options: {
+    readonly codexRecovery?: boolean;
+    readonly codexDetected?: boolean;
+    readonly failAfterInstall?: boolean;
+  } = {},
+) {
+  let installed = false;
   let opencode: LocalIntegrationStatus = { integration: 'absent', catalog: 'missing' };
   const install = mock(async () => {
     opencode = { integration: 'managed', marker: marker('opencode', '2.0.0'), entry: 'present', catalog: 'fresh' };
+    installed = true;
     return 'installed' as const;
   });
   const codexList: CodexListResult = {
@@ -45,7 +53,10 @@ function portFixture(options: { readonly codexRecovery?: boolean; readonly codex
     changedPaths: [],
   };
   const command = {
-    detectHost: async (target: AgentTarget) => host(target, target !== 'pi'),
+    detectHost: async (target: AgentTarget) => {
+      if (installed && options.failAfterInstall === true && target === 'omp') throw new Error('probe failed');
+      return host(target, target !== 'pi');
+    },
     resolveLocation: async (target: AgentTarget): Promise<AgentLocation> => ({
       target,
       hostRoot: `/home/me/.${target}`,
@@ -137,4 +148,13 @@ test('classifyAgentError maps known CLI failures and leaves the rest unknown', (
   expect(classifyAgentError(new Error('Codex provider aio is occupied'))?.code).toBe('occupied_provider_id');
   expect(classifyAgentError(new AgentOperationError('plan_stale'))?.code).toBe('plan_stale');
   expect(classifyAgentError(new Error('disk full'))).toBeUndefined();
+});
+
+test('a configure that wrote its files stays successful when the follow-up lookup fails', async () => {
+  const { port, install } = portFixture({ failAfterInstall: true });
+  const events = { signal: new AbortController().signal, onDevice: () => undefined };
+  const result = await port.configure('opencode', undefined, events);
+  expect(install).toHaveBeenCalledTimes(1);
+  expect(result).toMatchObject({ target: 'opencode', status: 'installed' });
+  expect(result.installationId).toBeUndefined();
 });

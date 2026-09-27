@@ -178,7 +178,11 @@ export function createAgentHostPort(
           return codexResult(result);
         }
         const result = await agentConfigure(target, deps.command);
-        const installationId = (await inspect()).find((row) => row.target === target)?.installationId;
+        // The files are written; a failing follow-up lookup only loses optional details, not the success.
+        const installationId = await inspect().then(
+          (rows) => rows.find((row) => row.target === target)?.installationId,
+          () => undefined,
+        );
         const configPath = await configPathOf(target, deps.command);
         return {
           target,

@@ -3,6 +3,7 @@ import {
   AgentOperationRequestSchema,
   type AgentLocalSetup,
   type AgentLocalState,
+  type AgentTarget,
   type AgentsSnapshot,
   type Config,
 } from '@aio-proxy/types';
@@ -53,12 +54,25 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
     if (!isDashboardLoopbackRequest(context)) return context.json({ error: 'local_setup_unavailable' }, 404);
     return requireAgentApprovalOrigin(context, next);
   };
+  // Installations known to live on this machine, so login polling need not rescan every Agent host.
+  const knownInstallations = new Map<string, AgentTarget>();
+  const remember = (rows: readonly AgentLocalState[]): void => {
+    knownInstallations.clear();
+    for (const row of rows)
+      if (row.installationId !== undefined) knownInstallations.set(row.installationId, row.target);
+  };
   const operations = createAgentOperations({
-    run: (request, events: AgentOperationEvents) => {
+    run: async (request, events: AgentOperationEvents) => {
       if (host === undefined) throw new AgentOperationError('unknown');
-      if (request.kind === 'configure') return host.configure(request.target, request.codex, events);
-      if (request.kind === 'remove') return host.remove(request.target, events);
-      return host.restoreCodexMigration(request.operationId, events);
+      const result =
+        request.kind === 'configure'
+          ? await host.configure(request.target, request.codex, events)
+          : request.kind === 'remove'
+            ? await host.remove(request.target, events)
+            : await host.restoreCodexMigration(request.operationId, events);
+      if (result.installationId !== undefined && request.kind === 'configure')
+        knownInstallations.set(result.installationId, result.target);
+      return result;
     },
     resolveDevice: (target, userCode) => {
       const details = challenges.resolve(userCode, CHALLENGE_SOURCE);
@@ -81,7 +95,9 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
   });
   const inspectLocal = async (): Promise<readonly AgentLocalState[] | undefined> => {
     try {
-      return await host?.inspect();
+      const rows = await host?.inspect();
+      if (rows !== undefined) remember(rows);
+      return rows;
     } catch (error) {
       logServerEvent(logger, {
         event: 'agent.operation_failed',
@@ -136,9 +152,10 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
     })
     .get('/installations/:installationId/pending', requireLocalHost, async (context) => {
       const installationId = context.req.param('installationId');
-      const local = (await inspectLocal())?.find((item) => item.installationId === installationId);
-      if (local === undefined) return context.json({ error: 'unknown_installation' as const }, 404);
-      return context.json({ authorization: challenges.pendingForInstallation(local.target, installationId) ?? null });
+      if (!knownInstallations.has(installationId)) await inspectLocal();
+      const target = knownInstallations.get(installationId);
+      if (target === undefined) return context.json({ error: 'unknown_installation' as const }, 404);
+      return context.json({ authorization: challenges.pendingForInstallation(target, installationId) ?? null });
     })
     .get('/codex/plan', requireLocalHost, async (context) => {
       try {

@@ -324,3 +324,23 @@ test('an unfinished operation is listed even when local inspection fails', async
   expect(snapshot.local).toBeUndefined();
   expect(snapshot.operations).toEqual([waiting]);
 });
+
+test('login polling answers from known installations instead of rescanning Agent hosts', async () => {
+  let inspections = 0;
+  const f = await fixture({
+    host: {
+      inspect: async () => {
+        inspections += 1;
+        return [localState()];
+      },
+    },
+  });
+  await f.request('');
+  expect(inspections).toBe(1);
+  for (let poll = 0; poll < 3; poll += 1)
+    expect((await f.request(`/installations/${INSTALLATION}/pending`)).status).toBe(200);
+  expect(inspections).toBe(1);
+  // An unknown installation triggers one rescan and is still refused.
+  expect((await f.request('/installations/7d1e3b1e-7a41-4c1e-9d5e-7e7f5b3c2a10/pending')).status).toBe(404);
+  expect(inspections).toBe(2);
+});
