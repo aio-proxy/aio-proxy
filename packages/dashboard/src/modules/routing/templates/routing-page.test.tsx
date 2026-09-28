@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel, DashboardRoutingModelsResponse, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
@@ -223,6 +224,18 @@ test('no longer renders the editor drawer', () => {
   render(<RoutingPage {...routingPageProps} />);
 
   expect(screen.queryByTestId(['routing-editor', 'drawer'].join('-'))).not.toBeInTheDocument();
+});
+
+test('keeps the cached models listed when a later refetch fails', () => {
+  // A failed refetch still holds the last inventory; blanking the list over a transient failure would
+  // hide models that are still there.
+  mockRoutingModels({ writable: true, models: [modelFixture('gpt-5')] });
+  mocks.query.isError = true;
+
+  render(<RoutingPage {...routingPageProps} />);
+
+  expect(screen.getByTestId('routing-row-gpt-5')).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toHaveTextContent(m['dashboard.routing.load_failed']());
 });
 
 test('shows Retry when the routing query fails', () => {

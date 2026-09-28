@@ -30,6 +30,17 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
   const index = trafficQuery.data === undefined ? undefined : indexRoutingTraffic(trafficQuery.data);
   const visible = filterRoutingModels(sortRoutingModels(models), search);
 
+  const loadError = (
+    <div className="space-y-3">
+      <p role="alert" className="text-sm text-destructive">
+        {m['dashboard.routing.load_failed']()}
+      </p>
+      <Button type="button" variant="outline" onClick={() => void query.refetch()}>
+        {m['dashboard.routing.retry']()}
+      </Button>
+    </div>
+  );
+
   const content = (() => {
     if (query.isLoading) {
       return (
@@ -40,18 +51,9 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
         </div>
       );
     }
-    if (query.isError) {
-      return (
-        <div className="space-y-3">
-          <p role="alert" className="text-sm text-destructive">
-            {m['dashboard.routing.load_failed']()}
-          </p>
-          <Button type="button" variant="outline" onClick={() => void query.refetch()}>
-            {m['dashboard.routing.retry']()}
-          </Button>
-        </div>
-      );
-    }
+    // A failed refetch keeps the last inventory, so only a query that never loaded replaces the list;
+    // otherwise the cached models stay up under the same notice and retry.
+    if (query.isError && query.data === undefined) return loadError;
     if (models.length === 0) {
       return (
         <Empty>
@@ -107,6 +109,7 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
               onChange={(lab) => onSearchChange(withRoutingFilters(search, { lab }))}
             />
           ) : null}
+          {query.isError && query.data !== undefined ? loadError : null}
           <ProviderCatalogProvider value={providerCatalog}>{content}</ProviderCatalogProvider>
         </CardContent>
       </Card>
