@@ -5,7 +5,7 @@ description: 使用 @aio-proxy/plugin-google-antigravity 接入 Google 账号与
 # Google Antigravity 插件
 
 **插件包名**：`@aio-proxy/plugin-google-antigravity`  
-**对应 Capability**：`antigravity`
+**对应 Capability**：`default`
 
 用于集成 Google 账号体系与 Antigravity 云平台通道，支持原生 Gemini 模型接入。
 

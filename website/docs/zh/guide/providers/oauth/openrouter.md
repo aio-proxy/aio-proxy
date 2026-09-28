@@ -5,7 +5,7 @@ description: 使用 @aio-proxy/plugin-openrouter 接入 OpenRouter，统一访�
 # OpenRouter 插件
 
 **插件包名**：`@aio-proxy/plugin-openrouter`  
-**对应 Capability**：`openrouter`
+**对应 Capability**：`default`
 
 [OpenRouter](https://openrouter.ai/) 汇聚了全球主流商业模型（OpenAI、Anthropic、Meta Llama、Mistral、DeepSeek 等）。该插件支持使用 OpenRouter 账号进行免密 PKCE 登录，免除手动创建和管理 API Key。
 

@@ -5,7 +5,7 @@ description: 使用 @aio-proxy/plugin-kimi-code 接入 Moonshot Kimi 账号，�
 # Kimi Code 插件
 
 **插件包名**：`@aio-proxy/plugin-kimi-code`  
-**对应 Capability**：`kimi`
+**对应 Capability**：`default`
 
 连接 Moonshot Kimi 平台，将具备超长上下文能力的大模型接入本地统一代理。
 
