@@ -10,7 +10,7 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router';
-import { act, fireEvent, render as renderComponent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render as renderComponent, screen, waitFor, within } from '@testing-library/react';
 import { type ReactNode, useSyncExternalStore } from 'react';
 
 import type { RoutingTrafficData } from '../../services/routing-traffic-service';
@@ -256,9 +256,9 @@ const renderPage = (options: RenderPageOptions) => {
 };
 
 const dirtyTopology = () => {
-  fireEvent.change(screen.getByTestId('routing-share-slider-a').querySelector('input')!, {
-    target: { value: '7000' },
-  });
+  const weight = screen.getByTestId('routing-weight-a');
+  fireEvent.change(weight, { target: { value: '7' } });
+  fireEvent.blur(weight);
 };
 
 const rerenderRoutingQuery = () => {
@@ -302,24 +302,25 @@ test('resolves an id with more than two segments', async () => {
   expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('openrouter/mistralai/mistral-large');
 });
 
-test('marks the tab that holds an unsaved change', async () => {
+test('names the part holding unsaved work in the save bar', async () => {
   renderPage({ models: [modelFixture('sonnet')] });
-  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  await screen.findByTestId('routing-board');
+  expect(screen.queryByTestId('routing-save-bar')).not.toBeInTheDocument();
 
   dirtyTopology();
 
-  expect(screen.getByRole('img', { name: /未保存|Unsaved/u })).toBeInTheDocument();
+  expect(screen.getByTestId('routing-save-bar')).toHaveTextContent(m['dashboard.routing.detail.dirty_route']());
 });
 
 test('keeps a dirty editor mounted when a refetch fails with cached inventory', async () => {
   renderPage({ models: [modelFixture('sonnet')] });
-  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  await screen.findByTestId('routing-board');
   dirtyTopology();
 
   routingQueryMocks.isError = true;
   act(rerenderRoutingQuery);
 
-  expect(screen.getByRole('img', { name: /未保存|Unsaved/u })).toBeInTheDocument();
+  expect(screen.getByTestId('routing-save-bar')).toBeInTheDocument();
   expect(screen.getByRole('alert')).toHaveTextContent(m['dashboard.routing.load_failed']());
 });
 
@@ -331,7 +332,7 @@ test('does not show the range selector while the inventory is loading', () => {
 
 test('blocks leaving the page while a draft is unsaved', async () => {
   renderPage({ models: [modelFixture('sonnet')] });
-  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  await screen.findByTestId('routing-board');
   dirtyTopology();
 
   fireEvent.click(screen.getByRole('link', { name: /Routing|路由/u }));
@@ -348,66 +349,42 @@ test('offers a way back rather than blanking when the model is gone', async () =
   expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
 });
 
-test('keeps one save button for the whole page rather than one per tab', async () => {
+test('keeps one save button for the whole page rather than one per section', async () => {
   renderPage({ models: [modelFixture('sonnet')] });
-  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  await screen.findByTestId('routing-board');
+  dirtyTopology();
 
-  expect(screen.getAllByRole('button', { name: /保存|Save/u })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: m['dashboard.routing.editor.save']() })).toHaveLength(1);
 });
 
-test('hides editor actions while the traffic tab is active', async () => {
-  renderPage({ models: [modelFixture('sonnet')] });
-  await screen.findByRole('tab', { name: /拓扑|Topology/u });
-
-  fireEvent.click(screen.getByRole('tab', { name: /流量|Traffic/u }));
-
-  expect(screen.queryByRole('button', { name: /保存|Save/u })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /取消|Cancel/u })).not.toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole('tab', { name: /拓扑|Topology/u }));
-  expect(screen.getByRole('button', { name: /保存|Save/u })).toBeInTheDocument();
-});
-
-test('keeps all tabs and editor actions inside one card', async () => {
-  renderPage({ models: [modelFixture('sonnet')] });
-  await screen.findByRole('tab', { name: /拓扑|Topology/u });
-
-  const card = screen.getByRole('tabpanel').closest('[data-slot="card"]');
-  expect(card).not.toBeNull();
-  expect(card).toContainElement(screen.getByRole('button', { name: /保存|Save/u }));
-  expect(card).toContainElement(screen.getByRole('button', { name: /取消|Cancel/u }));
-  expect(screen.getByRole('button', { name: /保存|Save/u }).closest('[data-slot="card-footer"]')).not.toHaveClass(
-    'border-t',
-  );
-  expect(screen.getByRole('tab', { name: /拓扑|Topology/u }).closest('[data-slot="card"]')).toBeNull();
-});
-
-test('disables saving when the config is read-only', async () => {
+test('locks editing when the config is read-only', async () => {
   renderPage({ models: [modelFixture('sonnet')], writable: false });
-  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  await screen.findByTestId('routing-board');
 
-  expect(screen.getByRole('button', { name: /保存|Save/u })).toBeDisabled();
+  expect(screen.getByText(m['dashboard.routing.read_only']())).toBeInTheDocument();
+  for (const input of screen.getAllByTestId(/^routing-weight-/u)) expect(input).toBeDisabled();
+  expect(screen.queryByTestId('routing-save-bar')).not.toBeInTheDocument();
 });
 
 test('switching range does not discard an unsaved draft', async () => {
   renderPage({ models: [modelFixture('sonnet')] });
-  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  await screen.findByTestId('routing-board');
   dirtyTopology();
 
   selectRange('7d');
 
-  expect(screen.getByRole('img', { name: /未保存|Unsaved/u })).toBeInTheDocument();
+  expect(screen.getByTestId('routing-save-bar')).toBeInTheDocument();
 });
 
 test('cancel clears the unsaved marker without saving', async () => {
   renderPage({ models: [modelFixture('sonnet')] });
-  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  await screen.findByTestId('routing-board');
   dirtyTopology();
 
-  expect(screen.getByRole('img', { name: /未保存|Unsaved/u })).toBeInTheDocument();
+  expect(screen.getByTestId('routing-save-bar')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /Cancel|取消/u }));
 
-  expect(screen.queryByRole('img', { name: /未保存|Unsaved/u })).not.toBeInTheDocument();
+  expect(screen.queryByTestId('routing-save-bar')).not.toBeInTheDocument();
   expect(mutationMocks.mutate).not.toHaveBeenCalled();
 });
 
@@ -418,52 +395,35 @@ test('stops accepting edits while a save is in flight', async () => {
   mutationMocks.isPending = true;
   renderPage({ models: [modelFixture('sonnet')] });
 
-  fireEvent.click(await screen.findByRole('tab', { name: m['dashboard.routing.detail.tab_cost']() }));
+  await screen.findByTestId('routing-board');
 
-  const inputs = await waitFor(() => {
-    const found = screen.getAllByRole('spinbutton');
-    expect(found.length).toBeGreaterThan(0);
-    return found;
-  });
+  const inputs = screen.getAllByTestId(/^routing-weight-/u);
+  expect(inputs.length).toBeGreaterThan(0);
   for (const input of inputs) expect(input).toBeDisabled();
 
   // The config is still writable — the lock is about the in-flight request, not permissions, so the
   // read-only notice must stay away.
   expect(screen.queryByText(m['dashboard.routing.read_only']())).not.toBeInTheDocument();
-
-  // Cancel cannot call off a request already sent, so it must not offer to.
-  expect(screen.getByRole('button', { name: m['dashboard.routing.editor.cancel']() })).toBeDisabled();
 });
 
 test('accepts edits again once no save is in flight', async () => {
   renderPage({ models: [modelFixture('sonnet')] });
 
-  fireEvent.click(await screen.findByRole('tab', { name: m['dashboard.routing.detail.tab_cost']() }));
+  await screen.findByTestId('routing-board');
 
-  const inputs = await waitFor(() => {
-    const found = screen.getAllByRole('spinbutton');
-    expect(found.length).toBeGreaterThan(0);
-    return found;
-  });
+  const inputs = screen.getAllByTestId(/^routing-weight-/u);
+  expect(inputs.length).toBeGreaterThan(0);
   for (const input of inputs) expect(input).toBeEnabled();
 });
 
-test('does not report a measured absence of traffic when the query failed', async () => {
-  // `actual` is undefined both when the query cannot answer and when a measured window holds no
-  // traffic, so the page has to pass the query's state down or the topology tab reports "no traffic
-  // yet" forever after a failure — a measurement nobody took.
+test('a failed traffic query is reported once, by the Traffic card', async () => {
+  // The route rows read "—" for a measurement nobody took; only the Traffic card, which can retry,
+  // says the query failed.
   trafficMocks.fail = true;
   renderPage({ models: [modelFixture('sonnet')] });
 
-  expect(await screen.findByText(m['dashboard.routing.detail.traffic_unavailable']())).toBeInTheDocument();
-  expect(screen.queryByText(m['dashboard.routing.detail.no_traffic_yet']())).not.toBeInTheDocument();
-});
-
-test('reports a measured absence of traffic once the query has answered', async () => {
-  renderPage({ models: [modelFixture('sonnet')] });
-
-  expect(await screen.findByText(m['dashboard.routing.detail.no_traffic_yet']())).toBeInTheDocument();
-  expect(screen.queryByText(m['dashboard.routing.detail.traffic_unavailable']())).not.toBeInTheDocument();
+  expect(await screen.findByText(m['dashboard.routing.traffic.load_failed']())).toBeInTheDocument();
+  expect(screen.getAllByText(m['dashboard.routing.traffic.load_failed']())).toHaveLength(1);
 });
 
 test('keeps the stale warning up when the reload refetch fails', async () => {
@@ -471,7 +431,7 @@ test('keeps the stale warning up when the reload refetch fails', async () => {
   // reload that had fetched a new revision: the warning cleared and the next save was rejected as
   // stale all over again, with nothing on screen explaining why.
   renderPage({ models: [modelFixture('sonnet')] });
-  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  await screen.findByTestId('routing-board');
   dirtyTopology();
 
   // handleSubmit is async, so the mutation lands a microtask after the click.
@@ -498,7 +458,7 @@ test('keeps the stale warning up when the reload refetch fails', async () => {
 
 test('clears the stale warning when the reload refetch succeeds', async () => {
   renderPage({ models: [modelFixture('sonnet')] });
-  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+  await screen.findByTestId('routing-board');
   dirtyTopology();
 
   await act(async () => {
@@ -519,4 +479,34 @@ test('clears the stale warning when the reload refetch succeeds', async () => {
   });
 
   expect(screen.queryByText(m['dashboard.routing.editor.stale']())).not.toBeInTheDocument();
+});
+
+test('turning on a Provider’s own pricing copies the model price and saves it whole', async () => {
+  // The config replaces the model's cost wholesale for that Provider. Starting from a blank would
+  // silently drop every price the user did not retype, so the switch seeds the model's prices.
+  renderPage({ models: [{ ...modelFixture('sonnet'), metadata: { cost: { input: 3, output: 15 } } }] });
+  await screen.findByTestId('routing-board');
+
+  const priceCard = within(screen.getByTestId('routing-model-price-card'));
+  fireEvent.click(priceCard.getAllByRole('button', { name: m['dashboard.routing.profile.edit']() })[1] as HTMLElement);
+  const card = within(await screen.findByTestId('provider-override-a'));
+  fireEvent.click(card.getByRole('button', { expanded: false }));
+  fireEvent.click(card.getByRole('switch', { name: m['dashboard.routing.profile.provider_cost']() }));
+
+  expect(card.getByLabelText(new RegExp(m['dashboard.routing.editor.metadata_cost_label_input'](), 'u'))).toHaveValue(
+    3,
+  );
+  fireEvent.click(screen.getByRole('button', { name: m['dashboard.routing.profile.drawer_done']() }));
+  await waitFor(() => expect(screen.queryByTestId('provider-override-a')).not.toBeInTheDocument());
+  expect(screen.getByTestId('routing-save-bar')).toHaveTextContent(m['dashboard.routing.detail.dirty_overrides']());
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: m['dashboard.routing.editor.save']() }));
+  });
+  expect(mutationMocks.mutate).toHaveBeenCalledWith(
+    expect.objectContaining({
+      providers: expect.objectContaining({ a: expect.objectContaining({ cost: { input: 3, output: 15 } }) }),
+    }),
+    expect.anything(),
+  );
 });

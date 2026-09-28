@@ -11,17 +11,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@aio-proxy/ui/components/alert-dialog';
-import { Button } from '@aio-proxy/ui/components/button';
-import { Card, CardContent, CardFooter } from '@aio-proxy/ui/components/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import type React from 'react';
 import { useState } from 'react';
 
-import { RoutingModelCostTab } from '../../components/routing-model-cost-tab';
-import { RoutingModelMetadataTab } from '../../components/routing-model-metadata-tab';
-import { RoutingModelTopologyTab, type RoutingTrafficState } from '../../components/routing-model-topology-tab';
+import { RoutingModelDrawer, type RoutingModelDrawerSection } from '../../components/routing-model-drawer';
+import { RoutingModelInfoCard } from '../../components/routing-model-info-card';
+import { RoutingModelPriceCard } from '../../components/routing-model-price-card';
+import { RoutingModelSaveBar } from '../../components/routing-model-save-bar';
+import { RoutingModelTopologyTab } from '../../components/routing-model-topology-tab';
 import { RoutingModelTrafficTab } from '../../components/routing-model-traffic-tab';
 import { useRoutingModelEditor } from '../../hooks/use-routing-model-editor';
+import type { MetadataRecord } from '../../lib/model-metadata-fields';
 import type { RoutingTierShare } from '../../lib/routing-traffic';
 
 interface RoutingModelPageEditorProps {
@@ -29,7 +30,6 @@ interface RoutingModelPageEditorProps {
   readonly writable: boolean;
   readonly range: UsageOverviewRange;
   readonly actual: readonly RoutingTierShare[] | undefined;
-  readonly trafficState: RoutingTrafficState;
   readonly onReload: () => void | Promise<DashboardRoutingModel | null | undefined>;
 }
 
@@ -38,121 +38,84 @@ export const RoutingModelPageEditor: React.FC<RoutingModelPageEditorProps> = ({
   writable,
   range,
   actual,
-  trafficState,
   onReload,
 }) => {
   const editor = useRoutingModelEditor({ model, writable, onReload });
-  const [activeTab, setActiveTab] = useState<'topology' | 'metadata' | 'cost' | 'traffic'>('topology');
+  const [drawer, setDrawer] = useState<RoutingModelDrawerSection | null>(null);
   // The save body and the defaults the forms snap back to are both captured when Save is pressed,
   // so an edit made while the request is in flight would be neither sent nor kept. The controls stop
-  // accepting input until it settles. The read-only notice below stays keyed on the real `writable`,
+  // accepting input until it settles. The read-only notice stays keyed on the real `writable`,
   // because an in-flight save is not the same thing as a config the dashboard cannot write.
   const editable = writable && !editor.saving;
 
   return (
     <>
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as typeof activeTab)}
-        className="min-w-0 gap-4"
-      >
-        <TabsList>
-          <TabsTrigger value="topology">
-            {m['dashboard.routing.detail.tab_topology']()}
-            {editor.dirtyTabs.includes('topology') ? (
-              <span
-                role="img"
-                aria-label={m['dashboard.routing.detail.dirty_marker']()}
-                className="inline-block size-2 shrink-0 rounded-full bg-destructive"
-              />
-            ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="metadata">
-            {m['dashboard.routing.detail.tab_metadata']()}
-            {editor.dirtyTabs.includes('metadata') ? (
-              <span
-                role="img"
-                aria-label={m['dashboard.routing.detail.dirty_marker']()}
-                className="inline-block size-2 shrink-0 rounded-full bg-destructive"
-              />
-            ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="cost">
-            {m['dashboard.routing.detail.tab_cost']()}
-            {editor.dirtyTabs.includes('cost') ? (
-              <span
-                role="img"
-                aria-label={m['dashboard.routing.detail.dirty_marker']()}
-                className="inline-block size-2 shrink-0 rounded-full bg-destructive"
-              />
-            ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="traffic">{m['dashboard.routing.detail.tab_traffic']()}</TabsTrigger>
-        </TabsList>
-        <Card>
-          <CardContent>
-            <TabsContent value="topology">
-              <RoutingModelTopologyTab
-                form={editor.form}
-                model={model}
-                writable={editable}
-                actual={actual}
-                trafficState={trafficState}
-              />
-            </TabsContent>
-            <TabsContent value="metadata">
-              <RoutingModelMetadataTab
-                metadataForm={editor.metadataForm}
+      {writable ? null : (
+        <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
+          {m['dashboard.routing.read_only']()}
+        </p>
+      )}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>{m['dashboard.routing.detail.section_route']()}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RoutingModelTopologyTab form={editor.form} model={model} writable={editable} actual={actual} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>{m['dashboard.routing.detail.tab_traffic']()}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RoutingModelTrafficTab modelId={model.modelId} range={range} />
+            </CardContent>
+          </Card>
+        </div>
+        <editor.metadataForm.Subscribe selector={(state) => state.values}>
+          {(values) => (
+            <aside className="flex min-w-0 flex-col gap-4">
+              <RoutingModelInfoCard
                 modelId={model.modelId}
-                catalog={model.catalog}
+                metadata={values.metadata.value as MetadataRecord | undefined}
                 writable={editable}
-                setMetadataValid={editor.setMetadataValid}
+                onEdit={() => setDrawer('info')}
               />
-            </TabsContent>
-            <TabsContent value="cost">
-              <RoutingModelCostTab metadataForm={editor.metadataForm} providers={model.providers} writable={editable} />
-            </TabsContent>
-            <TabsContent value="traffic">
-              <RoutingModelTrafficTab
+              <RoutingModelPriceCard
                 modelId={model.modelId}
-                range={range}
-                onViewTopology={() => setActiveTab('topology')}
+                metadata={values.metadata.value as MetadataRecord | undefined}
+                overrides={values.overrides}
+                providers={model.providers}
+                writable={editable}
+                onEdit={setDrawer}
               />
-            </TabsContent>
-          </CardContent>
-          {activeTab === 'traffic' ? null : (
-            <CardFooter className="flex-wrap justify-end gap-2">
-              {writable ? null : (
-                <p role="status" className="mr-auto w-full text-sm text-muted-foreground">
-                  {m['dashboard.routing.read_only']()}
-                </p>
-              )}
-              {editor.stale ? (
-                <p role="alert" className="mr-auto w-full text-sm text-destructive">
-                  {m['dashboard.routing.editor.stale']()}
-                </p>
-              ) : editor.saveFailed ? (
-                <p role="alert" className="mr-auto w-full text-sm text-destructive">
-                  {m['dashboard.routing.editor.save_failed']()}
-                </p>
-              ) : null}
-              {/* Cancel cannot call off a request already in flight, so it stays out of reach until the
-            save settles rather than reporting the write as abandoned while it commits. */}
-              <Button type="button" variant="outline" disabled={editor.saving} onClick={() => editor.discard()}>
-                {m['dashboard.routing.editor.cancel']()}
-              </Button>
-              {editor.stale ? (
-                <Button type="button" variant="outline" disabled={editor.saving} onClick={() => editor.reload()}>
-                  {m['dashboard.routing.editor.reload']()}
-                </Button>
-              ) : null}
-              <Button type="button" disabled={!editor.canSave} onClick={() => editor.save()}>
-                {m['dashboard.routing.editor.save']()}
-              </Button>
-            </CardFooter>
+            </aside>
           )}
-        </Card>
-      </Tabs>
+        </editor.metadataForm.Subscribe>
+      </div>
+      <RoutingModelDrawer
+        open={drawer !== null}
+        section={drawer ?? 'info'}
+        onOpenChange={(open) => {
+          if (!open) setDrawer(null);
+        }}
+        metadataForm={editor.metadataForm}
+        model={model}
+        writable={editable}
+        setMetadataValid={editor.setMetadataValid}
+      />
+      <RoutingModelSaveBar
+        dirty={editor.dirtyTabs}
+        stale={editor.stale}
+        saveFailed={editor.saveFailed}
+        saving={editor.saving}
+        canSave={editor.canSave}
+        onDiscard={() => editor.discard()}
+        onReload={() => editor.reload()}
+        onSave={() => editor.save()}
+      />
       {editor.blocker.status === 'blocked' ? (
         <AlertDialog open onOpenChange={(open) => !open && editor.blocker.reset?.()}>
           <AlertDialogContent>

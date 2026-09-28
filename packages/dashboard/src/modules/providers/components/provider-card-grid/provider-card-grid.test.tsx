@@ -300,7 +300,34 @@ test('only the explicit handles become draggable controls', async () => {
   expect(item).not.toHaveAttribute('role', 'button');
   expect(tierHandle).not.toHaveAttribute('aria-disabled', 'true');
   expect(providerHandle).not.toHaveAttribute('aria-disabled', 'true');
-  expect(screen.getByTestId('provider-share-slider-alpha')).toBeEnabled();
+  expect(screen.getByTestId('provider-weight-alpha')).toBeEnabled();
+});
+
+test('a typed weight re-splits its tier and makes the board savable', () => {
+  const sameTierProviders = providers.map((provider) => ({ ...provider, priority: 1 }));
+  render(<ProviderCardGrid providers={sameTierProviders} routingRevision="revision" routingEditing />);
+  expect(screen.getByTestId('provider-share-alpha')).toHaveTextContent('50%');
+
+  const weight = screen.getByTestId('provider-weight-alpha');
+  fireEvent.change(weight, { target: { value: '3' } });
+  fireEvent.blur(weight);
+
+  // Only the edited Provider's weight changes; the shares follow from the new total.
+  expect(screen.getByTestId('provider-share-alpha')).toHaveTextContent('75%');
+  expect(screen.getByTestId('provider-share-beta')).toHaveTextContent('25%');
+  expect(screen.getByTestId('provider-routing-save')).toBeEnabled();
+});
+
+test('a zero weight parks the Provider instead of showing a 0% share', () => {
+  const sameTierProviders = providers.map((provider) => ({ ...provider, priority: 1 }));
+  render(<ProviderCardGrid providers={sameTierProviders} routingRevision="revision" routingEditing />);
+
+  const weight = screen.getByTestId('provider-weight-alpha');
+  fireEvent.change(weight, { target: { value: '0' } });
+  fireEvent.blur(weight);
+
+  expect(screen.getByTestId('provider-share-alpha')).toHaveTextContent(m['dashboard.providers.routing.parked']());
+  expect(screen.getByTestId('provider-share-beta')).toHaveTextContent('100%');
 });
 
 test('tier keyboard drag collapses every tier until the drag is canceled', async () => {

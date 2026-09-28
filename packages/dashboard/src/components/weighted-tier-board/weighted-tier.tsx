@@ -13,6 +13,7 @@ import { WeightedTierItem } from './weighted-tier-item';
 const SORTABLE_PLUGINS = [SortableKeyboardPlugin];
 
 interface WeightedTierProps<TItem> {
+  readonly columns?: React.ReactNode;
   readonly id: string;
   readonly index: number;
   readonly items: readonly WeightedTierBoardItem<TItem>[];
@@ -24,6 +25,7 @@ interface WeightedTierProps<TItem> {
 }
 
 export const WeightedTier = <TItem,>({
+  columns,
   id,
   index,
   items,
@@ -60,18 +62,11 @@ export const WeightedTier = <TItem,>({
       data-dragging={isDragging || undefined}
       data-drop-target={isDropTarget || undefined}
       className={cn(
-        'space-y-2 rounded-xl border bg-muted/40 p-3 transition-colors',
+        'overflow-hidden rounded-xl border transition-colors',
         isDropTarget && 'border-primary bg-primary/5',
       )}
     >
-      <WeightedTierHeader
-        handleRef={handleRef}
-        index={index}
-        itemCount={items.length}
-        priority={priority}
-        labels={labels}
-        writable={writable}
-      />
+      <WeightedTierHeader handleRef={handleRef} index={index} priority={priority} labels={labels} writable={writable} />
       <div
         className={cn(
           'grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none',
@@ -84,11 +79,13 @@ export const WeightedTier = <TItem,>({
           inert={collapsed || undefined}
           data-testid="weighted-tier-body"
           data-collapsed={collapsed || undefined}
-          className={cn(
-            'min-h-0 space-y-2 overflow-hidden',
-            items.length === 0 && 'min-h-16 rounded-lg border border-dashed p-2',
-          )}
+          className={cn('min-h-0 overflow-hidden', items.length === 0 && 'min-h-16 border-t p-2')}
         >
+          {columns !== undefined && items.length > 0 ? (
+            <div aria-hidden="true" className="border-t px-2.5 py-1.5">
+              {columns}
+            </div>
+          ) : null}
           {items.length === 0 ? (
             <p className="flex min-h-12 items-center justify-center text-xs text-muted-foreground">
               {labels.emptyTier}
@@ -101,6 +98,7 @@ export const WeightedTier = <TItem,>({
                 item={item}
                 listId={listId}
                 renderItem={renderItem}
+                handleColumn={writable}
                 writable={writable}
               />
             ))

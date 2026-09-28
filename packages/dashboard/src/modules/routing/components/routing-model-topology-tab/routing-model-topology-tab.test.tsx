@@ -2,11 +2,11 @@ import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { useRoutingForm } from '../../hooks/use-routing-form';
 import type { RoutingTierShare } from '../../lib/routing-traffic';
-import { RoutingModelTopologyTab, type RoutingTrafficState } from './routing-model-topology-tab';
+import { RoutingModelTopologyTab } from './routing-model-topology-tab';
 
 const routingNumber = (effective: number, authored?: number) => ({
   ...(authored === undefined ? {} : { authored }),
@@ -94,26 +94,23 @@ const share = (
 
 const TopologyHarness: React.FC<{
   readonly actual: readonly RoutingTierShare[] | undefined;
-  readonly trafficState: RoutingTrafficState;
-}> = ({ actual, trafficState }) => {
+}> = ({ actual }) => {
   const model = topologyModel();
   const form = useRoutingForm(model, rs.fn());
-  return (
-    <RoutingModelTopologyTab form={form} model={model} writable={true} actual={actual} trafficState={trafficState} />
-  );
+  return <RoutingModelTopologyTab form={form} model={model} writable={true} actual={actual} />;
 };
 
-const renderTopology = (options: {
-  readonly actual: readonly RoutingTierShare[] | undefined;
-  readonly trafficState?: RoutingTrafficState;
-}) => render(<TopologyHarness actual={options.actual} trafficState={options.trafficState ?? 'ready'} />);
+const renderTopology = (options: { readonly actual: readonly RoutingTierShare[] | undefined }) =>
+  render(<TopologyHarness actual={options.actual} />);
 
-test('shows configured and actual share side by side on a provider card', () => {
+test('shows configured and actual share side by side on a provider row', () => {
   // The page exists to answer "I configured 50/50, why is it 93/7?" — both numbers must be
-  // on the same card, not in separate tabs.
+  // on the same row, not in separate tabs.
   renderTopology({ actual: [share('primary', 0.93, 0.5, 60)] });
 
-  expect(screen.getByText(/50%.*93%/u)).toBeInTheDocument();
+  const row = within(screen.getByTestId('routing-row-primary'));
+  expect(row.getByTestId('routing-share-primary')).toHaveTextContent('50%');
+  expect(row.getByText('93%')).toBeInTheDocument();
 });
 
 test('shows the success rate that explains a collapsed share', () => {
@@ -122,34 +119,60 @@ test('shows the success rate that explains a collapsed share', () => {
   expect(screen.getByText(/41%/u)).toBeInTheDocument();
 });
 
-test('says the window served nothing once traffic has actually been measured', () => {
-  // Rendering "actual 0%" would claim the Provider served nothing, which is not known.
-  renderTopology({ actual: undefined, trafficState: 'ready' });
+test('reads a missing measurement as unknown, never as 0%', () => {
+  // `actual` is undefined while traffic loads, after it fails, and when the window holds nothing;
+  // "actual 0%" would claim the Provider served nothing, which none of the three establishes.
+  renderTopology({ actual: undefined });
 
-  expect(screen.queryByText(/实际|actual/iu)).not.toBeInTheDocument();
-  expect(screen.getByText(m['dashboard.routing.detail.no_traffic_yet']())).toBeInTheDocument();
-});
-
-test('does not call an in-flight traffic query a measured absence of traffic', () => {
-  // This test used to cover the pending case under the "no traffic yet" copy, which reported a
-  // measurement nobody had taken.
-  renderTopology({ actual: undefined, trafficState: 'pending' });
-
-  expect(screen.getByText(m['dashboard.routing.detail.traffic_pending']())).toBeInTheDocument();
-  expect(screen.queryByText(m['dashboard.routing.detail.no_traffic_yet']())).not.toBeInTheDocument();
-});
-
-test('says so when traffic cannot be loaded at all', () => {
-  // A failed query never resolves into a number, so "no traffic yet" would be permanent and wrong.
-  renderTopology({ actual: undefined, trafficState: 'unavailable' });
-
-  expect(screen.getByText(m['dashboard.routing.detail.traffic_unavailable']())).toBeInTheDocument();
-  expect(screen.queryByText(m['dashboard.routing.detail.no_traffic_yet']())).not.toBeInTheDocument();
+  expect(within(screen.getByTestId('routing-row-primary')).queryByText(/^0(\.0)?%$/u)).toBeNull();
 });
 
 test('shows no p95 when the sample was empty', () => {
   // null p95 means no sample; 0 would read as instant.
   renderTopology({ actual: [share('primary', 1, null, null)] });
 
-  expect(screen.queryByText(/p95/u)).not.toBeInTheDocument();
+  expect(screen.getByTestId('routing-row-primary')).not.toHaveTextContent(/\d+(\.\d+)?s/u);
+});
+
+test('a typed weight re-splits the tier once committed', () => {
+  renderTopology({ actual: undefined });
+
+  const weight = screen.getByTestId('routing-weight-primary');
+  fireEvent.change(weight, { target: { value: '3' } });
+  // Half-typed input must not reshuffle the tier before it is committed.
+  expect(screen.getByTestId('routing-share-primary')).toHaveTextContent('50%');
+  fireEvent.blur(weight);
+
+  expect(screen.getByTestId('routing-share-primary')).toHaveTextContent('75%');
+  expect(screen.getByTestId('routing-share-fallback')).toHaveTextContent('25%');
+});
+
+test('the weight stepper re-splits the tier, and speaks the dashboard locale', async () => {
+  renderTopology({ actual: undefined });
+
+  const row = within(screen.getByTestId('routing-row-primary'));
+  // Base UI's default role description is English; the field must not pass it through.
+  expect(screen.getByTestId('routing-weight-primary')).not.toHaveAttribute('aria-roledescription');
+
+  const increase = row.getByRole('button', { name: m['common.increase']() });
+  // A plain click is how assistive tech and keyboards activate the stepper: one step.
+  fireEvent.click(increase);
+
+  await waitFor(() => expect(screen.getByTestId('routing-share-primary')).toHaveTextContent('67%'));
+  expect(screen.getByTestId('routing-share-fallback')).toHaveTextContent('33%');
+});
+
+test('the row menu moves a Provider into a tier of its own, like a drag would', async () => {
+  renderTopology({ actual: undefined });
+  expect(screen.getAllByTestId(/^routing-list-tier:/u)).toHaveLength(1);
+
+  fireEvent.click(
+    screen.getByRole('button', { name: m['dashboard.routing.detail.row_actions']({ providerId: 'fallback' }) }),
+  );
+  fireEvent.click(await screen.findByRole('menuitem', { name: m['dashboard.routing.detail.move_to_new_tier']() }));
+
+  await waitFor(() => expect(screen.getAllByTestId(/^routing-list-tier:/u)).toHaveLength(2));
+  expect(
+    within(screen.getAllByTestId(/^routing-list-tier:/u)[1] as HTMLElement).getByTestId('routing-row-fallback'),
+  ).toBeInTheDocument();
 });

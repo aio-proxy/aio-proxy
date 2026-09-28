@@ -1,4 +1,5 @@
 import { Input } from '@aio-proxy/ui/components/input';
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from '@aio-proxy/ui/components/input-group';
 import { Label } from '@aio-proxy/ui/components/label';
 import { useState } from 'react';
 
@@ -12,6 +13,10 @@ interface ModelMetadataNumberFieldProps {
   readonly value: number | undefined;
   /** Keeps the label for assistive tech but hides it, for grids where a column header names the field. */
   readonly labelHidden?: boolean;
+  /** `sm` is the dense form used inside a tier's price grid. */
+  readonly size?: 'default' | 'sm';
+  /** Shown at the end of the input, e.g. "USD / 1M tokens". */
+  readonly unit?: string;
   readonly onValueChange: (next: number | undefined) => void;
 }
 
@@ -31,6 +36,8 @@ export const ModelMetadataNumberField: React.FC<ModelMetadataNumberFieldProps> =
   placeholder,
   value,
   labelHidden = false,
+  size = 'default',
+  unit,
   onValueChange,
 }) => {
   const [text, setText] = useState(value === undefined ? '' : String(value));
@@ -43,28 +50,42 @@ export const ModelMetadataNumberField: React.FC<ModelMetadataNumberFieldProps> =
     if (value !== (text === '' ? undefined : Number(text))) setText(value === undefined ? '' : String(value));
   }
 
+  const inputProps = {
+    id,
+    type: 'number',
+    min,
+    step,
+    placeholder,
+    value: text,
+    onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+      const next = event.target.value;
+      const parsed = next === '' ? undefined : Number(next);
+      // Refused, not displayed: a value the draft cannot hold (`1e999` -> Infinity) would otherwise
+      // sit in the field as text no saved record contains.
+      if (parsed !== undefined && !Number.isFinite(parsed)) return;
+      setText(next);
+      onValueChange(parsed);
+    },
+  } as const;
+
   return (
-    <div className={labelHidden ? undefined : 'space-y-1.5'}>
-      <Label htmlFor={id} className={labelHidden ? 'sr-only' : undefined}>
+    <div className={labelHidden ? undefined : size === 'sm' ? 'space-y-1' : 'space-y-1.5'}>
+      <Label
+        htmlFor={id}
+        className={labelHidden ? 'sr-only' : size === 'sm' ? 'text-xs font-normal text-muted-foreground' : undefined}
+      >
         {label}
       </Label>
-      <Input
-        id={id}
-        type="number"
-        min={min}
-        step={step}
-        placeholder={placeholder}
-        value={text}
-        onChange={(event) => {
-          const next = event.target.value;
-          const parsed = next === '' ? undefined : Number(next);
-          // Refused, not displayed: a value the draft cannot hold (`1e999` -> Infinity) would
-          // otherwise sit in the field as text no saved record contains.
-          if (parsed !== undefined && !Number.isFinite(parsed)) return;
-          setText(next);
-          onValueChange(parsed);
-        }}
-      />
+      {unit === undefined ? (
+        <Input className={size === 'sm' ? 'h-7 font-mono text-xs' : 'font-mono'} {...inputProps} />
+      ) : (
+        <InputGroup>
+          <InputGroupInput className="font-mono" {...inputProps} />
+          <InputGroupAddon align="inline-end">
+            <InputGroupText className="text-xs font-normal">{unit}</InputGroupText>
+          </InputGroupAddon>
+        </InputGroup>
+      )}
     </div>
   );
 };

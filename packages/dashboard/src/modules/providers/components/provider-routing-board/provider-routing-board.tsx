@@ -7,12 +7,20 @@ import { WeightedTierBoard, type WeightedTierBoardTier } from '@/components/weig
 
 import {
   applyProviderRoutingLayout,
-  applyProviderShare,
+  applyProviderWeight,
   providerRoutingMutation,
   providerTierPercentages,
   type ProviderRoutingBoard as ProviderRoutingBoardModel,
 } from '../../lib/provider-routing-board';
+import { ProviderRoutingColumns } from './provider-routing-columns';
 import { ProviderRoutingItem } from './provider-routing-item';
+
+interface ProviderRoutingRow {
+  readonly provider: DashboardProviderSummary;
+  readonly tierId: string;
+  readonly weight: number;
+  readonly share: number;
+}
 
 interface ProviderRoutingBoardProps {
   readonly board: ProviderRoutingBoardModel;
@@ -27,7 +35,7 @@ export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({ boar
       ([providerId, value]) => [providerId, value.priority] as const,
     ),
   );
-  const tiers: WeightedTierBoardTier<DashboardProviderSummary>[] = board.tiers.map((tier) => {
+  const tiers: WeightedTierBoardTier<ProviderRoutingRow>[] = board.tiers.map((tier) => {
     const percentages = providerTierPercentages(tier);
     const priority =
       tier.items.map((item) => prioritiesByProviderId.get(item.providerId)).find((value) => value !== undefined) ?? 0;
@@ -37,29 +45,13 @@ export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({ boar
       items: tier.items.flatMap((item) => {
         const provider = providersById.get(item.providerId);
         if (provider === undefined) return [];
-        const share = percentages.get(provider.id) ?? 0;
         return [
           {
             id: provider.id,
-            value: provider,
+            value: { provider, tierId: tier.id, weight: item.weight, share: percentages.get(provider.id) ?? 0 },
             draggable: true,
             dragLabel: m['dashboard.providers.routing.drag_provider']({ providerId: provider.id }),
-            shareLabel: item.weight > 0 ? `${share}%` : m['dashboard.providers.routing.parked'](),
-            shareTestId: `provider-share-${provider.id}`,
             testId: `provider-routing-item-${provider.id}`,
-            // Every member gets a slider, including the only one in its tier: zero is part of the
-            // range and parks the Provider outside normal routing while leaving its Provider-qualified
-            // route reachable, so a tier of one still has that one question to answer. Raising the
-            // slider again is how a parked Provider returns to the split.
-            control: {
-              ariaLabel: m['dashboard.providers.routing.share_aria']({ providerId: provider.id }),
-              min: 0,
-              max: 100,
-              step: 1,
-              value: share,
-              testId: `provider-share-slider-${provider.id}`,
-              onChange: (value: number) => onChange(applyProviderShare(board, tier.id, provider.id, value)),
-            },
           },
         ];
       }),
@@ -68,16 +60,30 @@ export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({ boar
 
   return (
     <WeightedTierBoard
+      columns={<ProviderRoutingColumns />}
       tiers={tiers}
       writable
       labels={{
-        tier: (index, priority) => <RoutingTierLabel tier={index + 1} priority={priority} />,
-        tierCount: (count) => m['dashboard.providers.routing.provider_count']({ count }),
+        tier: (index, priority) => (
+          <span className="flex w-full items-center gap-2.5">
+            <RoutingTierLabel tier={index + 1} priority={priority} />
+            <span className="truncate font-sans text-xs font-normal text-muted-foreground">
+              {index === 0 ? m['dashboard.routing.tier_label.primary']() : m['dashboard.routing.tier_label.fallback']()}
+            </span>
+          </span>
+        ),
         dragTier: (index) => m['dashboard.providers.routing.drag_tier']({ tier: index + 1 }),
         newTier: m['dashboard.providers.routing.add_tier'](),
         emptyTier: m['dashboard.providers.routing.empty_tier'](),
       }}
-      renderItem={(provider) => <ProviderRoutingItem provider={provider} />}
+      renderItem={({ provider, tierId, weight, share }) => (
+        <ProviderRoutingItem
+          provider={provider}
+          weight={weight}
+          share={share}
+          onWeightChange={(next) => onChange(applyProviderWeight(board, tierId, provider.id, next))}
+        />
+      )}
       onLayoutChange={(layout, operation) => onChange(applyProviderRoutingLayout(board, layout, operation))}
       testId="provider-routing-board"
       tierTestId={(index) => `provider-tier-${index + 1}`}

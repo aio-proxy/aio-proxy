@@ -2,36 +2,25 @@ import { dateFnsLocale, getLocale, m } from '@aio-proxy/i18n';
 import type { UsageOverviewRange } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@aio-proxy/ui/components/chart';
-import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from '@aio-proxy/ui/components/empty';
+import { Empty, EmptyHeader, EmptyTitle } from '@aio-proxy/ui/components/empty';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { format, parseISO } from 'date-fns';
-import { useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import { routingTrafficBucketsQueryOptions, routingTrafficQueryOptions } from '../../services/routing-traffic-service';
-import { RoutingTrafficSummaryTable, type RoutingTrafficSummaryRow } from './routing-traffic-summary-table';
 
 export interface RoutingModelTrafficTabProps {
   readonly modelId: string;
   readonly range: UsageOverviewRange;
-  readonly onViewTopology: () => void;
 }
 
-const providerRate = (numerator: bigint, denominator: bigint): number | null =>
-  denominator === 0n ? null : Number(numerator) / Number(denominator);
-
-export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ modelId, range, onViewTopology }) => {
+export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ modelId, range }) => {
   const bucketsQuery = useQuery(routingTrafficBucketsQueryOptions(range, modelId));
   const trafficQuery = useQuery(routingTrafficQueryOptions(range));
   const uiLocale = getLocale();
   const dateLocale = dateFnsLocale(uiLocale);
-
-  const totalsByProvider = useMemo(() => {
-    const model = trafficQuery.data?.models.find((entry) => entry.modelId === modelId);
-    return new Map(model?.providers.map((row) => [row.providerId, row]) ?? []);
-  }, [trafficQuery.data, modelId]);
 
   // A failed refetch keeps the last successful payload, so an error on its own must not replace a
   // working chart with an error screen. Only a query holding nothing is unavailable; when the
@@ -52,7 +41,7 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
   ) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-destructive">{m['dashboard.routing.load_failed']()}</p>
+        <p className="text-sm text-destructive">{m['dashboard.routing.traffic.load_failed']()}</p>
         <Button type="button" variant="outline" onClick={retryFailed}>
           {m['dashboard.routing.retry']()}
         </Button>
@@ -68,33 +57,12 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
   }
 
   const totalsProviders = trafficQuery.data?.models.find((entry) => entry.modelId === modelId)?.providers ?? [];
-  const totalsProviderIds = totalsProviders.map((row) => row.providerId);
-  const summaryProviderIds = [
-    ...totalsProviderIds,
-    ...bucketsData.providerIds.filter((providerId) => !totalsProviderIds.includes(providerId)),
-  ];
-  const summaryRows: readonly RoutingTrafficSummaryRow[] = summaryProviderIds.map((providerId) => {
-    const totals = totalsByProvider.get(providerId);
-    return {
-      providerId,
-      finalCount: totals?.finalCount ?? null,
-      attemptCount: totals?.attemptCount ?? null,
-      successRate: totals === undefined ? null : providerRate(totals.successCount, totals.attemptCount),
-      p95LatencyMs: totals?.p95LatencyMs ?? null,
-    };
-  });
-
   if (bucketsData.providerIds.length === 0 && totalsProviders.length === 0) {
     return (
       <Empty>
         <EmptyHeader>
           <EmptyTitle>{m['dashboard.routing.traffic.none']()}</EmptyTitle>
         </EmptyHeader>
-        <EmptyContent>
-          <Button type="button" variant="outline" onClick={onViewTopology}>
-            {m['dashboard.routing.detail.view_topology']()}
-          </Button>
-        </EmptyContent>
       </Empty>
     );
   }
@@ -136,6 +104,8 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
       ) : null}
       {showChart ? (
         <ChartContainer
+          data-testid="routing-traffic-chart"
+          data-series={bucketsData.providerIds.join(',')}
           config={chartConfig}
           className="aspect-auto h-64 w-full sm:h-72"
           aria-label={m['dashboard.routing.traffic.chart_label']()}
@@ -176,9 +146,7 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
         </ChartContainer>
       ) : null}
 
-      <RoutingTrafficSummaryTable rows={summaryRows} />
-
-      <Button render={<Link to="/traces" search={{ requestedModelId: modelId }} />}>
+      <Button size="sm" variant="outline" render={<Link to="/traces" search={{ requestedModelId: modelId }} />}>
         {m['dashboard.routing.detail.open_in_traces']()}
       </Button>
     </div>

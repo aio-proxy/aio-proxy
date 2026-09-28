@@ -8,6 +8,7 @@ import {
   ComboboxItem,
   ComboboxList,
 } from '@aio-proxy/ui/components/combobox';
+import { InputGroupAddon, InputGroupText } from '@aio-proxy/ui/components/input-group';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Spinner } from '@aio-proxy/ui/components/spinner';
 import { useQuery } from '@tanstack/react-query';
@@ -17,58 +18,86 @@ import { useState } from 'react';
 import { modelsDevSlugsQueryOptions } from '../../services/models-dev-service';
 
 interface ModelMetadataExtendFieldProps {
-  readonly value: string;
+  /** The reference in effect: the chosen one, else the match for the model ID, else `''`. */
+  readonly slug: string;
+  /** `slug` was matched from the model ID rather than chosen. */
+  readonly matched: boolean;
+  /** Called with a picked model ID, or `undefined` to drop the choice and go back to the match. */
   readonly onValueChange: (next: string | undefined) => void;
-  /** Canonical models.dev slug from the public-slug fallback; click fills `extend`. */
-  readonly suggestion?: string | undefined;
 }
 
-/** The models.dev slug this model inherits from, plus the state of the catalog behind the picker. */
-export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> = ({
-  value,
-  onValueChange,
-  suggestion,
-}) => {
-  const [slugQuery, setSlugQuery] = useState(value);
+/**
+ * The reference model as one searchable field. It always shows the reference in effect, so there is
+ * no separate "change" step: typing searches the catalog, picking writes `extend`, and clearing a
+ * chosen reference returns to the automatic match.
+ */
+export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> = ({ slug, matched, onValueChange }) => {
+  const [slugQuery, setSlugQuery] = useState(slug);
+  const [lastSlug, setLastSlug] = useState(slug);
+  // The match loads after mount, and a pick or a clear changes it from outside; the field follows.
+  if (slug !== lastSlug) {
+    setLastSlug(slug);
+    setSlugQuery(slug);
+  }
   const slugs = useQuery(modelsDevSlugsQueryOptions());
-  const query = slugQuery.trim().toLowerCase();
+  const query = slugQuery === slug ? '' : slugQuery.trim().toLowerCase();
   const loaded = slugs.data?.slugs ?? [];
-  const base = value !== '' && !loaded.includes(value) ? [value, ...loaded] : loaded;
+  const base = slug !== '' && !loaded.includes(slug) ? [slug, ...loaded] : loaded;
   // The catalog is thousands of entries; the popup only needs enough to pick from.
-  const options = base.filter((slug) => query === '' || slug.toLowerCase().includes(query)).slice(0, 100);
+  const options = base.filter((option) => query === '' || option.toLowerCase().includes(query)).slice(0, 100);
+  const chosen = slug !== '' && !matched;
 
   return (
     <div className="space-y-1.5">
-      <Label htmlFor="metadata-extend">{m['dashboard.routing.editor.metadata_extend_label']()}</Label>
+      <Label htmlFor="metadata-extend" className="sr-only">
+        {m['dashboard.routing.editor.metadata_extend_label']()}
+      </Label>
       <Combobox
         items={options}
-        value={value === '' ? null : value}
+        value={slug === '' ? null : slug}
         inputValue={slugQuery}
         onValueChange={(next: string | null) => {
-          setSlugQuery(next ?? '');
-          onValueChange(next === null || next === '' ? undefined : next);
+          if (next === null || next === '') {
+            onValueChange(undefined);
+            return;
+          }
+          setSlugQuery(next);
+          onValueChange(next);
         }}
         onInputValueChange={setSlugQuery}
+        onOpenChange={(open) => {
+          // A search abandoned without a pick leaves the reference as it was.
+          if (!open) setSlugQuery(slug);
+        }}
       >
         <ComboboxInput
           id="metadata-extend"
           className="w-full font-mono text-xs"
-          disabled={slugs.isPending && value === ''}
+          disabled={slugs.isPending && slug === ''}
           aria-label={m['dashboard.routing.editor.metadata_extend_aria_label']()}
           placeholder={
             slugs.isPending
               ? m['dashboard.routing.editor.metadata_extend_loading_placeholder']()
-              : m['dashboard.routing.editor.metadata_extend_placeholder']()
+              : m['dashboard.routing.profile.reference_placeholder']()
           }
-          showClear={value !== ''}
-          clearLabel={m['common.clear']()}
-        />
+          showClear={chosen}
+          clearLabel={m['dashboard.routing.profile.reference_auto']()}
+        >
+          {matched && slugQuery === slug ? (
+            // Before the chevron, which the input group pins last.
+            <InputGroupAddon align="inline-end" className="order-1 pr-0">
+              <InputGroupText className="font-sans text-xs font-normal" data-testid="metadata-extend-matched">
+                {m['dashboard.routing.profile.reference_matched']()}
+              </InputGroupText>
+            </InputGroupAddon>
+          ) : null}
+        </ComboboxInput>
         <ComboboxContent>
           <ComboboxEmpty>{m['dashboard.routing.editor.metadata_extend_empty']()}</ComboboxEmpty>
           <ComboboxList>
-            {options.map((slug) => (
-              <ComboboxItem key={slug} value={slug} className="font-mono text-xs">
-                {slug}
+            {options.map((option) => (
+              <ComboboxItem key={option} value={option} className="font-mono text-xs">
+                {option}
               </ComboboxItem>
             ))}
           </ComboboxList>
@@ -97,25 +126,11 @@ export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> =
         </div>
       ) : (
         <p className="text-xs text-muted-foreground" data-testid="metadata-extend-status">
-          {m['dashboard.routing.editor.metadata_extend_loaded']({ count: loaded.length })}
-          {suggestion === undefined ? null : (
-            <>
-              {' '}
-              <Button
-                type="button"
-                variant="link"
-                size="xs"
-                className="h-auto px-0 font-mono text-xs"
-                data-testid="metadata-extend-suggest"
-                onClick={() => {
-                  setSlugQuery(suggestion);
-                  onValueChange(suggestion);
-                }}
-              >
-                {m['dashboard.routing.editor.metadata_extend_suggest']({ slug: suggestion })}
-              </Button>
-            </>
-          )}
+          {matched
+            ? m['dashboard.routing.profile.reference_matched_hint']()
+            : slug === ''
+              ? m['dashboard.routing.profile.reference_manual']()
+              : m['dashboard.routing.profile.reference_follow']()}
         </p>
       )}
     </div>

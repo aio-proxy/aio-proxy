@@ -1,27 +1,31 @@
 import { m } from '@aio-proxy/i18n';
-import { ROUTING_VALUE_MAX, type DashboardRoutingModel, type DashboardRoutingProvider } from '@aio-proxy/types';
+import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
+import { cn } from '@aio-proxy/ui/lib/utils';
 import { useMemo } from 'react';
 
-import { RoutingTierLabel } from '@/components/routing-tier-label';
+import { RoutingTierLabel, RoutingTierMarker } from '@/components/routing-tier-label';
 import {
   WeightedTierBoard,
   type WeightedTierBoardItem,
   type WeightedTierBoardTier,
   type WeightedTierParkingList,
 } from '@/components/weighted-tier-board';
-import type { WeightedTierLayout } from '@/lib/weighted-tier-layout';
 
 import type { RoutingFormProviderRow, useRoutingForm } from '../hooks/use-routing-form';
 import {
   applyRoutingBoardLayout,
-  applyRoutingShare,
+  applyRoutingWeight,
   buildRoutingBoard,
+  moveRoutingProvider,
   providersWithSavedTierMembers,
+  routingBoardLayout,
   type RoutingBoardItem as RoutingBoardItemModel,
+  type RoutingMoveTarget,
 } from '../lib/routing-board';
-import { formatRoutingShareValue } from '../lib/routing-summary';
+import { formatTierShares } from '../lib/routing-summary';
 import type { RoutingTierShare } from '../lib/routing-traffic';
-import { RoutingBoardItem } from './routing-board-item';
+import { RoutingBoardColumns } from './routing-board-columns';
+import { RoutingBoardItem, type RoutingBoardMoveOption } from './routing-board-item';
 
 interface RoutingBoardCanvasProps {
   readonly form: ReturnType<typeof useRoutingForm>;
@@ -31,12 +35,35 @@ interface RoutingBoardCanvasProps {
   readonly actual?: readonly RoutingTierShare[] | undefined;
 }
 
+type Placement =
+  | { readonly kind: 'tier'; readonly index: number; readonly shareLabel: string | undefined }
+  | {
+      readonly kind: 'unused' | 'blocked';
+    };
+
 interface RoutingBoardItemView {
-  readonly hasOverride: boolean;
-  readonly index: number;
-  readonly item: RoutingBoardItemModel;
   readonly provider: DashboardRoutingProvider;
+  readonly item: RoutingBoardItemModel;
+  readonly rowIndex: number;
+  readonly hasOverride: boolean;
+  readonly placement: Placement;
 }
+
+const SEGMENT_CLASSES = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5'] as const;
+
+const parkingHeading = (label: string): React.ReactNode => (
+  <span className="flex items-center gap-2.5">
+    <RoutingTierMarker variant="ineligible" tooltip={label}>
+      —
+    </RoutingTierMarker>
+    <span className="text-muted-foreground">{label}</span>
+  </span>
+);
+
+const blockedReason = (provider: DashboardRoutingProvider): string =>
+  provider.enabled
+    ? m['dashboard.routing.editor.provider_unavailable']()
+    : m['dashboard.routing.editor.provider_disabled']();
 
 export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, model, rows, writable, actual }) => {
   const board = useMemo(() => buildRoutingBoard(model.providers, rows), [model.providers, rows]);
@@ -51,62 +78,34 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
   const rowsById = new Map(
     rows.map((row, index) => [
       row.providerId,
-      { index, hasOverride: row.priority !== undefined || row.weight !== undefined },
+      { rowIndex: index, hasOverride: row.priority !== undefined || row.weight !== undefined },
     ]),
   );
-  const toItem = (item: RoutingBoardItemModel): WeightedTierBoardItem<RoutingBoardItemView>[] => {
+  const setRows = (next: RoutingFormProviderRow[]) => form.setFieldValue('providers', next);
+  const move = (providerId: string, target: RoutingMoveTarget) =>
+    setRows(moveRoutingProvider({ providers: model.providers, rows, board, providerId, target }));
+
+  const toItem = (item: RoutingBoardItemModel, placement: Placement): WeightedTierBoardItem<RoutingBoardItemView>[] => {
     const provider = providersById.get(item.providerId);
     const row = rowsById.get(item.providerId);
     if (provider === undefined || row === undefined) return [];
     return [
       {
         id: item.providerId,
-        value: { provider, item, ...row },
+        value: { provider, item, placement, ...row },
         draggable: item.draggable,
         dragLabel: m['dashboard.providers.routing.drag_provider']({ providerId: item.providerId }),
         testId: `routing-provider-${item.providerId}`,
       },
     ];
   };
-  const tiers: WeightedTierBoardTier<RoutingBoardItemView>[] = board.tiers.map((tier) => {
-    const total = tier.items.reduce((sum, item) => sum + Math.max(0, item.weight), 0);
-    const basis = total > tier.items.length ? total : ROUTING_VALUE_MAX;
-    const shareMax = Math.max(1, Math.min(ROUTING_VALUE_MAX, basis - (tier.items.length - 1)));
+  const tiers: WeightedTierBoardTier<RoutingBoardItemView>[] = board.tiers.map((tier, index) => {
+    const labels = formatTierShares(tier.items.map((item) => item.share ?? 0));
     return {
       id: `tier:${tier.priority}`,
       priority: tier.priority,
-      items: tier.items.flatMap((item) =>
-        toItem(item).map((entry) => ({
-          ...entry,
-          ...(item.share === null
-            ? {}
-            : {
-                shareLabel: m['dashboard.routing.editor.share']({ value: formatRoutingShareValue(item.share) }),
-                shareTestId: `routing-share-${item.providerId}`,
-              }),
-          control:
-            tier.items.length < 2 || item.share === null
-              ? undefined
-              : {
-                  ariaLabel: m['dashboard.routing.editor.share_control'](),
-                  min: 0,
-                  max: basis,
-                  value: Math.max(0, Math.round(item.share * basis)),
-                  testId: `routing-share-slider-${item.providerId}`,
-                  onChange: (value: number) => {
-                    form.setFieldValue(
-                      'providers',
-                      applyRoutingShare({
-                        providers: model.providers,
-                        rows: form.getFieldValue('providers') ?? [],
-                        memberIds: tier.items.map((member) => member.providerId),
-                        providerId: item.providerId,
-                        weight: Math.min(shareMax, Math.max(1, value)),
-                      }),
-                    );
-                  },
-                },
-        })),
+      items: tier.items.flatMap((item, itemIndex) =>
+        toItem(item, { kind: 'tier', index, shareLabel: tier.items.length > 1 ? labels[itemIndex] : undefined }),
       ),
     };
   });
@@ -114,7 +113,8 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
     {
       id: 'unused',
       label: m['dashboard.routing.editor.unused'](),
-      items: board.unused.flatMap(toItem),
+      heading: parkingHeading(m['dashboard.routing.editor.unused']()),
+      items: board.unused.flatMap((item) => toItem(item, { kind: 'unused' })),
       droppable: true,
       testId: 'routing-list-unused',
     },
@@ -124,46 +124,104 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
           {
             id: 'blocked',
             label: m['dashboard.routing.editor.blocked'](),
-            items: board.blocked.flatMap(toItem),
+            heading: parkingHeading(m['dashboard.routing.editor.blocked']()),
+            items: board.blocked.flatMap((item) => toItem(item, { kind: 'blocked' })),
             droppable: false,
             testId: 'routing-list-blocked',
           },
         ]),
   ];
-  const previousLayout: WeightedTierLayout = {
-    tiers: tiers.map((tier) => ({ id: tier.id, itemIds: tier.items.map((item) => item.id) })),
-    parking: Object.fromEntries(parking.map((list) => [list.id, list.items.map((item) => item.id)])),
+  const previousLayout = routingBoardLayout(board);
+
+  const moveOptions = (placement: Placement): RoutingBoardMoveOption[] => {
+    if (placement.kind === 'blocked') return [];
+    const current = placement.kind === 'tier' ? placement.index : undefined;
+    return [
+      ...board.tiers.flatMap((_, index) =>
+        index === current
+          ? []
+          : [
+              {
+                label: m['dashboard.routing.detail.move_to_tier']({
+                  tier: m['dashboard.routing.tier_label.short']({ value: index + 1 }),
+                }),
+                target: { type: 'tier', index } as const,
+              },
+            ],
+      ),
+      { label: m['dashboard.routing.detail.move_to_new_tier'](), target: { type: 'new-tier' } as const },
+      ...(placement.kind === 'unused'
+        ? []
+        : [{ label: m['dashboard.routing.detail.move_to_unused'](), target: { type: 'unused' } as const }]),
+    ];
   };
 
   return (
     <div className="space-y-2">
       <p className="text-sm text-muted-foreground">{m['dashboard.routing.editor.board_help']()}</p>
       <WeightedTierBoard
+        columns={<RoutingBoardColumns writable={writable} />}
         tiers={tiers}
         parking={parking}
         writable={writable}
         labels={{
-          tier: (index, priority) => <RoutingTierLabel tier={index + 1} priority={priority} />,
-          tierCount: (count) => m['dashboard.providers.routing.provider_count']({ count }),
+          tier: (index, priority) => {
+            const tier = board.tiers[index];
+            return (
+              <span className="flex w-full items-center gap-2.5">
+                <RoutingTierLabel tier={index + 1} priority={priority} />
+                <span className="truncate font-sans text-xs font-normal text-muted-foreground">
+                  {index === 0
+                    ? m['dashboard.routing.tier_label.primary']()
+                    : m['dashboard.routing.tier_label.fallback']()}
+                </span>
+                {tier === undefined || tier.items.length < 2 ? null : (
+                  <span aria-hidden="true" className="ml-auto flex h-1 w-32 gap-0.5">
+                    {tier.items.map((item, itemIndex) => (
+                      <span
+                        key={item.providerId}
+                        className={cn(
+                          'min-w-0.5 basis-0 rounded-full',
+                          SEGMENT_CLASSES[itemIndex % SEGMENT_CLASSES.length],
+                        )}
+                        style={{ flexGrow: item.share ?? 0 }}
+                      />
+                    ))}
+                  </span>
+                )}
+              </span>
+            );
+          },
           dragTier: (index) => m['dashboard.providers.routing.drag_tier']({ tier: index + 1 }),
           newTier: m['dashboard.routing.editor.new_priority'](),
           emptyTier: m['dashboard.providers.routing.empty_tier'](),
         }}
-        renderItem={({ provider, index, item, hasOverride }) => (
+        renderItem={({ provider, item, rowIndex, hasOverride, placement }) => (
           <RoutingBoardItem
-            form={form}
             provider={provider}
-            index={index}
             weight={item.weight}
-            writable={writable}
-            hasOverride={hasOverride}
+            shareLabel={placement.kind === 'tier' ? placement.shareLabel : undefined}
             configuredShare={comparableShares.has(item.providerId) ? item.share : null}
             actual={actualByProviderId?.get(item.providerId)}
+            parkedReason={
+              placement.kind === 'unused'
+                ? m['dashboard.routing.editor.disabled_for_model']()
+                : placement.kind === 'blocked'
+                  ? blockedReason(provider)
+                  : undefined
+            }
+            hasOverride={hasOverride}
+            writable={writable}
+            moveOptions={moveOptions(placement)}
+            onMove={(target) => move(provider.id, target)}
+            onWeightChange={(weight) =>
+              setRows(applyRoutingWeight({ providers: model.providers, rows, providerId: provider.id, weight }))
+            }
+            onReset={() => form.setFieldValue(`providers[${rowIndex}]`, { providerId: provider.id })}
           />
         )}
-        onLayoutChange={(nextLayout, operation) => {
-          form.setFieldValue(
-            'providers',
+        onLayoutChange={(nextLayout, operation) =>
+          setRows(
             applyRoutingBoardLayout({
               providers: model.providers,
               previousRows: rows,
@@ -171,8 +229,8 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
               nextLayout,
               operation,
             }),
-          );
-        }}
+          )
+        }
         testId="routing-board"
         tierTestId={(_index, id) => `routing-list-${id}`}
       />

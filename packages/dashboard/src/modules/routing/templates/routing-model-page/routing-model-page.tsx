@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { PageContainer } from '@/components/page-container';
 import { ProviderCatalogProvider, useProviderCatalog } from '@/hooks/use-provider-catalog';
 
-import type { RoutingTrafficState } from '../../components/routing-model-topology-tab';
+import { RoutingModelSummary } from '../../components/routing-model-summary';
 import { RoutingRiskBadge } from '../../components/routing-risk-badge';
 import { useRoutingQuery } from '../../hooks/use-routing-query';
 import { configuredRisks } from '../../lib/routing-risk';
@@ -37,10 +37,6 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
   const fullPageError = query.isError && query.data === undefined;
   const writable = query.data?.writable ?? false;
   const trafficIndex = trafficQuery.data === undefined ? undefined : indexRoutingTraffic(trafficQuery.data);
-  // A failed query with nothing cached can never answer; one merely in flight still might. Neither
-  // is a measured absence of traffic, which is what `actual === undefined` would otherwise imply.
-  const trafficState: RoutingTrafficState =
-    trafficQuery.data !== undefined ? 'ready' : trafficQuery.isError ? 'unavailable' : 'pending';
   const totals = trafficIndex?.get(modelId);
   const actual =
     model === undefined || totals === undefined
@@ -123,15 +119,17 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
       );
     }
     return (
-      <div className="space-y-4">
+      // Fills the page's height so the save bar, pushed to the end, rests on the viewport bottom even
+      // when the page is shorter than the screen, as it does on longer pages.
+      <div className="flex flex-1 flex-col gap-4">
         {query.isError ? loadError : null}
+        <RoutingModelSummary model={model} totals={totals} known={trafficIndex !== undefined} />
         <RoutingModelPageEditor
           key={model.modelId}
           model={model}
           writable={writable}
           range={range}
           actual={actual}
-          trafficState={trafficState}
           onReload={onReload}
         />
       </div>
@@ -140,6 +138,7 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
 
   return (
     <PageContainer
+      classNames={{ root: 'flex flex-col', main: 'flex w-full flex-1 flex-col' }}
       title={<span className="font-mono">{modelId}</span>}
       subtitle={subtitle}
       extra={model !== undefined && !query.isLoading && !fullPageError ? rangeSelector : undefined}
