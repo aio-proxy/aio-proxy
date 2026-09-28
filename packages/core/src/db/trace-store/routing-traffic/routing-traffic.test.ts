@@ -231,6 +231,33 @@ test('leaves a request nobody served out of the served totals', () => {
   });
 });
 
+test('leaves error-status roots without a termination reason out of the served totals', () => {
+  // Older rows (and any path that set ERROR without a reason) and HTTP error responses carry no
+  // termination reason but still name a final Provider; they failed and must not count as served.
+  const handle = openTestDb();
+  try {
+    const store = createTraceStore(handle.db);
+    for (const id of [30, 31, 32]) {
+      seedTrace(store, {
+        id,
+        requestedModelId: 'anthropic/claude-sonnet-4.5',
+        attempts: [{ providerId: 'primary', durationMs: 5 }],
+      });
+    }
+    const rootId = (id: number) => id.toString(16).padStart(16, '0');
+    handle.db.$client.run(`update trace_span set status_code = 2 where span_id = '${rootId(30)}'`);
+    handle.db.$client.run(`update trace_span set final_http_status = 502 where span_id = '${rootId(31)}'`);
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+    const buckets = store.routingTrafficBuckets({ range: '24h', modelId: 'anthropic/claude-sonnet-4.5', now: NOW });
+
+    expect(totals.models[0]?.providers.find((row) => row.providerId === 'primary')?.finalCount).toBe('1');
+    expect(buckets.buckets.reduce((sum, bucket) => sum + BigInt(bucket.values['primary'] ?? '0'), 0n)).toBe(1n);
+  } finally {
+    handle.close();
+  }
+});
+
 test('leaves a request nobody served out of the chart buckets too', () => {
   withStore((store) => {
     // The chart reads its own query, so the filter has to be on both or the bars and the table

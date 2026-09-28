@@ -63,9 +63,15 @@ const NOT_QUALIFIED_ROOT = `not exists (
 // without it a request every candidate failed counts as traffic that Provider served, inflating the
 // served totals, both halves of the configured-versus-actual comparison, the deviation verdict and
 // the chart. It is the same discriminator the attempt query already uses for successCount.
+//
+// The same goes for the shapes `trace-filters.ts` counts as failed without a termination reason: a
+// root marked OTel ERROR (older rows, and any path that set ERROR without a reason), and an HTTP
+// error status, which HTTP semantics keep off the span status. Both named a final Provider too.
 const SERVED_ROOT = `root.parent_span_id is null
       and root.final_provider_id is not null
       and root.termination_reason is null
+      and root.status_code != 2
+      and (root.final_http_status is null or root.final_http_status < 400)
       and ${GENERATION('root')}
       and ${NOT_QUALIFIED_ROOT}
       and root.ended_at >= ? and root.ended_at <= ?`;
