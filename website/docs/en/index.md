@@ -14,13 +14,19 @@ hero:
       text: GitHub
       link: https://github.com/aio-proxy/aio-proxy
 features:
-  - title: One endpoint
-    details: Point existing clients at AIO Proxy instead of rewriting calls for every model provider.
+  - title: Every protocol, one endpoint
+    details: OpenAI Responses, Chat Completions, Anthropic Messages, and Gemini clients share one endpoint. Matching protocols pass through raw; the rest are converted, including tools, reasoning, and streaming.
     icon: 🔌
-  - title: Model-based routing
-    details: Match model aliases across providers, try higher Provider priority first, distribute same-priority traffic by Provider weight, and continue to the next candidate when an upstream fails.
+  - title: Routing and failover
+    details: Higher Provider priority tiers are tried first, Provider weight splits traffic within a tier, sessions stay on one Provider, and a failed upstream falls through to the next candidate.
     icon: ↗️
-  - title: Visible requests
-    details: Use the Dashboard to inspect Provider configuration, request records, and runtime status without guesswork.
+  - title: Bring your subscriptions
+    details: Log in with OAuth to ChatGPT, Claude, GitHub Copilot, Google Antigravity, Cursor, xAI Grok, and more, and use them as standard API endpoints.
+    icon: 🔑
+  - title: Coding agents in one command
+    details: '`aiop agent configure` wires up Codex, Grok Build, OpenCode, Pi, and OMP; anything else only needs a base URL.'
+    icon: 🤖
+  - title: Requests you can see
+    details: The Dashboard records every request and Provider attempt with status, latency, tokens, cost, and full traces, exportable to OpenTelemetry.
     icon: 🔎
 ---

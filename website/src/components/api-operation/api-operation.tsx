@@ -30,6 +30,9 @@ export function ApiOperation({ locale, slug }: ApiOperationProps) {
   const dark = useDark();
   const operationKey = `${locale}:${slug}`;
 
+  // Scalar is browser-only; leave it out of the Markdown build rather than emitting the loading placeholder.
+  if (import.meta.env.SSG_MD) return null;
+
   return (
     <ApiOperationErrorBoundary key={operationKey}>
       <BrowserOnly fallback={<p>Loading API reference…</p>}>

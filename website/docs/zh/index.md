@@ -14,13 +14,19 @@ hero:
       text: GitHub
       link: https://github.com/aio-proxy/aio-proxy
 features:
-  - title: 统一端点
-    details: 将现有客户端指向 AIO Proxy，无需为每个模型提供商改写调用方式。
+  - title: 所有协议，一个端点
+    details: OpenAI Responses、Chat Completions、Anthropic Messages 与 Gemini 客户端共用一个端点。协议一致时原样透传，不一致时自动转换工具调用、推理内容与流式输出。
     icon: 🔌
-  - title: 按模型路由
-    details: 使用模型别名匹配多个提供商，优先尝试更高的提供商优先级，在同一优先级内按提供商权重分配流量，并在上游失败时继续尝试。
+  - title: 路由与故障转移
+    details: 高优先级层先试，同层内按提供商权重分摊流量，会话固定在同一个 Provider，上游失败时自动切到下一个候选。
     icon: ↗️
-  - title: 请求可见
-    details: 通过 Dashboard 查看 Provider 配置、请求记录与运行状态，定位问题更直接。
+  - title: 接入已有订阅
+    details: 通过 OAuth 登录 ChatGPT、Claude、GitHub Copilot、Google Antigravity、Cursor、xAI Grok 等订阅，作为标准 API 端点使用。
+    icon: 🔑
+  - title: 一条命令接好 Agent
+    details: '`aiop agent configure` 可直接配置 Codex、Grok Build、OpenCode、Pi 与 OMP，其他工具只需修改 Base URL。'
+    icon: 🤖
+  - title: 请求全程可见
+    details: Dashboard 记录每一次请求与 Provider 尝试的状态、延迟、Token、费用与完整链路，并可导出到 OpenTelemetry。
     icon: 🔎
 ---

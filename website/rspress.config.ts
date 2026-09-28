@@ -1,6 +1,5 @@
 import { pluginTailwindcss } from '@rsbuild/plugin-tailwindcss';
 import { defineConfig } from '@rspress/core';
-import { pluginLlms } from '@rspress/plugin-llms';
 import { pluginSitemap } from '@rspress/plugin-sitemap';
 import pluginMermaid from 'rspress-plugin-mermaid';
 
@@ -22,6 +21,7 @@ export default defineConfig({
     ['meta', { name: 'twitter:image', content: ogImageUrl }],
   ],
   lang: 'en',
+  llms: true,
   locales: [
     {
       lang: 'en',
@@ -33,7 +33,6 @@ export default defineConfig({
     },
   ],
   plugins: [
-    pluginLlms(),
     pluginMermaid({
       mermaidConfig: {
         theme: 'neutral',

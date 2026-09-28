@@ -23,7 +23,6 @@
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",
     "@rsbuild/plugin-tailwindcss": "catalog:",
-    "@rspress/plugin-llms": "2.0.22",
     "@rspress/plugin-sitemap": "2.0.22",
     "@scalar/openapi-parser": "0.29.5",
     "@types/react": "catalog:",
