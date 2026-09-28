@@ -45,7 +45,18 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
     );
   }
 
-  const refreshFailed = bucketsQuery.isError;
+  // Shown over whatever the cached measurement says, the empty state included: a "no traffic" reading
+  // is just as stale once the refetch that would confirm it has failed.
+  const refreshNotice = bucketsQuery.isError ? (
+    <div className="flex flex-wrap items-center gap-3">
+      <p role="status" className="text-sm text-muted-foreground">
+        {m['dashboard.routing.traffic.refresh_failed']()}
+      </p>
+      <Button type="button" size="sm" variant="outline" onClick={retryFailed}>
+        {m['dashboard.routing.retry']()}
+      </Button>
+    </div>
+  ) : null;
 
   const bucketsData = bucketsQuery.data;
   if (bucketsData === undefined) {
@@ -54,11 +65,14 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
 
   if (bucketsData.providerIds.length === 0) {
     return (
-      <Empty>
-        <EmptyHeader>
-          <EmptyTitle>{m['dashboard.routing.traffic.none']()}</EmptyTitle>
-        </EmptyHeader>
-      </Empty>
+      <div className="space-y-6">
+        {refreshNotice}
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>{m['dashboard.routing.traffic.none']()}</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
+      </div>
     );
   }
 
@@ -79,16 +93,7 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
 
   return (
     <div className="space-y-6">
-      {refreshFailed ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <p role="status" className="text-sm text-muted-foreground">
-            {m['dashboard.routing.traffic.refresh_failed']()}
-          </p>
-          <Button type="button" size="sm" variant="outline" onClick={retryFailed}>
-            {m['dashboard.routing.retry']()}
-          </Button>
-        </div>
-      ) : null}
+      {refreshNotice}
       <ChartContainer
         data-testid="routing-traffic-chart"
         data-series={bucketsData.providerIds.join(',')}

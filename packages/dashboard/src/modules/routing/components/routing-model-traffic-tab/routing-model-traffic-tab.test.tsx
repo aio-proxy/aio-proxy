@@ -146,3 +146,15 @@ test('keeps the cached measurements up when a later refetch fails', async () => 
   expect(await screen.findByText(m['dashboard.routing.traffic.refresh_failed']())).toBeInTheDocument();
   expect(screen.queryByText(m['dashboard.routing.traffic.load_failed']())).not.toBeInTheDocument();
 });
+
+test('flags a failed refresh over a cached empty measurement too', async () => {
+  // "No traffic" is as stale as a chart once the refetch that would confirm it has failed.
+  const cached = { ...bucketsFixture([]), providerIds: [], buckets: [] };
+  queryClient.setQueryData(['routing-traffic-buckets', RANGE, MODEL_ID], cached);
+  mocks.bucketsFail = true;
+
+  renderTraffic({ buckets: cached });
+
+  expect(await screen.findByText(m['dashboard.routing.traffic.refresh_failed']())).toBeInTheDocument();
+  expect(screen.getByText(/No traffic|无流量/u)).toBeInTheDocument();
+});
