@@ -3,8 +3,8 @@ import type { DashboardRoutingModel } from '@aio-proxy/types';
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import type React from 'react';
 
-import { modelTrafficSummary } from '../lib/routing-traffic';
-import type { RoutingTrafficProviderTotals } from '../services/routing-traffic-service';
+import { modelTrafficSummary } from '../../lib/routing-traffic';
+import type { RoutingTrafficProviderTotals } from '../../services/routing-traffic-service';
 
 const numberFormatter = new Intl.NumberFormat();
 const percentFormatter = new Intl.NumberFormat(undefined, { style: 'percent', maximumFractionDigits: 1 });
@@ -19,8 +19,11 @@ interface RoutingModelSummaryProps {
 /** The selected range at a glance: how much the model served, how reliably, and how often T1 fell through. */
 export const RoutingModelSummary: React.FC<RoutingModelSummaryProps> = ({ model, totals, known }) => {
   const summary = modelTrafficSummary(totals);
-  const primary = new Set(model.tiers[0]?.providers.map((entry) => entry.providerId) ?? []);
-  const fallback = totals?.reduce((sum, row) => (primary.has(row.providerId) ? sum : sum + row.finalCount), 0n);
+  // Counted against the current route: traces do not record the tier a request was served from, so
+  // only Providers now in a fallback tier count. Anything else in the window, such as a Provider since
+  // removed from this model, is not assumed to have been a fallback.
+  const fallbackIds = new Set(model.tiers.slice(1).flatMap((tier) => tier.providers.map((entry) => entry.providerId)));
+  const fallback = totals?.reduce((sum, row) => (fallbackIds.has(row.providerId) ? sum + row.finalCount : sum), 0n);
   const unknown = '—';
   const stats = [
     {
