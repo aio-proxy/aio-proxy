@@ -60,7 +60,7 @@ test('the card body is one link and never a nested-interactive button', () => {
   expect(card).toContainElement(screen.getByTestId('provider-card-routing'));
 });
 
-test('an API Provider with one protocol names it on line 2 and stacks its icon on line 1', () => {
+test('an API Provider names its protocol on line 2 and draws the API mark on line 1', () => {
   renderCard(
     <ProviderCard
       {...baseProps}
@@ -72,7 +72,7 @@ test('an API Provider with one protocol names it on line 2 and stacks its icon o
     />,
   );
 
-  expect(screen.getByTestId('provider-protocol-stack')).toBeInTheDocument();
+  expect(screen.getByTestId('provider-kind-mark')).toBeInTheDocument();
   expect(screen.getByTestId('provider-card-detail')).toHaveTextContent('OpenAI Compatible');
 });
 

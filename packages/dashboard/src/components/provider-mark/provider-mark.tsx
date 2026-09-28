@@ -1,9 +1,8 @@
 import { type DashboardProviderSummary, ProviderKind } from '@aio-proxy/types';
 import { cn } from '@aio-proxy/ui/lib/utils';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Package, Plug } from 'lucide-react';
 
 import { ProviderAvatar } from '@/components/provider-avatar';
-import { ProviderProtocolStack } from '@/components/provider-protocol-stack';
 import { providerDisplayName } from '@/lib/provider-display-name';
 import { PROVIDER_FRAME_SIZE } from '@/lib/provider-frame';
 
@@ -24,8 +23,24 @@ export const ProviderMark: React.FC<ProviderMarkProps> = ({ provider, pluginIcon
       />
     );
   }
-  if (provider.kind === ProviderKind.Api && provider.protocols.length > 0) {
-    return <ProviderProtocolStack protocols={provider.protocols} className={cn('shrink-0', faded)} />;
+  if (provider.kind === ProviderKind.Api || provider.kind === ProviderKind.AiSdk) {
+    // Neither kind has plugin artwork. A name's first letter reads as a broken logo, and protocol
+    // logos read as the upstream vendor, which a third-party gateway is not. The glyph says only what
+    // kind of Provider this is; protocols and packages are spelled out in text beside it.
+    const Glyph = provider.kind === ProviderKind.Api ? Plug : Package;
+    return (
+      <span
+        aria-hidden="true"
+        data-testid="provider-kind-mark"
+        style={{ width: PROVIDER_FRAME_SIZE, height: PROVIDER_FRAME_SIZE }}
+        className={cn(
+          'inline-flex shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground',
+          faded,
+        )}
+      >
+        <Glyph className="size-3.5" />
+      </span>
+    );
   }
   return (
     <ProviderAvatar
