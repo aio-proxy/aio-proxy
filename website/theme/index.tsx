@@ -9,7 +9,7 @@ export function Tag({ tag }: { tag?: string }) {
 export * from '@rspress/core/theme-original';
 export { Layout } from './components/layout';
 export { DocContent } from './components/doc-content';
-export { HomeBackground } from './components/home-background';
+export { HomeLayout } from './components/home-layout';
 export { NavTitle } from './components/nav-title';
 export * from './components/icons';
 export * from './components/command-tabs';
