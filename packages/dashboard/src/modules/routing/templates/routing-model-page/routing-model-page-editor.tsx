@@ -105,6 +105,8 @@ export const RoutingModelPageEditor: React.FC<RoutingModelPageEditorProps> = ({
         model={model}
         writable={editable}
         setMetadataValid={editor.setMetadataValid}
+        metadataInvalidDraft={editor.metadataInvalidDraft}
+        setMetadataInvalidDraft={editor.setMetadataInvalidDraft}
       />
       <RoutingModelSaveBar
         dirty={editor.dirtyTabs}

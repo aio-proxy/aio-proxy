@@ -19,7 +19,9 @@ export const ProviderCardRouting: React.FC<ProviderCardRoutingProps> = ({ tier, 
         <RoutingTierLabel
           tier={tier}
           priority={priority}
-          className="font-medium whitespace-nowrap"
+          // `relative z-10`, like the model count: the identity link's overlay spans this layer too,
+          // and would otherwise sit over the marker and swallow the hover that shows its priority.
+          className="relative z-10 font-medium whitespace-nowrap"
           data-testid="provider-card-route-tier"
         />
         <span aria-hidden="true" className="text-muted-foreground">

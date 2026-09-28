@@ -19,23 +19,31 @@ import { createRoutingColumns } from './routing-table-columns';
 
 interface RoutingTableProps {
   readonly models: readonly DashboardRoutingModel[];
+  /** Every model, before the vendor filter, so the vendor selector keeps offering the other vendors. */
+  readonly vendorModels?: readonly DashboardRoutingModel[];
   readonly traffic: RoutingTrafficIndex | undefined;
   readonly lab?: string;
   readonly onLabChange?: (lab: string | undefined) => void;
 }
 
-export const RoutingTable: React.FC<RoutingTableProps> = ({ models, traffic, lab, onLabChange }) => {
+export const RoutingTable: React.FC<RoutingTableProps> = ({
+  models,
+  vendorModels = models,
+  traffic,
+  lab,
+  onLabChange,
+}) => {
   'use no memo';
 
   const navigate = useNavigate();
   const columns = useMemo(() => createRoutingColumns({ traffic }), [traffic]);
   const { table } = useDataTable(models, columns, { getRowId: (model) => model.modelId });
 
-  const labModelCounts = useMemo(() => countBy(models, labOf), [models]);
-
   if (models.length === 0) return <Empty>{m['dashboard.routing.empty']()}</Empty>;
 
   const showLabGroups = table.state.sorting.length === 0;
+  // Counted from the filtered rows before pagination, so a heading matches what the filter left.
+  const labModelCounts = countBy(table.getPrePaginatedRowModel().rows, (row) => labOf(row.original));
   const columnCount = table.getVisibleLeafColumns().length;
 
   return (
@@ -45,7 +53,9 @@ export const RoutingTable: React.FC<RoutingTableProps> = ({ models, traffic, lab
         filterLabel={m['dashboard.routing.table.filter']()}
         filterPlaceholder={m['dashboard.routing.table.filter_placeholder']()}
       >
-        {onLabChange === undefined ? null : <RoutingLabFilter models={models} value={lab} onChange={onLabChange} />}
+        {onLabChange === undefined ? null : (
+          <RoutingLabFilter models={vendorModels} value={lab} onChange={onLabChange} />
+        )}
       </DataTableControls>
       <div className="overflow-x-auto">
         <Table aria-label={m['dashboard.routing.table.label']()} data-testid="routing-table">

@@ -132,9 +132,11 @@ export const routingMetadataTouched = (values: RoutingMetadataFormValues): boole
 export const routingDirtyTabs = (
   topologyDirty: boolean,
   metadata: RoutingMetadataFormValues,
+  /** Metadata text that does not parse: unsaved work the form itself cannot hold. */
+  metadataInvalid = false,
 ): readonly RoutingDirtyTab[] => [
   ...(topologyDirty ? (['topology'] as const) : []),
-  ...(metadata.metadata.touched ? (['metadata'] as const) : []),
+  ...(metadata.metadata.touched || metadataInvalid ? (['metadata'] as const) : []),
   ...(routingOverrideDraftsTouched(metadata.overrides) ? (['cost'] as const) : []),
 ];
 

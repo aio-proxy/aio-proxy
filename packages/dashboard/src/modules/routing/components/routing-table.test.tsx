@@ -240,6 +240,47 @@ test('filters models through the shared DataTable controls', async () => {
   expect(screen.queryByTestId('routing-row-openai/gpt-5')).toBeNull();
 });
 
+test('a lab heading counts only the models the filter left', async () => {
+  await renderTable(
+    <RoutingTable
+      traffic={undefined}
+      models={[
+        modelFixture('gpt-5', { lab: 'openai' }),
+        modelFixture('gpt-4', { lab: 'openai' }),
+        modelFixture('claude', { lab: 'anthropic' }),
+      ]}
+    />,
+  );
+  expect(screen.getByTestId('routing-lab-group-openai')).toHaveTextContent(
+    m['dashboard.routing.lab.model_count']({ count: 2 }),
+  );
+
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'gpt-5' } });
+
+  expect(screen.getByTestId('routing-lab-group-openai')).toHaveTextContent(
+    m['dashboard.routing.lab.model_count']({ count: 1 }),
+  );
+});
+
+test('the vendor selector keeps offering other vendors while one is selected', async () => {
+  const openai = modelFixture('gpt-5', { lab: 'openai' });
+  const anthropic = modelFixture('claude', { lab: 'anthropic' });
+  await renderTable(
+    <RoutingTable
+      traffic={undefined}
+      models={[openai]}
+      vendorModels={[openai, anthropic]}
+      lab="openai"
+      onLabChange={() => undefined}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('combobox', { name: m['dashboard.routing.lab.filter_label']() }));
+
+  // "All", OpenAI, Anthropic: selecting OpenAI must not hide the vendor the user may switch to next.
+  expect(await screen.findAllByRole('option')).toHaveLength(3);
+});
+
 test('paginates long model catalogs with the shared table pagination controls', async () => {
   await renderTable(
     <RoutingTable

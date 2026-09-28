@@ -15,7 +15,7 @@ import { isStaleRoutingError } from '../../services/routing-service';
 import { routingDraftRecord, useRoutingForm } from '../use-routing-form';
 import { useRoutingMetadataForm } from '../use-routing-metadata-form';
 import { useRoutingMutation } from '../use-routing-mutation';
-import { rebaseRoutingEditorMembership } from './routing-editor-apply';
+import { rebaseRoutingEditorMembership, settleRoutingEditorSave } from './routing-editor-apply';
 import {
   routingEditorBaseline,
   routingModelIdentity,
@@ -48,6 +48,9 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   const mutation = useRoutingMutation();
   const [stale, setStale] = useState(false);
   const [metadataValid, setMetadataValid] = useState(true);
+  // Metadata text that does not parse or pass the schema never reaches the form, so it is held here:
+  // it is unsaved work that must block leaving, survive the drawer closing, and go on Cancel.
+  const [metadataInvalidDraft, setMetadataInvalidDraft] = useState<string | undefined>(undefined);
   const [baseline, setBaseline] = useState<RoutingEditorBaseline>(() => routingEditorBaseline(model));
   const reloadGeneration = useRef(0);
   const latestModel = useRef(model);
@@ -60,9 +63,8 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   const form = useRoutingForm(
     model,
     (value, submittedForm) => {
-      const savedTopology = { providers: value.providers };
       const metadataAtSubmit = metadataForm.state.values;
-      const savedMetadata = metadataDraftsClean(metadataAtSubmit);
+      const submitted = { form: { providers: value.providers }, metadata: metadataDraftsClean(metadataAtSubmit) };
       mutation.mutate(
         {
           modelId: model.modelId,
@@ -77,22 +79,8 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
           onSuccess: (saved) => {
             mutation.reset();
             setStale(false);
-            // The PUT answers with the refreshed inventory, and that is what the forms settle on: the
-            // server may have rounded or clamped a value, or a Provider may have joined or left while
-            // the request was out, so the submitted snapshot can differ from what was stored. When the
-            // query then delivers the same inventory, the identity effect resets to it again, which is
-            // the same values, whichever of the two lands first.
-            const next = saved.models.find((entry) => entry.modelId === model.modelId);
-            if (next === undefined) {
-              setBaseline((previous) => ({ ...previous, form: savedTopology, metadata: savedMetadata }));
-              submittedForm.reset(savedTopology);
-              metadataForm.reset(savedMetadata);
-              return;
-            }
-            const stored = routingEditorBaseline(next);
-            setBaseline(stored);
-            submittedForm.reset(stored.form);
-            metadataForm.reset(stored.metadata);
+            const stored = saved.models.find((entry) => entry.modelId === model.modelId);
+            setBaseline(settleRoutingEditorSave({ form: submittedForm, metadataForm }, stored, submitted, baseline));
           },
           onError: (error) => {
             if (isStaleRoutingError(error)) setStale(true);
@@ -151,7 +139,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
   const canSubmit = useStore(form.store, (state) => state.canSubmit);
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
   const metadataValues = useStore(metadataForm.store, (state) => state.values);
-  const dirtyTabs = routingDirtyTabs(topologyDirty, metadataValues);
+  const dirtyTabs = routingDirtyTabs(topologyDirty, metadataValues, metadataInvalidDraft !== undefined);
   const routeDirty = dirtyTabs.length > 0;
   const canSave =
     writable &&
@@ -181,6 +169,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     setStale(false);
     mutation.reset();
     setMetadataValid(true);
+    setMetadataInvalidDraft(undefined);
     // A background refetch that arrived while the draft was dirty was deliberately not adopted, and
     // the identity effect already recorded that revision, so it will never fire again for it.
     // Discarding is the moment to take the server's truth; without this the editor stays on values
@@ -244,5 +233,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     saveFailed: mutation.error != null && !isStaleRoutingError(mutation.error),
     metadataValid,
     setMetadataValid,
+    metadataInvalidDraft,
+    setMetadataInvalidDraft,
   };
 };

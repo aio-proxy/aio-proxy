@@ -77,6 +77,7 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
     return (
       <RoutingTable
         models={visible}
+        vendorModels={models}
         traffic={index}
         lab={search.lab}
         onLabChange={(lab) => onSearchChange(withRoutingFilters(search, { lab }))}

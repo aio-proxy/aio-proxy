@@ -21,6 +21,8 @@ interface RoutingModelDrawerBodyProps {
   readonly model: DashboardRoutingModel;
   readonly writable: boolean;
   readonly setMetadataValid: (valid: boolean) => void;
+  readonly metadataInvalidDraft: string | undefined;
+  readonly setMetadataInvalidDraft: (text: string | undefined) => void;
 }
 
 export const RoutingModelDrawerBody: React.FC<RoutingModelDrawerBodyProps> = ({
@@ -29,6 +31,8 @@ export const RoutingModelDrawerBody: React.FC<RoutingModelDrawerBodyProps> = ({
   model,
   writable,
   setMetadataValid,
+  metadataInvalidDraft,
+  setMetadataInvalidDraft,
 }) => {
   const { inherited } = useModelReference(model.modelId, metadata);
   const inheritedRecord = inherited as MetadataRecord | undefined;
@@ -42,6 +46,8 @@ export const RoutingModelDrawerBody: React.FC<RoutingModelDrawerBodyProps> = ({
             value={field.state.value.value}
             onChange={(next) => field.handleChange({ touched: true, value: next })}
             onValidityChange={setMetadataValid}
+            invalidDraft={metadataInvalidDraft}
+            onInvalidDraftChange={setMetadataInvalidDraft}
             readOnly={!writable}
           >
             <RoutingProviderOverrides

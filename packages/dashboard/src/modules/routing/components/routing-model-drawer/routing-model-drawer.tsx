@@ -28,6 +28,9 @@ interface RoutingModelDrawerProps {
   readonly model: DashboardRoutingModel;
   readonly writable: boolean;
   readonly setMetadataValid: (valid: boolean) => void;
+  /** Invalid metadata text the page keeps, so it survives the drawer closing and reopening. */
+  readonly metadataInvalidDraft: string | undefined;
+  readonly setMetadataInvalidDraft: (text: string | undefined) => void;
 }
 
 /**
@@ -42,6 +45,8 @@ export const RoutingModelDrawer: React.FC<RoutingModelDrawerProps> = ({
   model,
   writable,
   setMetadataValid,
+  metadataInvalidDraft,
+  setMetadataInvalidDraft,
 }) => {
   const isMobile = useIsMobile();
   return (
@@ -76,6 +81,8 @@ export const RoutingModelDrawer: React.FC<RoutingModelDrawerProps> = ({
               model={model}
               writable={writable}
               setMetadataValid={setMetadataValid}
+              metadataInvalidDraft={metadataInvalidDraft}
+              setMetadataInvalidDraft={setMetadataInvalidDraft}
             />
           )}
         </metadataForm.Subscribe>

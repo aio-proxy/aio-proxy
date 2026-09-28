@@ -493,6 +493,31 @@ describe('ModelMetadataEditor', () => {
   });
 });
 
+test('an invalid draft is reported to the owner and restored on the next mount', async () => {
+  // The drawer unmounts the editor on close; the owner keeps the text so it is still there on reopen.
+  const onInvalidDraftChange = rs.fn();
+  const { unmount } = render(
+    <ModelMetadataEditor
+      model="model-a"
+      value={{ name: 'A' }}
+      onChange={rs.fn()}
+      onInvalidDraftChange={onInvalidDraftChange}
+    />,
+    { wrapper },
+  );
+  fireEvent.click(await screen.findByTestId('metadata-tab-json'));
+  fireEvent.change(await jsonDraftField(), { target: { value: '{"name":' } });
+  await waitFor(() => expect(onInvalidDraftChange).toHaveBeenLastCalledWith('{"name":'));
+  unmount();
+
+  render(<ModelMetadataEditor model="model-a" value={{ name: 'A' }} onChange={rs.fn()} invalidDraft={'{"name":'} />, {
+    wrapper,
+  });
+
+  // Unparseable text cannot be shown as a form, so the editor opens on it in JSON.
+  expect((await jsonDraftField()).value).toBe('{"name":');
+});
+
 test('locks the form and the JSON editor when the owner says the config cannot be written', async () => {
   // A disabled fieldset reaches the visual inputs but never CodeMirror, so the JSON pane needs the
   // prop of its own — otherwise a read-only user can still type a draft nothing can save.

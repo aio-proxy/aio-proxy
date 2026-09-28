@@ -35,6 +35,14 @@ export interface ModelMetadataEditorProps {
    * what the user sees.
    */
   readonly onValidityChange?: (valid: boolean) => void;
+  /**
+   * Text that did not parse or pass the schema, handed back while it is the visible draft and
+   * `undefined` otherwise. An invalid draft never reaches `onChange`, so without this the owner could
+   * not tell it apart from no edit at all: it would neither block leaving nor survive a remount.
+   */
+  readonly onInvalidDraftChange?: (text: string | undefined) => void;
+  /** An invalid draft the owner kept from an earlier mount, restored in place of `value`. */
+  readonly invalidDraft?: string | undefined;
   /** Shows the metadata without letting it be edited, for a config the dashboard cannot write. */
   readonly readOnly?: boolean;
   /** Shown below the form, above the JSON link; hidden while the JSON editor replaces the form. */
@@ -68,6 +76,8 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
   onChange,
   onValidityChange,
   readOnly = false,
+  invalidDraft,
+  onInvalidDraftChange,
   children,
 }) => {
   const editorId = useId();
@@ -81,7 +91,7 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
       }),
     [slugs.data?.slugs],
   );
-  const [draft, setDraft] = useState(() => serialize(value));
+  const [draft, setDraft] = useState(() => invalidDraft ?? serialize(value));
   const [mode, setMode] = useState<'visual' | 'json'>('visual');
   // Re-sync from outside (owner reseeded after a reload) but never from our own echo: when the
   // incoming value is what the current draft already parses to, the draft is the better display.
@@ -104,6 +114,9 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
   useEffect(() => {
     onValidityChange?.(valid);
   }, [valid, onValidityChange]);
+  useEffect(() => {
+    onInvalidDraftChange?.(valid ? undefined : draft);
+  }, [valid, draft, onInvalidDraftChange]);
 
   const updateDraft = (next: string) => {
     setDraft(next);
@@ -211,6 +224,7 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
               schema={ModelMetadataJsonSchema}
               externalInvalid={!valid}
               readOnly={readOnly}
+              initialDraft={invalidDraft}
               onDraftChange={updateDraft}
               onValueChange={handleJsonValueChange}
             />

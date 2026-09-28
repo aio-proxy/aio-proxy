@@ -3,7 +3,12 @@ import type { DashboardRoutingModel } from '@aio-proxy/types';
 import { routingMetadataTouched } from '../../lib/routing-metadata-draft';
 import type { useRoutingForm } from '../use-routing-form';
 import type { useRoutingMetadataForm } from '../use-routing-metadata-form';
-import { routingEditorRebase, type RoutingEditorBaseline, type RoutingEditorRebase } from './routing-editor-baseline';
+import {
+  routingEditorBaseline,
+  routingEditorRebase,
+  type RoutingEditorBaseline,
+  type RoutingEditorRebase,
+} from './routing-editor-baseline';
 
 export type RoutingEditorForms = {
   readonly form: ReturnType<typeof useRoutingForm>;
@@ -49,4 +54,28 @@ export const rebaseRoutingEditorMembership = (
   );
   applyRoutingEditorRebase(forms, rebased);
   return rebased.baseline;
+};
+
+/**
+ * Settle both forms after a successful save and return the baseline they now sit on.
+ *
+ * The PUT answers with the refreshed inventory, and that is what the forms settle on: the server may
+ * have rounded or clamped a value, or a Provider may have joined or left while the request was out,
+ * so the submitted snapshot can differ from what was stored. When the query then delivers the same
+ * inventory, the identity effect resets to it again, which is the same values whichever lands first.
+ * Only a response that omits the model falls back to the submitted values.
+ */
+export const settleRoutingEditorSave = (
+  forms: {
+    readonly form: { readonly reset: (values: RoutingEditorBaseline['form']) => void };
+    readonly metadataForm: { readonly reset: (values: RoutingEditorBaseline['metadata']) => void };
+  },
+  stored: DashboardRoutingModel | undefined,
+  submitted: Pick<RoutingEditorBaseline, 'form' | 'metadata'>,
+  previous: RoutingEditorBaseline,
+): RoutingEditorBaseline => {
+  const baseline = stored === undefined ? { ...previous, ...submitted } : routingEditorBaseline(stored);
+  forms.form.reset(baseline.form);
+  forms.metadataForm.reset(baseline.metadata);
+  return baseline;
 };

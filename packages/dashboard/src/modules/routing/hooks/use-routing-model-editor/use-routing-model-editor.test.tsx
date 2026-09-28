@@ -254,6 +254,23 @@ test('blocks navigation while any tab is dirty and allows it when clean', () => 
   expect(beforeUnloadEnabledFor()).toBe(true);
 });
 
+test('invalid metadata text is unsaved work: it blocks leaving and Cancel drops it', () => {
+  // Text that does not parse never reaches the form, so the form alone would read as clean and let
+  // the user leave with the draft silently lost.
+  const { result } = renderEditor();
+
+  act(() => result.current.setMetadataInvalidDraft('{"name":'));
+
+  expect(result.current.dirtyTabs).toEqual(['metadata']);
+  expect(blockerEnabledFor()).toBe(true);
+
+  act(() => result.current.discard());
+
+  expect(result.current.metadataInvalidDraft).toBeUndefined();
+  expect(result.current.dirtyTabs).toEqual([]);
+  expect(blockerEnabledFor()).toBe(false);
+});
+
 test('invalid metadata blocks Save until the draft is repaired', async () => {
   const { result, mutate } = renderEditor();
 
