@@ -9,6 +9,7 @@ import { Link } from '@tanstack/react-router';
 import { format, parseISO } from 'date-fns';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
+import { routingTrafficChartRows, routingTrafficSeriesKey } from '../../lib/routing-traffic-chart';
 import { routingTrafficBucketsQueryOptions } from '../../services/routing-traffic-service';
 
 export interface RoutingModelTrafficTabProps {
@@ -67,17 +68,11 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
     return format(parseISO(value), pattern, { locale: dateLocale });
   };
 
-  // Display-only: bucket counts stay well below MAX_SAFE_INTEGER, so Number() is exact for the chart.
-  const chartData = bucketsData.buckets.map((bucket) => ({
-    bucket: bucket.key,
-    ...Object.fromEntries(
-      bucketsData.providerIds.map((providerId) => [providerId, Number(bucket.values[providerId] ?? 0n)]),
-    ),
-  }));
+  const chartData = routingTrafficChartRows(bucketsData.providerIds, bucketsData.buckets);
 
   const chartConfig = Object.fromEntries(
     bucketsData.providerIds.map((providerId, index) => [
-      providerId,
+      routingTrafficSeriesKey(index),
       { label: providerId, color: `var(--chart-${(index % 5) + 1})` },
     ]),
   ) satisfies ChartConfig;
@@ -127,7 +122,8 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
           {bucketsData.providerIds.map((providerId, index) => (
             <Bar
               key={providerId}
-              dataKey={providerId}
+              dataKey={routingTrafficSeriesKey(index)}
+              name={providerId}
               fill={`var(--chart-${(index % 5) + 1})`}
               stackId="traffic"
               radius={index === bucketsData.providerIds.length - 1 ? [4, 4, 0, 0] : 0}

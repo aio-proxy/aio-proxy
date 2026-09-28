@@ -294,6 +294,17 @@ describe('ModelMetadataEditor', () => {
     await waitFor(() => expect(emitted).toBeUndefined());
   });
 
+  test('undoing the last override after the drawer reopened still drops the pinned match', async () => {
+    // The drawer unmounts the form on close, so this mount has no memory of pinning `extend`; it has
+    // to recognize a bare `extend` that only repeats the automatic match from the value alone.
+    mocks.lookup.mockResolvedValue({ slug: 'openai/gpt-5', metadata: { name: 'GPT-5' } });
+    renderEditor({ extend: 'openai/gpt-5', name: 'GPT-5' });
+
+    fireEvent.click(await overrideSwitch(nameLabel()));
+
+    await waitFor(() => expect(emitted).toBeUndefined());
+  });
+
   test('the JSON draft names the reference first', async () => {
     mocks.lookup.mockResolvedValue({ slug: 'openai/gpt-5', metadata: { name: 'GPT-5' } });
     renderEditor();

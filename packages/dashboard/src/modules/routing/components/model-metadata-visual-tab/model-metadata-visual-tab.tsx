@@ -2,6 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
+import { useQuery } from '@tanstack/react-query';
 import type React from 'react';
 import { useState } from 'react';
 
@@ -25,6 +26,7 @@ import {
   withKey,
   withNested,
 } from '../../lib/model-metadata-fields';
+import { modelsDevLookupQueryOptions } from '../../services/models-dev-service';
 import { ModelMetadataCapabilityField } from './model-metadata-capability-field';
 import { ModelMetadataExtendField } from './model-metadata-extend-field';
 import { ModelMetadataGroup } from './model-metadata-group';
@@ -50,21 +52,18 @@ export const ModelMetadataVisualTab: React.FC<ModelMetadataVisualTabProps> = ({ 
   const inheritedRecord = inherited as MetadataRecord | undefined;
 
   // The first override of a model that follows its automatic match writes that match into `extend`,
-  // so the saved metadata names what it inherits from instead of relying on the model ID lookup. It
-  // is taken back out when every override is undone, leaving the config as it was.
-  const [pinned, setPinned] = useState<string | undefined>(undefined);
+  // so the saved metadata names what it inherits from instead of relying on the model ID lookup. When
+  // every override is undone, an `extend` that only repeats the automatic match is taken back out:
+  // without it the proxy falls back to that same model, so keeping it would save a change that says
+  // nothing. This is read off the value itself rather than remembered, because the drawer unmounts
+  // this form on close and a remembered flag would not survive to the undo.
+  const automaticMatch = useQuery(modelsDevLookupQueryOptions(model)).data?.slug ?? undefined;
   const onChange = (next: MetadataRecord) => {
     const { extend: nextExtend, ...fields } = next;
     const overrides = Object.keys(fields).length > 0;
-    if (matched && overrides) {
-      setPinned(slug);
-      emit({ extend: slug, ...fields });
-    } else if (pinned !== undefined && nextExtend === pinned && !overrides) {
-      setPinned(undefined);
-      emit(fields);
-    } else {
-      emit(next);
-    }
+    if (matched && overrides) emit({ extend: slug, ...fields });
+    else if (!overrides && nextExtend !== undefined && nextExtend === automaticMatch) emit(fields);
+    else emit(next);
   };
 
   // A switch turned on for a field the reference model lacks has no value to seed, and an absent key
@@ -165,8 +164,7 @@ export const ModelMetadataVisualTab: React.FC<ModelMetadataVisualTabProps> = ({ 
           slug={slug}
           matched={matched}
           onValueChange={(next) => {
-            // A reference picked or cleared by hand is the user's choice, never taken back out.
-            setPinned(undefined);
+            // A pick or clear goes straight to the draft; it is not an override to pin a match for.
             emit(withKey(value, 'extend', next));
           }}
         />
