@@ -1,6 +1,7 @@
 # shadcn UI Source
 
-Files in this directory are managed by the shadcn CLI and must not be edited manually.
+Files in this directory are managed by the shadcn CLI and must not be edited manually, except the
+hand-authored components listed at the end.
 
 Run additions and overwrites only from packages/ui:
 
@@ -31,3 +32,17 @@ edited by hand.
   `onCheckedChange` to `(checked: boolean) => void`. The branch is deliberately limited to
   `size="default"`: `appearance: auto` honours only `accent-color`, so the `sm` geometry cannot be
   reproduced natively.
+
+## Hand-Authored Components
+
+Components the shadcn registry does not ship yet, written the way its generated files are (one
+function per part, a `data-slot` on each, `cn` merging, the same tokens as the neighbouring controls).
+They are not in the registry, so `shadcn add` never overwrites them. When the registry gains one,
+replace the file with the generated version and move call sites over to its API.
+
+- `number-field.tsx`: Base UI `number-field` (`NumberField`, `NumberFieldGroup`, `NumberFieldInput`,
+  `NumberFieldDecrement`, `NumberFieldIncrement`, `NumberFieldScrubArea`,
+  `NumberFieldScrubAreaCursor`). The group carries `Input`'s frame (`h-8`, `rounded-2xl`,
+  `bg-input/50`, ring focus, destructive invalid state); the steppers default to lucide minus/plus. Base UI's English accessible names are not let through:
+  the steppers require a localized `aria-label` (a compile error otherwise), and the input drops the
+  default `aria-roledescription="Number field"` unless the caller passes one.
