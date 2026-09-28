@@ -32,6 +32,10 @@ edited by hand.
   `onCheckedChange` to `(checked: boolean) => void`. The branch is deliberately limited to
   `size="default"`: `appearance: auto` honours only `accent-color`, so the `sm` geometry cannot be
   reproduced natively.
+- `card.tsx`: `Card` is built on `useRender` (with `mergeProps`, like `badge.tsx`) so it accepts a
+  `render` prop, and exposes `slot`/`size` as state instead of hand-written `data-*` attributes. The
+  dashboard's Agent cards render the whole card as a router link through it; wrapping a `Card` in an
+  `<a>` instead nests the card's ring and focus styles inside a second focus target.
 
 ## Hand-Authored Components
 
@@ -43,6 +47,7 @@ replace the file with the generated version and move call sites over to its API.
 - `number-field.tsx`: Base UI `number-field` (`NumberField`, `NumberFieldGroup`, `NumberFieldInput`,
   `NumberFieldDecrement`, `NumberFieldIncrement`, `NumberFieldScrubArea`,
   `NumberFieldScrubAreaCursor`). The group carries `Input`'s frame (`h-8`, `rounded-2xl`,
-  `bg-input/50`, ring focus, destructive invalid state); the steppers default to lucide minus/plus. Base UI's English accessible names are not let through:
-  the steppers require a localized `aria-label` (a compile error otherwise), and the input drops the
-  default `aria-roledescription="Number field"` unless the caller passes one.
+  `bg-input/50`, ring focus, destructive invalid state); the steppers default to lucide minus/plus.
+  Base UI's English accessible names are not let through: the steppers require a localized
+  `aria-label` (a compile error otherwise), and the input drops the default
+  `aria-roledescription="Number field"` unless the caller passes one.

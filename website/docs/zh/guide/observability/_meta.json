@@ -1,0 +1,22 @@
+[
+  {
+    "type": "file",
+    "name": "dashboard-overview",
+    "label": "控制台概览"
+  },
+  {
+    "type": "file",
+    "name": "traces",
+    "label": "链路追踪与排查"
+  },
+  {
+    "type": "file",
+    "name": "usage-and-costs",
+    "label": "用量与计费统计"
+  },
+  {
+    "type": "file",
+    "name": "opentelemetry",
+    "label": "OpenTelemetry 导出"
+  }
+]

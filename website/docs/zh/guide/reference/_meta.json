@@ -1,0 +1,12 @@
+[
+  {
+    "type": "file",
+    "name": "cli",
+    "label": "CLI 命令行手册"
+  },
+  {
+    "type": "file",
+    "name": "troubleshooting",
+    "label": "常见问题与排查"
+  }
+]

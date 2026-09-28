@@ -1,0 +1,122 @@
+import { getLocale, m } from '@aio-proxy/i18n';
+import { agentDescriptor, type AgentLocalStatus, type AgentTarget } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Skeleton } from '@aio-proxy/ui/components/skeleton';
+import { BookOpenIcon } from 'lucide-react';
+
+import { PageContainer } from '@/components/page-container';
+
+import { AGENT_ICONS } from '../../components/agent-icons';
+import { AgentNotes } from '../../components/agent-notes';
+import { AgentSetupPanel } from '../../components/agent-setup-panel';
+import { AgentStatusPanel } from '../../components/agent-status-panel';
+import { DetailSection } from '../../components/detail-section';
+import { InstallationsTable } from '../../components/installations-table';
+import { LocalSetupBanner } from '../../components/local-setup-banner';
+import { RemoveAgentDialog } from '../../components/remove-agent-dialog';
+import { useAgentsSnapshot } from '../../hooks/use-agents-snapshot';
+import { agentDocsUrl } from '../../lib/agent-docs';
+import { AGENT_DISPLAY_NAMES, agentInstallations } from '../../lib/agent-state';
+
+interface AgentDetailPageProps {
+  readonly target: AgentTarget;
+}
+
+const REMOVABLE = new Set<AgentLocalStatus>(['configured', 'outdated', 'modified', 'missing']);
+
+export const AgentDetailPage: React.FC<AgentDetailPageProps> = ({ target }) => {
+  const descriptor = agentDescriptor(target);
+  const name = AGENT_DISPLAY_NAMES[target];
+  const Icon = AGENT_ICONS[target];
+  const snapshot = useAgentsSnapshot();
+  const content = (() => {
+    if (snapshot.isLoading) return <Skeleton className="h-64 w-full" />;
+    if (snapshot.isError || snapshot.data === undefined)
+      return (
+        <p role="alert" className="text-sm text-destructive">
+          {m['dashboard.agents.load_failed']()}
+        </p>
+      );
+    const data = snapshot.data;
+    const local = data.local?.find((row) => row.target === target);
+    const removable = local !== undefined && REMOVABLE.has(local.status);
+    const pendingLogin =
+      descriptor.loginCommand !== undefined &&
+      local?.installationId !== undefined &&
+      (local.status === 'configured' || local.status === 'outdated') &&
+      !data.installations.some(
+        (item) => item.installationId === local.installationId && item.authorization === 'active',
+      )
+        ? local.installationId
+        : undefined;
+    return (
+      <div className="space-y-4">
+        <LocalSetupBanner snapshot={data} />
+        {local === undefined ? null : (
+          <DetailSection title={m['dashboard.agents.section.status']()}>
+            <AgentStatusPanel local={local} />
+          </DetailSection>
+        )}
+        {data.localSetup === 'unavailable' ? null : (
+          <DetailSection title={m['dashboard.agents.section.setup']()}>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <AgentSetupPanel
+                key={target}
+                descriptor={descriptor}
+                local={local}
+                localSetup={data.localSetup}
+                {...(pendingLogin === undefined ? {} : { pendingLoginInstallationId: pendingLogin })}
+                activeInstallationIds={
+                  new Set(
+                    data.installations
+                      .filter((item) => item.authorization === 'active')
+                      .map((item) => item.installationId),
+                  )
+                }
+              />
+              <RemoveAgentDialog target={target} removable={removable} disabled={data.localSetup !== 'available'} />
+            </div>
+          </DetailSection>
+        )}
+        <DetailSection title={m['dashboard.agents.section.authorizations']()}>
+          <InstallationsTable
+            installations={agentInstallations(data, target)}
+            canRevoke={data.localSetup === 'available'}
+            emptyMessage={m['dashboard.agents.table.empty']()}
+          />
+        </DetailSection>
+        <DetailSection title={m['dashboard.agents.section.notes']()}>
+          <AgentNotes descriptor={descriptor} localVisible={data.local !== undefined} />
+        </DetailSection>
+      </div>
+    );
+  })();
+  return (
+    <PageContainer
+      title={
+        <span className="flex items-center gap-2">
+          <Icon size={24} className="shrink-0" />
+          {name}
+        </span>
+      }
+      extra={
+        <Button
+          variant="outline"
+          size="sm"
+          nativeButton={false}
+          render={<a href={agentDocsUrl(target, getLocale())} target="_blank" rel="noreferrer" />}
+        >
+          <BookOpenIcon data-icon="inline-start" />
+          {m['dashboard.agents.docs']()}
+        </Button>
+      }
+      breadcrumbs={[
+        { label: m['dashboard.menus.configuration']() },
+        { label: m['dashboard.agents.title'](), to: '/agents' },
+        { label: name },
+      ]}
+    >
+      {content}
+    </PageContainer>
+  );
+};

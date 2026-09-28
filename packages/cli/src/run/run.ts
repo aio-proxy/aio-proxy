@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname } from 'node:path';
 
 import { AtomicConfigFile, configPath, parseRuntimeConfig } from '@aio-proxy/core';
@@ -18,6 +19,24 @@ import { formatRunSummary } from '../ui';
 import { createCliAutoUpdateHooks, migratePreMarkerManagedUnit } from './auto-update-hooks';
 
 const VERSION = packageJson.version;
+
+// Loaded lazily: the Agent integration code is only needed when local one-click setup is allowed.
+const localAgentHost = async (host: string, port: number) => {
+  const { connectHost, resolveAgentEndpoint } = await import('../agent/control-plane');
+  const { createAgentHostPort, shouldEnableAgentHost } = await import('../agent/host-port');
+  const enabled = await shouldEnableAgentHost({
+    env: process.env,
+    // Agent files record the configured endpoint; a --host/--port override would point them elsewhere.
+    resolveEndpoint: async () => {
+      const configured = await resolveAgentEndpoint();
+      if (configured !== controlBaseUrl(connectHost(host), String(port)))
+        throw new Error('Agent endpoint differs from the bound address');
+      return configured;
+    },
+    home: homedir,
+  });
+  return enabled ? createAgentHostPort() : undefined;
+};
 // The schema ships with @aio-proxy/types (its Rslib build emits it), not the
 // launcher. unpkg (unlike jsdelivr) resolves the package's `exports` map, so the
 // bare path works without `dist/`. Deliberately unpinned: nothing rewrites this
@@ -211,6 +230,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   assertPortAvailable(host, port);
   await migratePreMarkerManagedUnit();
   const dashboardAssets = deps.dashboardAssets();
+  const agentHost = await localAgentHost(host, port);
   const app = await bootProxyServer({
     config: raw,
     configPath: resolvedConfigPath,
@@ -219,6 +239,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
     port,
     version: VERSION,
     autoUpdate: createCliAutoUpdateHooks(),
+    ...(agentHost === undefined ? {} : { agentHost }),
   });
   // LLM responses stream with long quiet gaps (slow upstream TTFB, reasoning
   // pauses). Bun's default 10s idle timeout would close the client connection

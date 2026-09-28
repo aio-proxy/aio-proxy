@@ -2,18 +2,63 @@ import { expect, spyOn, test } from 'bun:test';
 
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 
+import { createOpenAIChatGPTPlugin, englishPresentationText } from '../../plugin/plugin';
 import { guardianDecision } from './decision';
-import { guardianRequest, syntheticGuardianInput } from './fixture';
-import { createGuardianRawInvoke } from './guardian';
+import { guardianRequest as fixtureGuardianRequest, syntheticGuardianInput } from './fixture';
+import { createGuardianPreRouteInvoke, createGuardianRawInvoke } from './guardian';
 import { guardianQuestions } from './questions';
 import { guardianPayloadHint, projectGuardianRequest } from './request';
 import { guardianResponse } from './response';
+
+function guardianRequest(input: readonly unknown[]): Request {
+  const visibleInput = structuredClone(input) as Record<string, unknown>[];
+  for (const item of visibleInput) {
+    if (item['type'] === 'reasoning') delete item['encrypted_content'];
+  }
+  return fixtureGuardianRequest(visibleInput);
+}
+
+const visibleGuardianInput = structuredClone(syntheticGuardianInput) as Record<string, unknown>[];
+delete visibleGuardianInput[4]!['encrypted_content'];
+
+test('setup closes the wrapper over schema-parsed options', async () => {
+  let registered: Function | undefined;
+  let preRouteRegistered: Function | undefined;
+  const plugin = createOpenAIChatGPTPlugin(englishPresentationText);
+  await plugin.setup(
+    {
+      oauth: { register() {} },
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      raw: {
+        register(_protocol: 'openai-response', phase: 'wrap' | 'pre-route', hook: Function) {
+          if (phase === 'wrap') registered = hook;
+          else preRouteRegistered = hook;
+        },
+      },
+    } as never,
+    {},
+  );
+  const calls: string[] = [];
+  const invoke = registered!({
+    original: async () => {
+      calls.push('original');
+      return new Response();
+    },
+    evaluate: async () => {
+      calls.push('evaluate');
+      return {};
+    },
+  });
+  await invoke(new Request('http://localhost/v1/responses'), undefined, { upstreamStream: false });
+  expect(calls).toEqual(['original']);
+  expect(preRouteRegistered).toBeFunction();
+});
 
 test('preserves complete inline decision evidence and original request', async () => {
   const original = guardianRequest(syntheticGuardianInput);
   const body = await original.clone().json();
   const projection = await projectGuardianRequest(original);
-  expect(projection?.state.input).toEqual(syntheticGuardianInput);
+  expect(projection?.state.input).toEqual(body.input);
   expect(projection?.state.pending_action).toEqual({
     tool: 'exec_command',
     command: ['bun', 'test'],
@@ -279,7 +324,7 @@ for (const [name, change] of cases.filter(([name]) => name !== 'current assistan
 
 test('matches guardian on any resolved model and exact creation transport', async () => {
   const other = guardianRequest(syntheticGuardianInput);
-  expect((await projectGuardianRequest(other))?.state.input).toEqual(syntheticGuardianInput);
+  expect((await projectGuardianRequest(other))?.state.input).toEqual(visibleGuardianInput);
   expect(await other.text()).toContain('"model":"codex-auto-review"');
   for (const path of ['/v1/responses/compact', '/v1/responses/']) {
     const body = await guardianRequest(syntheticGuardianInput).text();
@@ -376,7 +421,9 @@ for (const index of [1, 2, 3, 4]) {
 
 test('preserves completed items with optional string IDs', async () => {
   const input = syntheticGuardianInput.map((item, index) => ({ ...item, id: `item-${index}`, status: 'completed' }));
-  expect((await projectGuardianRequest(guardianRequest(input)))?.state.input).toEqual(input);
+  const expected = structuredClone(input) as Record<string, unknown>[];
+  delete expected[4]!['encrypted_content'];
+  expect((await projectGuardianRequest(guardianRequest(input)))?.state.input).toEqual(expected);
 });
 
 const guardianLabels = {
@@ -681,6 +728,129 @@ const wrapperOptions = {
   guardianModelId: 'review',
 } as const;
 
+async function configuredGuardianRequest(stream: boolean): Promise<Request> {
+  const request = guardianRequest(syntheticGuardianInput);
+  const body = (await request.json()) as Record<string, any>;
+  body.model = 'arbitrary-review-model';
+  body.stream = stream;
+  return new Request(request.url, {
+    method: request.method,
+    headers: request.headers,
+    body: JSON.stringify(body),
+  });
+}
+
+for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const) {
+  for (const outcome of ['allow', 'deny'] as const) {
+    for (const stream of [false, true]) {
+      test(`pre-route ${strategy} handles ${outcome} ${stream ? 'streaming' : 'JSON'} decisions`, async () => {
+        let evaluations = 0;
+        const invoke = createGuardianPreRouteInvoke({
+          pluginOptions: { ...wrapperOptions, guardianStrategy: strategy },
+          evaluate: async (input) => {
+            evaluations++;
+            expect(input.providerId).toBe('system-one');
+            expect(input.modelId).toBe('review');
+            expect(input.body).toMatchObject({ model: 'review', state: { input: visibleGuardianInput } });
+            return outcome === 'allow'
+              ? choiceResult('low', 'unknown', 'allow', 'low_risk')
+              : choiceResult('critical', 'unknown', 'deny', 'critical_risk');
+          },
+        });
+
+        const response = await invoke(await configuredGuardianRequest(stream), wrapperContext);
+        const declined = strategy === 'systemOneReviewDenied' && outcome === 'deny';
+        expect(evaluations).toBe(1);
+        if (declined) expect(response).toBeUndefined();
+        else {
+          expect(response?.status).toBe(200);
+          expect(response?.headers.get('content-type')).toContain(stream ? 'text/event-stream' : 'application/json');
+          expect(await response!.text()).toContain(stream ? 'response.completed' : outcome);
+        }
+      });
+    }
+  }
+}
+
+test('pre-route leaves the original request body untouched and does not classify by model id', async () => {
+  const request = await configuredGuardianRequest(false);
+  const expected = await request.clone().text();
+  const invoke = createGuardianPreRouteInvoke({
+    pluginOptions: wrapperOptions,
+    evaluate: async () => choiceResult('low', 'unknown', 'allow', 'low_risk'),
+  });
+  const response = await invoke(request, wrapperContext);
+  expect(response?.status).toBe(200);
+  expect(await request.text()).toBe(expected);
+});
+
+test('pre-route declines non-Guardian requests before evaluator dispatch', async () => {
+  let evaluations = 0;
+  const request = await configuredGuardianRequest(false);
+  const body = (await request.json()) as Record<string, unknown>;
+  body.client_metadata = { 'x-openai-subagent': 'ordinary' };
+  const invoke = createGuardianPreRouteInvoke({
+    pluginOptions: wrapperOptions,
+    evaluate: async () => {
+      evaluations++;
+      return choiceResult('low', 'unknown', 'allow', 'low_risk');
+    },
+  });
+  expect(
+    await invoke(new Request(request.url, { method: 'POST', body: JSON.stringify(body) }), wrapperContext),
+  ).toBeUndefined();
+  expect(evaluations).toBe(0);
+});
+
+for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const) {
+  for (const result of ['invalid', 'error'] as const) {
+    test(`pre-route ${strategy} declines ${result} evaluation while caller remains live`, async () => {
+      const invoke = createGuardianPreRouteInvoke({
+        pluginOptions: { ...wrapperOptions, guardianStrategy: strategy },
+        evaluate:
+          result === 'invalid'
+            ? async () => ({})
+            : async () => {
+                throw new Error('evaluation failed');
+              },
+      });
+      await expect(invoke(await configuredGuardianRequest(false), wrapperContext)).resolves.toBeUndefined();
+    });
+  }
+}
+
+test('pre-route evaluation timeout declines without cancelling the live caller', async () => {
+  const deadline = new AbortController();
+  const started = Promise.withResolvers<void>();
+  const invoke = createGuardianPreRouteInvoke({
+    pluginOptions: wrapperOptions,
+    timeoutSignal: () => deadline.signal,
+    evaluate: async () => {
+      started.resolve();
+      return new Promise(() => {});
+    },
+  });
+  const pending = invoke(await configuredGuardianRequest(false), wrapperContext);
+  await started.promise;
+  deadline.abort(new DOMException('Timeout', 'TimeoutError'));
+  await expect(pending).resolves.toBeUndefined();
+});
+
+test('pre-route propagates caller cancellation instead of declining', async () => {
+  const caller = new AbortController();
+  const reason = new DOMException('Aborted', 'AbortError');
+  const invoke = createGuardianPreRouteInvoke({
+    pluginOptions: wrapperOptions,
+    evaluate: async () => {
+      caller.abort(reason);
+      return choiceResult('low', 'unknown', 'allow', 'low_risk');
+    },
+  });
+  await expect(
+    invoke(new Request(await configuredGuardianRequest(false), { signal: caller.signal }), wrapperContext),
+  ).rejects.toBe(reason);
+});
+
 for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const) {
   for (const outcome of ['allow', 'deny'] as const) {
     test(`wrapper ${strategy} returns final ${outcome} through the selected path`, async () => {
@@ -700,7 +870,7 @@ for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const) {
         evaluate: async (input) => {
           evaluations++;
           expect(input.providerId).toBe('system-one');
-          expect(input.body.state.input).toEqual(syntheticGuardianInput);
+          expect(input.body.state.input).toEqual(visibleGuardianInput);
           return outcome === 'allow'
             ? choiceResult('low', 'unknown', 'allow', 'low_risk')
             : choiceResult('critical', 'unknown', 'deny', 'critical_risk');
@@ -745,6 +915,25 @@ test('wrapper bypasses defaults, other resolved models and missing request conte
     expect(calls).toBe(1);
     expect(evaluations).toBe(0);
   }
+});
+
+test('wrapper bypasses unrecognized strategies', async () => {
+  let calls = 0;
+  let evaluations = 0;
+  const invoke = createGuardianRawInvoke({
+    pluginOptions: { ...wrapperOptions, guardianStrategy: 'futureStrategy' as never },
+    original: async () => {
+      calls++;
+      return new Response();
+    },
+    evaluate: async () => {
+      evaluations++;
+      throw new Error('must not evaluate');
+    },
+  });
+  await invoke(guardianRequest(syntheticGuardianInput), wrapperContext);
+  expect(calls).toBe(1);
+  expect(evaluations).toBe(0);
 });
 
 test('wrapper falls back once on invalid answers or evaluator failure', async () => {
@@ -941,6 +1130,14 @@ test('reasoning metadata remains eligible after raw retry removes only encrypted
       new Request('https://example.test/v1/responses', { method: 'POST', body: JSON.stringify(body) }),
     ),
   ).toBeUndefined();
+});
+
+test('rejects inaccessible opaque encrypted reasoning before Guardian dispatch', async () => {
+  expect(await projectGuardianRequest(fixtureGuardianRequest(syntheticGuardianInput))).toBeUndefined();
+
+  const visible = structuredClone(syntheticGuardianInput) as Record<string, unknown>[];
+  delete visible[4]!['encrypted_content'];
+  expect(await projectGuardianRequest(fixtureGuardianRequest(visible))).toBeDefined();
 });
 
 for (const abort of [false, true])

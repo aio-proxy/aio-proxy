@@ -21,12 +21,14 @@ test('switches Provider without rewriting model, comments or MCP', () => {
   const parsed = Bun.TOML.parse(actual);
   expect(parsed.model).toBe('keep-model');
   expect(parsed.model_provider).toBe('proxy.team');
+  expect(parsed.features).toEqual({ api_key_model_discovery: true });
   expect(actual).toContain('# chosen by user\nmodel = "keep-model"');
   expect(actual).toContain('[mcp_servers.local]\ncommand = "local-mcp"');
   expect(parsed.model_providers).toEqual({
     'proxy.team': {
       name: 'AIO Proxy',
       base_url: 'http://127.0.0.1:9317/v1',
+      model_catalog_url: 'http://127.0.0.1:9317/v1/models',
       wire_api: 'responses',
       requires_openai_auth: true,
       experimental_bearer_token: 'test-key',
@@ -49,6 +51,7 @@ test('preserves unrelated model provider tables and updates an inline provider',
   expect(parsed.model_providers['proxy.team']).toEqual({
     name: 'AIO Proxy',
     base_url: 'https://proxy/v1',
+    model_catalog_url: 'https://proxy/v1/models',
     wire_api: 'responses',
     requires_openai_auth: true,
     experimental_bearer_token: 'tok',
@@ -62,12 +65,13 @@ test('adds missing fields to an existing inline provider in source order', () =>
   expect(Bun.TOML.parse(actual).model_providers['proxy.team']).toEqual({
     name: 'AIO Proxy',
     base_url: 'url',
+    model_catalog_url: 'url/models',
     wire_api: 'responses',
     requires_openai_auth: true,
     experimental_bearer_token: 'token',
   });
   expect(actual).toContain(
-    'name = "AIO Proxy", base_url = "url", wire_api = "responses", requires_openai_auth = true, experimental_bearer_token = "token"',
+    'name = "AIO Proxy", base_url = "url", model_catalog_url = "url/models", wire_api = "responses", requires_openai_auth = true, experimental_bearer_token = "token"',
   );
 });
 
@@ -82,6 +86,7 @@ test('creates a header provider table beside an implicit dotted sibling', () => 
     'proxy.team': {
       name: 'AIO Proxy',
       base_url: 'url',
+      model_catalog_url: 'url/models',
       wire_api: 'responses',
       requires_openai_auth: true,
       experimental_bearer_token: 'token',
@@ -246,6 +251,7 @@ test('switches an inline command provider to keep-chatgpt without overlapping ed
     'aio-proxy': {
       name: 'AIO Proxy',
       base_url: 'http://proxy/v1',
+      model_catalog_url: 'http://proxy/v1/models',
       wire_api: 'responses',
       requires_openai_auth: true,
       experimental_bearer_token: 'token',

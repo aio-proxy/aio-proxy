@@ -14,7 +14,7 @@ type GuardianSystemOneBody = {
 export type GuardianEvaluate = (input: {
   readonly providerId: string;
   readonly modelId: string;
-  readonly body: GuardianSystemOneBody;
+  readonly body: unknown;
   readonly signal: AbortSignal;
   readonly logicalRequest: LogicalRequestContext;
 }) => Promise<unknown>;
@@ -23,13 +23,20 @@ type InvocationOptions = RawTransportOptions & {
   readonly __aioGuardianInvocation?: { originalTransportStarted: boolean; syntheticGuardianResponse: boolean };
 };
 
+type GuardianEvaluationInput = {
+  readonly pluginOptions: Partial<ChatGPTPluginOptions>;
+  readonly evaluate?: GuardianEvaluate;
+  readonly timeoutSignal?: (milliseconds: number) => AbortSignal;
+  readonly request: Request;
+  readonly context?: LogicalRequestContext;
+};
+
 export function createGuardianRawInvoke(input: {
   pluginOptions: Partial<ChatGPTPluginOptions>;
   original: RawTransport['invoke'];
   evaluate?: GuardianEvaluate;
   timeoutSignal?: (milliseconds: number) => AbortSignal;
 }): RawTransport['invoke'] {
-  const { pluginOptions, evaluate } = input;
   return async (request, context, options) => {
     const invocation = (options as InvocationOptions | undefined)?.__aioGuardianInvocation;
     const original = () => {
@@ -37,58 +44,76 @@ export function createGuardianRawInvoke(input: {
       if (invocation) invocation.originalTransportStarted = true;
       return input.original(request, context, options);
     };
-    if (
-      (pluginOptions.guardianStrategy !== 'systemOne' && pluginOptions.guardianStrategy !== 'systemOneReviewDenied') ||
-      evaluate === undefined ||
-      !context?.requestId ||
-      pluginOptions.guardianProviderId === undefined ||
-      pluginOptions.guardianModelId === undefined
-    )
-      return original();
-    const projected = await projectGuardianRequest(request);
-    request.signal.throwIfAborted();
-    if (projected === undefined) return original();
-    const deadlineAt = performance.now() + 8_000;
-    const evaluationSignal = AbortSignal.any([request.signal, (input.timeoutSignal ?? AbortSignal.timeout)(8_000)]);
-    const expired = () => {
-      request.signal.throwIfAborted();
-      return evaluationSignal.aborted || performance.now() >= deadlineAt;
-    };
-    const body: GuardianSystemOneBody = {
-      model: pluginOptions.guardianModelId,
-      state: projected.state,
-      questions: guardianQuestions(),
-    };
-    if (expired()) return original();
-    let evaluated: unknown;
-    try {
-      evaluated = await raceWithAbort(
-        () =>
-          evaluate({
-            providerId: pluginOptions.guardianProviderId!,
-            modelId: pluginOptions.guardianModelId!,
-            body,
-            signal: evaluationSignal,
-            logicalRequest: context,
-          }),
-        evaluationSignal,
-      );
-    } catch {
-      return original();
-    }
-    if (expired()) return original();
-    const decision = guardianDecision(evaluated, projected);
-    if (expired()) return original();
-    if (
-      decision === undefined ||
-      (decision['outcome'] === 'deny' && pluginOptions.guardianStrategy === 'systemOneReviewDenied')
-    )
-      return original();
-    const response = guardianResponse(decision, projected.stream, projected.model);
-    if (expired()) return original();
+    const response = await evaluateGuardian({ ...input, request, context });
+    if (response === undefined) return original();
     if (invocation) invocation.syntheticGuardianResponse = true;
     return response;
   };
+}
+
+export function createGuardianPreRouteInvoke(input: {
+  pluginOptions: Partial<ChatGPTPluginOptions>;
+  evaluate?: GuardianEvaluate;
+  timeoutSignal?: (milliseconds: number) => AbortSignal;
+}): (request: Request, context: LogicalRequestContext) => Promise<Response | undefined> {
+  return (request, context) => evaluateGuardian({ ...input, request, context });
+}
+
+async function evaluateGuardian(input: GuardianEvaluationInput): Promise<Response | undefined> {
+  const { pluginOptions, evaluate, request, context } = input;
+  if (
+    (pluginOptions.guardianStrategy !== 'systemOne' && pluginOptions.guardianStrategy !== 'systemOneReviewDenied') ||
+    evaluate === undefined ||
+    !context?.requestId ||
+    pluginOptions.guardianProviderId === undefined ||
+    pluginOptions.guardianModelId === undefined
+  )
+    return;
+  const providerId = pluginOptions.guardianProviderId;
+  const modelId = pluginOptions.guardianModelId;
+  const projected = await projectGuardianRequest(request);
+  request.signal.throwIfAborted();
+  if (projected === undefined) return;
+  const deadlineAt = performance.now() + 8_000;
+  const evaluationSignal = AbortSignal.any([request.signal, (input.timeoutSignal ?? AbortSignal.timeout)(8_000)]);
+  const expired = () => {
+    request.signal.throwIfAborted();
+    return evaluationSignal.aborted || performance.now() >= deadlineAt;
+  };
+  const body: GuardianSystemOneBody = {
+    model: modelId,
+    state: projected.state,
+    questions: guardianQuestions(),
+  };
+  if (expired()) return;
+  let evaluated: unknown;
+  try {
+    evaluated = await raceWithAbort(
+      () =>
+        evaluate({
+          providerId,
+          modelId,
+          body,
+          signal: evaluationSignal,
+          logicalRequest: context,
+        }),
+      evaluationSignal,
+    );
+  } catch {
+    request.signal.throwIfAborted();
+    return;
+  }
+  if (expired()) return;
+  const decision = guardianDecision(evaluated, projected);
+  if (expired()) return;
+  if (
+    decision === undefined ||
+    (decision['outcome'] === 'deny' && pluginOptions.guardianStrategy === 'systemOneReviewDenied')
+  )
+    return;
+  const response = guardianResponse(decision, projected.stream, projected.model);
+  if (expired()) return;
+  return response;
 }
 
 function raceWithAbort<T>(start: () => Promise<T>, signal: AbortSignal): Promise<T> {

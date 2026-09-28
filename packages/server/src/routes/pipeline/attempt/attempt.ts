@@ -33,6 +33,7 @@ import { attemptEmbeddingCandidate } from './embedding';
 import { createAttemptEmitter } from './emit';
 import { emitReject, handleAttemptError, unsupportedDispatch } from './error';
 import { attemptEvaluationCandidate } from './evaluation';
+import { guardianRaw } from './guardian';
 import { dispatchImageCandidate } from './image';
 import { attemptModelCandidate } from './model';
 import { attemptRawCandidate } from './raw';
@@ -54,6 +55,7 @@ type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly requestedModelId: string;
   readonly session: RequestTraceSession;
   readonly source: ProviderRouteSource;
+  readonly snapshot?: import('../../../runtime').ProviderRouteSnapshot;
   readonly streamRequested: boolean;
   readonly deferRelease: () => void;
   readonly resolution: LogicalSessionResolution;
@@ -84,6 +86,7 @@ function createAttemptLoopContext<TRequest, TContext>(
     resolution,
     session,
     source,
+    snapshot,
     streamRequested,
   } = options;
   const logContext = {
@@ -103,6 +106,7 @@ function createAttemptLoopContext<TRequest, TContext>(
     routerModels: options.config?.router.models,
     session,
     source,
+    snapshot,
     logicalRequest: resolution.context,
     routingContinuity: {
       ...(resolution.affinity === undefined ? {} : { observedAffinity: resolution.affinity }),
@@ -216,7 +220,7 @@ async function attemptLanguageCandidate<TRequest, TContext>(
     modelId: slot.candidate.modelId,
     ...requestPathProperty(ctx.rawRequest, ctx.httpRoute),
   });
-  if (raw !== undefined) return await attemptRawCandidate(ctx, slot, raw);
+  if (raw !== undefined) return await attemptRawCandidate(ctx, slot, guardianRaw(ctx, slot, raw));
   if (provider.model !== undefined) {
     slot.trace.transport = 'ai_sdk';
     slot.trace.targetProtocol = undefined;

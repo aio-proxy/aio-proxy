@@ -55,7 +55,7 @@ function harness(providers: RuntimeProviderInstance[]) {
   return {
     ...route,
     source,
-    host: createGuardianEvaluate(() => source, 'chatgpt'),
+    host: createGuardianEvaluate(() => source, { providerId: 'chatgpt', plugin: 'chatgpt' }),
     releases: () => releases,
     swap: (next: RuntimeProviderInstance[]) => {
       router = new Router(next);
@@ -240,7 +240,10 @@ test('invalid converted output retains usage once in a separate linked internal 
   const parent = withRequestId(logicalRequest.requestId, () =>
     recorder.begin({ inboundRequest: new Request('http://proxy/responses'), inboundProtocol: 'openai-response' }),
   );
-  const host = createGuardianEvaluate(() => ({ ...h.source, requestRecorder: recorder }), 'chatgpt');
+  const host = createGuardianEvaluate(() => ({ ...h.source, requestRecorder: recorder }), {
+    providerId: 'chatgpt',
+    plugin: 'chatgpt',
+  });
   await withRequestLogContext(
     { requestId: parent.requestId, rootContext: parent.rootContext, debug: true, logger: () => {} },
     async () => {

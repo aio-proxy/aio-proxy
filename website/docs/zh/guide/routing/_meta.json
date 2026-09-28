@@ -1,0 +1,12 @@
+[
+  {
+    "type": "file",
+    "name": "routing-rules",
+    "label": "路由与故障回退"
+  },
+  {
+    "type": "file",
+    "name": "protocols",
+    "label": "协议与透传机制"
+  }
+]

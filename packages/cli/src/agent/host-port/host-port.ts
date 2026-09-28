@@ -1,0 +1,258 @@
+import { AgentOperationError, type AgentHostPort } from '@aio-proxy/server';
+import {
+  agentDescriptor,
+  type AgentLocalState,
+  type AgentLocalStatus,
+  type AgentOperationErrorCode,
+  type AgentOperationResult,
+  type AgentTarget,
+} from '@aio-proxy/types';
+
+import { agentConfigure, agentRemove, commandDeps, type AgentCommandDeps, type AgentListTargetResult } from '../agent';
+import {
+  buildCodexSetupPlan,
+  configureCodexFromDashboard,
+  createCodexDashboardDeps,
+  resolveCodexExecutable,
+  restoreMigrationResult,
+  type CodexConfigureResult,
+  type CodexDashboardDeps,
+  type CodexListResult,
+} from '../codex';
+import { agentList } from '../list';
+
+export type AgentHostPortDeps = {
+  readonly command: AgentCommandDeps;
+  readonly codex: () => CodexDashboardDeps;
+  readonly codexDetected: () => boolean;
+};
+
+const ERROR_MESSAGES: ReadonlyArray<readonly [RegExp, AgentOperationErrorCode]> = [
+  [/ is not installed$/u, 'host_missing'],
+  [/^managed installation is required$/u, 'not_configured'],
+  [/^CODEX_(SETUP_ENDPOINT_CHANGED|AUTH_ENDPOINT_OR_PROVIDER_CHANGED)$/u, 'endpoint_changed'],
+  // A blocked revocation leaves a recovery journal behind, like an interrupted authorization.
+  [/^CODEX_AUTH_(OPERATION_PENDING|REVOKE_BLOCKED)$/u, 'recovery_required'],
+  [/operation is pending$|^Timed out waiting for process lock: |^Grok lock unverifiable$/u, 'locked'],
+  [/ is occupied$/u, 'occupied_provider_id'],
+];
+
+// Filesystem failures that mean the Agent's directory cannot be used as configured.
+const PATH_ERROR_CODES: ReadonlySet<unknown> = new Set(['EACCES', 'EPERM', 'ENOTDIR', 'EISDIR', 'ELOOP', 'EROFS']);
+
+/** Maps the CLI's existing failures onto the dashboard's closed error codes. */
+export function classifyAgentError(error: unknown): AgentOperationError | undefined {
+  if (error instanceof AgentOperationError) return error;
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 'access_denied') return new AgentOperationError('authorization_denied');
+  if (code === 'expired_token') return new AgentOperationError('authorization_expired');
+  if (PATH_ERROR_CODES.has(code)) return new AgentOperationError('path_unavailable');
+  if (!(error instanceof Error)) return undefined;
+  const match = ERROR_MESSAGES.find(([pattern]) => pattern.test(error.message));
+  return match === undefined ? undefined : new AgentOperationError(match[1]);
+}
+
+const classified = async <T>(run: () => Promise<T>): Promise<T> => {
+  try {
+    return await run();
+  } catch (error) {
+    throw classifyAgentError(error) ?? error;
+  }
+};
+
+const isOlder = (version: string, current: string): boolean => {
+  try {
+    return Bun.semver.order(version, current) < 0;
+  } catch {
+    return false;
+  }
+};
+
+const pluginStatus = (row: AgentListTargetResult, adapterVersion: string): AgentLocalStatus => {
+  // Grok's managed config can outlive its binary and is still removable, so its state is kept.
+  const leftover = 'configuration' in row && row.integration === 'managed';
+  if (!row.host.detected && !leftover) return 'not_installed';
+  // Newer formats are refused by configure and remove, so the dashboard must not offer either.
+  if (row.integration === 'unresolved' || row.integration === 'conflict' || row.integration === 'newer')
+    return 'conflict';
+  if (row.integration === 'absent') return 'not_configured';
+  if ('configuration' in row) {
+    if (row.configuration === 'current')
+      return row.marker !== undefined && isOlder(row.marker.adapterVersion, adapterVersion) ? 'outdated' : 'configured';
+    return row.configuration;
+  }
+  if (row.entry === 'missing') return 'missing';
+  return row.marker !== undefined && isOlder(row.marker.adapterVersion, adapterVersion) ? 'outdated' : 'configured';
+};
+
+const codexStatus = (codex: CodexListResult, detected: boolean, recovery: boolean): AgentLocalStatus => {
+  if (recovery) return 'recovery_required';
+  if (codex.status === 'absent') return detected ? 'not_configured' : 'not_installed';
+  return codex.status === 'managed' ? 'configured' : codex.status;
+};
+
+const configPathOf = async (target: AgentTarget, deps: AgentCommandDeps): Promise<string | undefined> => {
+  try {
+    const location = await deps.resolveLocation(target);
+    return target === 'grok' ? location.hostRoot : location.managedDir;
+  } catch {
+    return undefined;
+  }
+};
+
+async function inspectLocal(deps: AgentHostPortDeps): Promise<readonly AgentLocalState[]> {
+  const list = await agentList({ check: false }, deps.command);
+  const rows: AgentLocalState[] = [];
+  for (const row of list.targets) {
+    const marker = row.integration === 'managed' || row.integration === 'newer' ? row.marker : undefined;
+    const configPath =
+      row.host.detected || marker !== undefined ? await configPathOf(row.target, deps.command) : undefined;
+    const endpointMatches = 'endpointMatches' in row ? row.endpointMatches : undefined;
+    rows.push({
+      target: row.target,
+      host: {
+        detected: row.host.detected,
+        ...(row.host.version === undefined ? {} : { version: row.host.version }),
+        support: row.host.support,
+      },
+      status: pluginStatus(row, deps.command.adapterVersion),
+      ...(configPath === undefined ? {} : { configPath }),
+      ...(marker === undefined ? {} : { installationId: marker.installationId, adapterVersion: marker.adapterVersion }),
+      ...(endpointMatches === undefined ? {} : { endpointMatches }),
+    });
+  }
+  const codex = deps.codex();
+  const detected = deps.codexDetected();
+  const recovery = await codex.pendingRecovery().catch(() => false);
+  rows.push({
+    target: 'codex',
+    host: { detected, support: 'unknown' },
+    status: codexStatus(list.codex, detected, recovery),
+    configPath: list.codex.configPath,
+    ...(list.codex.installationId === undefined ? {} : { installationId: list.codex.installationId }),
+    codex: {
+      ...(list.codex.providerId === undefined ? {} : { providerId: list.codex.providerId }),
+      ...(list.codex.authMode === undefined ? {} : { authMode: list.codex.authMode }),
+    },
+  });
+  const order = new Map(['opencode', 'pi', 'omp', 'codex', 'grok'].map((target, index) => [target, index]));
+  return rows.sort((left, right) => order.get(left.target)! - order.get(right.target)!);
+}
+
+const codexResult = (result: CodexConfigureResult): AgentOperationResult => {
+  const { migration } = result;
+  return {
+    target: 'codex',
+    status: result.status,
+    configPath: result.configPath,
+    ...(result.providerId === undefined ? {} : { providerId: result.providerId }),
+    ...(result.authMode === undefined ? {} : { authMode: result.authMode }),
+    ...(result.installationId === undefined ? {} : { installationId: result.installationId }),
+    migration: {
+      status: migration.status,
+      ...('migrated' in migration
+        ? {
+            migrated: migration.migrated,
+            skipped: migration.skipped,
+            conflicts: migration.conflicts,
+            ...(migration.operationId === undefined ? {} : { operationId: migration.operationId }),
+          }
+        : {}),
+    },
+  };
+};
+
+export function createAgentHostPort(
+  deps: AgentHostPortDeps = {
+    command: commandDeps(),
+    codex: () => createCodexDashboardDeps(),
+    codexDetected: () => resolveCodexExecutable() !== undefined,
+  },
+): AgentHostPort {
+  const inspect = () => inspectLocal(deps);
+  const requireCodex = (): void => {
+    if (!deps.codexDetected()) throw new AgentOperationError('host_missing');
+  };
+  // Plugin and Grok writes are short, lock-guarded file transactions; stopping one halfway would leave
+  // partial state, so cancellation is honoured before the write starts rather than during it. The
+  // location is resolved here too, because it may have become unusable since the snapshot.
+  const beforeWrite = async (target: Exclude<AgentTarget, 'codex'>, events: { readonly signal: AbortSignal }) => {
+    if (events.signal.aborted) throw new AgentOperationError('cancelled');
+    try {
+      await deps.command.resolveLocation(target);
+    } catch (error) {
+      const classified = classifyAgentError(error);
+      throw classified?.code === 'host_missing' ? classified : new AgentOperationError('path_unavailable');
+    }
+  };
+  return {
+    inspect,
+    configure: (target, codex, events) =>
+      classified(async () => {
+        if (target === 'codex') {
+          requireCodex();
+          if (codex === undefined) throw new AgentOperationError('unknown');
+          const result = await configureCodexFromDashboard(
+            codex,
+            { signal: events.signal, onDevice: (userCode) => events.onDevice({ userCode }) },
+            deps.codex(),
+          );
+          return codexResult(result);
+        }
+        await beforeWrite(target, events);
+        const result = await agentConfigure(target, deps.command);
+        // The files are written; a failing follow-up lookup only loses optional details, not the success.
+        const installationId = await inspect().then(
+          (rows) => rows.find((row) => row.target === target)?.installationId,
+          () => undefined,
+        );
+        const configPath = await configPathOf(target, deps.command);
+        return {
+          target,
+          status: 'status' in result ? result.status : 'configured',
+          ...(installationId === undefined ? {} : { installationId }),
+          ...(configPath === undefined ? {} : { configPath }),
+          ...(agentDescriptor(target).loginCommand === undefined
+            ? {}
+            : { loginCommand: agentDescriptor(target).loginCommand }),
+        } satisfies AgentOperationResult;
+      }),
+    remove: (target, events) =>
+      classified(async () => {
+        if (target !== 'codex') await beforeWrite(target, events);
+        else if (events.signal.aborted) throw new AgentOperationError('cancelled');
+        const result = await agentRemove(target, deps.command);
+        if ('revokeStatus' in result)
+          return {
+            target,
+            status: 'removed',
+            installationId: result.installationId,
+            revokeStatus: result.revokeStatus,
+            ...('skippedFields' in result && result.skippedFields !== undefined
+              ? { skippedFields: [...result.skippedFields] }
+              : {}),
+            ...('retainedFiles' in result && result.retainedFiles !== undefined
+              ? { retainedFiles: [...result.retainedFiles] }
+              : {}),
+          };
+        return {
+          target: 'codex',
+          status: result.status,
+          configPath: result.configPath,
+          preservedPaths: result.preservedPaths.map((path) => path.join('.')),
+          ...(result.authorization === undefined ? {} : { revokeStatus: result.authorization }),
+        };
+      }),
+    codexPlan: () =>
+      classified(async () => {
+        requireCodex();
+        return buildCodexSetupPlan(deps.codex());
+      }),
+    restoreCodexMigration: (operationId, events) =>
+      classified(async () => {
+        // A restore rewrites session files under its own journal; it is only safe to stop before it starts.
+        if (events.signal.aborted) throw new AgentOperationError('cancelled');
+        return codexResult(await restoreMigrationResult(deps.codex().location, operationId));
+      }),
+  };
+}

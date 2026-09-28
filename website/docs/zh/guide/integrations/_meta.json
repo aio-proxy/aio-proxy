@@ -1,0 +1,19 @@
+[
+  {
+    "type": "file",
+    "name": "third-party-clients",
+    "label": "常用客户端与编辑器"
+  },
+  {
+    "type": "dir",
+    "name": "agents",
+    "label": "原生 Agent 集成",
+    "collapsible": true,
+    "collapsed": false
+  },
+  {
+    "type": "file",
+    "name": "sdks",
+    "label": "SDK 接入与示例"
+  }
+]

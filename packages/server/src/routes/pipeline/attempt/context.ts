@@ -15,7 +15,12 @@ import type { ProviderProtocol, RouterModelPolicy } from '@aio-proxy/types';
 import type { SessionIdentity } from '../../../logical-session-store';
 import type { RequestTraceSession } from '../../../request-tracing';
 import type { AttemptResponseObservation } from '../../../response-observation';
-import type { ModelTransport, ProviderRouteSource, RuntimeProviderInstance } from '../../../runtime';
+import type {
+  ModelTransport,
+  ProviderRouteSnapshot,
+  ProviderRouteSource,
+  RuntimeProviderInstance,
+} from '../../../runtime';
 import type { AttemptTraceMetadata } from '../attempt-base';
 import type { AttemptLog } from '../logging';
 import type { ProviderCooldownStore } from '../provider-cooldown';
@@ -71,6 +76,7 @@ export type AttemptLoopContext<
   readonly routerModels: Readonly<Record<string, RouterModelPolicy>> | undefined;
   readonly session: RequestTraceSession;
   readonly source: ProviderRouteSource;
+  readonly snapshot?: ProviderRouteSnapshot;
   readonly logicalRequest: LogicalRequestContext;
   readonly routingContinuity: Parameters<ModelTransport['invoke']>[0]['routingContinuity'];
   // Real session identity behind logicalRequest, forwarded to commitResponse so

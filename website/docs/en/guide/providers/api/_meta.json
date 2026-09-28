@@ -1,0 +1,47 @@
+[
+  {
+    "type": "file",
+    "name": "index",
+    "label": "API Providers Overview"
+  },
+  {
+    "type": "file",
+    "name": "openai-response",
+    "label": "OpenAI Responses Protocol"
+  },
+  {
+    "type": "file",
+    "name": "openai-compatible",
+    "label": "OpenAI-Compatible Protocol"
+  },
+  {
+    "type": "file",
+    "name": "anthropic",
+    "label": "Anthropic Messages Protocol"
+  },
+  {
+    "type": "file",
+    "name": "gemini",
+    "label": "Google Gemini Protocol"
+  },
+  {
+    "type": "file",
+    "name": "openai-image",
+    "label": "OpenAI Images Protocol"
+  },
+  {
+    "type": "file",
+    "name": "openai-audio",
+    "label": "OpenAI Audio Protocol"
+  },
+  {
+    "type": "file",
+    "name": "openai-video",
+    "label": "OpenAI Video Protocol"
+  },
+  {
+    "type": "file",
+    "name": "typesafe-systemone",
+    "label": "System One Evaluation Protocol"
+  }
+]

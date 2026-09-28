@@ -2,6 +2,36 @@
   {
     "type": "dir-section-header",
     "name": "start",
-    "label": "快速开始"
+    "label": "入门指南"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "routing",
+    "label": "路由与协议"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "configuration",
+    "label": "配置指南"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "providers",
+    "label": "提供商接入"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "integrations",
+    "label": "客户端与 Agent"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "observability",
+    "label": "可观测性与控制台"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "reference",
+    "label": "CLI 与参考"
   }
 ]

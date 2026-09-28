@@ -5,6 +5,21 @@ import { credentialSource, geminiRequest, logicalContext, resolve } from './raw.
 import { AntigravityTransport } from './transport';
 
 describe('Gemini raw resolver', () => {
+  test('passes a safe upstream diagnostic through the raw Gemini error', async () => {
+    const message = 'User location is not supported for the API use.';
+    const resolver = createGeminiRawResolver({
+      execute: async () =>
+        Response.json({ error: { code: 400, message, status: 'FAILED_PRECONDITION' } }, { status: 400 }),
+    });
+
+    const response = await resolve(resolver, 'gemini')?.invoke(geminiRequest('generateContent', {}), logicalContext());
+
+    expect(response?.status).toBe(400);
+    expect(await response?.json()).toEqual({
+      error: { code: 400, message, status: 'INVALID_ARGUMENT' },
+    });
+  });
+
   test('returns standard Gemini errors without upstream body disclosure', async () => {
     const resolver = createGeminiRawResolver({
       execute: async () => Response.json({ raw: 'upstream-secret' }, { status: 400 }),

@@ -1,0 +1,27 @@
+[
+  {
+    "type": "file",
+    "name": "config-file",
+    "label": "配置文件与环境模板"
+  },
+  {
+    "type": "file",
+    "name": "server",
+    "label": "服务与安全"
+  },
+  {
+    "type": "file",
+    "name": "proxy",
+    "label": "代理与主备容灾"
+  },
+  {
+    "type": "file",
+    "name": "metadata",
+    "label": "模型元数据与计费"
+  },
+  {
+    "type": "file",
+    "name": "transforms",
+    "label": "请求转换规则"
+  }
+]

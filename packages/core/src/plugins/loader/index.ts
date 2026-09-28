@@ -89,7 +89,10 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
       description = descriptor.metadata.description;
       icon = descriptor.metadata.icon;
       hasOptions = descriptor.metadata.options !== undefined;
-      const staging = host.stage(candidate.packageName, { redactSecretValues: secretValues });
+      const staging = host.stage(candidate.packageName, {
+        redactSecretValues: secretValues,
+        builtIn: candidate.builtIn !== undefined,
+      });
       const setup = Promise.resolve().then(async () => {
         const pluginOptions = await prepareOptions(descriptor, candidate.options, secretOptions);
         return descriptor.setup(staging.api, pluginOptions);

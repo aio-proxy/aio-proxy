@@ -630,8 +630,8 @@ test('injects a source-bound private evaluator only into the built-in ChatGPT co
       diagnostics,
       logger: () => {},
       onDiagnosticChanged: () => {},
-      guardianEvaluate: (sourceProviderId) => {
-        calls.push(sourceProviderId);
+      guardianEvaluate: (source) => {
+        calls.push(source.providerId ?? '');
         return evaluate;
       },
     };

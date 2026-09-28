@@ -1,0 +1,78 @@
+---
+description: AIO Proxy 的多平台安装方式、命令别名、环境检查与版本升级指南。
+---
+
+import { CommandTabs } from '@rspress/core/theme';
+
+# 安装指南
+
+AIO Proxy 提供了多种跨平台的安装渠道，支持 macOS 和 Linux 环境。
+
+## 安装方式
+
+你可以根据你的开发环境选择最便捷的安装方式：
+
+<CommandTabs
+  commands={{
+    brew: 'brew install aio-proxy/tap/aio-proxy',
+    bun: 'bun add -g aio-proxy',
+    curl: 'curl -fsSL https://aioproxy.dev/install.sh | sh',
+    npm: 'npm install -g aio-proxy',
+  }}
+/>
+
+### 命令行别名
+
+安装完成后，终端提供两个可用命令：
+
+- `aio-proxy`：标准全局 CLI 命令。
+- `aiop`：简写别名（通过 Bun、npm 或 curl 安装脚本安装时会自动提供）。
+
+验证安装是否成功：
+
+```sh
+aio-proxy --version
+```
+
+## 环境检查与诊断
+
+AIO Proxy 内置了环境诊断命令，用于检查本地网络连通性、配置有效性、运行权限以及端口占用情况：
+
+```sh
+aio-proxy doctor
+```
+
+如果你需要检查当前后台服务的详细运行状态与端口探测：
+
+```sh
+aio-proxy status --deep
+```
+
+## 版本升级
+
+AIO Proxy 支持通过自带的 CLI 命令自动检测并升级到最新版本：
+
+```sh
+aio-proxy upgrade
+```
+
+也可以使用别名 `aio-proxy update`。
+
+如果你使用的是特定包管理器，也可以通过包管理器自身进行更新：
+
+```sh
+# Homebrew
+brew update && brew upgrade aio-proxy
+
+# Bun
+bun update -g aio-proxy
+
+# npm
+npm update -g aio-proxy
+```
+
+升级完成后，建议重载正在运行的服务以应用新版本：
+
+```sh
+aio-proxy reload
+```

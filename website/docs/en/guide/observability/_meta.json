@@ -1,0 +1,22 @@
+[
+  {
+    "type": "file",
+    "name": "dashboard-overview",
+    "label": "Dashboard Overview"
+  },
+  {
+    "type": "file",
+    "name": "traces",
+    "label": "Request Traces & Diagnostics"
+  },
+  {
+    "type": "file",
+    "name": "usage-and-costs",
+    "label": "Usage & Cost Analytics"
+  },
+  {
+    "type": "file",
+    "name": "opentelemetry",
+    "label": "OpenTelemetry Export"
+  }
+]

@@ -399,7 +399,8 @@
         "remove_blocked": "コマンド認証を取り消せなかったため、削除を完了できません。再試行してください。",
         "keys_retained": "プロキシキーは保持されました。",
         "restore_option": "操作 UUID で Codex 移行を復元",
-        "pending_recovery": "前回の Codex 設定操作が保留中です。続行する前に復元しますか？"
+        "pending_recovery": "前回の Codex 設定操作が保留中です。続行する前に復元しますか？",
+        "not_installed": "Codex CLI が見つかりません。"
       },
       "grok_login": "次のコマンドでサインインします: grok login",
       "grok_models": "grok models でモデルを一覧し、grok -m <model-id> でセッションを開始します。",
@@ -484,10 +485,9 @@
       }
     },
     "agent_authorization": {
-      "title": "aio-proxy を承認",
+      "title": "承認",
       "instructions": "Agent に表示されたコードを入力してください。",
       "code_label": "承認コード",
-      "code_placeholder": "ABCD-EFGH",
       "code_invalid": "8 文字のコードを入力してください。",
       "permissions_title": "要求されたアクセス",
       "permission_catalog": "モデルカタログの読み取り",
@@ -496,17 +496,15 @@
       "installation": "インストール ID",
       "version": "アダプターバージョン",
       "expires": "有効期限",
-      "resolve": "続行",
       "approve": "承認",
       "deny": "拒否",
-      "pending": "承認待ちです。",
+      "pending": "リクエストはあなたの判断を待っています。権限を確認して承認または拒否してください。",
       "approved": "承認しました。Agent に戻ってください。",
       "denied": "承認を拒否しました。",
       "expired": "この承認コードは期限切れです。",
       "consumed": "この承認コードは使用済みです。",
       "password_required": "Agent アクセスを承認する前に Dashboard パスワードを設定してください。",
-      "network_error": "aio-proxy に接続できません。サーバーを確認して再試行してください。",
-      "retry": "別のコードを使う"
+      "network_error": "aio-proxy に接続できません。サーバーを確認して再試行してください。"
     },
     "menus": {
       "observability": "オブザーバビリティ",
@@ -518,7 +516,8 @@
       "routing": "ルーティング",
       "plugins": "プラグイン",
       "models": "モデル",
-      "settings": "設定"
+      "settings": "設定",
+      "agents": "Agent"
     },
     "update": {
       "available": "更新があります"
@@ -1624,6 +1623,183 @@
       "description": "このウィンドウを閉じてください。元の Dashboard タブが自動的に続きます。",
       "close": "ウィンドウを閉じる",
       "close_unavailable": "ブラウザーが自動クローズをブロックしました。このタブを手動で閉じてください。"
+    },
+    "agents": {
+      "title": "Agent",
+      "description": "このマシンのコーディング Agent を AIO Proxy に接続します。",
+      "load_failed": "Agent を読み込めませんでした。",
+      "not_found": "不明な Agent です。",
+      "kind": {
+        "plugin": "プラグイン",
+        "auth_command": "認証コマンド",
+        "static_config": "グローバル設定"
+      },
+      "status": {
+        "not_installed": "未インストール",
+        "not_configured": "未設定",
+        "configured": "設定済み",
+        "outdated": "更新あり",
+        "modified": "変更あり",
+        "missing": "ファイル欠落",
+        "conflict": "競合",
+        "recovery_required": "復旧が必要",
+        "unknown": "不明"
+      },
+      "status_hint": {
+        "not_installed": "このマシンに {target} が見つかりません。",
+        "conflict": "{target} のファイルは完全な AIO Proxy 管理の連携ではありません。CLI で解決してください。",
+        "recovery_required": "中断したセットアップを先に復旧する必要があります。ターミナルで configure コマンドを実行してください。",
+        "modified": "AIO Proxy が管理する一部のフィールドが編集されています。修復すると元に戻します。",
+        "missing": "一部の管理ファイルがありません。修復すると再インストールします。",
+        "outdated": "この AIO Proxy には新しいアダプターが含まれています。"
+      },
+      "banner": {
+        "password_required": "API キーが必須のときは、Agent を承認する前にダッシュボードのパスワードを設定してください。",
+        "remote_request": "別のマシンから AIO Proxy を表示しています。ワンクリック設定は AIO Proxy を実行しているマシンのブラウザーでのみ使えます。",
+        "unavailable": "この AIO Proxy ではワンクリック設定を利用できません（コンテナーで実行中など）。セットアップガイドに従い、Agent がインストールされているマシンで設定してください。",
+        "unavailable_title": "ワンクリック設定は利用できません",
+        "remote_request_title": "ワンクリック設定はローカル専用です",
+        "password_required_title": "ダッシュボードのパスワードが必要です"
+      },
+      "action": {
+        "configure": "設定",
+        "update": "更新",
+        "repair": "修復",
+        "reconfigure": "再設定",
+        "remove": "削除",
+        "approve": "承認",
+        "deny": "拒否",
+        "cancel": "キャンセル",
+        "revoke": "取り消し",
+        "restore_migration": "前回のセッション移行を元に戻す",
+        "copy": "コピー"
+      },
+      "operation": {
+        "running": "処理中…",
+        "awaiting_approval": "このデバイスを承認すると完了します。Codex にはコード {code} が表示されます。",
+        "succeeded": "完了しました。",
+        "failed": "失敗しました: {reason}"
+      },
+      "result": {
+        "login": "{target} でサインインしてください: {command}",
+        "reload": "{target} を再読み込みまたは再起動して連携を読み込んでください。",
+        "removed": "連携を削除しました。",
+        "config_path": "{path} に書き込みました",
+        "migration": "{migrated} 件のセッションを移行しました。",
+        "partial": "連携を削除しましたが、編集済みのフィールドは保持しました: {paths}",
+        "blocked": "削除されていません: 認可をまだ取り消せません。AIO Proxy に接続できるようになってから再試行してください。",
+        "cancelled": "セットアップは完了していません。認可に関する内容は書き込まれていません。",
+        "revoke": "認可: {status}",
+        "migration_incomplete": "セッションの移行は完了していません: 移行 {migrated} 件、競合 {conflicts} 件。"
+      },
+      "error": {
+        "host_missing": "この Agent はこのマシンにインストールされていません。",
+        "path_unavailable": "Agent の設定場所を特定できませんでした。",
+        "not_configured": "削除する AIO Proxy 連携がありません。",
+        "locked": "別のセットアップが実行中です。終わってから再試行してください。",
+        "invalid_provider_id": "プロバイダー ID が空か予約済みです。",
+        "occupied_provider_id": "そのプロバイダー ID は config.toml で使用中です。",
+        "endpoint_changed": "セットアップ中に AIO Proxy のアドレスが変わりました。再試行してください。",
+        "authorization_denied": "デバイスは拒否されました。",
+        "authorization_expired": "承認リクエストの期限が切れました。",
+        "recovery_required": "中断したセットアップを CLI で先に復旧してください。",
+        "plan_stale": "入力中に Codex の状態が変わりました。確認してもう一度保存してください。",
+        "cancelled": "キャンセルしました。",
+        "operation_in_progress": "この Agent の操作はすでに実行中です。",
+        "unknown": "問題が発生しました。AIO Proxy のログを確認してください。",
+        "request_failed": "AIO Proxy に接続できません。サーバーを確認して再試行してください。"
+      },
+      "login": {
+        "title": "サインイン",
+        "instructions": "{target} で次を実行してサインインします:",
+        "waiting": "{target} からのアクセス要求を待っています…",
+        "pending": "{target} がコード {code} でアクセスを要求しています（Installation {installation}、アダプター {version}）。{target} に同じコードが表示されている場合のみ承認してください。",
+        "approved": "承認しました。{target} に戻ってください。"
+      },
+      "section": {
+        "status": "状態",
+        "setup": "セットアップ",
+        "authorizations": "認可",
+        "notes": "注意事項"
+      },
+      "field": {
+        "config_path": "設定パス",
+        "version": "バージョン",
+        "installation": "Installation ID",
+        "adapter": "アダプターのバージョン",
+        "provider_id": "Codex プロバイダー ID",
+        "auth_mode": "認証",
+        "endpoint_mismatch": "この連携は別の AIO Proxy アドレスを指しています。修復するとこのアドレスに変わります。"
+      },
+      "table": {
+        "label": "認可",
+        "installation": "Installation ID",
+        "adapter": "アダプター",
+        "created": "作成日時",
+        "last_authorized": "最終認可",
+        "status": "状態",
+        "local": "場所",
+        "actions": "操作",
+        "empty": "認可はまだありません。",
+        "codex_keep": "ChatGPT ログイン維持モードは API キーで AIO Proxy に接続するため、ここに認可はありません。",
+        "filter": "認可を絞り込む",
+        "filter_placeholder": "Installation ID またはバージョンで検索",
+        "columns": "列"
+      },
+      "authorization": {
+        "active": "有効",
+        "expired": "期限切れ",
+        "revoked": "取り消し済み",
+        "missing": "見つかりません",
+        "pending": "取り消し待ち"
+      },
+      "local": {
+        "configured": "このマシン",
+        "orphaned": "このマシン以外"
+      },
+      "note": {
+        "catalog_synced": "モデル一覧は AIO Proxy から同期されます。",
+        "catalog_host_managed": "{target} は独自にモデル一覧を管理します。そこで AIO Proxy のモデル ID を選んでください。",
+        "platform_macos": "macOS でのみ検証済みです。",
+        "check_local": "ローカルのファイル状態は AIO Proxy を実行しているマシンのブラウザーでのみ表示されます。"
+      },
+      "remove": {
+        "title": "{target} の連携を削除しますか？",
+        "description": "認可を取り消し、AIO Proxy が変更したファイルを元に戻します。あなたの編集は保持されます。",
+        "skipped": "編集済みのため保持したフィールド: {fields}",
+        "retained": "保持したファイル: {files}"
+      },
+      "codex": {
+        "title": "Codex のセットアップ",
+        "provider_id": "プロバイダー ID",
+        "provider_id_help": "AIO Proxy が config.toml に書き込む model provider のエントリーです。",
+        "auth_mode": "認証",
+        "auth_keep": "ChatGPT ログインを維持",
+        "auth_keep_help": "Codex は ChatGPT ログインを維持し、API キーで AIO Proxy に接続します。",
+        "auth_command": "AIO Proxy の認可",
+        "auth_command_help": "このデバイスを承認すると、Codex は AIO Proxy から短期トークンを取得します。",
+        "key": "API キー",
+        "key_none": "API キーなし",
+        "migrate": "既存のセッションを移行",
+        "migrate_help": "これらのプロバイダーで記録されたセッションを新しいプロバイダーに移し、Codex で引き続き表示されるようにします。",
+        "migrate_group": "{providerId}（使用中 {active}、アーカイブ {archived}）",
+        "migrate_confirm": "選択したセッションを書き換える",
+        "migrate_confirm_required": "続行するにはセッションの移行を確認してください。",
+        "conflict": "config.toml の AIO Proxy エントリーがあなたの編集と競合しています。CLI で解決してください。",
+        "submit": "保存",
+        "current": "プロバイダー {providerId}、{mode}"
+      },
+      "card": {
+        "via": {
+          "plugin": "AIO Proxy プラグインで接続",
+          "auth_command": "Agent のログインコマンドで承認",
+          "static_config": "Agent のグローバル設定に書き込み"
+        },
+        "active_authorizations": "有効な承認 {count} 件",
+        "no_active_authorizations": "有効な承認はありません"
+      },
+      "docs": "セットアップガイド",
+      "revoke_failed": "承認を取り消せませんでした"
     }
   }
 }

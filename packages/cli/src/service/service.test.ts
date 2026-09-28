@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'bun:test';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { CliExit } from '../exit';
@@ -110,6 +110,65 @@ test('launchd plist runs `run` via a wrapper that remaps exit 1 to a clean exit'
   expect(plist).not.toContain('service.env');
 });
 
+test('launchd plist serializes a valid launchd document', () => {
+  const document = Bun.XML.parse(
+    renderLaunchdPlist({
+      exec: '/usr/local/bin/aio-proxy',
+      configPath: '/Users/u/.aio-proxy/config.jsonc',
+    }),
+    { compact: false },
+  );
+  const elements = (children: Bun.XML.Node['children']): Bun.XML.Node[] =>
+    children.filter((child): child is Bun.XML.Node => typeof child !== 'string');
+  const text = (node: Bun.XML.Node): string => {
+    const [value] = node.children;
+    if (typeof value !== 'string') throw new Error(`Expected text in <${node.name}>`);
+    return value;
+  };
+
+  expect(document.name).toBe('plist');
+  expect(document.attributes).toEqual({ version: '1.0' });
+  const [dict] = elements(document.children);
+  if (dict === undefined) throw new Error('Expected plist dict');
+  expect(elements(dict.children).map((node) => node.name)).toEqual([
+    'key',
+    'string',
+    'key',
+    'array',
+    'key',
+    'dict',
+    'key',
+    'dict',
+    'key',
+    'true',
+  ]);
+  const topLevel = elements(dict.children);
+  const at = (index: number): Bun.XML.Node => {
+    const node = topLevel[index];
+    if (node === undefined) throw new Error(`Expected plist node at index ${index}`);
+    return node;
+  };
+  expect(text(at(0))).toBe('Label');
+  expect(text(at(1))).toBe('com.aio-proxy.agent');
+  expect(text(at(2))).toBe('ProgramArguments');
+  expect(elements(at(3).children).map(text)).toEqual([
+    '/bin/sh',
+    '-c',
+    '"$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"',
+    '/usr/local/bin/aio-proxy',
+  ]);
+  expect(text(at(4))).toBe('EnvironmentVariables');
+  expect(
+    elements(at(5).children).map((node) => (node.name === 'key' || node.name === 'string' ? text(node) : node.name)),
+  ).toEqual(['AIO_PROXY_HOME', '/Users/u/.aio-proxy', 'AIO_PROXY_MANAGED', '1']);
+  expect(text(at(6))).toBe('KeepAlive');
+  expect(elements(at(7).children).map((node) => (node.name === 'key' ? text(node) : node.name))).toEqual([
+    'SuccessfulExit',
+    'false',
+  ]);
+  expect(text(at(8))).toBe('RunAtLoad');
+});
+
 test('systemd unit quotes an ExecStart path containing spaces', () => {
   // Unquoted, systemd would split `/home/a user/bin/aio-proxy` and try to run
   // `/home/a`, so the daemon never starts. The value must be double-quoted.
@@ -132,6 +191,16 @@ test('launchd plist XML-escapes an ampersand in the exec path', () => {
   expect(plist).toContain('<string>/home/a&amp;b/bin/aio-proxy</string>');
   expect(plist).toContain('<string>/Users/a&amp;b/.aio-proxy</string>');
   expect(plist).not.toContain('a&b/bin/aio-proxy');
+});
+
+test('managed service units retain executable search paths for local Agents', () => {
+  const path = '/Users/a&b/.local/bin:/Users/a&b/.npm-global/bin:/usr/bin';
+  const options = { exec: '/usr/local/bin/aio-proxy', configPath: '/Users/a&b/.aio-proxy/config.jsonc', path };
+  const plist = renderLaunchdPlist(options);
+  const unit = renderSystemdUnit(options);
+  expect(plist).toContain('<key>PATH</key>');
+  expect(plist).toContain('<string>/Users/a&amp;b/.local/bin:/Users/a&amp;b/.npm-global/bin:/usr/bin</string>');
+  expect(unit).toContain('Environment="PATH=/Users/a&b/.local/bin:/Users/a&b/.npm-global/bin:/usr/bin"');
 });
 
 test('resolveExec prefers the stable PATH launcher over its versioned symlink target', () => {
@@ -246,6 +315,22 @@ test('writeManagedUnit creates the unit and parent dir when none exists', async 
   expect(existsSync(plistPath)).toBe(false);
   await writeManagedUnit('darwin', '/opt/homebrew/bin/aio-proxy', plistPath);
   expect(existsSync(plistPath)).toBe(true);
+});
+
+test('rewriting an older launchd unit restores user Agent directories from a minimal PATH', async () => {
+  const plistPath = join(tmpdir(), `aio-svc-agent-path-${crypto.randomUUID()}`, 'com.aio-proxy.agent.plist');
+  const previous = process.env['PATH'];
+  process.env['PATH'] = '/usr/bin:/bin:/usr/sbin:/sbin';
+  try {
+    await writeManagedUnit('darwin', '/opt/homebrew/bin/aio-proxy', plistPath);
+  } finally {
+    if (previous === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = previous;
+  }
+  const contents = readFileSync(plistPath, 'utf8');
+  expect(contents).toContain(`<string>/usr/bin:/bin:/usr/sbin:/sbin:${join(homedir(), '.opencode/bin')}`);
+  expect(contents).toContain(join(homedir(), '.local/bin'));
+  expect(contents).toContain(join(homedir(), '.npm-global/bin'));
 });
 
 test('resolveStableManagedExec maps a Cellar path to the stable Homebrew launcher', () => {

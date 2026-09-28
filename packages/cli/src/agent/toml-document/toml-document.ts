@@ -166,3 +166,12 @@ export function editTomlFields(
   const pruned = pruneEmptyTables(next, options.removeEmptyTables ?? [], options);
   return { text: pruned, createdTables: planned.createdTables };
 }
+
+export function pruneEmptyTomlTable(text: string, path: TomlPath, syntax: TomlSyntax): string {
+  const document = inspectDocument(parseDocument(text, syntax));
+  const table = findTable(document, path);
+  if (table === undefined || table.body.length > 0) return text;
+  const pruned = applySourceEdits(text, [emptyTableHeaderEdit(text, table)]);
+  validateFinalDocument(pruned, syntax);
+  return pruned;
+}

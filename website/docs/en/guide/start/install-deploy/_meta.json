@@ -1,0 +1,17 @@
+[
+  {
+    "type": "file",
+    "name": "installation",
+    "label": "Installation"
+  },
+  {
+    "type": "file",
+    "name": "service",
+    "label": "Background Service"
+  },
+  {
+    "type": "file",
+    "name": "docker",
+    "label": "Docker Deployment"
+  }
+]

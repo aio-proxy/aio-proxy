@@ -10,6 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AgentsIndexRouteImport } from './routes/agents/index'
+import { Route as AgentsTargetRouteImport } from './routes/agents/$target'
 import { Route as AgentsAuthorizeRouteImport } from './routes/agents/authorize'
 import { Route as OauthCompleteRouteImport } from './routes/oauth/complete'
 import { Route as PluginsIndexRouteImport } from './routes/plugins/index'
@@ -25,6 +27,16 @@ import { Route as ProvidersIdEditRouteImport } from './routes/providers/$id.edit
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgentsIndexRoute = AgentsIndexRouteImport.update({
+  id: '/agents/',
+  path: '/agents/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgentsTargetRoute = AgentsTargetRouteImport.update({
+  id: '/agents/$target',
+  path: '/agents/$target',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentsAuthorizeRoute = AgentsAuthorizeRouteImport.update({
@@ -85,11 +97,13 @@ const ProvidersIdEditRoute = ProvidersIdEditRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/agents/$target': typeof AgentsTargetRoute
   '/agents/authorize': typeof AgentsAuthorizeRoute
   '/oauth/complete': typeof OauthCompleteRoute
   '/providers/new': typeof ProvidersNewRoute
   '/routing/$': typeof RoutingSplatRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
+  '/agents/': typeof AgentsIndexRoute
   '/plugins/': typeof PluginsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
   '/routing/': typeof RoutingIndexRoute
@@ -99,11 +113,13 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/agents/$target': typeof AgentsTargetRoute
   '/agents/authorize': typeof AgentsAuthorizeRoute
   '/oauth/complete': typeof OauthCompleteRoute
   '/providers/new': typeof ProvidersNewRoute
   '/routing/$': typeof RoutingSplatRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
+  '/agents': typeof AgentsIndexRoute
   '/plugins': typeof PluginsIndexRoute
   '/providers': typeof ProvidersIndexRoute
   '/routing': typeof RoutingIndexRoute
@@ -114,11 +130,13 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/agents/$target': typeof AgentsTargetRoute
   '/agents/authorize': typeof AgentsAuthorizeRoute
   '/oauth/complete': typeof OauthCompleteRoute
   '/providers/new': typeof ProvidersNewRoute
   '/routing/$': typeof RoutingSplatRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
+  '/agents/': typeof AgentsIndexRoute
   '/plugins/': typeof PluginsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
   '/routing/': typeof RoutingIndexRoute
@@ -130,11 +148,13 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/agents/$target'
     | '/agents/authorize'
     | '/oauth/complete'
     | '/providers/new'
     | '/routing/$'
     | '/traces/$traceId'
+    | '/agents/'
     | '/plugins/'
     | '/providers/'
     | '/routing/'
@@ -144,11 +164,13 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/agents/$target'
     | '/agents/authorize'
     | '/oauth/complete'
     | '/providers/new'
     | '/routing/$'
     | '/traces/$traceId'
+    | '/agents'
     | '/plugins'
     | '/providers'
     | '/routing'
@@ -158,11 +180,13 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/agents/$target'
     | '/agents/authorize'
     | '/oauth/complete'
     | '/providers/new'
     | '/routing/$'
     | '/traces/$traceId'
+    | '/agents/'
     | '/plugins/'
     | '/providers/'
     | '/routing/'
@@ -173,11 +197,13 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AgentsTargetRoute: typeof AgentsTargetRoute
   AgentsAuthorizeRoute: typeof AgentsAuthorizeRoute
   OauthCompleteRoute: typeof OauthCompleteRoute
   ProvidersNewRoute: typeof ProvidersNewRoute
   RoutingSplatRoute: typeof RoutingSplatRoute
   TracesTraceIdRoute: typeof TracesTraceIdRoute
+  AgentsIndexRoute: typeof AgentsIndexRoute
   PluginsIndexRoute: typeof PluginsIndexRoute
   ProvidersIndexRoute: typeof ProvidersIndexRoute
   RoutingIndexRoute: typeof RoutingIndexRoute
@@ -193,6 +219,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agents/': {
+      id: '/agents/'
+      path: '/agents'
+      fullPath: '/agents/'
+      preLoaderRoute: typeof AgentsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agents/$target': {
+      id: '/agents/$target'
+      path: '/agents/$target'
+      fullPath: '/agents/$target'
+      preLoaderRoute: typeof AgentsTargetRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agents/authorize': {
@@ -277,11 +317,13 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AgentsTargetRoute: AgentsTargetRoute,
   AgentsAuthorizeRoute: AgentsAuthorizeRoute,
   OauthCompleteRoute: OauthCompleteRoute,
   ProvidersNewRoute: ProvidersNewRoute,
   RoutingSplatRoute: RoutingSplatRoute,
   TracesTraceIdRoute: TracesTraceIdRoute,
+  AgentsIndexRoute: AgentsIndexRoute,
   PluginsIndexRoute: PluginsIndexRoute,
   ProvidersIndexRoute: ProvidersIndexRoute,
   RoutingIndexRoute: RoutingIndexRoute,

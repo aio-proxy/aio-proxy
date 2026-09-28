@@ -1,5 +1,49 @@
 # @aio-proxy/core
 
+## 0.34.0
+
+### Patch Changes
+
+- [#443](https://github.com/aio-proxy/aio-proxy/pull/443) [`b2fb4a4`](https://github.com/aio-proxy/aio-proxy/commit/b2fb4a4c6fb246ee56502063ed410be19aad4f44) Thanks [@baranwang](https://github.com/baranwang)! - Optional Guardian System One strategies now work for eligible approval requests even when codex-auto-review is not independently configured as a route, while ordinary requests and the default strategy remain unchanged.
+- Updated dependencies [[`5dea413`](https://github.com/aio-proxy/aio-proxy/commit/5dea4139c4567284858ae04c8636dd961e47af72), [`6dbb50d`](https://github.com/aio-proxy/aio-proxy/commit/6dbb50deb8a3f7540802e67484056c5bfcfecd54), [`b2fb4a4`](https://github.com/aio-proxy/aio-proxy/commit/b2fb4a4c6fb246ee56502063ed410be19aad4f44)]:
+  - @aio-proxy/i18n@0.34.0
+  - @aio-proxy/types@0.34.0
+  - @aio-proxy/plugin-openai-chatgpt@0.34.0
+  - @aio-proxy/plugin-sdk@0.34.0
+  - @aio-proxy/plugin-cursor@0.34.0
+  - @aio-proxy/logger@0.34.0
+  - @aio-proxy/plugin-claude-code@0.34.0
+  - @aio-proxy/plugin-github-copilot@0.34.0
+  - @aio-proxy/plugin-google-antigravity@0.34.0
+  - @aio-proxy/plugin-kimi-code@0.34.0
+  - @aio-proxy/plugin-muse-code@0.34.0
+  - @aio-proxy/plugin-opencode-go@0.34.0
+  - @aio-proxy/plugin-openrouter@0.34.0
+  - @aio-proxy/plugin-xai-grok@0.34.0
+  - @aio-proxy/shared@0.34.0
+
+## 0.33.4
+
+### Patch Changes
+
+- [#430](https://github.com/aio-proxy/aio-proxy/pull/430) [`3279743`](https://github.com/aio-proxy/aio-proxy/commit/3279743ec7c8447decba5df6c8836405071261e1) Thanks [@baranwang](https://github.com/baranwang)! - Guardian evaluation now runs on the OpenAI Responses provider selected for that request, not only on a ChatGPT transport. A direct allow or deny does not charge the selected provider; evaluation cost stays on the configured evaluation provider.
+- Updated dependencies [[`a223275`](https://github.com/aio-proxy/aio-proxy/commit/a22327585b8574fa08f7b40cc154a982a4999909), [`aab9a9a`](https://github.com/aio-proxy/aio-proxy/commit/aab9a9aabf02664dc973e1afdb1c9daab911be65), [`3279743`](https://github.com/aio-proxy/aio-proxy/commit/3279743ec7c8447decba5df6c8836405071261e1)]:
+  - @aio-proxy/plugin-google-antigravity@0.33.4
+  - @aio-proxy/i18n@0.33.4
+  - @aio-proxy/plugin-openai-chatgpt@0.33.4
+  - @aio-proxy/logger@0.33.4
+  - @aio-proxy/plugin-sdk@0.33.4
+  - @aio-proxy/plugin-claude-code@0.33.4
+  - @aio-proxy/plugin-cursor@0.33.4
+  - @aio-proxy/plugin-github-copilot@0.33.4
+  - @aio-proxy/plugin-kimi-code@0.33.4
+  - @aio-proxy/plugin-muse-code@0.33.4
+  - @aio-proxy/plugin-opencode-go@0.33.4
+  - @aio-proxy/plugin-openrouter@0.33.4
+  - @aio-proxy/plugin-xai-grok@0.33.4
+  - @aio-proxy/shared@0.33.4
+  - @aio-proxy/types@0.33.4
+
 ## 0.33.3
 
 ### Patch Changes

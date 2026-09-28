@@ -58,12 +58,37 @@ type ChallengeMaps = {
   readonly byInstallation: Map<string, Challenge>;
 };
 
+/** The pending details plus the user code the Agent shows, so the dashboard can have them compared. */
+export type PendingInstallationChallenge = {
+  readonly details: AgentAuthorizationDetails;
+  readonly userCode: string;
+};
+
 export type DeviceChallengeStore = {
   readonly create: (input: AgentDeviceCodeRequest, source: string) => AgentDeviceCodeResponse;
   readonly resolve: (userCode: string, source: string) => AgentAuthorizationDetails;
   readonly approve: (deviceId: string, source: string) => 'approved' | 'denied' | 'expired' | 'consumed';
   readonly deny: (deviceId: string, source: string) => 'approved' | 'denied' | 'expired' | 'consumed';
   readonly poll: (input: PollInput, source: string) => PollResult;
+  /** Read-only lookup of the live pending challenge an installation started, for the dashboard Agents page. */
+  readonly pendingForInstallation: (
+    target: AgentTarget,
+    installationId: string,
+  ) => PendingInstallationChallenge | undefined;
+  /** Called once a challenge is redeemed for a credential, so a waiting dashboard operation can move on. */
+  readonly onConsumed: (listener: (deviceId: string) => void) => () => void;
+  /**
+   * Denies one challenge even when it was already approved. A challenge the Agent already redeemed
+   * cannot be withdrawn, so that is reported as `consumed` instead.
+   */
+  readonly cancel: (deviceId: string) => 'cancelled' | 'consumed';
+  /** Denies the installation's undecided and approved-but-unredeemed challenges, so a revocation is not undone by a later token poll. */
+  readonly cancelForInstallation: (installationId: string) => void;
+  /** The installation's latest challenge once decided but not yet redeemed, so a decision made elsewhere can be told apart. */
+  readonly decidedForInstallation: (
+    target: AgentTarget,
+    installationId: string,
+  ) => { readonly deviceId: string; readonly status: 'approved' | 'denied'; readonly expiresAt: string } | undefined;
 };
 
 type DeviceChallengeStoreInput = {
@@ -271,12 +296,73 @@ export function createDeviceChallengeStore(input: DeviceChallengeStoreInput): De
     }
     challenge.nextPollAt = timestamp + challenge.intervalSeconds * 1_000;
     if (challenge.status === 'pending') return { ok: false, error: 'authorization_pending' };
-    return consumeApproved(input.identity, maps, challenge, timestamp);
+    const result = consumeApproved(input.identity, maps, challenge, timestamp);
+    if (result.ok)
+      for (const listener of consumedListeners) {
+        try {
+          listener(challenge.deviceId);
+        } catch {
+          // A dashboard listener must never fail the Agent's token response.
+        }
+      }
+    return result;
+  }
+
+  function pendingForInstallation(
+    target: AgentTarget,
+    installationId: string,
+  ): PendingInstallationChallenge | undefined {
+    pruneExpired(maps, now());
+    const challenge = maps.byInstallation.get(installationKey(AGENT_CLIENT_ID[target], installationId));
+    return challenge?.status === 'pending' && challenge.target === target
+      ? { details: terminal(challenge), userCode: challenge.userCode }
+      : undefined;
+  }
+
+  function decidedForInstallation(
+    target: AgentTarget,
+    installationId: string,
+  ): { readonly deviceId: string; readonly status: 'approved' | 'denied'; readonly expiresAt: string } | undefined {
+    pruneExpired(maps, now());
+    const challenge = maps.byInstallation.get(installationKey(AGENT_CLIENT_ID[target], installationId));
+    return challenge !== undefined &&
+      challenge.target === target &&
+      (challenge.status === 'approved' || challenge.status === 'denied')
+      ? {
+          deviceId: challenge.deviceId,
+          status: challenge.status,
+          expiresAt: new Date(challenge.expiresAt).toISOString(),
+        }
+      : undefined;
+  }
+
+  const consumedListeners = new Set<(deviceId: string) => void>();
+
+  function cancel(deviceId: string): 'cancelled' | 'consumed' {
+    const challenge = maps.byDeviceId.get(deviceId);
+    if (challenge?.status === 'consumed') return 'consumed';
+    if (challenge?.status === 'pending' || challenge?.status === 'approved') challenge.status = 'denied';
+    return 'cancelled';
+  }
+
+  function cancelForInstallation(installationId: string): void {
+    for (const challenge of maps.byDeviceId.values()) {
+      if (challenge.installationId !== installationId) continue;
+      if (challenge.status === 'pending' || challenge.status === 'approved') challenge.status = 'denied';
+    }
   }
 
   return {
     create,
     resolve,
+    onConsumed: (listener) => {
+      consumedListeners.add(listener);
+      return () => consumedListeners.delete(listener);
+    },
+    cancel,
+    cancelForInstallation,
+    pendingForInstallation,
+    decidedForInstallation,
     approve: (deviceId, source) => decide(deviceId, source, 'approved'),
     deny: (deviceId, source) => decide(deviceId, source, 'denied'),
     poll,

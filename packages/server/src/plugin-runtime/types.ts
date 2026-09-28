@@ -67,7 +67,7 @@ export type PluginProviderMaterialization = {
 };
 
 export type MaterializePluginProviderOptions = {
-  readonly guardianEvaluate?: (sourceProviderId: string) => GuardianEvaluate;
+  readonly guardianEvaluate?: (source: { readonly providerId?: string; readonly plugin?: string }) => GuardianEvaluate;
   readonly config: OAuthProvider;
   readonly plugins: PluginRegistrySnapshot;
   readonly repository: PluginRepository;

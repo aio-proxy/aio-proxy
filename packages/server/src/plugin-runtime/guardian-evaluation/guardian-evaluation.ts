@@ -38,7 +38,7 @@ export type GuardianSystemOneBody = {
 export type GuardianEvaluate = (input: {
   readonly providerId: string;
   readonly modelId: string;
-  readonly body: GuardianSystemOneBody;
+  readonly body: unknown;
   readonly signal: AbortSignal;
   readonly logicalRequest: LogicalRequestContext;
 }) => Promise<unknown>;
@@ -51,9 +51,21 @@ export class GuardianEvaluationUnavailable extends Error {
 }
 export function createGuardianEvaluate(
   getSource: () => ProviderRouteSource,
-  sourceProviderId: string,
+  origin: { readonly providerId?: string; readonly plugin?: string },
 ): GuardianEvaluate {
   return async ({ providerId, modelId, body, signal, logicalRequest }) => {
+    if (
+      !isPlainObject(body) ||
+      typeof body['model'] !== 'string' ||
+      !isPlainObject(body['state']) ||
+      !isPlainObject(body['questions'])
+    )
+      throw new GuardianEvaluationUnavailable('invalid_response');
+    const requestBody: GuardianSystemOneBody = {
+      model: body['model'],
+      state: body['state'] as GuardianSystemOneBody['state'],
+      questions: body['questions'] as GuardianSystemOneBody['questions'],
+    };
     signal.throwIfAborted();
     const source = getSource();
     const lease = source.acquireProviderSnapshot();
@@ -72,10 +84,14 @@ export function createGuardianEvaluate(
         !candidate.provider.enabled
       )
         throw new GuardianEvaluationUnavailable('target_unavailable');
-      if (candidate.provider.id === sourceProviderId) throw new GuardianEvaluationUnavailable('recursive_target');
+      if (
+        (origin.providerId !== undefined && candidate.provider.id === origin.providerId) ||
+        (origin.plugin !== undefined && candidate.provider.plugin === origin.plugin)
+      )
+        throw new GuardianEvaluationUnavailable('recursive_target');
       return await dispatchPrivateEvaluation({
         candidate,
-        body,
+        body: requestBody,
         signal,
         logicalRequest,
         source,

@@ -1,5 +1,15 @@
 # @aio-proxy/ui
 
+## 0.34.0
+
+### Patch Changes
+
+- [#437](https://github.com/aio-proxy/aio-proxy/pull/437) [`5dea413`](https://github.com/aio-proxy/aio-proxy/commit/5dea4139c4567284858ae04c8636dd961e47af72) Thanks [@baranwang](https://github.com/baranwang)! - Agent authorization is completed on a single screen: the footer always offers stacked approve and deny buttons, disabled until the code entry is complete. Completing the code resolves it automatically — the request appears as a panel above the entry, a failed resolve shows an alert, and a code carried in a URL is simply pre-filled into the same flow. Approving or denying shows the final outcome, and expired, used, or already decided codes are reported with a toast.
+
+## 0.33.4
+
+No changes in this release.
+
 ## 0.33.3
 
 No changes in this release.

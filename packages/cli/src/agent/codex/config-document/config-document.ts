@@ -4,6 +4,7 @@ import {
   editTomlFields,
   hasTomlTable,
   inspectTomlPaths,
+  pruneEmptyTomlTable,
   readTomlField,
   type TomlFieldEdit,
   type TomlPath,
@@ -93,6 +94,7 @@ function assertCreatable(text: string, edit: FieldEdit): void {
   if (existing) return;
   if (edit.path.length === 1) return;
   if (edit.path[0] === 'model_providers' && (edit.path.length === 3 || edit.path.length === 4)) return;
+  if (edit.path.length === 2 && edit.path[0] === 'features') return;
   throw new Error(`Cannot create nested TOML field ${edit.path.join('.')}`);
 }
 
@@ -140,4 +142,9 @@ export function editCodexDocument(text: string, edits: readonly FieldEdit[]): st
     tableCreation: 'header',
     removeEmptyTables: providerTablesToPrune(text, edits),
   }).text;
+}
+
+export function pruneEmptyCodexTable(text: string, path: readonly string[]): string {
+  parseCodexDocument(text);
+  return pruneEmptyTomlTable(text, path, SYNTAX);
 }

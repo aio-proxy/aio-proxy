@@ -1,4 +1,4 @@
-export { editTomlFields, hasTomlTable, inspectTomlPaths, readTomlField } from './toml-document';
+export { editTomlFields, hasTomlTable, inspectTomlPaths, pruneEmptyTomlTable, readTomlField } from './toml-document';
 export type {
   TomlEditOptions,
   TomlEditResult,

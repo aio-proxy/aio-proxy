@@ -1,59 +1,52 @@
 ---
-description: Install and start AIO Proxy, add your first model provider, then send a first request.
+description: Start AIO Proxy, add your first model provider, and send your first model request.
 ---
-
-import { CommandTabs } from '@rspress/core/theme';
 
 # Quick Start
 
-This guide starts AIO Proxy locally, adds an OpenAI Responses provider, and sends a first request through the local endpoint.
+This guide will help you launch AIO Proxy within minutes, connect your first model provider, and make a request through the unified endpoint.
 
-## Install
+> If you haven't installed AIO Proxy yet, please refer to the [Installation Guide](./install-deploy/installation).
 
-<CommandTabs
-  commands={{
-    brew: 'brew install aio-proxy/tap/aio-proxy',
-    bun: 'bun add -g aio-proxy',
-    curl: 'curl -fsSL https://aioproxy.dev/install.sh | sh',
-  }}
-/>
+## 1. Start the Service
 
-## Start the server
+Run the following command in your terminal to start AIO Proxy:
 
 ```sh
 aio-proxy run --open
 ```
 
-npm/bun and the curl installer also install the short command `aiop`. Homebrew still ships only `aio-proxy`.
+On first launch, it will automatically generate the default configuration file `~/.aio-proxy/config.jsonc` in your home directory and open the Dashboard in your default browser:
 
-On first run, AIO Proxy creates `~/.aio-proxy/config.jsonc` and opens the Dashboard. The default addresses are:
+- **API Service Endpoint**: `http://127.0.0.1:9317`
+- **Dashboard UI**: `http://127.0.0.1:9317/dashboard`
 
-- API: `http://127.0.0.1:9317`
-- Dashboard: `http://127.0.0.1:9317/dashboard`
+The initial configuration contains no providers. Choose either of the following methods to add your first provider.
 
-The initial configuration has no providers. Choose either method below to add your first one.
+## 2. Add a Model Provider
 
-## Option 1: Add it in the Dashboard
+### Option 1: Add via Dashboard (Recommended)
 
-Open the Dashboard's Providers page and add an API provider. Enter the upstream URL, credentials, and models. Model names must match the names requested by clients.
+1. In the Dashboard, click **"Providers"** in the left navigation sidebar.
+2. Click **"Add Provider"** in the top-right corner and select API Provider.
+3. Fill in the Provider ID, upstream Base URL (e.g. OpenAI or any compatible platform), API key, and exposed model names (such as `gpt-5`).
+4. Save and click the **"Test"** probe button on the provider card to verify upstream connectivity.
 
-Save the provider and use the page's test action to confirm it works. You can return to the Dashboard at any time to edit, test, or delete it.
+### Option 2: Edit Configuration File Directly
 
-## Option 2: Edit the configuration file
-
-Set the API key in your terminal first:
+First set your upstream API key in your terminal:
 
 ```sh
 export OPENAI_API_KEY='your-api-key'
 ```
 
-Open the configuration file:
+Open the configuration file using the built-in command:
 
 ```sh
 aio-proxy config edit
 ```
 
-Add the following provider:
+Add your provider configuration inside the `providers` object:
 
 ```jsonc title="config.jsonc"
 {
@@ -70,18 +63,18 @@ Add the following provider:
 }
 ```
 
-Validate and reload the configuration:
+Validate and hot-reload the configuration:
 
 ```sh
 aio-proxy config validate
 aio-proxy reload
 ```
 
-`openai` is this provider's Provider ID; `gpt-5` is the model name it exposes to clients. You can add more providers for the same model later.
+`openai` is the stable Provider ID; `gpt-5` is the model name exposed to clients. You can later add multiple providers for the same model name to enable automatic failover and load balancing.
 
-> Upstreams that natively serve several protocols (Moonshot, z.ai, aggregator gateways, ...) can declare extra `endpoints` so matching requests are forwarded verbatim instead of converted. See the README's "Multi-protocol endpoints" section for the full rules.
+## 3. Send Your First Request
 
-## Send your first request
+Open a new terminal window and use curl to send a test request:
 
 ```sh
 curl http://127.0.0.1:9317/v1/responses \
@@ -89,4 +82,12 @@ curl http://127.0.0.1:9317/v1/responses \
   -d '{"model":"gpt-5","input":"Introduce AIO Proxy in one sentence."}'
 ```
 
-When the request succeeds, the configured provider returns the response. You can also find this call in the Dashboard's request records.
+Upon success, the response is returned from your configured upstream provider.
+
+Return to the Dashboard's **"Traces"** page to inspect full lifecycle details in real time, including Time to First Token (TTFT), token consumption, and round-trip latency.
+
+## Next Steps
+
+- **Long-running Daemon**: See [Background Service](./install-deploy/service) or [Docker Deployment](./install-deploy/docker) to run AIO Proxy as an autostart daemon.
+- **Connect Clients**: See [Clients & Agent Integrations](../integrations/third-party-clients) to point Cursor, VS Code, Claude Code, or business SDKs to the local proxy.
+- **Explore More Providers**: Learn about [OAuth Plugin Providers](../providers/oauth/) for ChatGPT / Claude subscription accounts, or [Multi-Protocol Endpoints](../routing/protocols).

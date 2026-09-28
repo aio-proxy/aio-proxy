@@ -6,7 +6,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 
 import { createGuardianRawInvoke } from '../../../../plugins/openai-chatgpt/src/runtime/guardian';
 import {
-  guardianRequest,
+  guardianRequest as fixtureGuardianRequest,
   syntheticGuardianInput,
 } from '../../../../plugins/openai-chatgpt/src/runtime/guardian/fixture';
 import { guardianQuestions } from '../../../../plugins/openai-chatgpt/src/runtime/guardian/questions';
@@ -233,6 +233,14 @@ function realUsageSource(source: ProviderRouteSource): ProviderRouteSource {
   return { ...source, usageCapture: createUsageCapture() };
 }
 
+function visibleGuardianRequest(): Request {
+  const input = structuredClone(syntheticGuardianInput) as Record<string, unknown>[];
+  for (const item of input) {
+    if (item['type'] === 'reasoning') delete item['encrypted_content'];
+  }
+  return fixtureGuardianRequest(input);
+}
+
 function previous(source: ProviderRouteSource, responseId: string) {
   return source.logicalSessionStore.begin({
     headers: new Headers(),
@@ -257,12 +265,12 @@ for (const scenario of ['synthetic', 'original', 'retry', 'ordinary', 'failover'
           guardianProviderId: 'system-one',
           guardianModelId: 'review',
         },
-        evaluate: (input) => createGuardianEvaluate(() => source, 'chatgpt')(input),
+        evaluate: (input) => createGuardianEvaluate(() => source, { providerId: 'chatgpt', plugin: 'chatgpt' })(input),
         original: async (request) =>
           createObservedFetch((async () => {
             originalCalls++;
             if (scenario === 'failover') return new Response(null, { status: 503 });
-            if (scenario === 'retry')
+            if (scenario === 'retry' && originalCalls === 1)
               return Response.json(
                 {
                   error: {
@@ -274,7 +282,7 @@ for (const scenario of ['synthetic', 'original', 'retry', 'ordinary', 'failover'
                 { status: 400 },
               );
             return Response.json({
-              id: 'resp_original',
+              id: scenario === 'retry' ? 'resp_original_retry' : 'resp_original',
               status: 'completed',
               usage: { input_tokens: 10, output_tokens: 2 },
             });
@@ -330,7 +338,9 @@ for (const scenario of ['synthetic', 'original', 'retry', 'ordinary', 'failover'
       },
     ]);
     source = realUsageSource(route.source);
-    const body = await guardianRequest(syntheticGuardianInput).json();
+    const body = await (
+      scenario === 'retry' ? fixtureGuardianRequest(syntheticGuardianInput) : visibleGuardianRequest()
+    ).json();
     body.model = REQUESTED_MODEL;
     body.stream = false;
     if (scenario === 'ordinary') delete body.client_metadata;
@@ -345,11 +355,13 @@ for (const scenario of ['synthetic', 'original', 'retry', 'ordinary', 'failover'
     await settleRecording(route.recording);
     const chatgptRows = route.recording.finals.filter((entry) => entry.usage?.providerId === 'chatgpt');
     const evaluationRows = route.recording.finals.filter((entry) => entry.usage?.providerId === 'system-one');
-    expect(originalCalls).toBe(scenario === 'synthetic' ? 0 : 1);
-    expect(evaluations).toBe(scenario === 'retry' || scenario === 'failover' ? 2 : scenario === 'ordinary' ? 0 : 1);
+    expect(originalCalls).toBe(scenario === 'synthetic' ? 0 : scenario === 'retry' ? 2 : 1);
+    expect(evaluations).toBe(scenario === 'retry' ? 1 : scenario === 'failover' ? 2 : scenario === 'ordinary' ? 0 : 1);
     expect(evaluationRows).toHaveLength(evaluations);
     expect(evaluationRows.map((entry) => entry.usage?.estimatedCostUsd)).toEqual(Array(evaluations).fill(0.02));
-    expect(chatgptRows).toHaveLength(scenario === 'original' || scenario === 'ordinary' ? 1 : 0);
+    expect(chatgptRows).toHaveLength(
+      scenario === 'original' || scenario === 'ordinary' || scenario === 'retry' ? 1 : 0,
+    );
     if (chatgptRows.length)
       expect(chatgptRows[0]?.usage).toMatchObject({ inputTokens: 10, outputTokens: 2, estimatedCostUsd: 0.1 });
     if (scenario === 'retry')

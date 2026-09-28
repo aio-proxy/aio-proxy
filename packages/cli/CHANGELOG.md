@@ -1,5 +1,45 @@
 # @aio-proxy/cli
 
+## 0.34.0
+
+### Minor Changes
+
+- [#442](https://github.com/aio-proxy/aio-proxy/pull/442) [`6dbb50d`](https://github.com/aio-proxy/aio-proxy/commit/6dbb50deb8a3f7540802e67484056c5bfcfecd54) Thanks [@baranwang](https://github.com/baranwang)! - The dashboard has a new Agents page listing OpenCode, Pi, oh-my-pi, Codex, and Grok Build with their local status and authorizations. When the dashboard is opened on the machine running aio-proxy, each Agent can be configured, updated, repaired, or removed with one click, Codex through a setup form, and the device approval happens on the same page. Remote browsers and containers see read-only state and a link to each Agent's setup guide.
+
+### Patch Changes
+
+- [#438](https://github.com/aio-proxy/aio-proxy/pull/438) [`f72415a`](https://github.com/aio-proxy/aio-proxy/commit/f72415a1252cb887989c3cfffd77fc0dc99a49c6) Thanks [@baranwang](https://github.com/baranwang)! - Pi and OMP list the aio-proxy extension as aio-proxy. They previously showed an internal entry path.
+- Updated dependencies [[`5dea413`](https://github.com/aio-proxy/aio-proxy/commit/5dea4139c4567284858ae04c8636dd961e47af72), [`6dbb50d`](https://github.com/aio-proxy/aio-proxy/commit/6dbb50deb8a3f7540802e67484056c5bfcfecd54), [`b2fb4a4`](https://github.com/aio-proxy/aio-proxy/commit/b2fb4a4c6fb246ee56502063ed410be19aad4f44)]:
+  - @aio-proxy/dashboard@0.34.0
+  - @aio-proxy/i18n@0.34.0
+  - @aio-proxy/server@0.34.0
+  - @aio-proxy/types@0.34.0
+  - @aio-proxy/core@0.34.0
+  - @aio-proxy/opencode-provider@0.34.0
+  - @aio-proxy/pi-provider@0.34.0
+  - @aio-proxy/agent-provider-runtime@0.34.0
+  - @aio-proxy/plugin-sdk@0.34.0
+  - @aio-proxy/logger@0.34.0
+  - @aio-proxy/shared@0.34.0
+
+## 0.33.4
+
+### Patch Changes
+
+- [#433](https://github.com/aio-proxy/aio-proxy/pull/433) [`aab9a9a`](https://github.com/aio-proxy/aio-proxy/commit/aab9a9aabf02664dc973e1afdb1c9daab911be65) Thanks [@baranwang](https://github.com/baranwang)! - `aiop agent configure codex` finds the Codex CLI shipped inside the ChatGPT app when `codex` is not on `PATH`. A missing CLI is reported directly instead of as an unexpected internal error.
+- Updated dependencies [[`aab9a9a`](https://github.com/aio-proxy/aio-proxy/commit/aab9a9aabf02664dc973e1afdb1c9daab911be65), [`3279743`](https://github.com/aio-proxy/aio-proxy/commit/3279743ec7c8447decba5df6c8836405071261e1)]:
+  - @aio-proxy/i18n@0.33.4
+  - @aio-proxy/core@0.33.4
+  - @aio-proxy/server@0.33.4
+  - @aio-proxy/dashboard@0.33.4
+  - @aio-proxy/opencode-provider@0.33.4
+  - @aio-proxy/pi-provider@0.33.4
+  - @aio-proxy/agent-provider-runtime@0.33.4
+  - @aio-proxy/logger@0.33.4
+  - @aio-proxy/plugin-sdk@0.33.4
+  - @aio-proxy/shared@0.33.4
+  - @aio-proxy/types@0.33.4
+
 ## 0.33.3
 
 ### Patch Changes
