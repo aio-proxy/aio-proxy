@@ -34,8 +34,13 @@
   animation-delay: -9s;
 }
 
+.home-dash {
+  animation: home-dash 0.6s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .home-hero-aurora {
+  .home-hero-aurora,
+  .home-dash {
     animation: none;
   }
 }

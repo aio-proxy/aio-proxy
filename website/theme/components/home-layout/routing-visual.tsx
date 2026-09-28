@@ -70,11 +70,10 @@ export function RoutingVisual() {
                 vectorEffect="non-scaling-stroke"
                 className={cn(
                   'transition-all duration-500',
-                  flow.client === index ? 'stroke-teal-500' : 'stroke-olive-300 dark:stroke-olive-700',
+                  flow.client === index ? 'home-dash stroke-teal-500' : 'stroke-olive-300 dark:stroke-olive-700',
                 )}
                 strokeWidth={flow.client === index ? 2 : 1}
                 strokeDasharray={flow.client === index ? '4 4' : undefined}
-                style={{ animation: flow.client === index ? 'home-dash 0.6s linear infinite' : undefined }}
               />
             ))}
             {providers.map((provider, index) => (
@@ -85,11 +84,10 @@ export function RoutingVisual() {
                 vectorEffect="non-scaling-stroke"
                 className={cn(
                   'transition-all duration-500',
-                  flow.provider === index ? 'stroke-teal-500' : 'stroke-olive-300 dark:stroke-olive-700',
+                  flow.provider === index ? 'home-dash stroke-teal-500' : 'stroke-olive-300 dark:stroke-olive-700',
                 )}
                 strokeWidth={flow.provider === index ? 2 : 1}
                 strokeDasharray={flow.provider === index ? '4 4' : undefined}
-                style={{ animation: flow.provider === index ? 'home-dash 0.6s linear infinite' : undefined }}
               />
             ))}
           </svg>

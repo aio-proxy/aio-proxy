@@ -103,7 +103,7 @@ const en: HomeCopy = {
   routing: {
     kicker: 'Routing & failover',
     title: 'Traffic that routes itself — and recovers on its own.',
-    body: 'Ask for a model name. AIO Proxy finds every Provider that serves it, orders them by priority and weight, and walks the list until one answers.',
+    body: 'Ask for a model name. AIO Proxy finds every Provider that serves it, tries higher-priority tiers first, spreads traffic within a tier by weight, and fails over until one answers.',
     points: [
       { title: 'Model-first matching', body: 'Aliases map one name to many upstreams.' },
       { title: 'Priority tiers', body: 'Higher tiers first, lower tiers as standby.' },
@@ -201,7 +201,7 @@ const zh: HomeCopy = {
   routing: {
     kicker: '路由与故障转移',
     title: '流量自己找路，失败自己恢复。',
-    body: '只需请求一个模型名。AIO Proxy 找出所有提供该模型的 Provider，按优先级与权重排序，逐个尝试直到成功。',
+    body: '只需请求一个模型名。AIO Proxy 找出所有提供该模型的 Provider，高优先级层先试，同层内按权重分摊流量，失败就自动切到下一个，直到成功。',
     points: [
       { title: '按模型匹配', body: '一个模型别名映射到多个上游。' },
       { title: '优先级分层', body: '高优先级先试，低优先级兜底。' },
