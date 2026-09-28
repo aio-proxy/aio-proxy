@@ -43,13 +43,23 @@ export const tierActualShares = (
     return found === undefined ? [] : [found];
   });
   const denominator = members.reduce((sum, row) => sum + row.finalCount, 0n);
-  return members.map((row) => ({
+  const measured = (row: RoutingTrafficProviderTotals): RoutingTierShare => ({
     providerId: row.providerId,
     actualShare: denominator === 0n ? 0 : Number(row.finalCount) / Number(denominator),
     successRate: rate(row.successCount, row.attemptCount),
     p95LatencyMs: row.p95LatencyMs,
     finalCount: row.finalCount,
-  }));
+  });
+  // The query omits Providers with no spans, so once the tier served anything a silent member is a
+  // measured zero: its share is known to be 0% (and can drift), while its success and latency are not.
+  // A tier that served nothing stays unmeasured rather than reading as zeros across the board.
+  if (denominator === 0n) return members.map(measured);
+  return tier.providers.map((entry) => {
+    const row = members.find((member) => member.providerId === entry.providerId);
+    return row === undefined
+      ? { providerId: entry.providerId, actualShare: 0, successRate: null, p95LatencyMs: null, finalCount: 0n }
+      : measured(row);
+  });
 };
 
 /** Whole-model totals for the list's traffic column. `undefined` means no traffic at all, which

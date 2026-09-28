@@ -64,6 +64,24 @@ test('leaves success rate unknown rather than zero when nothing was attempted', 
   expect(shares.find((entry) => entry.providerId === 'primary')?.successRate).toBeNull();
 });
 
+test('a silent member of a tier that served traffic reads as a measured 0%', () => {
+  // The query has no row for a Provider with no spans; inside an active tier that is a known 0%
+  // share that can drift, not an unknown. Its success rate and latency stay unknown.
+  const index = indexRoutingTraffic({
+    ...traffic,
+    models: [{ modelId: 'sonnet', providers: [totals('primary', 10n, 10n, 10n, 1200)] }],
+  });
+  const shares = tierActualShares(tier, index.get('sonnet'));
+
+  expect(shares.find((entry) => entry.providerId === 'fallback')).toEqual({
+    providerId: 'fallback',
+    actualShare: 0,
+    successRate: null,
+    p95LatencyMs: null,
+    finalCount: 0n,
+  });
+});
+
 test('yields no shares when the model has no traffic at all', () => {
   // Absent is not zero: the bar must render without a thin overlay rather than a 0% overlay.
   expect(tierActualShares(tier, undefined)).toEqual([]);

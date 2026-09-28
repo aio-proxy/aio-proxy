@@ -185,6 +185,7 @@ const renderEditor = (
       { wrapper, initialProps: { model: initialModel } },
     ),
     mutate: mocks.mutate,
+    queryClient,
     rejectWithStale: () =>
       mocks.callbacks?.onError?.(Object.assign(new Error('stale routing model'), { code: 'stale_revision' })),
   };
@@ -480,6 +481,23 @@ test('settles on the stored inventory when the server normalized the save', asyn
   act(() => resolveSave(savedModel(4)));
 
   expect(result.current.form.state.values.providers[0]?.weight).toBe(4);
+  expect(result.current.dirtyTabs).toEqual([]);
+});
+
+test('settles on the refetched inventory when it is newer than the PUT response', async () => {
+  // The mutation refetches before this callback runs; another operator may have saved in between.
+  // Settling on the older PUT body would show a clean editor a revision behind the server.
+  const { result, queryClient } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3));
+  await act(() => result.current.save());
+  queryClient.setQueryData(['routing', 'models'], {
+    writable: true,
+    models: [{ ...savedModel(5), revision: 'rev-3' }],
+  });
+  act(() => resolveSave(savedModel(3)));
+
+  expect(result.current.form.state.values.providers[0]?.weight).toBe(5);
   expect(result.current.dirtyTabs).toEqual([]);
 });
 

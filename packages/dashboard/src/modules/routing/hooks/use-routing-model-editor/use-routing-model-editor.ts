@@ -1,7 +1,10 @@
-import type { DashboardRoutingModel } from '@aio-proxy/types';
+import type { DashboardRoutingModel, DashboardRoutingModelsResponse } from '@aio-proxy/types';
 import { useStore } from '@tanstack/react-form';
+import { useQueryClient } from '@tanstack/react-query';
 import { useBlocker } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { queryKeys } from '@/lib/query-keys';
 
 import {
   mergeRoutingMutationDrafts,
@@ -46,6 +49,7 @@ const metadataDraftsClean = (values: RoutingMetadataFormValues): RoutingMetadata
 
 export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingModelEditorOptions) => {
   const mutation = useRoutingMutation();
+  const queryClient = useQueryClient();
   const [stale, setStale] = useState(false);
   const [metadataValid, setMetadataValid] = useState(true);
   // Metadata text that does not parse or pass the schema never reaches the form, so it is held here:
@@ -79,7 +83,11 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
           onSuccess: (saved) => {
             mutation.reset();
             setStale(false);
-            const stored = saved.models.find((entry) => entry.modelId === model.modelId);
+            // The mutation refetches the inventory before this runs, and the cache then holds whatever
+            // is newest, including a change another operator made after the PUT answered. Settling on
+            // the PUT body alone would leave the editor clean but a revision behind.
+            const latest = queryClient.getQueryData<DashboardRoutingModelsResponse>(queryKeys.routingModels) ?? saved;
+            const stored = latest.models.find((entry) => entry.modelId === model.modelId);
             setBaseline(settleRoutingEditorSave({ form: submittedForm, metadataForm }, stored, submitted, baseline));
           },
           onError: (error) => {
