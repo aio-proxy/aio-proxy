@@ -206,7 +206,8 @@ function attemptRows(db: BunSQLiteDatabase, range: ResolvedUsageRange): RawAttem
     `select root.requested_model_id as modelId,
       attempt.provider_id as providerId,
       cast(count(*) as text) as attemptCount,
-      cast(count(case when attempt.termination_reason is null then 1 end) as text) as successCount,
+      -- An attempt marked OTel ERROR without a termination reason (older rows) failed too.
+      cast(count(case when attempt.termination_reason is null and attempt.status_code != 2 then 1 end) as text) as successCount,
       json_group_array(max(0, attempt.ended_at - attempt.started_at)) as durations
     from trace_span root
       join trace_span attempt on attempt.trace_id = root.trace_id

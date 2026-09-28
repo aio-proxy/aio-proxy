@@ -15,6 +15,7 @@ import { ProviderCatalogProvider, useProviderCatalog } from '@/hooks/use-provide
 
 import { RoutingModelSummary } from '../../components/routing-model-summary';
 import { RoutingRiskBadge } from '../../components/routing-risk-badge';
+import { RoutingTrafficRefreshNotice } from '../../components/routing-traffic-refresh-notice';
 import { useRoutingQuery } from '../../hooks/use-routing-query';
 import { configuredRisks } from '../../lib/routing-risk';
 import { indexRoutingTraffic, tierActualShares } from '../../lib/routing-traffic';
@@ -130,6 +131,10 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
       // when the page is shorter than the screen, as it does on longer pages.
       <div className="flex flex-1 flex-col gap-4">
         {query.isError ? loadError : null}
+        {/* The summary and route rows keep the last traffic; a failed refresh behind them is said. */}
+        {trafficQuery.isError && trafficQuery.data !== undefined ? (
+          <RoutingTrafficRefreshNotice onRetry={() => void trafficQuery.refetch()} />
+        ) : null}
         <RoutingModelSummary model={model} totals={totals} known={trafficIndex !== undefined} />
         <RoutingModelPageEditor
           key={model.modelId}

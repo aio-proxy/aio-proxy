@@ -11,6 +11,7 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 
 import { routingTrafficChartRows, routingTrafficSeriesKey } from '../../lib/routing-traffic-chart';
 import { routingTrafficBucketsQueryOptions } from '../../services/routing-traffic-service';
+import { RoutingTrafficRefreshNotice } from '../routing-traffic-refresh-notice';
 
 export interface RoutingModelTrafficTabProps {
   readonly modelId: string;
@@ -47,16 +48,7 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
 
   // Shown over whatever the cached measurement says, the empty state included: a "no traffic" reading
   // is just as stale once the refetch that would confirm it has failed.
-  const refreshNotice = bucketsQuery.isError ? (
-    <div className="flex flex-wrap items-center gap-3">
-      <p role="status" className="text-sm text-muted-foreground">
-        {m['dashboard.routing.traffic.refresh_failed']()}
-      </p>
-      <Button type="button" size="sm" variant="outline" onClick={retryFailed}>
-        {m['dashboard.routing.retry']()}
-      </Button>
-    </div>
-  ) : null;
+  const refreshNotice = bucketsQuery.isError ? <RoutingTrafficRefreshNotice onRetry={retryFailed} /> : null;
 
   const bucketsData = bucketsQuery.data;
   if (bucketsData === undefined) {

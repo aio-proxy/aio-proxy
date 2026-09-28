@@ -238,6 +238,19 @@ test('keeps the cached models listed when a later refetch fails', () => {
   expect(screen.getByRole('alert')).toHaveTextContent(m['dashboard.routing.load_failed']());
 });
 
+test('says a traffic refresh failed while cached traffic stays on the list', async () => {
+  // The cached traffic, drift and success rates are still shown; without a notice they would read
+  // as current after the refresh behind them failed.
+  mockRoutingModels({ writable: true, models: [modelFixture('gpt-5')] });
+  queryClient.setQueryData(['routing-traffic', '24h'], { range: '24h', rangeStart: '', rangeEnd: '', models: [] });
+  mockRoutingTrafficError();
+
+  render(<RoutingPage {...routingPageProps} />);
+
+  expect(await screen.findByText(m['dashboard.routing.traffic.refresh_failed']())).toBeInTheDocument();
+  expect(screen.getByTestId('routing-row-gpt-5')).toBeInTheDocument();
+});
+
 test('shows Retry when the routing query fails', () => {
   mocks.query.isError = true;
 

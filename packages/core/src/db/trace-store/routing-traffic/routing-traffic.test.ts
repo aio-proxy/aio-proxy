@@ -258,6 +258,30 @@ test('leaves error-status roots without a termination reason out of the served t
   }
 });
 
+test('does not count an error-status attempt without a termination reason as a success', () => {
+  // The legacy failure shape: status ERROR, no termination reason. It must lower the success rate.
+  const handle = openTestDb();
+  try {
+    const store = createTraceStore(handle.db);
+    seedTrace(store, {
+      id: 40,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+    });
+    const attemptId = `${(40).toString(16)}${(0).toString(16)}`.padStart(16, 'a');
+    handle.db.$client.run(`update trace_span set status_code = 2 where span_id = '${attemptId}'`);
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+
+    expect(totals.models[0]?.providers.find((row) => row.providerId === 'primary')).toMatchObject({
+      attemptCount: '1',
+      successCount: '0',
+    });
+  } finally {
+    handle.close();
+  }
+});
+
 test('leaves a request nobody served out of the chart buckets too', () => {
   withStore((store) => {
     // The chart reads its own query, so the filter has to be on both or the bars and the table

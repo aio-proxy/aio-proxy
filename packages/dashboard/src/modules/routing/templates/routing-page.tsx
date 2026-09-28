@@ -11,6 +11,7 @@ import { ProviderCatalogProvider, useProviderCatalog } from '@/hooks/use-provide
 
 import { RoutingLabFilter } from '../components/routing-lab-filter';
 import { RoutingTable } from '../components/routing-table';
+import { RoutingTrafficRefreshNotice } from '../components/routing-traffic-refresh-notice';
 import { useRoutingQuery } from '../hooks/use-routing-query';
 import { filterRoutingModels, sortRoutingModels } from '../lib/routing-rows';
 import { type RoutingSearch, withRoutingFilters } from '../lib/routing-search';
@@ -110,6 +111,10 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
             />
           ) : null}
           {query.isError && query.data !== undefined ? loadError : null}
+          {/* Cached traffic, drift and success rates stay up after a failed refresh, but say they are stale. */}
+          {trafficQuery.isError && trafficQuery.data !== undefined ? (
+            <RoutingTrafficRefreshNotice onRetry={() => void trafficQuery.refetch()} />
+          ) : null}
           <ProviderCatalogProvider value={providerCatalog}>{content}</ProviderCatalogProvider>
         </CardContent>
       </Card>
