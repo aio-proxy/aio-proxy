@@ -8,6 +8,7 @@ import {
   type ModelMetadataInput,
   type RouterProviderOverride,
 } from '@aio-proxy/types';
+import { isEqual, isPlainObject } from 'es-toolkit/predicate';
 import type { ZodType } from 'zod';
 
 /**
@@ -47,22 +48,55 @@ export const routingMetadataFormValues = (model: DashboardRoutingModel): Routing
   ),
 });
 
-/** After a stale-revision reload: untouched drafts re-seed from the fresh model; edits are kept. */
+/**
+ * Three-way merge of one draft value against the baseline it was edited from. A key the user left at
+ * its baseline value takes the server's fresh one, so another operator's change survives a reload; a
+ * key the user changed keeps the user's value, which is what the next save is meant to write. Arrays
+ * (price tiers) are single values, since the config replaces them wholesale.
+ */
+const mergeDraftValue = (base: unknown, draft: unknown, fresh: unknown): unknown => {
+  if (isEqual(draft, base)) return fresh;
+  if (isEqual(fresh, base)) return draft;
+  if (!isPlainObject(base) || !isPlainObject(draft) || !isPlainObject(fresh)) return draft;
+  const merged: Record<string, unknown> = {};
+  for (const key of new Set([...Object.keys(base), ...Object.keys(draft), ...Object.keys(fresh)])) {
+    const value = mergeDraftValue(base[key], draft[key], fresh[key]);
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged;
+};
+
+const mergeDraft = <T extends object>(
+  draft: RoutingMetadataDraft<T> | undefined,
+  base: RoutingMetadataDraft<T> | undefined,
+  fresh: RoutingMetadataDraft<T>,
+): RoutingMetadataDraft<T> =>
+  draft?.touched
+    ? { touched: true, value: mergeDraftValue(base?.value, draft.value, fresh.value) as T | undefined }
+    : fresh;
+
+/**
+ * After a stale-revision reload: untouched drafts re-seed from the fresh model, and touched ones are
+ * merged field by field against `base`, the values the drafts were edited from. Replaying a touched
+ * group whole would write the stale copy of every field in it back over the server's newer values.
+ */
 export const reconcileRoutingMetadataValues = (
   values: RoutingMetadataFormValues,
   model: DashboardRoutingModel,
+  base: RoutingMetadataFormValues,
 ): RoutingMetadataFormValues => {
   const fresh = routingMetadataFormValues(model);
   return {
-    metadata: values.metadata.touched ? values.metadata : fresh.metadata,
+    metadata: mergeDraft(values.metadata, base.metadata, fresh.metadata),
     overrides: Object.fromEntries(
       Object.entries(fresh.overrides).map(([providerId, freshDraft]) => {
         const current = values.overrides[providerId];
+        const previous = base.overrides[providerId];
         return [
           providerId,
           {
-            cost: current?.cost.touched ? current.cost : freshDraft.cost,
-            limit: current?.limit.touched ? current.limit : freshDraft.limit,
+            cost: mergeDraft(current?.cost, previous?.cost, freshDraft.cost),
+            limit: mergeDraft(current?.limit, previous?.limit, freshDraft.limit),
           },
         ];
       }),

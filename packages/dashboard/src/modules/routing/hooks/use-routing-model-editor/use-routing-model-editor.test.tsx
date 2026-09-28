@@ -190,6 +190,14 @@ const renderEditor = (
   };
 };
 
+/** The inventory a save of `weight` (and optionally `metadata`) on the only Provider stores. */
+const savedModel = (weight: number, metadata?: DashboardRoutingModel['metadata']): DashboardRoutingModel => ({
+  ...model(),
+  revision: 'rev-2',
+  ...(metadata === undefined ? {} : { metadata }),
+  providers: [{ ...anthropicProvider, override: { weight: routingNumber(weight) } }],
+});
+
 /** Resolves the pending save the way the real PUT does: with the inventory it just wrote. */
 const resolveSave = (saved: DashboardRoutingModel) => {
   mocks.callbacks?.onSuccess?.({ writable: true, models: [saved] });
@@ -414,7 +422,7 @@ test('returns to clean after a successful save without discarding edited values'
   act(() => result.current.metadataForm.setFieldValue('metadata', { touched: true, value: { name: 'kept' } }));
 
   await act(() => result.current.save());
-  act(() => resolveSave({ ...model(), revision: 'rev-2' }));
+  act(() => resolveSave(savedModel(3, { name: 'kept' })));
   expect(result.current.dirtyTabs).toEqual([]);
   expect(result.current.form.state.values.providers[0]?.weight).toBe(3);
   expect(result.current.form.state.isDirty).toBe(false);
@@ -431,12 +439,25 @@ test('returns to clean after a successful save without discarding edited values'
   expect(mutate.mock.calls[0]?.[0]).not.toHaveProperty('metadata');
 });
 
+test('settles on the stored inventory when the server normalized the save', async () => {
+  // The PUT answers with what was actually stored. Keeping the submitted snapshot instead left the
+  // editor clean but showing a weight the config does not hold.
+  const { result } = renderEditor();
+
+  act(() => result.current.form.setFieldValue('providers[0].weight', 3.6));
+  await act(() => result.current.save());
+  act(() => resolveSave(savedModel(4)));
+
+  expect(result.current.form.state.values.providers[0]?.weight).toBe(4);
+  expect(result.current.dirtyTabs).toEqual([]);
+});
+
 test('keeps saved values when rerendered with an equivalent model object', async () => {
   const { result, rerender } = renderEditor();
 
   act(() => result.current.form.setFieldValue('providers[0].weight', 3));
   await act(() => result.current.save());
-  act(() => resolveSave({ ...model(), revision: 'rev-2' }));
+  act(() => resolveSave(savedModel(3)));
 
   rerender({ model: model() });
 
@@ -609,7 +630,7 @@ test('advances the save basis to the revision the save produced', async () => {
 
   act(() => result.current.form.setFieldValue('providers[0].weight', 3));
   await act(() => result.current.save());
-  act(() => resolveSave({ ...model(), revision: 'rev-2' }));
+  act(() => resolveSave(savedModel(3)));
 
   act(() => result.current.form.setFieldValue('providers[0].weight', 5));
   mutate.mockClear();

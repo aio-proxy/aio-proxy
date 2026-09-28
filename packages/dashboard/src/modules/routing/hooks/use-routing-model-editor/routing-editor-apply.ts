@@ -45,7 +45,7 @@ export const rebaseRoutingEditorMembership = (
   const rebased = routingEditorRebase(
     model,
     { providers: forms.form.getFieldValue('providers') ?? [], metadata: forms.metadataForm.state.values },
-    baseline.form.providers,
+    baseline,
   );
   applyRoutingEditorRebase(forms, rebased);
   return rebased.baseline;

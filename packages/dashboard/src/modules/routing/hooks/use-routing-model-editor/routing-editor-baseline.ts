@@ -48,9 +48,9 @@ export type RoutingEditorRebase = {
 /**
  * Rebase both drafts onto a freshly fetched model.
  *
- * `base` is the baseline the drafts were made from, which makes the topology merge three-way: a
- * field the user left alone takes the server's value rather than replaying a stale one over a change
- * another operator made.
+ * `base` is the baseline the drafts were made from, which makes both merges three-way: a field the
+ * user left alone takes the server's value rather than replaying a stale one over a change another
+ * operator made.
  */
 export const routingEditorRebase = (
   model: DashboardRoutingModel,
@@ -58,11 +58,11 @@ export const routingEditorRebase = (
     readonly providers: readonly RoutingFormProviderRow[];
     readonly metadata: RoutingMetadataFormValues;
   },
-  base: readonly RoutingFormProviderRow[],
+  base: RoutingEditorBaseline,
 ): RoutingEditorRebase => ({
   baseline: routingEditorBaseline(model),
-  providers: reconcileRoutingFormRows(draft.providers, model, base),
-  metadata: reconcileRoutingMetadataValues(draft.metadata, model),
+  providers: reconcileRoutingFormRows(draft.providers, model, base.form.providers),
+  metadata: reconcileRoutingMetadataValues(draft.metadata, model, base.metadata),
 });
 
 /**

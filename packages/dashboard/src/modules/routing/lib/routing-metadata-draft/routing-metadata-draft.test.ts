@@ -92,12 +92,27 @@ test('reconcile after a stale reload re-seeds untouched drafts and keeps touched
     ),
   };
 
-  const next = reconcileRoutingMetadataValues(edited, reloaded);
+  const next = reconcileRoutingMetadataValues(edited, reloaded, values);
 
   expect(next.metadata).toEqual({ touched: true, value: { name: 'Mine' } });
   expect(next.overrides['a']?.cost).toEqual({ touched: true, value: { input: 9 } });
   // The untouched limit picks up the freshly stored server value.
   expect(next.overrides['a']?.limit).toEqual({ touched: false, value: { context: 1000 } });
+});
+
+test('reconcile keeps a field another operator changed when the user edited a different one', () => {
+  // The user changed only the input price; the server meanwhile renamed the model and changed the
+  // output price. Replaying the whole touched object would write the stale name and output back.
+  const base = routingMetadataFormValues({ ...model(), metadata: { name: 'Old', cost: { input: 1, output: 2 } } });
+  const edited = { ...base, metadata: { touched: true, value: { name: 'Old', cost: { input: 3, output: 2 } } } };
+  const reloaded: DashboardRoutingModel = {
+    ...model(),
+    metadata: { name: 'New', cost: { input: 1, output: 5 } },
+  };
+
+  const next = reconcileRoutingMetadataValues(edited, reloaded, base);
+
+  expect(next.metadata).toEqual({ touched: true, value: { name: 'New', cost: { input: 3, output: 5 } } });
 });
 
 test('a touched limit with input above context is invalid for Save', () => {

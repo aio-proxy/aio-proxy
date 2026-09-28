@@ -49,7 +49,7 @@ export const createRoutingEditorReload = (deps: RoutingEditorReloadDeps) => (): 
     const rebased = routingEditorRebase(
       next,
       { providers: deps.form.getFieldValue('providers') ?? [], metadata: deps.metadataForm.state.values },
-      deps.baseline.form.providers,
+      deps.baseline,
     );
     deps.onRebased(rebased.baseline);
     applyRoutingEditorRebase(deps, rebased);

@@ -77,17 +77,22 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
           onSuccess: (saved) => {
             mutation.reset();
             setStale(false);
-            // The PUT answers with the refreshed inventory, so the next save is checked against the
-            // revision this one produced instead of the one it was based on.
+            // The PUT answers with the refreshed inventory, and that is what the forms settle on: the
+            // server may have rounded or clamped a value, or a Provider may have joined or left while
+            // the request was out, so the submitted snapshot can differ from what was stored. When the
+            // query then delivers the same inventory, the identity effect resets to it again, which is
+            // the same values, whichever of the two lands first.
             const next = saved.models.find((entry) => entry.modelId === model.modelId);
-            setBaseline((previous) => ({
-              form: savedTopology,
-              metadata: savedMetadata,
-              revision: next?.revision ?? previous.revision,
-              baselineProviderIds: next?.baselineProviderIds ?? previous.baselineProviderIds,
-            }));
-            submittedForm.reset(savedTopology);
-            metadataForm.reset(savedMetadata);
+            if (next === undefined) {
+              setBaseline((previous) => ({ ...previous, form: savedTopology, metadata: savedMetadata }));
+              submittedForm.reset(savedTopology);
+              metadataForm.reset(savedMetadata);
+              return;
+            }
+            const stored = routingEditorBaseline(next);
+            setBaseline(stored);
+            submittedForm.reset(stored.form);
+            metadataForm.reset(stored.metadata);
           },
           onError: (error) => {
             if (isStaleRoutingError(error)) setStale(true);
