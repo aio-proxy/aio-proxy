@@ -65,6 +65,7 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
   const drift =
     configuredShare !== null &&
     actual !== undefined &&
+    actual.actualShare !== null &&
     Math.abs(actual.actualShare - configuredShare) >= DEVIATION_THRESHOLD;
   const dash = <span className="text-muted-foreground">—</span>;
 
@@ -92,7 +93,9 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
             {shareLabel ?? dash}
           </span>
           <span className={cn('text-right font-mono text-xs tabular-nums', drift && 'text-destructive')}>
-            {configuredShare === null || actual === undefined ? dash : percentFormatter.format(actual.actualShare)}
+            {configuredShare === null || actual?.actualShare == null
+              ? dash
+              : percentFormatter.format(actual.actualShare)}
           </span>
         </>
       ) : (

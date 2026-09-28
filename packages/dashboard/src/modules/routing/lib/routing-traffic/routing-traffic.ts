@@ -6,8 +6,12 @@ export type RoutingTrafficIndex = ReadonlyMap<string, readonly RoutingTrafficPro
 
 export type RoutingTierShare = {
   readonly providerId: string;
-  /** finalCount over the tier's own total. Comparable with the configured `share`. */
-  readonly actualShare: number;
+  /**
+   * finalCount over the tier's own total. Comparable with the configured `share`. `null` when the
+   * tier served nothing (every attempt failed or was cancelled): there is no split to report, though
+   * the attempts still give a success rate and latency.
+   */
+  readonly actualShare: number | null;
   /** successCount / attemptCount. `null` when nothing was attempted — unknown, not zero. */
   readonly successRate: number | null;
   readonly p95LatencyMs: number | null;
@@ -45,14 +49,14 @@ export const tierActualShares = (
   const denominator = members.reduce((sum, row) => sum + row.finalCount, 0n);
   const measured = (row: RoutingTrafficProviderTotals): RoutingTierShare => ({
     providerId: row.providerId,
-    actualShare: denominator === 0n ? 0 : Number(row.finalCount) / Number(denominator),
+    actualShare: denominator === 0n ? null : Number(row.finalCount) / Number(denominator),
     successRate: rate(row.successCount, row.attemptCount),
     p95LatencyMs: row.p95LatencyMs,
     finalCount: row.finalCount,
   });
   // The query omits Providers with no spans, so once the tier served anything a silent member is a
   // measured zero: its share is known to be 0% (and can drift), while its success and latency are not.
-  // A tier that served nothing stays unmeasured rather than reading as zeros across the board.
+  // A tier that served nothing has no split: its attempted members keep a null share.
   if (denominator === 0n) return members.map(measured);
   return tier.providers.map((entry) => {
     const row = members.find((member) => member.providerId === entry.providerId);

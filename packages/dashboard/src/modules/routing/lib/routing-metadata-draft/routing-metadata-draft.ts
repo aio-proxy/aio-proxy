@@ -74,10 +74,13 @@ const mergeDraft = <T extends object>(
   draft: RoutingMetadataDraft<T> | undefined,
   base: RoutingMetadataDraft<T> | undefined,
   fresh: RoutingMetadataDraft<T>,
-): RoutingMetadataDraft<T> =>
-  draft?.touched
-    ? { touched: true, value: mergeDraftValue(base?.value, draft.value, fresh.value) as T | undefined }
-    : fresh;
+): RoutingMetadataDraft<T> => {
+  if (!draft?.touched) return fresh;
+  const value = mergeDraftValue(base?.value, draft.value, fresh.value) as T | undefined;
+  // When the server already holds what the user drafted, nothing is left to save: keeping the draft
+  // touched would hold the save bar and the navigation guard up over an identical value.
+  return isEqual(value, fresh.value) ? fresh : { touched: true, value };
+};
 
 /**
  * After a stale-revision reload: untouched drafts re-seed from the fresh model, and touched ones are

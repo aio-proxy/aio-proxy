@@ -127,6 +127,19 @@ test('reconcile keeps keys both sides added to a group the baseline did not have
   expect(next.metadata).toEqual({ touched: true, value: { cost: { input: 3, output: 5 } } });
 });
 
+test('a draft the reload already matches is no longer touched', () => {
+  // Both operators renamed the model to the same value: nothing is left to save, so the draft must not
+  // keep the save bar and the navigation guard up.
+  const base = routingMetadataFormValues(model());
+  const edited = { ...base, metadata: { touched: true, value: { name: 'Same' } } };
+  const reloaded: DashboardRoutingModel = { ...model(), metadata: { name: 'Same' } };
+
+  expect(reconcileRoutingMetadataValues(edited, reloaded, base).metadata).toEqual({
+    touched: false,
+    value: { name: 'Same' },
+  });
+});
+
 test('a touched limit with input above context is invalid for Save', () => {
   expect(
     routingOverrideDraftsValid({

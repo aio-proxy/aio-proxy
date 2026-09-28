@@ -82,6 +82,19 @@ test('a silent member of a tier that served traffic reads as a measured 0%', () 
   });
 });
 
+test('a tier that served nothing reports no split but keeps its attempt rates', () => {
+  // Every attempt failed: 0% would claim a measured split. The share is unknown, while the success
+  // rate (all failed) is still a real observation.
+  const index = indexRoutingTraffic({
+    ...traffic,
+    models: [{ modelId: 'sonnet', providers: [totals('primary', 0n, 4n, 0n, 900)] }],
+  });
+  const primary = tierActualShares(tier, index.get('sonnet')).find((entry) => entry.providerId === 'primary');
+
+  expect(primary?.actualShare).toBeNull();
+  expect(primary?.successRate).toBe(0);
+});
+
 test('yields no shares when the model has no traffic at all', () => {
   // Absent is not zero: the bar must render without a thin overlay rather than a 0% overlay.
   expect(tierActualShares(tier, undefined)).toEqual([]);

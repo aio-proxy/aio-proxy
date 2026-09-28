@@ -26,10 +26,9 @@ export const RoutingRouteTier: React.FC<RoutingRouteTierProps> = ({ index, tier,
   // Walk `tier.providers` for the measured bar too, so segment N is the same Provider in both bars.
   // A Provider that served nothing is absent from the traffic rows but is a measured zero here.
   const measured = tierActualShares(tier, totals);
-  const actual =
-    measured.length === 0
-      ? undefined
-      : tier.providers.map((entry) => measured.find((row) => row.providerId === entry.providerId)?.actualShare ?? 0);
+  const actual = measured.every((row) => row.actualShare === null)
+    ? undefined
+    : tier.providers.map((entry) => measured.find((row) => row.providerId === entry.providerId)?.actualShare ?? 0);
   const deviations = tierDeviations(tier, totals);
 
   return (
