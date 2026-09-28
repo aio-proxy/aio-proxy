@@ -795,7 +795,8 @@
         "section_route": "ルート",
         "stat_requests": "リクエスト",
         "stat_fallback": "フォールバック経由",
-        "stat_providers": "ルーティング中の Provider"
+        "stat_providers": "ルーティング中の Provider",
+        "model_removed": "このモデルを提供する Provider がなくなったため、未保存の変更は保存できません。変更を取り消すか、ルーティング一覧に戻ってください。"
       },
       "risk": {
         "no_eligible": "対象 Provider なし",

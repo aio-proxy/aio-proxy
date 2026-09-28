@@ -430,6 +430,27 @@ test('a failed traffic query is reported once, by the Traffic card', async () =>
   expect(screen.getAllByText(m['dashboard.routing.traffic.load_failed']())).toHaveLength(1);
 });
 
+test('keeps the editor and its draft when a refetch drops the model', async () => {
+  // Another operator removed the last Provider serving the model. Swapping to the empty state would
+  // unmount the editor with the unsaved draft and the navigation guard protecting it.
+  renderPage({ models: [modelFixture('sonnet')] });
+  await screen.findByTestId('routing-board');
+  dirtyTopology();
+
+  act(() => {
+    routingQueryMocks.data = { writable: true, models: [] };
+    rerenderRoutingQuery();
+  });
+
+  expect(await screen.findByTestId('routing-model-removed')).toBeInTheDocument();
+  // The config is still writable; only this model is gone, so the not-writable notice stays away.
+  expect(screen.queryByText(m['dashboard.routing.read_only']())).not.toBeInTheDocument();
+  expect(screen.getByTestId('routing-weight-a')).toHaveValue('7');
+  expect(screen.getByTestId('routing-save-bar')).toBeInTheDocument();
+  // The model is gone from the config, so the draft can be discarded but not saved.
+  expect(screen.getByRole('button', { name: m['dashboard.routing.editor.save']() })).toBeDisabled();
+});
+
 test('keeps the stale warning up when the reload refetch fails', async () => {
   // A failed refetch still resolves with the last successful payload. Handing that back looked like a
   // reload that had fetched a new revision: the warning cleared and the next save was rejected as

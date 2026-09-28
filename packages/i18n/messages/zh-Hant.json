@@ -795,7 +795,8 @@
         "section_route": "路由",
         "stat_requests": "請求",
         "stat_fallback": "經後備梯隊",
-        "stat_providers": "參與路由的 Provider"
+        "stat_providers": "參與路由的 Provider",
+        "model_removed": "已經沒有 Provider 提供這個模型，未儲存的修改無法儲存。可以取消修改，或返回路由列表。"
       },
       "risk": {
         "no_eligible": "無可用 Provider",

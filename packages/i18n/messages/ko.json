@@ -795,7 +795,8 @@
         "section_route": "라우트",
         "stat_requests": "요청",
         "stat_fallback": "폴백 티어 경유",
-        "stat_providers": "라우팅 중인 Provider"
+        "stat_providers": "라우팅 중인 Provider",
+        "model_removed": "이 모델을 제공하는 Provider가 더 이상 없어 저장하지 않은 변경을 저장할 수 없습니다. 변경을 취소하거나 라우팅 목록으로 돌아가세요."
       },
       "risk": {
         "no_eligible": "대상 Provider 없음",

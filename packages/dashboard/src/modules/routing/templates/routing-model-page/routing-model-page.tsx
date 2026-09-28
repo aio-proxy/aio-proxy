@@ -33,7 +33,14 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
   const [range, setRange] = useState<UsageOverviewRange>('24h');
   const trafficQuery = useQuery(routingTrafficQueryOptions(range));
   const models = query.data?.models ?? [];
-  const model = models.find((entry) => entry.modelId === modelId);
+  const current = models.find((entry) => entry.modelId === modelId);
+  // A refetch can drop this model (another operator removed the last Provider serving it). Swapping
+  // to the empty state would unmount the editor with its drafts and navigation guard, so the last
+  // snapshot stays up, read-only, until the user cancels or leaves.
+  const [retained, setRetained] = useState(current);
+  if (current !== undefined && current !== retained) setRetained(current);
+  const model = current ?? (retained?.modelId === modelId ? retained : undefined);
+  const removed = current === undefined && model !== undefined;
   const fullPageError = query.isError && query.data === undefined;
   const writable = query.data?.writable ?? false;
   const trafficIndex = trafficQuery.data === undefined ? undefined : indexRoutingTraffic(trafficQuery.data);
@@ -128,6 +135,7 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
           key={model.modelId}
           model={model}
           writable={writable}
+          removed={removed}
           range={range}
           actual={actual}
           onReload={onReload}

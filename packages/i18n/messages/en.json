@@ -795,7 +795,8 @@
         "section_route": "Route",
         "stat_requests": "Requests",
         "stat_fallback": "Served by fallback tiers",
-        "stat_providers": "Providers routed"
+        "stat_providers": "Providers routed",
+        "model_removed": "No Provider serves this model any more, so its unsaved changes can't be saved. Cancel them or go back to the routing list."
       },
       "risk": {
         "no_eligible": "No eligible Provider",

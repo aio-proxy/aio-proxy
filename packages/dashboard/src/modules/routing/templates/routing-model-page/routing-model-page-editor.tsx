@@ -28,6 +28,8 @@ import type { RoutingTierShare } from '../../lib/routing-traffic';
 interface RoutingModelPageEditorProps {
   readonly model: DashboardRoutingModel;
   readonly writable: boolean;
+  /** The model has left the inventory since this editor opened: its draft stays up, but cannot be saved. */
+  readonly removed?: boolean;
   readonly range: UsageOverviewRange;
   readonly actual: readonly RoutingTierShare[] | undefined;
   readonly onReload: () => void | Promise<DashboardRoutingModel | null | undefined>;
@@ -36,21 +38,26 @@ interface RoutingModelPageEditorProps {
 export const RoutingModelPageEditor: React.FC<RoutingModelPageEditorProps> = ({
   model,
   writable,
+  removed = false,
   range,
   actual,
   onReload,
 }) => {
-  const editor = useRoutingModelEditor({ model, writable, onReload });
+  const editor = useRoutingModelEditor({ model, writable: writable && !removed, onReload });
   const [drawer, setDrawer] = useState<RoutingModelDrawerSection | null>(null);
   // The save body and the defaults the forms snap back to are both captured when Save is pressed,
   // so an edit made while the request is in flight would be neither sent nor kept. The controls stop
   // accepting input until it settles. The read-only notice stays keyed on the real `writable`,
   // because an in-flight save is not the same thing as a config the dashboard cannot write.
-  const editable = writable && !editor.saving;
+  const editable = writable && !removed && !editor.saving;
 
   return (
     <>
-      {writable ? null : (
+      {removed ? (
+        <p role="status" className="rounded-lg border bg-muted p-3 text-sm" data-testid="routing-model-removed">
+          {m['dashboard.routing.detail.model_removed']()}
+        </p>
+      ) : writable ? null : (
         <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
           {m['dashboard.routing.read_only']()}
         </p>

@@ -795,7 +795,8 @@
         "section_route": "路由",
         "stat_requests": "请求",
         "stat_fallback": "经兜底梯队",
-        "stat_providers": "参与路由的 Provider"
+        "stat_providers": "参与路由的 Provider",
+        "model_removed": "已经没有 Provider 提供这个模型，未保存的修改无法保存。可以取消修改，或返回路由列表。"
       },
       "risk": {
         "no_eligible": "无可用 Provider",
