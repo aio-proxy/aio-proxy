@@ -12,8 +12,9 @@ Connect OpenRouter accounts using PKCE authorization code flow.
 {
   "providers": {
     "openrouter": {
-      "kind": "plugin",
+      "kind": "oauth",
       "plugin": "@aio-proxy/plugin-openrouter",
+      "capability": "default",
     },
   },
 }

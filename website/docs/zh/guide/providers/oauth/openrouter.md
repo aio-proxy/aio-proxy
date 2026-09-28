@@ -26,7 +26,7 @@ description: 使用 @aio-proxy/plugin-openrouter 接入 OpenRouter，统一访�
     "my-openrouter": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-openrouter",
-      "capability": "openrouter",
+      "capability": "default",
       "priority": 10,
       "weight": 100,
     },

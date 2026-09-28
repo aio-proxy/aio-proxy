@@ -25,7 +25,7 @@ description: 使用 @aio-proxy/plugin-kimi-code 接入 Moonshot Kimi 账号，�
     "kimi": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-kimi-code",
-      "capability": "kimi",
+      "capability": "default",
       "priority": 10,
       "weight": 100,
     },

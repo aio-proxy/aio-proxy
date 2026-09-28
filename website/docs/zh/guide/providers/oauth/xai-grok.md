@@ -29,7 +29,7 @@ aio-proxy provider login grok
     "grok": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-xai-grok",
-      "capability": "grok",
+      "capability": "default",
       "priority": 10,
       "weight": 100,
     },

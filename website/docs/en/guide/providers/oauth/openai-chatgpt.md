@@ -16,8 +16,9 @@ The ChatGPT OAuth integration is intended strictly for personal development and 
 {
   "providers": {
     "my-chatgpt": {
-      "kind": "plugin",
+      "kind": "oauth",
       "plugin": "@aio-proxy/plugin-openai-chatgpt",
+      "capability": "default",
     },
   },
 }

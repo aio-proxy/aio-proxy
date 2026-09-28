@@ -40,7 +40,7 @@ aio-proxy provider login copilot
     "copilot": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-github-copilot",
-      "capability": "copilot",
+      "capability": "default",
       "priority": 15,
       "weight": 100,
     },

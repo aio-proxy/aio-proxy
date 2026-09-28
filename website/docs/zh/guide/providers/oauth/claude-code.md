@@ -44,7 +44,7 @@ aio-proxy provider login claude
     "my-claude": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-claude-code",
-      "capability": "claude",
+      "capability": "default",
       "priority": 20,
       "weight": 100,
     },

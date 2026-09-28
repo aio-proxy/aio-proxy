@@ -12,8 +12,9 @@ Connect Kimi Code subscription accounts.
 {
   "providers": {
     "kimi": {
-      "kind": "plugin",
+      "kind": "oauth",
       "plugin": "@aio-proxy/plugin-kimi-code",
+      "capability": "default",
     },
   },
 }

@@ -25,7 +25,7 @@ description: 使用 @aio-proxy/plugin-opencode-go 接入 OpenCode Go 分发通�
     "opencode": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-opencode-go",
-      "capability": "opencode",
+      "capability": "default",
       "priority": 10,
       "weight": 100,
     },

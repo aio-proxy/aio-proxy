@@ -36,7 +36,7 @@ aio-proxy provider login cursor
     "my-cursor": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-cursor",
-      "capability": "cursor",
+      "capability": "default",
       "priority": 15,
       "weight": 100,
     },

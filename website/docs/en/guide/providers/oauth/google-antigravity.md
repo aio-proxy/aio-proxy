@@ -12,8 +12,9 @@ Connect Google Antigravity accounts using OAuth PKCE.
 {
   "providers": {
     "google-antigravity": {
-      "kind": "plugin",
+      "kind": "oauth",
       "plugin": "@aio-proxy/plugin-google-antigravity",
+      "capability": "default",
     },
   },
 }

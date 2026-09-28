@@ -41,7 +41,7 @@ aio-proxy provider login chatgpt
     "chatgpt-pro": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-openai-chatgpt",
-      "capability": "chatgpt",
+      "capability": "default",
       "priority": 20,
       "weight": 100,
       "alias": {

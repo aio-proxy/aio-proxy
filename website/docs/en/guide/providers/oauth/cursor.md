@@ -12,8 +12,9 @@ Integrate your Cursor IDE subscription account to access models through AIO Prox
 {
   "providers": {
     "my-cursor": {
-      "kind": "plugin",
+      "kind": "oauth",
       "plugin": "@aio-proxy/plugin-cursor",
+      "capability": "default",
     },
   },
 }

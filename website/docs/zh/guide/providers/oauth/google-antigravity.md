@@ -25,7 +25,7 @@ description: 使用 @aio-proxy/plugin-google-antigravity 接入 Google 账号与
     "google-cloud": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-google-antigravity",
-      "capability": "antigravity",
+      "capability": "default",
       "priority": 10,
       "weight": 100,
     },

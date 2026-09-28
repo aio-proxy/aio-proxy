@@ -25,7 +25,7 @@ description: 使用 @aio-proxy/plugin-muse-code 接入 Muse 平台代码专属�
     "muse": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-muse-code",
-      "capability": "muse",
+      "capability": "default",
       "priority": 10,
       "weight": 100,
     },

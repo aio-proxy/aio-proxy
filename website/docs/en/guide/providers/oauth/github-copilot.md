@@ -12,8 +12,9 @@ Connect GitHub Copilot using standard OAuth Device Flow.
 {
   "providers": {
     "my-copilot": {
-      "kind": "plugin",
+      "kind": "oauth",
       "plugin": "@aio-proxy/plugin-github-copilot",
+      "capability": "default",
     },
   },
 }
