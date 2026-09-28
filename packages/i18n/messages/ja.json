@@ -806,6 +806,7 @@
         "tab_metadata": "メタデータ",
         "tab_cost": "コストと上限",
         "tab_traffic": "トラフィック",
+        "view_topology": "トポロジーを表示",
         "unsaved_title": "未保存の変更があります",
         "unsaved_body": "このページを離れると、未保存の変更は破棄されます。",
         "unsaved_stay": "このページに留まる",
@@ -833,6 +834,7 @@
       "lab": {
         "unknown": "不明なラボ",
         "filter_label": "ラボ",
+        "filter_placeholder": "ラボを選択",
         "filter_all": "すべてのラボ",
         "model_count": "{count} モデル",
         "risk_count": "{count} 件要対応"

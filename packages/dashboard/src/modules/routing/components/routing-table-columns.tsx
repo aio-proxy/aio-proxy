@@ -6,11 +6,11 @@ import { Link } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { tableHead } from '@/components/data-table/table-head';
-import { ProviderIdLabel } from '@/components/provider-id-label';
+import { ProviderLabel } from '@/components/provider-label';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
 
 import { modelRisks } from '../lib/routing-risk';
-import { UNKNOWN_LAB, labOf } from '../lib/routing-rows';
+import { UNKNOWN_LAB, labDisplayName, labOf } from '../lib/routing-rows';
 import type { RoutingRiskFilter } from '../lib/routing-search';
 import { type RoutingTrafficIndex, modelTrafficSummary, tierActualShares } from '../lib/routing-traffic';
 import { RoutingShareBar } from './routing-share-bar/routing-share-bar';
@@ -20,7 +20,7 @@ const percentFormatter = new Intl.NumberFormat(undefined, { style: 'percent', ma
 
 const labLabel = (model: DashboardRoutingModel): string => {
   const lab = labOf(model);
-  return lab === UNKNOWN_LAB ? m['dashboard.routing.lab.unknown']() : lab;
+  return lab === UNKNOWN_LAB ? m['dashboard.routing.lab.unknown']() : labDisplayName(lab);
 };
 
 const riskLabel = (risk: RoutingRiskFilter): string => {
@@ -100,7 +100,17 @@ export const createRoutingColumns = ({
           </span>
           <div className="flex min-w-0 flex-col gap-0.5">
             {model.providers.map((entry) => (
-              <ProviderIdLabel key={entry.id} providerId={entry.id} mark={false} className="text-xs" />
+              <ProviderLabel key={entry.id} providerId={entry.id}>
+                {({ name, accountLabel, oauthService, providerId }) => (
+                  <span className="inline-flex min-w-0 items-center gap-1 text-xs" title={providerId}>
+                    <span className="truncate">
+                      {oauthService === undefined || accountLabel === undefined
+                        ? name
+                        : `${oauthService} · ${accountLabel}`}
+                    </span>
+                  </span>
+                )}
+              </ProviderLabel>
             ))}
           </div>
         </div>
@@ -168,9 +178,9 @@ export const createRoutingColumns = ({
     id: 'actions',
     enableHiding: false,
     enableSorting: false,
-    header: tableHead(() => m['dashboard.routing.table.col_actions']()),
+    header: tableHead(() => m['dashboard.routing.table.col_actions'](), 'text-right'),
     cell: ({ row }) => (
-      <div className="text-right">
+      <div className="flex justify-end">
         <Link
           to="/routing/$"
           params={{ _splat: row.original.modelId }}

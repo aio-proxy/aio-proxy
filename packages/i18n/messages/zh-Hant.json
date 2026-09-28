@@ -806,6 +806,7 @@
         "tab_metadata": "元資料",
         "tab_cost": "成本與限額",
         "tab_traffic": "流量",
+        "view_topology": "查看拓撲",
         "unsaved_title": "有未儲存的變更",
         "unsaved_body": "離開此頁面會捨棄未儲存的變更。",
         "unsaved_stay": "留在此頁",
@@ -833,6 +834,7 @@
       "lab": {
         "unknown": "未知廠商",
         "filter_label": "廠商",
+        "filter_placeholder": "選擇廠商",
         "filter_all": "全部廠商",
         "model_count": "{count} 個模型",
         "risk_count": "{count} 個需處理"

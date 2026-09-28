@@ -806,6 +806,7 @@
         "tab_metadata": "Metadata",
         "tab_cost": "Cost and limits",
         "tab_traffic": "Traffic",
+        "view_topology": "View topology",
         "unsaved_title": "Unsaved changes",
         "unsaved_body": "Leaving this page discards unsaved changes.",
         "unsaved_stay": "Stay on this page",
@@ -833,6 +834,7 @@
       "lab": {
         "unknown": "Unknown lab",
         "filter_label": "Lab",
+        "filter_placeholder": "Select a lab",
         "filter_all": "All labs",
         "model_count": "{count} models",
         "risk_count": "{count} need attention"

@@ -6,4 +6,4 @@
 '@aio-proxy/dashboard': minor
 ---
 
-The routing page groups models by lab and can filter to models with no eligible Provider, only one Provider and no failover, or traffic that diverges from the configured weights. Each model shows the share of traffic it actually served and its success rate beside those configured Provider weights. Editing a route is a full page instead of a drawer.
+The routing page groups models by vendor, shows four health metrics as dashboard cards, and filters model IDs and vendors in one row. Each model shows named Providers with OAuth service and account labels, traffic share, and success rate beside its configured Provider weights. Editing a route is a full page instead of a drawer.

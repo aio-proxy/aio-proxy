@@ -1,6 +1,6 @@
 import { expect, test } from '@rstest/core';
 
-import { UNKNOWN_LAB, filterRoutingModels, labOf, labOptions, sortRoutingModels } from './routing-rows';
+import { UNKNOWN_LAB, filterRoutingModels, labDisplayName, labOf, labOptions, sortRoutingModels } from './routing-rows';
 
 const model = (modelId: string, catalog?: { lab: string; releaseDate?: string }, eligible = 2) =>
   ({
@@ -18,6 +18,12 @@ const model = (modelId: string, catalog?: { lab: string; releaseDate?: string },
 test('groups a model with no catalog under a single unknown lab', () => {
   expect(labOf(model('x'))).toBe(UNKNOWN_LAB);
   expect(labOf(model('y', { lab: 'openai' }))).toBe('openai');
+});
+
+test('maps known model vendors to display names and preserves unknown IDs', () => {
+  expect(labDisplayName('openai')).toBe('OpenAI');
+  expect(labDisplayName('anthropic')).toBe('Anthropic');
+  expect(labDisplayName('custom-lab')).toBe('custom-lab');
 });
 
 test('orders by lab, then newest release first, then model id', () => {

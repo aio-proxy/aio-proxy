@@ -24,7 +24,8 @@ interface DataTableControlsProps {
   };
   readonly filterLabel: string;
   readonly filterPlaceholder: string;
-  readonly columnsLabel: string;
+  readonly columnsLabel?: string;
+  readonly children?: React.ReactNode;
 }
 
 export const DataTableControls: React.FC<DataTableControlsProps> = ({
@@ -32,6 +33,7 @@ export const DataTableControls: React.FC<DataTableControlsProps> = ({
   filterLabel,
   filterPlaceholder,
   columnsLabel,
+  children,
 }) => {
   const form = useForm({ defaultValues: { globalFilter: '' } });
   const columns = table
@@ -39,7 +41,7 @@ export const DataTableControls: React.FC<DataTableControlsProps> = ({
     .filter((column) => column.getCanHide() && column.columnDef.meta?.label !== undefined);
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-end gap-2">
       <form.Field name="globalFilter">
         {(field) => (
           <Input
@@ -54,20 +56,23 @@ export const DataTableControls: React.FC<DataTableControlsProps> = ({
           />
         )}
       </form.Field>
-      <DropdownMenu>
-        <DropdownMenuTrigger render={<Button size="sm" variant="outline" />}>{columnsLabel}</DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {columns.map((column) => (
-            <DropdownMenuCheckboxItem
-              key={column.id}
-              checked={column.getIsVisible()}
-              onCheckedChange={(visible) => column.toggleVisibility(visible)}
-            >
-              {column.columnDef.meta?.label?.()}
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {children}
+      {columnsLabel === undefined ? null : (
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button size="sm" variant="outline" />}>{columnsLabel}</DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {columns.map((column) => (
+              <DropdownMenuCheckboxItem
+                key={column.id}
+                checked={column.getIsVisible()}
+                onCheckedChange={(visible) => column.toggleVisibility(visible)}
+              >
+                {column.columnDef.meta?.label?.()}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 };

@@ -12,15 +12,18 @@ import { useDataTable } from '@/hooks/use-data-table';
 import { modelRisks } from '../lib/routing-risk';
 import { labOf } from '../lib/routing-rows';
 import type { RoutingTrafficIndex } from '../lib/routing-traffic';
+import { RoutingLabFilter } from './routing-lab-filter';
 import { RoutingLabGroupRow } from './routing-lab-group-row';
 import { createRoutingColumns } from './routing-table-columns';
 
 interface RoutingTableProps {
   readonly models: readonly DashboardRoutingModel[];
   readonly traffic: RoutingTrafficIndex | undefined;
+  readonly lab?: string;
+  readonly onLabChange?: (lab: string | undefined) => void;
 }
 
-export const RoutingTable: React.FC<RoutingTableProps> = ({ models, traffic }) => {
+export const RoutingTable: React.FC<RoutingTableProps> = ({ models, traffic, lab, onLabChange }) => {
   'use no memo';
 
   const columns = useMemo(() => createRoutingColumns({ traffic }), [traffic]);
@@ -51,8 +54,9 @@ export const RoutingTable: React.FC<RoutingTableProps> = ({ models, traffic }) =
         table={table}
         filterLabel={m['dashboard.routing.table.filter']()}
         filterPlaceholder={m['dashboard.routing.table.filter_placeholder']()}
-        columnsLabel={m['dashboard.routing.table.columns']()}
-      />
+      >
+        {onLabChange === undefined ? null : <RoutingLabFilter models={models} value={lab} onChange={onLabChange} />}
+      </DataTableControls>
       <div className="overflow-x-auto">
         <Table aria-label={m['dashboard.routing.table.label']()} data-testid="routing-table">
           <TableHeader>

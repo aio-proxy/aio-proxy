@@ -3,7 +3,7 @@ import { Badge } from '@aio-proxy/ui/components/badge';
 import { TableCell, TableRow } from '@aio-proxy/ui/components/table';
 import type React from 'react';
 
-import { UNKNOWN_LAB } from '../lib/routing-rows';
+import { UNKNOWN_LAB, labDisplayName } from '../lib/routing-rows';
 
 interface RoutingLabGroupRowProps {
   readonly lab: string;
@@ -12,7 +12,8 @@ interface RoutingLabGroupRowProps {
   readonly columnCount: number;
 }
 
-const labLabel = (lab: string): string => (lab === UNKNOWN_LAB ? m['dashboard.routing.lab.unknown']() : lab);
+const labLabel = (lab: string): string =>
+  lab === UNKNOWN_LAB ? m['dashboard.routing.lab.unknown']() : labDisplayName(lab);
 
 export const RoutingLabGroupRow: React.FC<RoutingLabGroupRowProps> = ({ lab, modelCount, riskCount, columnCount }) => (
   <TableRow className="bg-muted/50 hover:bg-muted/50" data-testid={`routing-lab-group-${lab}`}>

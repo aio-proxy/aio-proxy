@@ -2,7 +2,7 @@ import { dateFnsLocale, getLocale, m } from '@aio-proxy/i18n';
 import type { UsageOverviewRange } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@aio-proxy/ui/components/chart';
-import { Empty } from '@aio-proxy/ui/components/empty';
+import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from '@aio-proxy/ui/components/empty';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -16,12 +16,13 @@ import { RoutingTrafficSummaryTable, type RoutingTrafficSummaryRow } from './rou
 export interface RoutingModelTrafficTabProps {
   readonly modelId: string;
   readonly range: UsageOverviewRange;
+  readonly onViewTopology: () => void;
 }
 
 const providerRate = (numerator: bigint, denominator: bigint): number | null =>
   denominator === 0n ? null : Number(numerator) / Number(denominator);
 
-export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ modelId, range }) => {
+export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ modelId, range, onViewTopology }) => {
   const bucketsQuery = useQuery(routingTrafficBucketsQueryOptions(range, modelId));
   const trafficQuery = useQuery(routingTrafficQueryOptions(range));
   const uiLocale = getLocale();
@@ -86,7 +87,14 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
   if (bucketsData.providerIds.length === 0 && totalsProviders.length === 0) {
     return (
       <Empty>
-        <p>{m['dashboard.routing.traffic.none']()}</p>
+        <EmptyHeader>
+          <EmptyTitle>{m['dashboard.routing.traffic.none']()}</EmptyTitle>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button type="button" variant="outline" onClick={onViewTopology}>
+            {m['dashboard.routing.detail.view_topology']()}
+          </Button>
+        </EmptyContent>
       </Empty>
     );
   }

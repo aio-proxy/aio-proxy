@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { UsageOverviewRange } from '@aio-proxy/types';
+import { ProviderKind, type UsageOverviewRange } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -11,6 +11,9 @@ import {
 } from '@tanstack/react-router';
 import { fireEvent, render as renderComponent, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
+
+import { ProviderCatalogProvider, type ProviderCatalogValue } from '@/hooks/use-provider-catalog';
+import { providerStub } from '@/lib/provider-fixtures';
 
 import type {
   RoutingTrafficBucketsData,
@@ -48,6 +51,7 @@ const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false 
 const renderTraffic = (options: {
   readonly buckets: RoutingTrafficBucketsData;
   readonly traffic?: RoutingTrafficData;
+  readonly catalog?: ProviderCatalogValue;
 }) => {
   mocks.buckets = options.buckets;
   mocks.traffic =
@@ -73,7 +77,7 @@ const renderTraffic = (options: {
   const hostRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
-    component: () => <RoutingModelTrafficTab modelId={MODEL_ID} range={RANGE} />,
+    component: () => <RoutingModelTrafficTab modelId={MODEL_ID} range={RANGE} onViewTopology={() => undefined} />,
   });
   const router = createRouter({
     routeTree: rootRoute.addChildren([hostRoute, tracesRoute]),
@@ -84,7 +88,15 @@ const renderTraffic = (options: {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 
-  return renderComponent(<RouterProvider router={router} />, { wrapper });
+  const routerView = <RouterProvider router={router} />;
+  return renderComponent(
+    options.catalog === undefined ? (
+      routerView
+    ) : (
+      <ProviderCatalogProvider value={options.catalog}>{routerView}</ProviderCatalogProvider>
+    ),
+    { wrapper },
+  );
 };
 
 const providerTotals = (
@@ -193,10 +205,41 @@ test('shows served alongside attempts so the chart and the table can be reconcil
   expect(cells.slice(0, 3)).toStrictEqual(['primary', '2', '10']);
 });
 
+test('uses the shared Provider label for OAuth traffic rows', async () => {
+  renderTraffic({
+    buckets: bucketsFixture(['oauth-provider']),
+    catalog: {
+      providers: [
+        providerStub({
+          id: 'oauth-provider',
+          kind: ProviderKind.OAuth,
+          plugin: '@aio-proxy/plugin-openai-chatgpt',
+          accountLabel: 'wang.baran@gmail.com',
+        }),
+      ],
+      plugins: [
+        {
+          packageName: '@aio-proxy/plugin-openai-chatgpt',
+          displayName: 'ChatGPT',
+          builtin: true,
+          enabled: true,
+          hasOptions: false,
+          state: { status: 'ready' },
+        },
+      ],
+      status: 'ready',
+    },
+  });
+
+  expect(await screen.findByText('ChatGPT · wang.baran@gmail.com')).toBeInTheDocument();
+  expect(screen.queryByText('oauth-provider')).not.toBeInTheDocument();
+});
+
 test('shows an empty state rather than an empty chart when nothing was served', async () => {
   renderTraffic({ buckets: { ...bucketsFixture([]), providerIds: [], buckets: [] } });
 
   expect(await screen.findByText(/No traffic|无流量/u)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /View topology|查看拓扑/u })).toBeInTheDocument();
 });
 
 test('links out to Traces filtered to this model', async () => {
@@ -304,7 +347,7 @@ test('sorts the provider metrics table by served requests', async () => {
   expect(order()).toStrictEqual(['routing-traffic-row-high', 'routing-traffic-row-low']);
 });
 
-test('exposes filtering and column visibility on the provider metrics table', async () => {
+test('keeps provider filtering without exposing column visibility controls', async () => {
   // useDataTable creates global-filter and column-visibility state, but it is unreachable unless the
   // shared controls are rendered — the table had sorting and pagination only.
   renderTraffic({
@@ -326,7 +369,7 @@ test('exposes filtering and column visibility on the provider metrics table', as
   });
 
   await screen.findByRole('table');
-  expect(screen.getByRole('button', { name: m['dashboard.routing.table.columns']() })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: m['dashboard.routing.table.columns']() })).not.toBeInTheDocument();
 
   const filter = screen.getByLabelText(m['dashboard.routing.traffic.filter']());
   expect(screen.getByTestId('routing-traffic-row-fallback')).toBeInTheDocument();

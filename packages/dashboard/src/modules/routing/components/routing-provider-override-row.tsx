@@ -2,6 +2,8 @@ import { m } from '@aio-proxy/i18n';
 import { ModelLimitSchema, type ModelCostInput, type ModelLimitInput } from '@aio-proxy/types';
 import { TableCell, TableRow } from '@aio-proxy/ui/components/table';
 
+import { ProviderLabel } from '@/components/provider-label';
+
 import type { RoutingProviderOverrideDraft } from '../lib/routing-metadata-draft';
 import { ModelMetadataNumberField } from './model-metadata-visual-tab';
 
@@ -69,7 +71,15 @@ export const RoutingProviderOverrideRow: React.FC<RoutingProviderOverrideRowProp
   return (
     <>
       <TableRow data-testid={`routing-overrides-${providerId}`}>
-        <TableCell className="font-mono text-xs whitespace-nowrap">{providerId}</TableCell>
+        <TableCell className="text-xs whitespace-nowrap">
+          <ProviderLabel providerId={providerId}>
+            {({ name, accountLabel, oauthService, providerId: resolvedId }) => (
+              <span className="inline-block max-w-56 truncate" title={resolvedId}>
+                {oauthService === undefined || accountLabel === undefined ? name : `${oauthService} · ${accountLabel}`}
+              </span>
+            )}
+          </ProviderLabel>
+        </TableCell>
         {COST_FIELDS.map((key) => (
           <TableCell key={`cost-${key}`}>
             <ModelMetadataNumberField

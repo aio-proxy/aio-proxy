@@ -21,6 +21,7 @@ const mocks = rs.hoisted(() => ({
     refetch: rs.fn(),
   },
   trafficMode: 'pending' as 'pending' | 'error',
+  providerCatalog: { providers: undefined, plugins: [], status: 'ready' as const },
 }));
 
 rs.mock('../hooks/use-routing-query', () => ({
@@ -35,6 +36,12 @@ rs.mock('../services/routing-traffic-service', () => ({
       return new Promise(() => undefined);
     },
   }),
+}));
+
+rs.mock('@/hooks/use-provider-catalog', () => ({
+  ProviderCatalogProvider: ({ children }: { readonly children: ReactNode }) => children,
+  useProviderCatalog: () => mocks.providerCatalog,
+  useProviderCatalogContext: () => undefined,
 }));
 
 rs.mock('@tanstack/react-router', () => ({
@@ -134,6 +141,14 @@ test('renders the list from routing models alone when traffic has not landed', (
   expect(screen.getByText(/Measuring|统计中/u)).toBeInTheDocument();
 });
 
+test('separates the health cards from the routing table card', () => {
+  mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
+
+  render(<RoutingPage {...routingPageProps} />);
+
+  expect(screen.getByTestId('routing-health-strip').parentElement).toHaveClass('space-y-3');
+});
+
 test('keeps the list fully usable when the traffic query fails', () => {
   mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
   mockRoutingTrafficError();
@@ -216,6 +231,15 @@ test('keeps the lab filter adjustable when the current filters match nothing', (
 
   expect(screen.getByText('No models match these filters.')).toBeInTheDocument();
   expect(screen.getByLabelText('Lab')).toBeInTheDocument();
+});
+
+test('keeps the lab filter aligned with the model filter without a visible label', () => {
+  mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
+
+  render(<RoutingPage {...routingPageProps} />);
+
+  expect(screen.getByLabelText('Lab')).toBeInTheDocument();
+  expect(screen.queryByText(/^Lab$/u)).not.toBeInTheDocument();
 });
 
 test('no longer renders the editor drawer', () => {

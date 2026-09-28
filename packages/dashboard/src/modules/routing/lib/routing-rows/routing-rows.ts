@@ -8,6 +8,17 @@ import type { RoutingTrafficIndex } from '../routing-traffic';
  * maker. Sorted last rather than alphabetically, so it never lands between two real labs. */
 export const UNKNOWN_LAB = 'unknown';
 
+const LAB_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  anthropic: 'Anthropic',
+  google: 'Google',
+  meta: 'Meta',
+  mistral: 'Mistral',
+  openai: 'OpenAI',
+  xai: 'xAI',
+};
+
+export const labDisplayName = (lab: string): string => LAB_DISPLAY_NAMES[lab] ?? lab;
+
 export const labOf = (model: DashboardRoutingModel): string => model.catalog?.lab ?? UNKNOWN_LAB;
 
 const compareLab = (left: string, right: string): number => {

@@ -31,6 +31,37 @@ test('shows every count and marks the active filter pressed', () => {
   expect(screen.getByRole('button', { pressed: true })).toHaveTextContent('3');
 });
 
+test('renders the four health metrics as standalone dashboard cards', () => {
+  renderStrip({});
+
+  const cards = document.querySelectorAll('[data-slot="card"]');
+  expect(cards).toHaveLength(4);
+  expect([...cards].every((card) => card.getAttribute('data-size') === 'sm')).toBe(true);
+});
+
+test('renders risk cards as the interactive Card element itself', () => {
+  renderStrip({});
+
+  const riskCard = screen.getByText('3').closest('[data-slot="card"]');
+  expect(riskCard?.tagName).toBe('BUTTON');
+  expect(riskCard?.querySelector('button')).toBeNull();
+});
+
+test('uses one dashboard title style for every health card', () => {
+  renderStrip({});
+
+  const titles = [...document.querySelectorAll('[data-slot="card-title"]')];
+  expect(titles).toHaveLength(4);
+  expect(new Set(titles.map((title) => title.className))).toHaveLength(1);
+});
+
+test('uses the whole risk card as the selected surface', () => {
+  renderStrip({ active: 'no-eligible' });
+
+  const selectedCard = screen.getByText('3').closest('[data-slot="card"]');
+  expect(selectedCard).toHaveClass('bg-muted', 'ring-2', 'ring-primary');
+});
+
 test('toggles the risk it was clicked with', () => {
   const onToggle = rs.fn();
   renderStrip({ onToggle });

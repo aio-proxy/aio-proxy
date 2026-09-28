@@ -6,6 +6,7 @@ import { Fragment, useMemo } from 'react';
 import { DataTableControls } from '@/components/data-table/data-table-controls';
 import { Pagination } from '@/components/data-table/pagination';
 import { tableHead } from '@/components/data-table/table-head';
+import { ProviderLabel } from '@/components/provider-label';
 import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
 import { formatDuration } from '@/lib/format-duration';
 
@@ -50,7 +51,15 @@ export const RoutingTrafficSummaryTable: React.FC<RoutingTrafficSummaryTableProp
         enableHiding: false,
         meta: { label: () => m['dashboard.traces.provider']() },
         header: tableHead(() => m['dashboard.traces.provider']()),
-        cell: ({ row }) => <span className="font-mono text-xs">{row.original.providerId}</span>,
+        cell: ({ row }) => (
+          <ProviderLabel providerId={row.original.providerId}>
+            {({ name, accountLabel, oauthService, providerId }) => (
+              <span className="inline-block max-w-56 truncate text-xs" title={providerId}>
+                {oauthService === undefined || accountLabel === undefined ? name : `${oauthService} · ${accountLabel}`}
+              </span>
+            )}
+          </ProviderLabel>
+        ),
       },
       {
         id: 'served',
@@ -116,7 +125,6 @@ export const RoutingTrafficSummaryTable: React.FC<RoutingTrafficSummaryTableProp
         table={table}
         filterLabel={m['dashboard.routing.traffic.filter']()}
         filterPlaceholder={m['dashboard.routing.traffic.filter_placeholder']()}
-        columnsLabel={m['dashboard.routing.table.columns']()}
       />
       <Table>
         <TableHeader>

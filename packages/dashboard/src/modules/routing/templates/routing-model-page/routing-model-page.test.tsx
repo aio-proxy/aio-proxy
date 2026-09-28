@@ -308,7 +308,7 @@ test('marks the tab that holds an unsaved change', async () => {
 
   dirtyTopology();
 
-  expect(screen.getByRole('tab', { name: /拓扑|Topology/u })).toHaveTextContent(/未保存|Unsaved/u);
+  expect(screen.getByRole('img', { name: /未保存|Unsaved/u })).toBeInTheDocument();
 });
 
 test('keeps a dirty editor mounted when a refetch fails with cached inventory', async () => {
@@ -319,7 +319,7 @@ test('keeps a dirty editor mounted when a refetch fails with cached inventory', 
   routingQueryMocks.isError = true;
   act(rerenderRoutingQuery);
 
-  expect(screen.getByRole('tab', { name: /拓扑|Topology/u })).toHaveTextContent(/未保存|Unsaved/u);
+  expect(screen.getByRole('img', { name: /未保存|Unsaved/u })).toBeInTheDocument();
   expect(screen.getByRole('alert')).toHaveTextContent(m['dashboard.routing.load_failed']());
 });
 
@@ -355,6 +355,33 @@ test('keeps one save button for the whole page rather than one per tab', async (
   expect(screen.getAllByRole('button', { name: /保存|Save/u })).toHaveLength(1);
 });
 
+test('hides editor actions while the traffic tab is active', async () => {
+  renderPage({ models: [modelFixture('sonnet')] });
+  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+
+  fireEvent.click(screen.getByRole('tab', { name: /流量|Traffic/u }));
+
+  expect(screen.queryByRole('button', { name: /保存|Save/u })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /取消|Cancel/u })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('tab', { name: /拓扑|Topology/u }));
+  expect(screen.getByRole('button', { name: /保存|Save/u })).toBeInTheDocument();
+});
+
+test('keeps all tabs and editor actions inside one card', async () => {
+  renderPage({ models: [modelFixture('sonnet')] });
+  await screen.findByRole('tab', { name: /拓扑|Topology/u });
+
+  const card = screen.getByRole('tabpanel').closest('[data-slot="card"]');
+  expect(card).not.toBeNull();
+  expect(card).toContainElement(screen.getByRole('button', { name: /保存|Save/u }));
+  expect(card).toContainElement(screen.getByRole('button', { name: /取消|Cancel/u }));
+  expect(screen.getByRole('button', { name: /保存|Save/u }).closest('[data-slot="card-footer"]')).not.toHaveClass(
+    'border-t',
+  );
+  expect(screen.getByRole('tab', { name: /拓扑|Topology/u }).closest('[data-slot="card"]')).toBeNull();
+});
+
 test('disables saving when the config is read-only', async () => {
   renderPage({ models: [modelFixture('sonnet')], writable: false });
   await screen.findByRole('tab', { name: /拓扑|Topology/u });
@@ -369,7 +396,7 @@ test('switching range does not discard an unsaved draft', async () => {
 
   selectRange('7d');
 
-  expect(screen.getByRole('tab', { name: /拓扑|Topology/u })).toHaveTextContent(/未保存|Unsaved/u);
+  expect(screen.getByRole('img', { name: /未保存|Unsaved/u })).toBeInTheDocument();
 });
 
 test('cancel clears the unsaved marker without saving', async () => {
@@ -377,10 +404,10 @@ test('cancel clears the unsaved marker without saving', async () => {
   await screen.findByRole('tab', { name: /拓扑|Topology/u });
   dirtyTopology();
 
-  expect(screen.getByRole('tab', { name: /拓扑|Topology/u })).toHaveTextContent(/未保存|Unsaved/u);
+  expect(screen.getByRole('img', { name: /未保存|Unsaved/u })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /Cancel|取消/u }));
 
-  expect(screen.getByRole('tab', { name: /拓扑|Topology/u })).not.toHaveTextContent(/未保存|Unsaved/u);
+  expect(screen.queryByRole('img', { name: /未保存|Unsaved/u })).not.toBeInTheDocument();
   expect(mutationMocks.mutate).not.toHaveBeenCalled();
 });
 

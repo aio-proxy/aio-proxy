@@ -806,6 +806,7 @@
         "tab_metadata": "元数据",
         "tab_cost": "成本与限额",
         "tab_traffic": "流量",
+        "view_topology": "查看拓扑",
         "unsaved_title": "有未保存的改动",
         "unsaved_body": "离开这个页面会丢弃未保存的改动。",
         "unsaved_stay": "留在此页",
@@ -833,6 +834,7 @@
       "lab": {
         "unknown": "未知厂商",
         "filter_label": "厂商",
+        "filter_placeholder": "选择厂商",
         "filter_all": "全部厂商",
         "model_count": "{count} 个模型",
         "risk_count": "{count} 个需处理"

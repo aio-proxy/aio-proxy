@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
@@ -10,6 +11,9 @@ import {
 } from '@tanstack/react-router';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
+
+import { ProviderCatalogProvider } from '@/hooks/use-provider-catalog';
+import { providerStub } from '@/lib/provider-fixtures';
 
 import { RoutingTable } from './routing-table';
 
@@ -167,6 +171,63 @@ test('renders every known model including zero-eligible and single-Provider rout
   expect(screen.getByTestId('routing-row-disabled-model')).toBeInTheDocument();
   expect(within(screen.getByTestId('routing-row-openai/gpt-5')).getByLabelText(/^a,/u)).toBeInTheDocument();
   expect(within(screen.getByTestId('routing-row-disabled-model')).getByText(/0\s*\/\s*1/u)).toBeInTheDocument();
+});
+
+test('renders an OAuth Provider service and account from the shared catalog', async () => {
+  await renderTable(
+    <ProviderCatalogProvider
+      value={{
+        providers: [
+          providerStub({
+            id: 'oauth-provider',
+            kind: ProviderKind.OAuth,
+            plugin: '@aio-proxy/plugin-openai-chatgpt',
+            accountLabel: 'wang.baran@gmail.com',
+          }),
+        ],
+        plugins: [
+          {
+            packageName: '@aio-proxy/plugin-openai-chatgpt',
+            displayName: 'ChatGPT',
+            builtin: true,
+            enabled: true,
+            hasOptions: false,
+            state: { status: 'ready' },
+          },
+        ],
+        status: 'ready',
+      }}
+    >
+      <RoutingTable
+        traffic={undefined}
+        models={[
+          model({ modelId: 'gpt-5', providers: [provider({ id: 'oauth-provider', kind: ProviderKind.OAuth })] }),
+        ]}
+      />
+    </ProviderCatalogProvider>,
+  );
+
+  const providersCell = within(screen.getByTestId('routing-row-gpt-5')).getAllByRole('cell')[2];
+  expect(providersCell).toHaveTextContent('ChatGPT · wang.baran@gmail.com');
+  expect(providersCell).not.toHaveTextContent('OAuth');
+  expect(within(providersCell).getByTitle('oauth-provider')).toBeInTheDocument();
+});
+
+test('does not render the column visibility control for the routing table', async () => {
+  await renderTable(<RoutingTable models={[modelFixture('gpt-5')]} traffic={undefined} />);
+
+  expect(screen.queryByRole('button', { name: /Columns|列/u })).not.toBeInTheDocument();
+});
+
+test('aligns the actions header and edit controls to the same right edge', async () => {
+  await renderTable(<RoutingTable models={[modelFixture('gpt-5')]} traffic={undefined} />);
+
+  const header = screen.getByRole('columnheader', { name: m['dashboard.routing.table.col_actions']() });
+  const row = screen.getByTestId('routing-row-gpt-5');
+  const actionCell = within(row).getAllByRole('cell').at(-1);
+
+  expect(header.querySelector(':scope > span')).toHaveClass('block', 'text-right');
+  expect(actionCell?.firstElementChild).toHaveClass('flex', 'justify-end');
 });
 
 test('filters models through the shared DataTable controls', async () => {

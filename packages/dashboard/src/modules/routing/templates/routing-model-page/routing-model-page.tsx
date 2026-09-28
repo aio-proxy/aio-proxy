@@ -12,6 +12,7 @@ import type React from 'react';
 import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
+import { ProviderCatalogProvider, useProviderCatalog } from '@/hooks/use-provider-catalog';
 
 import type { RoutingTrafficState } from '../../components/routing-model-topology-tab';
 import { useRoutingQuery } from '../../hooks/use-routing-query';
@@ -40,6 +41,7 @@ interface RoutingModelPageProps {
 
 export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) => {
   const query = useRoutingQuery();
+  const providerCatalog = useProviderCatalog();
   const [range, setRange] = useState<UsageOverviewRange>('24h');
   const trafficQuery = useQuery(routingTrafficQueryOptions(range));
   const models = query.data?.models ?? [];
@@ -160,7 +162,7 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
         { label: modelId },
       ]}
     >
-      {main}
+      <ProviderCatalogProvider value={providerCatalog}>{main}</ProviderCatalogProvider>
     </PageContainer>
   );
 };
