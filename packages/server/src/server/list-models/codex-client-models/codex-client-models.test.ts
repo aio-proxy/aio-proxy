@@ -147,6 +147,36 @@ test('case A returns upstream verbatim with alias slug/id; case B synthesizes wi
   expect((caseBEntry.base_instructions as string).includes('based on my-alias.')).toBe(true);
 });
 
+test('case B inherits forward-compatible fields from the first remote model template', async () => {
+  const firstRemote = {
+    ...upstream,
+    slug: 'gpt-6-astra',
+    display_name: 'GPT-6-Astra',
+    priority: 1,
+    future_catalog_field: { mode: 'forward-compatible' },
+    supported_reasoning_levels: [{ effort: 'ultra', description: 'delegated reasoning' }],
+    default_reasoning_level: 'ultra',
+  };
+  const legacyTemplate = { ...upstream, slug: 'gpt-5.5', display_name: 'GPT-5.5', priority: 2 };
+  const fetchImpl = (async () => Response.json({ models: [firstRemote, legacyTemplate] })) as unknown as typeof fetch;
+  const templateProvider = {
+    ...provider,
+    alias: { ...provider.alias, fresh: { model: 'not-in-catalog', preserve: false } },
+  } as RuntimeProviderInstance;
+
+  const { models } = await codexClientModels(
+    fakeState([templateProvider], undefined, { fresh: { metadata: TEXT_OUTPUT } }),
+    {
+      fetchImpl,
+    },
+  );
+  const synthesized = models.find((entry) => entry.id === 'fresh') as Record<string, unknown>;
+
+  expect(synthesized.future_catalog_field).toEqual({ mode: 'forward-compatible' });
+  expect(synthesized.supported_reasoning_levels).toEqual([{ effort: 'ultra', description: 'delegated reasoning' }]);
+  expect(synthesized.default_reasoning_level).toBe('ultra');
+});
+
 test('official Codex windows beat larger models.dev fallback limits', async () => {
   const officialRow = { ...upstream, context_window: 272_000, max_context_window: 272_000 };
   const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;

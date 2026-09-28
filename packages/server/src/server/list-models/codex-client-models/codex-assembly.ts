@@ -94,6 +94,7 @@ export function projectCodexMetadata(
 
 export function assembleCodexModel(input: AssembleInput): Record<string, unknown> {
   const text = renderDefaultInstructions(input.slug);
+  const metadataPatch = projectCodexMetadata(input.metadata, input.template === undefined);
 
   // Clone a complete template so every required field is inherited; fall back to
   // REQUIRED_DEFAULTS offline. Template values win where present, defaults fill gaps.
@@ -106,7 +107,9 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
   // when there are levels, so drop the inherited one to avoid an unlisted default.
   delete base['availability_nux'];
   delete base['upgrade'];
-  delete base['default_reasoning_level'];
+  if (input.template === undefined || 'supported_reasoning_levels' in metadataPatch) {
+    delete base['default_reasoning_level'];
+  }
 
   return {
     ...base,
@@ -118,7 +121,11 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
     visibility: 'list',
     context_window: input.contextWindow,
     max_context_window: input.maxContextWindow,
-    ...projectCodexMetadata(input.metadata, true),
+    // A synthesized model gets an empty description unless its metadata supplies one.
+    // Other fields remain inherited from the remote template when no local source
+    // authoritatively overrides them, which keeps newer Codex fields intact.
+    description: input.metadata?.description ?? '',
+    ...metadataPatch,
     supports_search_tool: false,
     prefer_websockets: false,
     service_tiers: [],

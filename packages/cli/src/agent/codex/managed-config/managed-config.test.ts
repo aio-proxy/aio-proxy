@@ -177,7 +177,12 @@ test('V1 static ownership rejects user-authored command fields', async () => {
     marker.format = 1;
     delete marker.authMode;
     delete marker.installationId;
-    marker.fields = marker.fields.filter((field: { path: string[] }) => field.path.length < 4);
+    marker.fields = marker.fields.filter(
+      (field: { path: string[] }) =>
+        field.path.length < 4 &&
+        !(field.path.length === 2 && field.path[0] === 'features') &&
+        !(field.path.length === 3 && field.path[2] === 'model_catalog_url'),
+    );
     await Bun.write(location.markerPath, `${JSON.stringify(marker)}\n`);
     const before = await Bun.file(location.configPath).text();
     await Bun.write(
@@ -202,7 +207,12 @@ test('does not claim or remove an existing empty auth table', async () => {
     marker.format = 1;
     delete marker.authMode;
     delete marker.installationId;
-    marker.fields = marker.fields.filter((field: { path: string[] }) => field.path.length < 4);
+    marker.fields = marker.fields.filter(
+      (field: { path: string[] }) =>
+        field.path.length < 4 &&
+        !(field.path.length === 2 && field.path[0] === 'features') &&
+        !(field.path.length === 3 && field.path[2] === 'model_catalog_url'),
+    );
     await Bun.write(location.markerPath, `${JSON.stringify(marker)}\n`);
     const before = await Bun.file(location.configPath).text();
     await Bun.write(location.configPath, `${before}[model_providers.aio-proxy.auth]\n`);
@@ -213,9 +223,70 @@ test('does not claim or remove an existing empty auth table', async () => {
       auth: { mode: 'command', installationId: '11111111-1111-4111-8111-111111111111', command: 'aiop' },
     });
     const commandMarker = JSON.parse(await Bun.file(location.markerPath).text()) as { createdTables: string[][] };
-    expect(commandMarker.createdTables).toEqual([['model_providers', 'aio-proxy']]);
+    expect(commandMarker.createdTables).toEqual([['model_providers', 'aio-proxy'], ['features']]);
     await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', auth: keep('key') });
     expect(await Bun.file(location.configPath).text()).toContain('[model_providers.aio-proxy.auth]');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('overwrites an existing Codex feature and catalog URL, then restores both on removal', async () => {
+  const { root, location } = await fixture('[features]\napi_key_model_discovery = false\nkeep = true\n');
+  try {
+    await configureCodexConfig({
+      location,
+      providerId: 'aio-proxy',
+      baseUrl: 'https://old.example/v1',
+      auth: keep('key'),
+    });
+    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1/', auth: keep('key') });
+    const configured = Bun.TOML.parse(await Bun.file(location.configPath).text()) as Record<string, any>;
+    expect(configured.features).toEqual({ api_key_model_discovery: true, keep: true });
+    expect(configured.model_providers['aio-proxy'].model_catalog_url).toBe('http://proxy/v1/models');
+    await removeCodexConfig(location);
+    const restored = Bun.TOML.parse(await Bun.file(location.configPath).text()) as Record<string, any>;
+    expect(restored.features).toEqual({ api_key_model_discovery: false, keep: true });
+    expect(restored.model_providers).toBeUndefined();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('creates and removes the features table when it was absent', async () => {
+  const { root, location } = await fixture();
+  try {
+    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', auth: keep('key') });
+    const configured = Bun.TOML.parse(await Bun.file(location.configPath).text()) as Record<string, any>;
+    expect(configured.features).toEqual({ api_key_model_discovery: true });
+
+    await removeCodexConfig(location);
+    const restored = Bun.TOML.parse(await Bun.file(location.configPath).text()) as Record<string, any>;
+    expect(restored.features).toBeUndefined();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preserves a pre-existing empty features table', async () => {
+  const { root, location } = await fixture('[features]\n');
+  try {
+    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', auth: keep('key') });
+    await removeCodexConfig(location);
+    expect(await Bun.file(location.configPath).text()).toContain('[features]\n');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preserves nested features tables while removing its generated parent table', async () => {
+  const { root, location } = await fixture('[features.other]\nkeep = true\n');
+  try {
+    await configureCodexConfig({ location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', auth: keep('key') });
+    await removeCodexConfig(location);
+    const restored = await Bun.file(location.configPath).text();
+    expect(restored).toContain('[features.other]\nkeep = true');
+    expect(restored).not.toContain('[features]\n');
   } finally {
     await rm(root, { recursive: true, force: true });
   }
