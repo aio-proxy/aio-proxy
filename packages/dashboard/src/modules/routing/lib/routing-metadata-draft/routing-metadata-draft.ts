@@ -57,10 +57,14 @@ export const routingMetadataFormValues = (model: DashboardRoutingModel): Routing
 const mergeDraftValue = (base: unknown, draft: unknown, fresh: unknown): unknown => {
   if (isEqual(draft, base)) return fresh;
   if (isEqual(fresh, base)) return draft;
-  if (!isPlainObject(base) || !isPlainObject(draft) || !isPlainObject(fresh)) return draft;
+  if (!isPlainObject(draft) || !isPlainObject(fresh)) return draft;
+  // A group both sides created from nothing merges from an empty ancestor, so keys each side added
+  // independently all survive rather than the user's object replacing the other operator's.
+  const ancestor = base === undefined ? {} : base;
+  if (!isPlainObject(ancestor)) return draft;
   const merged: Record<string, unknown> = {};
-  for (const key of new Set([...Object.keys(base), ...Object.keys(draft), ...Object.keys(fresh)])) {
-    const value = mergeDraftValue(base[key], draft[key], fresh[key]);
+  for (const key of new Set([...Object.keys(ancestor), ...Object.keys(draft), ...Object.keys(fresh)])) {
+    const value = mergeDraftValue(ancestor[key], draft[key], fresh[key]);
     if (value !== undefined) merged[key] = value;
   }
   return merged;

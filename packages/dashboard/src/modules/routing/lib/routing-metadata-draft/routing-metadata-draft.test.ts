@@ -115,6 +115,18 @@ test('reconcile keeps a field another operator changed when the user edited a di
   expect(next.metadata).toEqual({ touched: true, value: { name: 'New', cost: { input: 3, output: 5 } } });
 });
 
+test('reconcile keeps keys both sides added to a group the baseline did not have', () => {
+  // The baseline had no cost group; the user added an input price, another operator an output price.
+  // Keeping the user's group whole would delete the other operator's addition on save.
+  const base = routingMetadataFormValues(model());
+  const edited = { ...base, metadata: { touched: true, value: { cost: { input: 3 } } } };
+  const reloaded: DashboardRoutingModel = { ...model(), metadata: { cost: { output: 5 } } };
+
+  const next = reconcileRoutingMetadataValues(edited, reloaded, base);
+
+  expect(next.metadata).toEqual({ touched: true, value: { cost: { input: 3, output: 5 } } });
+});
+
 test('a touched limit with input above context is invalid for Save', () => {
   expect(
     routingOverrideDraftsValid({
