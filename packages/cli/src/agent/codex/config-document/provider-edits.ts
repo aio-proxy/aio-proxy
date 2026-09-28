@@ -1,16 +1,29 @@
 import type { CodexAuthConfig } from '../contracts';
 import type { FieldEdit, ManagedValue } from './config-document';
 
+function catalogUrl(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl);
+    url.pathname = `${url.pathname.replace(/\/+$/u, '')}/models`;
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return `${baseUrl.replace(/\/+$/u, '')}/models`;
+  }
+}
+
 export function codexProviderEdits(providerId: string, baseUrl: string, auth: CodexAuthConfig): readonly FieldEdit[] {
   const id = validateCodexProviderId(providerId);
   if (auth.mode === 'keep-chatgpt' && auth.token.length === 0) throw new Error('Codex bearer token cannot be empty');
   const fields: Record<string, ManagedValue> = {
     name: 'AIO Proxy',
     base_url: baseUrl,
+    model_catalog_url: catalogUrl(baseUrl),
     wire_api: 'responses',
   };
   return [
     { path: ['model_provider'], next: { present: true, value: id } },
+    { path: ['features', 'api_key_model_discovery'], next: { present: true, value: true } },
     ...Object.entries(fields).map(([key, value]) => ({
       path: ['model_providers', id, key],
       next: { present: true as const, value },

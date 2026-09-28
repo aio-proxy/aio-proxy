@@ -130,10 +130,10 @@ export async function codexClientModels(
     ? undefined
     : enabled.find((model) => model.slug === 'codex-auto-review');
   const bySlug = new Map(upstream.map((item) => [item.slug, item]));
-  // Prefer gpt-5.5 as the synthesis template (matches CPA's default) so every
-  // required Codex ModelInfo field is inherited; else any cached row; else
-  // undefined (empty cache) and assembleCodexModel backstops with static defaults.
-  const template = bySlug.get('gpt-5.5') ?? upstream[0];
+  // Use the first remote row as the forward-compatible shape template. Known
+  // route fields are overwritten during assembly; all other fields, including
+  // fields added by a newer Codex client, are inherited automatically.
+  const template = upstream[0];
 
   const templated: { entry: Record<string, unknown>; priority: number }[] = [];
   const synthesizedInputs: { slug: string; displayName: string; entry: Record<string, unknown> }[] = [];

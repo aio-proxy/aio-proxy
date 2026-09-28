@@ -4,6 +4,7 @@ import {
   codexProviderEdits,
   editCodexDocument,
   hasCodexTable,
+  pruneEmptyCodexTable,
   readCodexDocument,
   readManagedField,
   type FieldEdit,
@@ -38,7 +39,15 @@ import {
   writeTomlAtomically,
 } from './storage';
 
-const providerFields = ['name', 'base_url', 'wire_api', 'requires_openai_auth', 'experimental_bearer_token'] as const;
+const providerFields = [
+  'name',
+  'base_url',
+  'model_catalog_url',
+  'wire_api',
+  'requires_openai_auth',
+  'experimental_bearer_token',
+] as const;
+const featureFields = ['api_key_model_discovery'] as const;
 const commandFields = ['command', 'args', 'timeout_ms', 'refresh_interval_ms'] as const;
 const authenticationFields = new Set(['env_key', 'aws', 'headers', 'header', 'api_key']);
 const operations = new Map<string, Promise<void>>();
@@ -71,6 +80,7 @@ const withInstallationLease = <T>(
 const providerPath = (providerId: string, field: string): readonly string[] => ['model_providers', providerId, field];
 const ownedPaths = (providerId: string): readonly (readonly string[])[] => [
   ['model_provider'],
+  ...featureFields.map((field) => ['features', field] as const),
   ...providerFields.map((field) => providerPath(providerId, field)),
 ];
 
@@ -98,6 +108,10 @@ function removeCreatedProvider(text: string, marker: CodexMarker): string {
 function removeCreatedTables(text: string, marker: CodexMarker): string {
   let result = text;
   for (const path of [...marker.createdTables].sort((left, right) => right.length - left.length)) {
+    if (path.length === 1 && path[0] === 'features') {
+      result = pruneEmptyCodexTable(result, path);
+      continue;
+    }
     if (path.length === 2) {
       result = removeCreatedProvider(result, marker);
       continue;
@@ -318,6 +332,10 @@ export async function configureCodexConfig(
       const fields = makeFields(workingText, edits, marker?.providerId === providerId ? marker : undefined);
       if (marker?.providerId === providerId) createdTables = marker.createdTables;
       else if (!document.providerIds.includes(providerId)) createdTables = [['model_providers', providerId]];
+      const hasFeaturesTable = hasCodexTable(workingText, ['features']);
+      if (!hasFeaturesTable && !createdTables.some((path) => path.join('\u0000') === 'features')) {
+        createdTables = [...createdTables, ['features']];
+      }
       const authPath = ['model_providers', providerId, 'auth'] as const;
       const hadAuthTable = hasCodexTable(text, authPath);
       if (

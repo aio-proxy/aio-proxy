@@ -40,6 +40,14 @@ const MarkerSchema = z.union([
 const ownedProviderFields = new Set([
   'name',
   'base_url',
+  'model_catalog_url',
+  'wire_api',
+  'requires_openai_auth',
+  'experimental_bearer_token',
+]);
+const legacyProviderFields = new Set([
+  'name',
+  'base_url',
   'wire_api',
   'requires_openai_auth',
   'experimental_bearer_token',
@@ -50,9 +58,13 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
   const parsed = MarkerSchema.parse(value);
   if (parsed.configPath !== location.configPath) throw new Error('Codex marker config path conflict');
   const isV2 = parsed.format === 2;
+  const featurePath = 'features\u0000api_key_model_discovery';
+  const hasFeature = parsed.fields.some((field) => field.path.join('\u0000') === featurePath);
+  const providerFields = hasFeature ? ownedProviderFields : legacyProviderFields;
   const allowed = new Set([
     'model_provider',
-    ...[...ownedProviderFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),
+    ...(hasFeature ? [featurePath] : []),
+    ...[...providerFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),
     ...(isV2
       ? [...ownedCommandFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000auth\u0000${field}`)
       : []),
@@ -60,7 +72,8 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
   const paths = new Set<string>();
   const expectedPaths = new Set([
     'model_provider',
-    ...[...ownedProviderFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),
+    ...(hasFeature ? [featurePath] : []),
+    ...[...providerFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),
     ...(isV2
       ? [...ownedCommandFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000auth\u0000${field}`)
       : []),
@@ -75,6 +88,7 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
     throw new Error('Codex marker ownership is incomplete');
   const tableKeys = parsed.createdTables.map((path) => path.join('\u0000'));
   const validTablePath = (path: readonly string[]): boolean =>
+    (path.length === 1 && path[0] === 'features') ||
     (path.length === 2 && path[0] === 'model_providers' && path[1] === parsed.providerId) ||
     (isV2 && path.length === 3 && path[0] === 'model_providers' && path[1] === parsed.providerId && path[2] === 'auth');
   if (
