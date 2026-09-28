@@ -271,6 +271,20 @@ test('invalid metadata text is unsaved work: it blocks leaving and Cancel drops 
   expect(blockerEnabledFor()).toBe(false);
 });
 
+test('a background refetch does not reset metadata while its only edit is invalid text', () => {
+  // The invalid text is the visible draft. Treating the forms as clean and adopting the refetch would
+  // reset the metadata form, and the editor would replace the text with the server's value.
+  const { result, rerender } = renderEditor();
+  const before = result.current.metadataForm.state.values;
+  act(() => result.current.setMetadataInvalidDraft('{"name":'));
+
+  rerender({ model: { ...model(), revision: 'rev-2', metadata: { name: 'Server' } } });
+
+  expect(result.current.metadataForm.state.values).toBe(before);
+  expect(result.current.metadataInvalidDraft).toBe('{"name":');
+  expect(result.current.dirtyTabs).toEqual(['metadata']);
+});
+
 test('invalid metadata blocks Save until the draft is repaired', async () => {
   const { result, mutate } = renderEditor();
 

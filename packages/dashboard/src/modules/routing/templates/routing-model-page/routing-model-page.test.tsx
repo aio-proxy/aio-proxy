@@ -77,13 +77,17 @@ rs.mock('../../services/routing-traffic-service', () => ({
   }),
   routingTrafficBucketsQueryOptions: () => ({
     queryKey: ['routing-traffic-buckets'],
-    queryFn: async () => ({
-      range: '24h',
-      rangeStart: '',
-      rangeEnd: '',
-      providerIds: [],
-      buckets: [],
-    }),
+    // Both traffic reads come from the same service, so a failure takes them down together.
+    queryFn: async () => {
+      if (trafficMocks.fail) throw new Error('routing traffic buckets failed');
+      return {
+        range: '24h',
+        rangeStart: '',
+        rangeEnd: '',
+        providerIds: [],
+        buckets: [],
+      };
+    },
   }),
 }));
 

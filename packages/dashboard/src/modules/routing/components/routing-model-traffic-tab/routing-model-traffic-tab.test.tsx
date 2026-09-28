@@ -14,11 +14,7 @@ import type { ReactNode } from 'react';
 
 import { ProviderCatalogProvider, type ProviderCatalogValue } from '@/hooks/use-provider-catalog';
 
-import type {
-  RoutingTrafficBucketsData,
-  RoutingTrafficData,
-  RoutingTrafficProviderTotals,
-} from '../../services/routing-traffic-service';
+import type { RoutingTrafficBucketsData } from '../../services/routing-traffic-service';
 import { RoutingModelTrafficTab } from './routing-model-traffic-tab';
 
 const MODEL_ID = 'traffic-model';
@@ -26,7 +22,6 @@ const RANGE: UsageOverviewRange = '24h';
 
 const mocks = rs.hoisted(() => ({
   buckets: undefined as RoutingTrafficBucketsData | undefined,
-  traffic: undefined as RoutingTrafficData | undefined,
   /** Throws on every call, standing in for a query that has never succeeded. */
   bucketsFail: false,
 }));
@@ -39,33 +34,15 @@ rs.mock('../../services/routing-traffic-service', () => ({
       return mocks.buckets;
     },
   }),
-  routingTrafficQueryOptions: (range: UsageOverviewRange) => ({
-    queryKey: ['routing-traffic', range],
-    queryFn: async () => mocks.traffic,
-  }),
 }));
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 const renderTraffic = (options: {
   readonly buckets: RoutingTrafficBucketsData;
-  readonly traffic?: RoutingTrafficData;
   readonly catalog?: ProviderCatalogValue;
 }) => {
   mocks.buckets = options.buckets;
-  mocks.traffic =
-    options.traffic ??
-    ({
-      range: RANGE,
-      rangeStart: options.buckets.rangeStart,
-      rangeEnd: options.buckets.rangeEnd,
-      models: [
-        {
-          modelId: MODEL_ID,
-          providers: options.buckets.providerIds.map((providerId) => providerTotals(providerId)),
-        },
-      ],
-    } satisfies RoutingTrafficData);
 
   const rootRoute = createRootRoute();
   const tracesRoute = createRoute({
@@ -98,18 +75,6 @@ const renderTraffic = (options: {
   );
 };
 
-const providerTotals = (
-  providerId: string,
-  overrides: Partial<RoutingTrafficProviderTotals> = {},
-): RoutingTrafficProviderTotals => ({
-  providerId,
-  finalCount: 2n,
-  attemptCount: 10n,
-  successCount: 4n,
-  p95LatencyMs: null,
-  ...overrides,
-});
-
 const bucketsFixture = (providerIds: readonly string[]): RoutingTrafficBucketsData => ({
   range: RANGE,
   modelId: MODEL_ID,
@@ -131,7 +96,6 @@ const bucketsFixture = (providerIds: readonly string[]): RoutingTrafficBucketsDa
 afterEach(() => {
   queryClient.clear();
   mocks.buckets = undefined;
-  mocks.traffic = undefined;
   mocks.bucketsFail = false;
 });
 
@@ -143,6 +107,8 @@ test('stacks one series per provider in the order the response gave', async () =
 });
 
 test('shows an empty state rather than an empty chart when nothing was served', async () => {
+  // Also the reading when every request in the window failed: failed roots are not served traffic, so
+  // the buckets are empty even though attempts were made, and the card must not come up blank.
   renderTraffic({ buckets: { ...bucketsFixture([]), providerIds: [], buckets: [] } });
 
   expect(await screen.findByText(/No traffic|无流量/u)).toBeInTheDocument();
@@ -176,6 +142,7 @@ test('keeps the cached measurements up when a later refetch fails', async () => 
 
   // The chart survives, behind a notice that the refresh failed rather than the error screen.
   expect(await screen.findByTestId('routing-traffic-chart')).toBeInTheDocument();
-  expect(screen.getByText(m['dashboard.routing.traffic.refresh_failed']())).toBeInTheDocument();
+  // The cached chart shows at once; the notice follows when the background refetch fails.
+  expect(await screen.findByText(m['dashboard.routing.traffic.refresh_failed']())).toBeInTheDocument();
   expect(screen.queryByText(m['dashboard.routing.traffic.load_failed']())).not.toBeInTheDocument();
 });

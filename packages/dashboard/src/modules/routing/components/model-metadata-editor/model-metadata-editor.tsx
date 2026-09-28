@@ -105,7 +105,9 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
   }, [draft]);
   if (value !== lastValue) {
     setLastValue(value);
-    const echoed = parsed.success && isEqual(normalize(parsed.data), value);
+    // Only a change of content re-syncs. A rebase can hand over an equal value as a new object, and
+    // taking that as an edit from outside would replace an invalid draft the user is still fixing.
+    const echoed = isEqual(value, lastValue) || (parsed.success && isEqual(normalize(parsed.data), value));
     if (!echoed) setDraft(serialize(value));
   }
 

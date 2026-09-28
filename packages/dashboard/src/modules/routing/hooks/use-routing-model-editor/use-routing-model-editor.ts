@@ -101,7 +101,9 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
       return;
     }
 
-    if (form.state.isDirty || routingMetadataTouched(metadataForm.state.values)) {
+    // Invalid metadata text counts too: it is the visible draft, and resetting the metadata form would
+    // hand the editor a new value that replaces it.
+    if (form.state.isDirty || routingMetadataTouched(metadataForm.state.values) || metadataInvalidDraft !== undefined) {
       // A dirty draft is kept on purpose when the policy has moved: the next save must be rejected as
       // stale so Reload can rebase it deliberately. A Provider joining or leaving does not move the
       // revision, though, so bailing outright left the rows holding one the config no longer has —
@@ -120,7 +122,7 @@ export const useRoutingModelEditor = ({ model, writable, onReload }: UseRoutingM
     // the revision, and the effect must still reconcile. `baseline` is one because the dirty branch
     // compares against the revision the drafts were made on; the identity guard above makes the extra
     // runs it causes a no-op rather than a loop.
-  }, [form, metadataForm, model.modelId, model.revision, model.baselineProviderIds, baseline]);
+  }, [form, metadataForm, model.modelId, model.revision, model.baselineProviderIds, baseline, metadataInvalidDraft]);
 
   useEffect(() => {
     if (previousReloadModelId.current === model.modelId) return;
