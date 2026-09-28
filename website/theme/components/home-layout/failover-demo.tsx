@@ -117,7 +117,9 @@ export function FailoverDemo() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-right text-xs">
-                  {attempt.state === 'pending' ? <Clock className="size-4 animate-spin text-teal-600" /> : null}
+                  {attempt.state === 'pending' ? (
+                    <Clock className="size-4 motion-safe:animate-spin text-teal-600" />
+                  ) : null}
                   {attempt.state === 'failed' ? (
                     <>
                       <span className="text-red-700 dark:text-red-400">{attempt.note}</span>

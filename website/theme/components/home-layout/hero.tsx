@@ -15,7 +15,7 @@ export function Hero() {
       <div className="flex min-w-0 flex-col items-start gap-7">
         <span className="inline-flex items-center gap-2 rounded-full border border-teal-600/20 bg-teal-50/80 px-3 py-1 text-xs font-medium text-teal-800 dark:border-teal-400/20 dark:bg-teal-950/60 dark:text-teal-200">
           <span className="relative flex size-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal-500 opacity-60" />
+            <span className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full bg-teal-500 opacity-60" />
             <span className="relative inline-flex size-2 rounded-full bg-teal-500" />
           </span>
           {copy.hero.eyebrow}
