@@ -27,19 +27,16 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
       {
         accessorKey: 'providerId',
         enableHiding: false,
-        meta: { label: () => m['dashboard.overview.provider_id']() },
         header: tableHead(() => m['dashboard.overview.provider_id']()),
         cell: ({ getValue }) => <span className="font-mono text-xs">{String(getValue())}</span>,
       },
       {
         accessorKey: 'successRate',
-        meta: { label: () => m['dashboard.overview.success_rate']() },
         header: tableHead(() => m['dashboard.overview.success_rate']()),
         cell: ({ getValue }) => <span className="tabular-nums">{percentFormatter.format(Number(getValue()))}</span>,
       },
       {
         accessorKey: 'p95LatencyMs',
-        meta: { label: () => m['dashboard.overview.p95_latency']() },
         header: tableHead(() => m['dashboard.overview.p95_latency']()),
         cell: ({ getValue }) => <span className="tabular-nums">{formatDuration(Number(getValue()), locale)}</span>,
       },

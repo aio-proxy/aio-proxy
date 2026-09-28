@@ -972,8 +972,7 @@
       },
       "table": {
         "filter": "篩選提供商",
-        "filter_placeholder": "依名稱或提供商 ID 搜尋",
-        "columns": "提供商欄"
+        "filter_placeholder": "依名稱或提供商 ID 搜尋"
       },
       "badge": {
         "enabled": "已啟用",
@@ -1743,8 +1742,7 @@
         "empty": "暫無授權。",
         "codex_keep": "保留 ChatGPT 登入模式通過 API Key 存取 AIO Proxy，因此這裡沒有授權紀錄。",
         "filter": "篩選授權",
-        "filter_placeholder": "搜尋 Installation ID 或版本",
-        "columns": "欄"
+        "filter_placeholder": "搜尋 Installation ID 或版本"
       },
       "authorization": {
         "active": "有效",

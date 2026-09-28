@@ -24,14 +24,13 @@ export const createRoutingColumns = ({
     enableHiding: false,
     accessorKey: 'modelId',
     // Fixed so the route column starts at the same x on every page, whatever the longest ID there is.
-    meta: { label: () => m['dashboard.routing.table.col_model'](), className: 'w-64' },
+    meta: { className: 'w-64' },
     header: tableHead(() => m['dashboard.routing.table.col_model']()),
     cell: ({ row }) => <RoutingModelCell model={row.original} totals={traffic?.get(row.original.modelId)} />,
   },
   {
     id: 'route',
     accessorFn: (model) => model.tiers.length,
-    meta: { label: () => m['dashboard.routing.table.col_route']() },
     header: tableHead(() => m['dashboard.routing.table.col_route']()),
     cell: ({ row }) => <RoutingRoute model={row.original} totals={traffic?.get(row.original.modelId)} />,
   },
@@ -54,7 +53,7 @@ export const createRoutingColumns = ({
       }
       return left === right ? 0 : left < right ? -1 : 1;
     },
-    meta: { label: () => m['dashboard.routing.table.col_traffic'](), className: 'w-32' },
+    meta: { className: 'w-32' },
     header: tableHead(() => m['dashboard.routing.table.col_traffic']()),
     cell: ({ row }) => {
       // No index at all means the query is in flight or failed with nothing cached — traffic is

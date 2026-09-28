@@ -972,8 +972,7 @@
       },
       "table": {
         "filter": "プロバイダーを絞り込む",
-        "filter_placeholder": "名前または Provider ID で検索",
-        "columns": "プロバイダーの列"
+        "filter_placeholder": "名前または Provider ID で検索"
       },
       "badge": {
         "enabled": "有効",
@@ -1743,8 +1742,7 @@
         "empty": "認可はまだありません。",
         "codex_keep": "ChatGPT ログイン維持モードは API キーで AIO Proxy に接続するため、ここに認可はありません。",
         "filter": "認可を絞り込む",
-        "filter_placeholder": "Installation ID またはバージョンで検索",
-        "columns": "列"
+        "filter_placeholder": "Installation ID またはバージョンで検索"
       },
       "authorization": {
         "active": "有効",

@@ -972,8 +972,7 @@
       },
       "table": {
         "filter": "프로바이더 필터링",
-        "filter_placeholder": "이름 또는 Provider ID로 검색",
-        "columns": "프로바이더 열"
+        "filter_placeholder": "이름 또는 Provider ID로 검색"
       },
       "badge": {
         "enabled": "활성화됨",
@@ -1743,8 +1742,7 @@
         "empty": "아직 인가가 없습니다.",
         "codex_keep": "ChatGPT 로그인 유지 모드는 API 키로 AIO Proxy에 연결하므로 여기에 인가가 없습니다.",
         "filter": "인가 필터",
-        "filter_placeholder": "Installation ID 또는 버전 검색",
-        "columns": "열"
+        "filter_placeholder": "Installation ID 또는 버전 검색"
       },
       "authorization": {
         "active": "활성",
