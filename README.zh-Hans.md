@@ -77,7 +77,7 @@ curl -fsSL https://aioproxy.dev/install.sh | sh
 aio-proxy run --open
 ```
 
-npm/bun 与 curl 安装脚本还会安装短命令 `aiop`。Homebrew 目前仍只有 `aio-proxy`。
+所有安装方式（Homebrew、npm/bun 与 curl 安装脚本）都会同时提供短命令 `aiop`。
 
 - API：`http://127.0.0.1:9317`
 - Dashboard：`http://127.0.0.1:9317/dashboard`

@@ -4,8 +4,8 @@ pageType: home
 
 hero:
   name: AIO Proxy
-  text: 一个端点，连接多个模型提供商
-  tagline: 保持客户端协议不变，集中配置提供商、路由模型请求，并在失败时自动尝试下一个可用提供商。
+  text: 所有模型，所有客户端，一个端点。
+  tagline: 继续使用现有的 SDK 和编程 Agent，接入 API Key 或你已经订阅的服务，一个本地二进制即可获得智能路由、自动故障转移与完整请求链路。
   actions:
     - theme: brand
       text: 开始使用

@@ -4,8 +4,8 @@ pageType: home
 
 hero:
   name: AIO Proxy
-  text: One endpoint for multiple model providers
-  tagline: Keep client protocols unchanged, configure providers centrally, route model requests, and automatically try the next available provider when one fails.
+  text: Every model. Every client. One endpoint.
+  tagline: Keep the SDKs and coding agents you already use, plug in API keys or the subscriptions you already pay for, and get routing, failover, and full request traces from one local binary.
   actions:
     - theme: brand
       text: Get Started

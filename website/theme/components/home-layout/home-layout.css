@@ -1,0 +1,124 @@
+@keyframes home-dash {
+  to {
+    stroke-dashoffset: -8;
+  }
+}
+
+@keyframes home-aurora {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(6%, 8%, 0) scale(1.12);
+  }
+}
+
+/* A dot lattice that fades out toward the edges, standing in for the network the proxy routes across. */
+.home-hero-grid {
+  --home-dot: color-mix(in oklab, var(--color-olive-900) 14%, transparent);
+  background-image: radial-gradient(circle at center, var(--home-dot) 1px, transparent 1.5px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 20%, transparent 75%);
+}
+
+.dark .home-hero-grid {
+  --home-dot: color-mix(in oklab, var(--color-olive-100) 12%, transparent);
+}
+
+.home-hero-aurora {
+  animation: home-aurora 18s ease-in-out infinite;
+}
+
+.home-hero-aurora--late {
+  animation-delay: -9s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-hero-aurora {
+    animation: none;
+  }
+}
+
+/* Tight, low-opacity shadows: the borders carry the edges, the shadow only hints at lift. */
+.home-shadow {
+  box-shadow:
+    0 1px 2px rgb(23 26 23 / 0.04),
+    0 2px 8px -2px rgb(23 26 23 / 0.05);
+}
+
+.home-shadow-lg {
+  box-shadow:
+    0 1px 2px rgb(23 26 23 / 0.04),
+    0 8px 24px -12px rgb(23 26 23 / 0.1);
+}
+
+.dark .home-shadow,
+.dark .home-shadow-lg {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+
+/* The hero background runs up behind the sticky nav: the nav stays clear at the top of the home page
+   and only gains a frosted background once the page scrolls. */
+body:has(.home-layout) .rp-nav {
+  background: transparent;
+  border-bottom-color: transparent;
+  transition:
+    background-color 0.2s ease-in-out,
+    border-bottom-color 0.2s ease-in-out,
+    backdrop-filter 0.2s ease-in-out;
+}
+
+body:has(.home-layout[data-scrolled]) .rp-nav {
+  background: color-mix(in oklab, var(--rp-c-bg) 70%, transparent);
+  border-bottom-color: var(--rp-c-divider-light);
+  backdrop-filter: blur(16px) saturate(140%);
+}
+
+/* One palette for every code surface (install box, config, terminal, command chips) so they follow the theme. */
+.home-layout {
+  --home-code-bg: color-mix(in oklab, var(--color-olive-100) 55%, white);
+  --home-code-chrome: color-mix(in oklab, var(--color-olive-100) 90%, white);
+  --home-code-border: var(--color-olive-200);
+  --home-code-fg: var(--color-olive-900);
+  --home-code-muted: var(--color-olive-500);
+  --home-code-accent: var(--color-teal-700);
+  --home-code-tab: white;
+}
+
+.dark .home-layout {
+  --home-code-bg: var(--color-olive-950);
+  --home-code-chrome: color-mix(in oklab, var(--color-olive-900) 60%, var(--color-olive-950));
+  --home-code-border: rgb(255 255 255 / 0.1);
+  --home-code-fg: var(--color-olive-100);
+  --home-code-muted: var(--color-olive-400);
+  --home-code-accent: var(--color-teal-400);
+  --home-code-tab: rgb(255 255 255 / 0.08);
+}
+
+/* The config sample reuses rspress's highlighted code block; align it with the panel beside it. */
+.home-config-code {
+  --rp-code-block-bg: var(--home-code-bg);
+  --rp-code-title-bg: var(--home-code-chrome);
+  --rp-code-block-border: 1px solid var(--home-code-border);
+}
+
+.home-config-code .rp-codeblock {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  border-radius: var(--radius-3xl);
+  box-shadow:
+    0 1px 2px rgb(23 26 23 / 0.04),
+    0 2px 8px -2px rgb(23 26 23 / 0.05);
+}
+
+.home-config-code .rp-codeblock__title {
+  padding-inline: 1.25rem;
+  color: var(--home-code-muted);
+}
+
+.home-config-code pre {
+  font-size: 13px;
+  line-height: 1.7;
+}
