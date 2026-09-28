@@ -10,19 +10,22 @@ import { useHomeCopy } from './use-home-copy';
 const configSnippet = `{
   "providers": {
     "claude-team": {
-      "kind": "plugin",
+      "kind": "oauth",
       "plugin": "@aio-proxy/plugin-claude-code",
+      "capability": "claude",
       "priority": 100, "weight": 3
     },
     "anthropic-key": {
       "kind": "api", "protocol": "anthropic",
+      "baseURL": "https://api.anthropic.com/v1",
       "apiKey": "{{env.ANTHROPIC_API_KEY}}",
       "models": ["claude-sonnet-4-6"],
       "priority": 100, "weight": 1
     },
     "openrouter": {
-      "kind": "plugin",
-      "plugin": "@aio-proxy/plugin-openrouter"
+      "kind": "oauth",
+      "plugin": "@aio-proxy/plugin-openrouter",
+      "capability": "openrouter"
     }
   }
 }`;

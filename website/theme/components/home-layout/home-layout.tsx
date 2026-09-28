@@ -20,7 +20,7 @@ export function HomeLayout(props: HomeLayoutProps) {
   const { sentinelRef, scrolled } = useScrolled<HTMLDivElement>();
 
   // The llms.txt markdown build reads hero/features from frontmatter; keep that output from the original layout.
-  if (import.meta.env.SSG_MD) return <BasicHomeLayout {...props} />;
+  if (import.meta.env['SSG_MD']) return <BasicHomeLayout {...props} />;
 
   return (
     <div className="home-layout relative isolate overflow-x-clip" data-scrolled={scrolled || undefined}>
