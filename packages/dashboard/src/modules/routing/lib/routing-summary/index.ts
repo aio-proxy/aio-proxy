@@ -5,6 +5,7 @@ export {
   formatRoutingShare,
   formatRoutingShareValue,
   formatRoutingTiers,
+  formatTierShares,
   routingDraftNormalization,
   type RoutingProviderDraft,
   type RoutingTier,

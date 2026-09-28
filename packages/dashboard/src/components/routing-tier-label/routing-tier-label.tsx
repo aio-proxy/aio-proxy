@@ -1,20 +1,34 @@
 import { m } from '@aio-proxy/i18n';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@aio-proxy/ui/components/tooltip';
-import { cn } from '@aio-proxy/ui/lib/utils';
 import type React from 'react';
 
-interface RoutingTierLabelProps {
+import { RoutingTierMarker } from './routing-tier-marker';
+
+interface RoutingTierLabelProps extends Omit<React.ComponentProps<'span'>, 'children'> {
   readonly tier: number;
   readonly priority: number;
-  readonly className?: string;
-  readonly testId?: string;
 }
 
-export const RoutingTierLabel: React.FC<RoutingTierLabelProps> = ({ tier, priority, className, testId }) => (
-  <Tooltip>
-    <TooltipTrigger render={<span className={cn('cursor-help', className)} data-testid={testId} tabIndex={0} />}>
-      {m['dashboard.routing.tier_label.tier']({ value: tier })}
-    </TooltipTrigger>
-    <TooltipContent>{m['dashboard.routing.tier_label.priority']({ value: priority })}</TooltipContent>
-  </Tooltip>
+/**
+ * The one tier marker every routing surface draws: `T1`, `T2`, … with the tier's priority and its
+ * failover role on hover. T1 takes the primary tint because it is where traffic goes first.
+ */
+export const RoutingTierLabel: React.FC<RoutingTierLabelProps> = ({ tier, priority, ...props }) => (
+  <RoutingTierMarker
+    aria-label={m['dashboard.routing.tier_label.tier']({ value: tier })}
+    {...props}
+    variant={tier === 1 ? 'primary' : 'fallback'}
+    tooltip={
+      <>
+        <span className="font-medium">
+          {m['dashboard.routing.tier_label.tier']({ value: tier })} ·{' '}
+          {m['dashboard.routing.tier_label.priority']({ value: priority })}
+        </span>
+        <span>
+          {tier === 1 ? m['dashboard.routing.tier_label.primary']() : m['dashboard.routing.tier_label.fallback']()}
+        </span>
+      </>
+    }
+  >
+    {m['dashboard.routing.tier_label.short']({ value: tier })}
+  </RoutingTierMarker>
 );

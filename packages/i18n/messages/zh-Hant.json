@@ -697,14 +697,11 @@
         "col_model": "模型 ID",
         "col_route": "路由",
         "col_traffic": "流量",
-        "col_overrides": "覆寫",
-        "col_providers": "可用 / 已知",
         "overrides_yes": "有覆寫",
-        "overrides_no": "預設",
         "disabled": "已停用",
         "empty_filtered": "沒有模型符合這些篩選條件。",
-        "empty_deviation_unknown": "該時間範圍的流量尚未載入，無法判斷是否偏離設定的權重。",
-        "clear_filters": "清除篩選"
+        "clear_filters": "清除篩選",
+        "available": "{eligible} / {known} 可用"
       },
       "editor": {
         "preview": "即時路由",
@@ -816,16 +813,8 @@
         "catalog_field_release_date": "發布日期",
         "open_in_traces": "在 Traces 中查看"
       },
-      "health": {
-        "total": "模型",
-        "no_eligible": "無可用 Provider",
-        "single_point": "單點，無 failover",
-        "deviating": "實際偏離設定",
-        "deviating_pending": "統計中"
-      },
       "risk": {
         "no_eligible": "無可用 Provider",
-        "single_point": "單點",
         "deviating": "偏離"
       },
       "lab": {
@@ -833,16 +822,14 @@
         "filter_label": "廠商",
         "filter_placeholder": "選擇廠商",
         "filter_all": "全部廠商",
-        "model_count": "{count} 個模型",
-        "risk_count": "{count} 個需處理"
+        "model_count": "{count} 個模型"
       },
       "tier_label": {
         "tier": "第 {value} 梯隊",
-        "priority": "優先順序 {value}"
-      },
-      "share": {
-        "configured": "設定流量佔比",
-        "actual": "實際流量佔比"
+        "priority": "優先順序 {value}",
+        "short": "T{value}",
+        "primary": "最先接收流量",
+        "fallback": "上一梯隊全部失敗後才會使用"
       },
       "traffic": {
         "none": "無流量",
@@ -852,6 +839,19 @@
         "filter": "篩選 Provider",
         "filter_placeholder": "依 Provider ID 篩選",
         "refresh_failed": "正在顯示最後一次成功取得的資料，重新載入流量失敗。"
+      },
+      "route": {
+        "weight": "權重 {value}",
+        "weight_normalized": "權重 {effective}（設定 {authored}）",
+        "source_model": "來自模型覆寫",
+        "source_provider": "來自 Provider 預設",
+        "share": "本梯隊 {value}",
+        "actual": "實際 {value}",
+        "override": "覆寫",
+        "ineligible": "不參與路由",
+        "off_disabled": "已停用",
+        "off_unavailable": "無法使用",
+        "off_zero_weight": "權重為 0"
       }
     },
     "pagination": {

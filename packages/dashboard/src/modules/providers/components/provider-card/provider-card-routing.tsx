@@ -20,7 +20,7 @@ export const ProviderCardRouting: React.FC<ProviderCardRoutingProps> = ({ tier, 
           tier={tier}
           priority={priority}
           className="font-medium whitespace-nowrap"
-          testId="provider-card-route-tier"
+          data-testid="provider-card-route-tier"
         />
         <span aria-hidden="true" className="text-muted-foreground">
           ·

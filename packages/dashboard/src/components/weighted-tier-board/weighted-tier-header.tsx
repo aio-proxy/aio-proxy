@@ -29,15 +29,14 @@ export const WeightedTierHeader: React.FC<WeightedTierHeaderProps> = ({
       <Button
         ref={handleRef}
         type="button"
-        size="sm"
-        variant="secondary"
+        size="icon-sm"
+        variant="ghost"
         tabIndex={preview ? -1 : undefined}
         aria-hidden={preview || undefined}
         aria-label={preview ? undefined : labels.dragTier(index)}
         className={cn('cursor-grab active:cursor-grabbing', preview && 'pointer-events-none')}
       >
         <GripVertical />
-        {index + 1}
       </Button>
     ) : null}
     <h3 className="min-w-0 flex-1 font-heading text-sm font-medium">{labels.tier(index, priority)}</h3>

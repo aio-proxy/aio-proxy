@@ -697,14 +697,11 @@
         "col_model": "模型 ID",
         "col_route": "路由",
         "col_traffic": "流量",
-        "col_providers": "可用 / 已知",
-        "col_overrides": "覆盖",
         "overrides_yes": "有覆盖",
-        "overrides_no": "默认",
         "disabled": "已禁用",
         "empty_filtered": "没有模型符合这些筛选条件。",
-        "empty_deviation_unknown": "该时间范围的流量尚未加载，无法判断是否偏离配置的权重。",
-        "clear_filters": "清除筛选"
+        "clear_filters": "清除筛选",
+        "available": "{eligible} / {known} 可用"
       },
       "editor": {
         "preview": "实时路由",
@@ -816,16 +813,8 @@
         "catalog_field_release_date": "发布日期",
         "open_in_traces": "在 Traces 中查看"
       },
-      "health": {
-        "total": "模型",
-        "no_eligible": "无可用 Provider",
-        "single_point": "单点，无 failover",
-        "deviating": "实际偏离配置",
-        "deviating_pending": "统计中"
-      },
       "risk": {
         "no_eligible": "无可用 Provider",
-        "single_point": "单点",
         "deviating": "偏离"
       },
       "lab": {
@@ -833,16 +822,14 @@
         "filter_label": "厂商",
         "filter_placeholder": "选择厂商",
         "filter_all": "全部厂商",
-        "model_count": "{count} 个模型",
-        "risk_count": "{count} 个需处理"
+        "model_count": "{count} 个模型"
       },
       "tier_label": {
         "tier": "第 {value} 梯队",
-        "priority": "优先级 {value}"
-      },
-      "share": {
-        "configured": "配置流量占比",
-        "actual": "实际流量占比"
+        "priority": "优先级 {value}",
+        "short": "T{value}",
+        "primary": "最先接收流量",
+        "fallback": "上一梯队全部失败后才会使用"
       },
       "traffic": {
         "none": "无流量",
@@ -852,6 +839,19 @@
         "filter": "筛选 Provider",
         "filter_placeholder": "按 Provider ID 筛选",
         "refresh_failed": "正在显示最后一次成功获取的数据，刷新流量失败。"
+      },
+      "route": {
+        "weight": "权重 {value}",
+        "weight_normalized": "权重 {effective}（配置 {authored}）",
+        "source_model": "来自模型覆盖",
+        "source_provider": "来自 Provider 默认",
+        "share": "本梯队 {value}",
+        "actual": "实际 {value}",
+        "override": "覆盖",
+        "ineligible": "不参与路由",
+        "off_disabled": "已停用",
+        "off_unavailable": "不可用",
+        "off_zero_weight": "权重为 0"
       }
     },
     "pagination": {

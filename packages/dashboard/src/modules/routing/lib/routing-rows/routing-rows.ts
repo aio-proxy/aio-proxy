@@ -1,9 +1,7 @@
 import type { DashboardRoutingModel } from '@aio-proxy/types';
 import { upperFirst } from 'es-toolkit/string';
 
-import { modelRisks } from '../routing-risk';
 import type { RoutingSearch } from '../routing-search';
-import type { RoutingTrafficIndex } from '../routing-traffic';
 
 /** The bucket for a model models.dev cannot place: a cold catalog, or a record that names no
  * maker. Sorted last rather than alphabetically, so it never lands between two real labs. */
@@ -59,13 +57,8 @@ export const sortRoutingModels = (models: readonly DashboardRoutingModel[]): rea
 export const filterRoutingModels = (
   models: readonly DashboardRoutingModel[],
   search: RoutingSearch,
-  index: RoutingTrafficIndex | undefined,
 ): readonly DashboardRoutingModel[] =>
-  models.filter((model) => {
-    if (search.lab !== undefined && labOf(model) !== search.lab) return false;
-    if (search.risk === undefined) return true;
-    return modelRisks(model, index?.get(model.modelId)).includes(search.risk);
-  });
+  search.lab === undefined ? models : models.filter((model) => labOf(model) === search.lab);
 
 /** Every lab present, each once, unknown last — the same order the table groups in. */
 export const labOptions = (models: readonly DashboardRoutingModel[]): readonly string[] =>

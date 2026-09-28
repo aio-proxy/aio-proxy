@@ -9,13 +9,11 @@ import { Link } from '@tanstack/react-router';
 import { PageContainer } from '@/components/page-container';
 import { ProviderCatalogProvider, useProviderCatalog } from '@/hooks/use-provider-catalog';
 
-import { RoutingHealthStrip } from '../components/routing-health-strip';
 import { RoutingLabFilter } from '../components/routing-lab-filter';
 import { RoutingTable } from '../components/routing-table';
 import { useRoutingQuery } from '../hooks/use-routing-query';
-import { countRoutingRisks } from '../lib/routing-risk';
 import { filterRoutingModels, sortRoutingModels } from '../lib/routing-rows';
-import { toggleRoutingRisk, type RoutingSearch, withRoutingFilters } from '../lib/routing-search';
+import { type RoutingSearch, withRoutingFilters } from '../lib/routing-search';
 import { indexRoutingTraffic } from '../lib/routing-traffic';
 import { routingTrafficQueryOptions } from '../services/routing-traffic-service';
 
@@ -30,7 +28,7 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
   const trafficQuery = useQuery(routingTrafficQueryOptions(search.range));
   const models = query.data?.models ?? [];
   const index = trafficQuery.data === undefined ? undefined : indexRoutingTraffic(trafficQuery.data);
-  const visible = filterRoutingModels(sortRoutingModels(models), search, index);
+  const visible = filterRoutingModels(sortRoutingModels(models), search);
 
   const content = (() => {
     if (query.isLoading) {
@@ -63,20 +61,13 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
       );
     }
     if (visible.length === 0) {
-      // A deviation filter with no traffic behind it cannot be answered. Saying "no models match"
-      // would report a measured result — that nothing diverged — from no measurement at all.
-      const unevaluable = search.risk === 'deviating' && index === undefined;
       return (
         <Empty>
-          <p>
-            {unevaluable
-              ? m['dashboard.routing.table.empty_deviation_unknown']()
-              : m['dashboard.routing.table.empty_filtered']()}
-          </p>
+          <p>{m['dashboard.routing.table.empty_filtered']()}</p>
           <Button
             type="button"
             variant="outline"
-            onClick={() => onSearchChange(withRoutingFilters(search, { risk: undefined, lab: undefined }))}
+            onClick={() => onSearchChange(withRoutingFilters(search, { lab: undefined }))}
           >
             {m['dashboard.routing.table.clear_filters']()}
           </Button>
@@ -104,31 +95,20 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
           {m['dashboard.routing.read_only']()}
         </p>
       ) : null}
-      <div className="space-y-3">
-        {query.data !== undefined && models.length > 0 ? (
-          <RoutingHealthStrip
-            total={models.length}
-            counts={countRoutingRisks(models, index)}
-            active={search.risk}
-            trafficUnavailable={trafficQuery.isError && trafficQuery.data === undefined}
-            onToggle={(risk) => onSearchChange(toggleRoutingRisk(search, risk))}
-          />
-        ) : null}
-        <Card>
-          <CardContent className="space-y-4">
-            {/* Outside `content` on purpose: a filter that matches nothing must still be adjustable,
-                otherwise the only way out of an empty result is to clear every filter. */}
-            {query.data !== undefined && models.length > 0 && visible.length === 0 ? (
-              <RoutingLabFilter
-                models={models}
-                value={search.lab}
-                onChange={(lab) => onSearchChange(withRoutingFilters(search, { lab }))}
-              />
-            ) : null}
-            <ProviderCatalogProvider value={providerCatalog}>{content}</ProviderCatalogProvider>
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardContent className="space-y-4">
+          {/* Outside `content` on purpose: a filter that matches nothing must still be adjustable,
+              otherwise the only way out of an empty result is to clear every filter. */}
+          {query.data !== undefined && models.length > 0 && visible.length === 0 ? (
+            <RoutingLabFilter
+              models={models}
+              value={search.lab}
+              onChange={(lab) => onSearchChange(withRoutingFilters(search, { lab }))}
+            />
+          ) : null}
+          <ProviderCatalogProvider value={providerCatalog}>{content}</ProviderCatalogProvider>
+        </CardContent>
+      </Card>
     </PageContainer>
   );
 };

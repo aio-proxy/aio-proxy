@@ -84,6 +84,30 @@ export const formatRoutingShareValue = (share: number): number | string => {
 
 export const formatRoutingShare = (share: number): string => `${formatRoutingShareValue(share)}%`;
 
+const TIER_SHARE_FLOOR = 0.01;
+
+/**
+ * Whole-percent labels for one tier's configured shares. Rounding each share on its own lets a
+ * three-way even split read 33/33/33, so the percents are handed out by largest remainder and
+ * always sum to 100. A candidate under 1% reads `<1%` instead of `0%`: weight-zero Providers never
+ * reach a tier, so a `0%` would claim a candidate is idle when it is only small.
+ */
+export const formatTierShares = (shares: readonly number[]): readonly string[] => {
+  const percents = shares.map((share) => share * 100);
+  const floors = percents.map(Math.floor);
+  let remaining = 100 - floors.reduce((sum, value) => sum + value, 0);
+  const byRemainder = percents
+    .map((percent, index) => ({ index, remainder: percent - (floors[index] ?? 0) }))
+    .filter(({ index }) => (shares[index] ?? 0) >= TIER_SHARE_FLOOR)
+    .sort((left, right) => right.remainder - left.remainder);
+  for (const { index } of byRemainder) {
+    if (remaining <= 0) break;
+    floors[index] = (floors[index] ?? 0) + 1;
+    remaining -= 1;
+  }
+  return shares.map((share, index) => (share < TIER_SHARE_FLOOR ? '<1%' : `${floors[index] ?? 0}%`));
+};
+
 export const routingDraftNormalization = (
   kind: 'priority' | 'weight',
   authored: number | undefined,

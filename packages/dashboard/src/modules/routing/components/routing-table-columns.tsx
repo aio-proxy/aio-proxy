@@ -1,14 +1,13 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel } from '@aio-proxy/types';
-import { Badge } from '@aio-proxy/ui/components/badge';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { tableHead } from '@/components/data-table/table-head';
-import { ProviderLabel } from '@/components/provider-label';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
 
-import { type RoutingTrafficIndex, modelTrafficSummary, tierActualShares } from '../lib/routing-traffic';
-import { RoutingShareBar } from './routing-share-bar/routing-share-bar';
+import { type RoutingTrafficIndex, modelTrafficSummary } from '../lib/routing-traffic';
+import { RoutingModelCell } from './routing-model-cell';
+import { RoutingRoute } from './routing-route';
 
 const numberFormatter = new Intl.NumberFormat();
 const percentFormatter = new Intl.NumberFormat(undefined, { style: 'percent', maximumFractionDigits: 0 });
@@ -24,53 +23,17 @@ export const createRoutingColumns = ({
     id: 'modelId',
     enableHiding: false,
     accessorKey: 'modelId',
-    meta: { label: () => m['dashboard.routing.table.col_model']() },
+    // Fixed so the route column starts at the same x on every page, whatever the longest ID there is.
+    meta: { label: () => m['dashboard.routing.table.col_model'](), className: 'w-64' },
     header: tableHead(() => m['dashboard.routing.table.col_model']()),
-    cell: ({ row }) => <span className="font-mono text-sm">{row.original.modelId}</span>,
+    cell: ({ row }) => <RoutingModelCell model={row.original} totals={traffic?.get(row.original.modelId)} />,
   },
   {
     id: 'route',
     accessorFn: (model) => model.tiers.length,
     meta: { label: () => m['dashboard.routing.table.col_route']() },
     header: tableHead(() => m['dashboard.routing.table.col_route']()),
-    cell: ({ row }) => {
-      const model = row.original;
-      const totals = traffic?.get(model.modelId);
-      const actual =
-        totals === undefined ? undefined : model.tiers.flatMap((tier) => [...tierActualShares(tier, totals)]);
-      return <RoutingShareBar tiers={model.tiers} actual={actual} />;
-    },
-  },
-  {
-    id: 'providers',
-    accessorFn: (model) => `${model.eligibleProviderCount} / ${model.providerCount}`,
-    meta: { label: () => m['dashboard.routing.table.col_providers']() },
-    header: tableHead(() => m['dashboard.routing.table.col_providers']()),
-    cell: ({ row }) => {
-      const model = row.original;
-      return (
-        <div className="flex min-w-0 flex-col gap-1">
-          <span className="text-sm tabular-nums">
-            {model.eligibleProviderCount} / {model.providerCount}
-          </span>
-          <div className="flex min-w-0 flex-col gap-0.5">
-            {model.providers.map((entry) => (
-              <ProviderLabel key={entry.id} providerId={entry.id}>
-                {({ name, accountLabel, oauthService, providerId }) => (
-                  <span className="inline-flex min-w-0 items-center gap-1 text-xs" title={providerId}>
-                    <span className="truncate">
-                      {oauthService === undefined || accountLabel === undefined
-                        ? name
-                        : `${oauthService} · ${accountLabel}`}
-                    </span>
-                  </span>
-                )}
-              </ProviderLabel>
-            ))}
-          </div>
-        </div>
-      );
-    },
+    cell: ({ row }) => <RoutingRoute model={row.original} totals={traffic?.get(row.original.modelId)} />,
   },
   {
     id: 'traffic',
@@ -91,7 +54,7 @@ export const createRoutingColumns = ({
       }
       return left === right ? 0 : left < right ? -1 : 1;
     },
-    meta: { label: () => m['dashboard.routing.table.col_traffic']() },
+    meta: { label: () => m['dashboard.routing.table.col_traffic'](), className: 'w-32' },
     header: tableHead(() => m['dashboard.routing.table.col_traffic']()),
     cell: ({ row }) => {
       // No index at all means the query is in flight or failed with nothing cached — traffic is
@@ -115,18 +78,5 @@ export const createRoutingColumns = ({
         </div>
       );
     },
-  },
-  {
-    id: 'overrides',
-    accessorFn: (model) => String(model.hasOverrides),
-    meta: { label: () => m['dashboard.routing.table.col_overrides']() },
-    header: tableHead(() => m['dashboard.routing.table.col_overrides']()),
-    cell: ({ row }) => (
-      <Badge variant={row.original.hasOverrides ? 'secondary' : 'outline'}>
-        {row.original.hasOverrides
-          ? m['dashboard.routing.table.overrides_yes']()
-          : m['dashboard.routing.table.overrides_no']()}
-      </Badge>
-    ),
   },
 ];

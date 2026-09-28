@@ -1,7 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel } from '@aio-proxy/types';
 import type { UsageOverviewRange } from '@aio-proxy/types';
-import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
@@ -15,25 +14,14 @@ import { PageContainer } from '@/components/page-container';
 import { ProviderCatalogProvider, useProviderCatalog } from '@/hooks/use-provider-catalog';
 
 import type { RoutingTrafficState } from '../../components/routing-model-topology-tab';
+import { RoutingRiskBadge } from '../../components/routing-risk-badge';
 import { useRoutingQuery } from '../../hooks/use-routing-query';
-import { modelRisks } from '../../lib/routing-risk';
-import type { RoutingRiskFilter } from '../../lib/routing-search';
+import { configuredRisks } from '../../lib/routing-risk';
 import { indexRoutingTraffic, tierActualShares } from '../../lib/routing-traffic';
 import { routingTrafficQueryOptions } from '../../services/routing-traffic-service';
 import { RoutingModelPageEditor } from './routing-model-page-editor';
 
 const usageRanges: readonly UsageOverviewRange[] = ['24h', '7d', '14d', '30d'];
-
-const riskLabel = (risk: RoutingRiskFilter): string => {
-  switch (risk) {
-    case 'no-eligible':
-      return m['dashboard.routing.risk.no_eligible']();
-    case 'single-point':
-      return m['dashboard.routing.risk.single_point']();
-    case 'deviating':
-      return m['dashboard.routing.risk.deviating']();
-  }
-};
 
 interface RoutingModelPageProps {
   readonly modelId: string;
@@ -58,7 +46,8 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
     model === undefined || totals === undefined
       ? undefined
       : model.tiers.flatMap((tier) => [...tierActualShares(tier, totals)]);
-  const risks = model === undefined ? [] : modelRisks(model, totals);
+  // Split deviation is read off the list's route column; the header only flags a model nothing can serve.
+  const risks = model === undefined ? [] : configuredRisks(model);
 
   const rangeLabels: Record<UsageOverviewRange, string> = {
     '24h': m['dashboard.usage.range_24h'](),
@@ -87,9 +76,7 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
         {model.catalog?.lab !== undefined ? <span>{model.catalog.lab}</span> : null}
         {model.catalog?.releaseDate !== undefined ? <span>{model.catalog.releaseDate}</span> : null}
         {risks.map((risk) => (
-          <Badge key={risk} variant="outline" className="text-xs">
-            {riskLabel(risk)}
-          </Badge>
+          <RoutingRiskBadge key={risk} risk={risk} />
         ))}
       </div>
     );

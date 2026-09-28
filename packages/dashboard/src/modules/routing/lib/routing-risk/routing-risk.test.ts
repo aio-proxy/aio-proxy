@@ -4,8 +4,8 @@ import {
   DEVIATION_MIN_SAMPLE,
   DEVIATION_THRESHOLD,
   configuredRisks,
-  countRoutingRisks,
   isDeviating,
+  tierDeviations,
 } from './routing-risk';
 
 const model = (over: Partial<Parameters<typeof configuredRisks>[0]> = {}) =>
@@ -42,9 +42,10 @@ const totals = (final: bigint, providerId: string) => ({
   p95LatencyMs: 10,
 });
 
-test('classifies the two config-derived risks from eligibility alone', () => {
+test('flags a model no Provider can serve, and not one served by a single Provider', () => {
   expect(configuredRisks(model({ eligibleProviderCount: 0 }))).toEqual(['no-eligible']);
-  expect(configuredRisks(model({ eligibleProviderCount: 1 }))).toEqual(['single-point']);
+  // One Provider is the norm for most models, with no second upstream to add.
+  expect(configuredRisks(model({ eligibleProviderCount: 1 }))).toEqual([]);
   expect(configuredRisks(model({ eligibleProviderCount: 2 }))).toEqual([]);
 });
 
@@ -72,15 +73,6 @@ test('stays silent when the split matches its configuration', () => {
 test('reports deviation as unknown rather than false when traffic is absent', () => {
   // A missing traffic query must never read as "no deviation".
   expect(isDeviating(model(), undefined)).toBeUndefined();
-});
-
-test('counts config risks always and deviation only once traffic is known', () => {
-  const models = [model({ modelId: 'a', eligibleProviderCount: 0 }), model({ modelId: 'b' })];
-  const index = new Map([['b', [totals(93n, 'primary'), totals(7n, 'fallback')]]]);
-
-  expect(countRoutingRisks(models, index)).toEqual({ 'no-eligible': 1, 'single-point': 0, deviating: 1 });
-  // Without an index the deviation count is unknown, not zero.
-  expect(countRoutingRisks(models, undefined)).toEqual({ 'no-eligible': 1, 'single-point': 0, deviating: undefined });
 });
 
 test('pins the thresholds as named constants so they are tunable in one place', () => {
@@ -148,4 +140,15 @@ test('judges the sample per tier, so a busy primary cannot vouch for a fallback 
 
 test('still judges a tier that alone clears the minimum inside a quiet model', () => {
   expect(isDeviating(model(), [totals(50n, 'primary'), totals(1n, 'fallback')])).toBe(true);
+});
+
+test('names the Providers that ran off their configured split, with the measured share', () => {
+  const [tier] = model().tiers;
+  if (tier === undefined) throw new Error('fixture has a tier');
+
+  expect([...tierDeviations(tier, [totals(93n, 'primary'), totals(7n, 'fallback')])]).toEqual([
+    ['primary', 0.93],
+    ['fallback', 0.07],
+  ]);
+  expect(tierDeviations(tier, [totals(9n, 'primary'), totals(1n, 'fallback')]).size).toBe(0);
 });

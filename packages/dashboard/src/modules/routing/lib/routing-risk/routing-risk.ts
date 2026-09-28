@@ -1,8 +1,11 @@
 import type { DashboardRoutingModel } from '@aio-proxy/types';
 
 import type { RoutingTrafficProviderTotals } from '../../services/routing-traffic-service';
-import type { RoutingRiskFilter } from '../routing-search';
-import { type RoutingTrafficIndex, tierActualShares } from '../routing-traffic';
+import { tierActualShares } from '../routing-traffic';
+
+/** Only what needs acting on. A single eligible Provider is the norm, not a risk: most models are
+ * served by one upstream and there is no second one to add. */
+export type RoutingRisk = 'no-eligible' | 'deviating';
 
 /** Percentage points of divergence, within one tier, before a model is called deviating.
  * Chosen by judgement rather than measurement — tune against real traffic. */
@@ -14,10 +17,32 @@ export const DEVIATION_THRESHOLD = 0.15;
 export const DEVIATION_MIN_SAMPLE = 50n;
 
 /** Risks derivable from configuration alone, so they are available the moment the list renders. */
-export const configuredRisks = (model: DashboardRoutingModel): readonly RoutingRiskFilter[] => {
+export const configuredRisks = (model: DashboardRoutingModel): readonly RoutingRisk[] => {
   if (model.eligibleProviderCount === 0) return ['no-eligible'];
-  if (model.eligibleProviderCount === 1) return ['single-point'];
   return [];
+};
+
+/** Providers in one tier whose measured share ran at least `DEVIATION_THRESHOLD` from the
+ * configured one, mapped to that measured share. Empty below the tier's sample floor. */
+export const tierDeviations = (
+  tier: DashboardRoutingModel['tiers'][number],
+  totals: readonly RoutingTrafficProviderTotals[] | undefined,
+): ReadonlyMap<string, number> => {
+  const deviations = new Map<string, number>();
+  if (totals === undefined) return deviations;
+  const actual = tierActualShares(tier, totals);
+  // A tier that served nothing falls out here too: an unused tier adds no observation and is
+  // not a bad split.
+  if (actual.reduce((sum, entry) => sum + entry.finalCount, 0n) < DEVIATION_MIN_SAMPLE) return deviations;
+  for (const configured of tier.providers) {
+    // The query omits providers with no spans, so a silent provider inside an active tier is a
+    // measured zero rather than a missing observation.
+    const actualShare = actual.find((entry) => entry.providerId === configured.providerId)?.actualShare ?? 0;
+    if (Math.abs(actualShare - configured.share) >= DEVIATION_THRESHOLD) {
+      deviations.set(configured.providerId, actualShare);
+    }
+  }
+  return deviations;
 };
 
 /** `undefined` means unknown — traffic has not arrived or failed. Never conflate that with
@@ -27,42 +52,11 @@ export const isDeviating = (
   totals: readonly RoutingTrafficProviderTotals[] | undefined,
 ): boolean | undefined => {
   if (totals === undefined) return undefined;
-  return model.tiers.some((tier) => {
-    const actual = tierActualShares(tier, totals);
-    // A tier that served nothing falls out here too: an unused tier adds no observation and is
-    // not a bad split.
-    if (actual.reduce((sum, entry) => sum + entry.finalCount, 0n) < DEVIATION_MIN_SAMPLE) return false;
-    return tier.providers.some((configured) => {
-      const observed = actual.find((entry) => entry.providerId === configured.providerId);
-      // The query omits providers with no spans, so a silent provider inside an active tier is a
-      // measured zero rather than a missing observation.
-      const actualShare = observed?.actualShare ?? 0;
-      return Math.abs(actualShare - configured.share) >= DEVIATION_THRESHOLD;
-    });
-  });
+  return model.tiers.some((tier) => tierDeviations(tier, totals).size > 0);
 };
 
 export const modelRisks = (
   model: DashboardRoutingModel,
   totals: readonly RoutingTrafficProviderTotals[] | undefined,
-): readonly RoutingRiskFilter[] =>
+): readonly RoutingRisk[] =>
   isDeviating(model, totals) === true ? [...configuredRisks(model), 'deviating'] : configuredRisks(model);
-
-export type RoutingRiskCounts = {
-  readonly 'no-eligible': number;
-  readonly 'single-point': number;
-  /** `undefined` while traffic is unknown, so the tile can show a loading state instead of 0. */
-  readonly deviating: number | undefined;
-};
-
-export const countRoutingRisks = (
-  models: readonly DashboardRoutingModel[],
-  index: RoutingTrafficIndex | undefined,
-): RoutingRiskCounts => ({
-  'no-eligible': models.filter((model) => model.eligibleProviderCount === 0).length,
-  'single-point': models.filter((model) => model.eligibleProviderCount === 1).length,
-  deviating:
-    index === undefined
-      ? undefined
-      : models.filter((model) => isDeviating(model, index.get(model.modelId)) === true).length,
-});

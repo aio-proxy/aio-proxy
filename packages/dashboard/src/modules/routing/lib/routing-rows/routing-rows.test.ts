@@ -65,23 +65,11 @@ test('compares release dates as strings across mixed precision', () => {
   expect(sorted.map((entry) => entry.modelId)).toEqual(['day', 'month']);
 });
 
-test('filters by lab and by a config-derived risk', () => {
+test('filters by lab, with unplaced models under the unknown lab', () => {
   const models = [model('a', { lab: 'openai' }, 0), model('b', { lab: 'anthropic' }), model('c')];
 
-  expect(filterRoutingModels(models, { range: '24h', lab: 'openai' }, undefined).map((m) => m.modelId)).toEqual(['a']);
-  expect(filterRoutingModels(models, { range: '24h', risk: 'no-eligible' }, undefined).map((m) => m.modelId)).toEqual([
-    'a',
-  ]);
-  expect(filterRoutingModels(models, { range: '24h', lab: UNKNOWN_LAB }, undefined).map((m) => m.modelId)).toEqual([
-    'c',
-  ]);
-});
-
-test('yields nothing for a deviation filter while traffic is unknown', () => {
-  // Filtering by deviation with no traffic must not silently fall back to "everything".
-  const models = [model('a', { lab: 'openai' })];
-
-  expect(filterRoutingModels(models, { range: '24h', risk: 'deviating' }, undefined)).toEqual([]);
+  expect(filterRoutingModels(models, { range: '24h', lab: 'openai' }).map((m) => m.modelId)).toEqual(['a']);
+  expect(filterRoutingModels(models, { range: '24h', lab: UNKNOWN_LAB }).map((m) => m.modelId)).toEqual(['c']);
 });
 
 test('offers each lab once, with unknown last', () => {

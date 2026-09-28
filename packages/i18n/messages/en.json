@@ -697,14 +697,11 @@
         "col_model": "Model ID",
         "col_route": "Route",
         "col_traffic": "Traffic",
-        "col_providers": "Eligible / known",
-        "col_overrides": "Overrides",
         "overrides_yes": "Overrides",
-        "overrides_no": "Defaults",
         "disabled": "Disabled",
         "empty_filtered": "No models match these filters.",
-        "empty_deviation_unknown": "Traffic for this range has not loaded, so divergence from the configured weights cannot be evaluated.",
-        "clear_filters": "Clear filters"
+        "clear_filters": "Clear filters",
+        "available": "{eligible} / {known} available"
       },
       "editor": {
         "preview": "Live route",
@@ -816,16 +813,8 @@
         "catalog_field_release_date": "Release date",
         "open_in_traces": "View in Traces"
       },
-      "health": {
-        "total": "Models",
-        "no_eligible": "No eligible Provider",
-        "single_point": "Single point, no failover",
-        "deviating": "Diverged from config",
-        "deviating_pending": "Measuring"
-      },
       "risk": {
         "no_eligible": "No eligible Provider",
-        "single_point": "Single point",
         "deviating": "Diverged"
       },
       "lab": {
@@ -833,16 +822,14 @@
         "filter_label": "Lab",
         "filter_placeholder": "Select a lab",
         "filter_all": "All labs",
-        "model_count": "{count} models",
-        "risk_count": "{count} need attention"
+        "model_count": "{count} models"
       },
       "tier_label": {
         "tier": "Tier {value}",
-        "priority": "Priority {value}"
-      },
-      "share": {
-        "configured": "Configured traffic share",
-        "actual": "Actual traffic share"
+        "priority": "Priority {value}",
+        "short": "T{value}",
+        "primary": "Receives traffic first",
+        "fallback": "Used only after every Provider in the tier above fails"
       },
       "traffic": {
         "none": "No traffic",
@@ -852,6 +839,19 @@
         "filter": "Filter Providers",
         "filter_placeholder": "Filter by Provider ID",
         "refresh_failed": "Showing the last successful measurement — refreshing traffic failed."
+      },
+      "route": {
+        "weight": "Weight {value}",
+        "weight_normalized": "Weight {effective} (configured {authored})",
+        "source_model": "Set by a model override",
+        "source_provider": "Provider default",
+        "share": "{value} of this tier",
+        "actual": "Actual {value}",
+        "override": "Override",
+        "ineligible": "Not routed",
+        "off_disabled": "Disabled",
+        "off_unavailable": "Unavailable",
+        "off_zero_weight": "Weight 0"
       }
     },
     "pagination": {

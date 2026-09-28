@@ -48,6 +48,7 @@ rs.mock('@tanstack/react-router', () => ({
   Link: ({ to, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }) => (
     <a href={to} {...props} />
   ),
+  useNavigate: () => () => Promise.resolve(),
 }));
 
 const routingNumber = (effective: number, authored?: number) => ({
@@ -138,15 +139,6 @@ test('renders the list from routing models alone when traffic has not landed', (
   render(<RoutingPage {...routingPageProps} />);
 
   expect(screen.getByTestId('routing-row-gpt-5')).toBeInTheDocument();
-  expect(screen.getByText(/Measuring|统计中/u)).toBeInTheDocument();
-});
-
-test('separates the health cards from the routing table card', () => {
-  mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
-
-  render(<RoutingPage {...routingPageProps} />);
-
-  expect(screen.getByTestId('routing-health-strip').parentElement).toHaveClass('space-y-3');
 });
 
 test('keeps the list fully usable when the traffic query fails', () => {
@@ -197,7 +189,7 @@ test('distinguishes filters with no matches from an empty routing inventory', ()
   mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
   const onSearchChange = rs.fn();
 
-  render(<RoutingPage search={{ range: '7d', risk: 'no-eligible', lab: 'openai' }} onSearchChange={onSearchChange} />);
+  render(<RoutingPage search={{ range: '7d', lab: 'anthropic' }} onSearchChange={onSearchChange} />);
 
   expect(screen.getByText('No models match these filters.')).toBeInTheDocument();
   expect(screen.queryByText(/Add a Provider/u)).not.toBeInTheDocument();
@@ -206,28 +198,11 @@ test('distinguishes filters with no matches from an empty routing inventory', ()
   expect(onSearchChange).toHaveBeenCalledWith({ range: '7d' });
 });
 
-test('does not claim nothing diverged while traffic is still unknown', () => {
-  // A bookmarked ?risk=deviating URL matches nothing until traffic lands, so the generic
-  // "no models match" copy would report a measured result from no measurement.
-  mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
-  mockRoutingTrafficError();
-
-  render(<RoutingPage search={{ range: '24h', risk: 'deviating' }} onSearchChange={rs.fn()} />);
-
-  expect(
-    screen.getByText(
-      'Traffic for this range has not loaded, so divergence from the configured weights cannot be evaluated.',
-    ),
-  ).toBeInTheDocument();
-  expect(screen.queryByText('No models match these filters.')).not.toBeInTheDocument();
-});
-
 test('keeps the lab filter adjustable when the current filters match nothing', () => {
-  // The risk tiles above stay clickable in this state, so hiding the lab select made clearing
-  // every filter the only way out of an empty result.
+  // Hiding the lab select here would make clearing every filter the only way out of an empty result.
   mockRoutingModels({ writable: true, models: [modelFixture('gpt-5', { lab: 'openai' })] });
 
-  render(<RoutingPage search={{ range: '24h', risk: 'no-eligible', lab: 'openai' }} onSearchChange={rs.fn()} />);
+  render(<RoutingPage search={{ range: '24h', lab: 'anthropic' }} onSearchChange={rs.fn()} />);
 
   expect(screen.getByText('No models match these filters.')).toBeInTheDocument();
   expect(screen.getByLabelText('Lab')).toBeInTheDocument();

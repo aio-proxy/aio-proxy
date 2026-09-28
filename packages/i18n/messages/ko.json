@@ -697,14 +697,11 @@
         "col_model": "모델 ID",
         "col_route": "라우트",
         "col_traffic": "트래픽",
-        "col_providers": "대상 / 알려진",
-        "col_overrides": "재정의",
         "overrides_yes": "재정의",
-        "overrides_no": "기본값",
         "disabled": "사용 안 함",
         "empty_filtered": "이 필터와 일치하는 모델이 없습니다.",
-        "empty_deviation_unknown": "이 기간의 트래픽을 불러오지 못해 설정된 가중치와의 편차를 판단할 수 없습니다.",
-        "clear_filters": "필터 지우기"
+        "clear_filters": "필터 지우기",
+        "available": "{eligible} / {known} 사용 가능"
       },
       "editor": {
         "preview": "실시간 라우트",
@@ -816,16 +813,8 @@
         "catalog_field_release_date": "출시일",
         "open_in_traces": "Traces에서 보기"
       },
-      "health": {
-        "total": "모델",
-        "no_eligible": "대상 Provider 없음",
-        "single_point": "단일, 페일오버 없음",
-        "deviating": "설정과 불일치",
-        "deviating_pending": "집계 중"
-      },
       "risk": {
         "no_eligible": "대상 Provider 없음",
-        "single_point": "단일",
         "deviating": "불일치"
       },
       "lab": {
@@ -833,16 +822,14 @@
         "filter_label": "랩",
         "filter_placeholder": "랩 선택",
         "filter_all": "모든 랩",
-        "model_count": "{count}개 모델",
-        "risk_count": "{count}개 주의 필요"
+        "model_count": "{count}개 모델"
       },
       "tier_label": {
         "tier": "{value}단계",
-        "priority": "우선순위 {value}"
-      },
-      "share": {
-        "configured": "설정 트래픽 비율",
-        "actual": "실제 트래픽 비율"
+        "priority": "우선순위 {value}",
+        "short": "T{value}",
+        "primary": "가장 먼저 트래픽을 받습니다",
+        "fallback": "상위 티어의 Provider가 모두 실패한 경우에만 사용"
       },
       "traffic": {
         "none": "트래픽 없음",
@@ -852,6 +839,19 @@
         "filter": "Provider 필터",
         "filter_placeholder": "Provider ID로 필터",
         "refresh_failed": "마지막으로 성공한 측정값을 표시합니다. 트래픽 새로 고침에 실패했습니다."
+      },
+      "route": {
+        "weight": "가중치 {value}",
+        "weight_normalized": "가중치 {effective} (설정값 {authored})",
+        "source_model": "모델 재정의",
+        "source_provider": "Provider 기본값",
+        "share": "이 티어의 {value}",
+        "actual": "실제 {value}",
+        "override": "재정의",
+        "ineligible": "라우팅 제외",
+        "off_disabled": "비활성화됨",
+        "off_unavailable": "사용 불가",
+        "off_zero_weight": "가중치 0"
       }
     },
     "pagination": {

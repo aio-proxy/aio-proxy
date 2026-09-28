@@ -1,7 +1,12 @@
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
 
-import { buildRoutingTiers, effectiveRoutingCandidates, explicitRoutingOverrides } from './routing-summary';
+import {
+  buildRoutingTiers,
+  effectiveRoutingCandidates,
+  explicitRoutingOverrides,
+  formatTierShares,
+} from './routing-summary';
 
 const effective = (providerId: string, priority: number, weight: number) => ({
   providerId,
@@ -84,4 +89,15 @@ test('preserves a __proto__ Provider override in the Save payload', () => {
   expect(Object.hasOwn(providers, '__proto__')).toBe(true);
   expect(Object.getPrototypeOf(providers)).toBe(Object.prototype);
   expect(providers['__proto__']).toEqual({ priority: 30 });
+});
+
+test('labels a tier so its percents add up to 100', () => {
+  // Rounded one by one, an even three-way split reads 33/33/33 and the tier appears to lose 1%.
+  expect(formatTierShares([1 / 3, 1 / 3, 1 / 3])).toEqual(['34%', '33%', '33%']);
+  expect(formatTierShares([0.5, 0.3, 0.2])).toEqual(['50%', '30%', '20%']);
+});
+
+test('labels a tiny but live candidate as under 1% rather than idle', () => {
+  // Weight 1 beside 9999: rounding alone shows 0%, which reads as a Provider taking no traffic.
+  expect(formatTierShares([9999 / 10_000, 1 / 10_000])).toEqual(['100%', '<1%']);
 });

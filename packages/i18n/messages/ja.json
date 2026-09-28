@@ -697,14 +697,11 @@
         "col_model": "モデル ID",
         "col_route": "ルート",
         "col_traffic": "トラフィック",
-        "col_providers": "対象 / 既知",
-        "col_overrides": "上書き",
         "overrides_yes": "上書きあり",
-        "overrides_no": "既定",
         "disabled": "無効",
         "empty_filtered": "この条件に一致するモデルはありません。",
-        "empty_deviation_unknown": "この期間のトラフィックが読み込まれていないため、設定された重みとの乖離は判定できません。",
-        "clear_filters": "フィルタをクリア"
+        "clear_filters": "フィルタをクリア",
+        "available": "{eligible} / {known} 利用可能"
       },
       "editor": {
         "preview": "ライブルート",
@@ -816,16 +813,8 @@
         "catalog_field_release_date": "リリース日",
         "open_in_traces": "Traces で表示"
       },
-      "health": {
-        "total": "モデル",
-        "no_eligible": "対象 Provider なし",
-        "single_point": "単一、フェイルオーバーなし",
-        "deviating": "設定から乖離",
-        "deviating_pending": "集計中"
-      },
       "risk": {
         "no_eligible": "対象 Provider なし",
-        "single_point": "単一",
         "deviating": "乖離"
       },
       "lab": {
@@ -833,16 +822,14 @@
         "filter_label": "ラボ",
         "filter_placeholder": "ラボを選択",
         "filter_all": "すべてのラボ",
-        "model_count": "{count} モデル",
-        "risk_count": "{count} 件要対応"
+        "model_count": "{count} モデル"
       },
       "tier_label": {
         "tier": "ティア {value}",
-        "priority": "優先度 {value}"
-      },
-      "share": {
-        "configured": "設定トラフィック比率",
-        "actual": "実際のトラフィック比率"
+        "priority": "優先度 {value}",
+        "short": "T{value}",
+        "primary": "最初にトラフィックを受け取ります",
+        "fallback": "上位ティアの Provider がすべて失敗した場合のみ使用"
       },
       "traffic": {
         "none": "トラフィックなし",
@@ -852,6 +839,19 @@
         "filter": "Provider を絞り込む",
         "filter_placeholder": "Provider ID で絞り込む",
         "refresh_failed": "最後に取得できた測定値を表示しています。トラフィックの再取得に失敗しました。"
+      },
+      "route": {
+        "weight": "重み {value}",
+        "weight_normalized": "重み {effective}（設定値 {authored}）",
+        "source_model": "モデルの上書き",
+        "source_provider": "Provider の既定値",
+        "share": "このティアの {value}",
+        "actual": "実績 {value}",
+        "override": "上書き",
+        "ineligible": "ルーティング対象外",
+        "off_disabled": "無効",
+        "off_unavailable": "利用不可",
+        "off_zero_weight": "重み 0"
       }
     },
     "pagination": {

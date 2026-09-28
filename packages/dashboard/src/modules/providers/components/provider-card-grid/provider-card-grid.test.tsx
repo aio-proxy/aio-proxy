@@ -89,7 +89,7 @@ test('card tier and weight share match management and stay stable when peers are
   const { rerender } = render(<ProviderCardGrid providers={allProviders} routingRevision="revision" />);
   const alpha = within(screen.getByTestId('provider-row-alpha'));
   expect(alpha.getByTestId('provider-card-route-tier')).toHaveTextContent(
-    m['dashboard.routing.tier_label.tier']({ value: 2 }),
+    m['dashboard.routing.tier_label.short']({ value: 2 }),
   );
   expect(alpha.getByTestId('provider-card-route-share')).toHaveTextContent('30%');
   expect(within(screen.getByTestId('provider-row-broken')).queryByTestId('provider-card-routing')).toBeNull();
@@ -98,7 +98,7 @@ test('card tier and weight share match management and stay stable when peers are
   fireEvent.change(screen.getByTestId('provider-search'), { target: { value: 'Alpha' } });
   expect(screen.getAllByTestId(/^provider-row-/u)).toHaveLength(1);
   expect(alpha.getByTestId('provider-card-route-tier')).toHaveTextContent(
-    m['dashboard.routing.tier_label.tier']({ value: 2 }),
+    m['dashboard.routing.tier_label.short']({ value: 2 }),
   );
   expect(alpha.getByTestId('provider-card-route-share')).toHaveTextContent('30%');
 
@@ -115,7 +115,7 @@ test('a single tier stays numbered and distinguishes zero weight from a rounded 
   const { rerender } = render(<ProviderCardGrid providers={allProviders} routingRevision="revision" />);
   expect(screen.getAllByTestId('provider-card-route-tier')).toHaveLength(3);
   for (const tier of screen.getAllByTestId('provider-card-route-tier')) {
-    expect(tier).toHaveTextContent(m['dashboard.routing.tier_label.tier']({ value: 1 }));
+    expect(tier).toHaveTextContent(m['dashboard.routing.tier_label.short']({ value: 1 }));
   }
   expect(within(screen.getByTestId('provider-row-normal')).getByTestId('provider-card-route-share')).toHaveTextContent(
     '100%',

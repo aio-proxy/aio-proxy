@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
@@ -170,6 +171,13 @@ test('renders every known model including zero-eligible and single-Provider rout
   expect(screen.getByTestId('routing-row-disabled-model')).toBeInTheDocument();
   expect(within(screen.getByTestId('routing-row-openai/gpt-5')).getByText('60%')).toBeInTheDocument();
   expect(within(screen.getByTestId('routing-row-disabled-model')).getByText(/0\s*\/\s*1/u)).toBeInTheDocument();
+  // Overrides are marked on the rows that have them, not in a column that is empty for most rows.
+  expect(
+    within(screen.getByTestId('routing-row-openai/gpt-5')).getByText(m['dashboard.routing.table.overrides_yes']()),
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId('routing-row-solo-model')).queryByText(m['dashboard.routing.table.overrides_yes']()),
+  ).toBeNull();
 });
 
 test('renders an OAuth Provider service and account from the shared catalog', async () => {
@@ -206,10 +214,11 @@ test('renders an OAuth Provider service and account from the shared catalog', as
     </ProviderCatalogProvider>,
   );
 
-  const providersCell = within(screen.getByTestId('routing-row-gpt-5')).getAllByRole('cell')[2];
-  expect(providersCell).toHaveTextContent('ChatGPT · wang.baran@gmail.com');
-  expect(providersCell).not.toHaveTextContent('OAuth');
-  expect(within(providersCell).getByTitle('oauth-provider')).toBeInTheDocument();
+  const routeProvider = within(screen.getByTestId('routing-row-gpt-5')).getByTestId(
+    'routing-route-provider-oauth-provider',
+  );
+  expect(routeProvider).toHaveTextContent(/ChatGPT.*wang\.baran@gmail\.com/u);
+  expect(routeProvider).not.toHaveTextContent('OAuth');
 });
 
 test('does not render the column visibility control for the routing table', async () => {
