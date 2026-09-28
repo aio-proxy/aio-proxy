@@ -12,8 +12,9 @@ Connect Muse Code subscription accounts.
 {
   "providers": {
     "muse": {
-      "kind": "plugin",
+      "kind": "oauth",
       "plugin": "@aio-proxy/plugin-muse-code",
+      "capability": "default",
     },
   },
 }

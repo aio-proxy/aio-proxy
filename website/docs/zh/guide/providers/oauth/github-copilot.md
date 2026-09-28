@@ -5,7 +5,7 @@ description: 使用 @aio-proxy/plugin-github-copilot 绑定 GitHub Copilot 订�
 # GitHub Copilot 插件
 
 **插件包名**：`@aio-proxy/plugin-github-copilot`  
-**对应 Capability**：`copilot`
+**对应 Capability**：`default`
 
 将个人或企业 **GitHub Copilot**（或 Copilot Chat）订阅连接到 AIO Proxy。
 
@@ -40,7 +40,7 @@ aio-proxy provider login copilot
     "copilot": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-github-copilot",
-      "capability": "copilot",
+      "capability": "default",
       "priority": 15,
       "weight": 100,
     },

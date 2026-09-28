@@ -5,7 +5,7 @@ description: 使用 @aio-proxy/plugin-muse-code 接入 Muse 平台代码专属�
 # Muse Code 插件
 
 **插件包名**：`@aio-proxy/plugin-muse-code`  
-**对应 Capability**：`muse`
+**对应 Capability**：`default`
 
 用于将 Muse 平台的代码生成与优化模型引入 AIO Proxy 路由网络。
 
@@ -25,7 +25,7 @@ description: 使用 @aio-proxy/plugin-muse-code 接入 Muse 平台代码专属�
     "muse": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-muse-code",
-      "capability": "muse",
+      "capability": "default",
       "priority": 10,
       "weight": 100,
     },

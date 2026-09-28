@@ -5,7 +5,7 @@ description: 使用 @aio-proxy/plugin-cursor 接入 Cursor 订阅会员账号，
 # Cursor 插件
 
 **插件包名**：`@aio-proxy/plugin-cursor`  
-**对应 Capability**：`cursor`
+**对应 Capability**：`default`
 
 将你的 **Cursor** 会员订阅接入 AIO Proxy，让终端命令行、SDK 或外部应用也能借助 Cursor 的大模型通道进行交互。
 
@@ -36,7 +36,7 @@ aio-proxy provider login cursor
     "my-cursor": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-cursor",
-      "capability": "cursor",
+      "capability": "default",
       "priority": 15,
       "weight": 100,
     },

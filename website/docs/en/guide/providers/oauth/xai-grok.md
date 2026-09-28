@@ -12,8 +12,9 @@ Connect xAI Grok accounts using Device Code Flow.
 {
   "providers": {
     "xai-grok": {
-      "kind": "plugin",
+      "kind": "oauth",
       "plugin": "@aio-proxy/plugin-xai-grok",
+      "capability": "default",
     },
   },
 }

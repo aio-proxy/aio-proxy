@@ -5,7 +5,7 @@ description: 使用 @aio-proxy/plugin-openai-chatgpt 接入个人或组织 ChatG
 # OpenAI ChatGPT 插件
 
 **插件包名**：`@aio-proxy/plugin-openai-chatgpt`  
-**对应 Capability**：`chatgpt`
+**对应 Capability**：`default`
 
 允许直接将个人或组织的 **ChatGPT Plus / Pro / Team / Enterprise** 账号接入 AIO Proxy，无需充值官方商业 API 额度，即可调用前沿大模型。
 
@@ -41,7 +41,7 @@ aio-proxy provider login chatgpt
     "chatgpt-pro": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-openai-chatgpt",
-      "capability": "chatgpt",
+      "capability": "default",
       "priority": 20,
       "weight": 100,
       "alias": {

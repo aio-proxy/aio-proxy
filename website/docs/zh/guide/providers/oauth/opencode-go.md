@@ -5,7 +5,7 @@ description: 使用 @aio-proxy/plugin-opencode-go 接入 OpenCode Go 分发通�
 # OpenCode Go 插件
 
 **插件包名**：`@aio-proxy/plugin-opencode-go`  
-**对应 Capability**：`opencode`
+**对应 Capability**：`default`
 
 连接 OpenCode 生态的模型分发服务，支持跨平台调用与路由聚合。
 
@@ -25,7 +25,7 @@ description: 使用 @aio-proxy/plugin-opencode-go 接入 OpenCode Go 分发通�
     "opencode": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-opencode-go",
-      "capability": "opencode",
+      "capability": "default",
       "priority": 10,
       "weight": 100,
     },

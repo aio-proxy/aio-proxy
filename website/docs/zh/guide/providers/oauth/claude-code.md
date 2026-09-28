@@ -5,7 +5,7 @@ description: 使用 @aio-proxy/plugin-claude-code 接入 Anthropic Claude 账号
 # Claude Pro / Team 插件
 
 **插件包名**：`@aio-proxy/plugin-claude-code`  
-**对应 Capability**：`claude`
+**对应 Capability**：`default`
 
 将 Anthropic **Claude Pro** 或 **Claude Team** 账号直接接入 AIO Proxy，提供官方级别的 Messages 接口与流式响应。
 
@@ -44,7 +44,7 @@ aio-proxy provider login claude
     "my-claude": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-claude-code",
-      "capability": "claude",
+      "capability": "default",
       "priority": 20,
       "weight": 100,
     },

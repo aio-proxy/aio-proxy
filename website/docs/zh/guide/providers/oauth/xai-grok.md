@@ -5,7 +5,7 @@ description: 使用 @aio-proxy/plugin-xai-grok 接入 xAI Grok 官方账号，�
 # xAI Grok 插件
 
 **插件包名**：`@aio-proxy/plugin-xai-grok`  
-**对应 Capability**：`grok`
+**对应 Capability**：`default`
 
 直接连接 xAI Grok 平台，调用马斯克旗下 xAI 推出的大语言与深度思考模型。
 
@@ -29,7 +29,7 @@ aio-proxy provider login grok
     "grok": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-xai-grok",
-      "capability": "grok",
+      "capability": "default",
       "priority": 10,
       "weight": 100,
     },

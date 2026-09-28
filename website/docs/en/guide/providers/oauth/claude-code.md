@@ -16,8 +16,9 @@ Anthropic strictly regulates third-party software access to Claude subscription 
 {
   "providers": {
     "my-claude": {
-      "kind": "plugin",
+      "kind": "oauth",
       "plugin": "@aio-proxy/plugin-claude-code",
+      "capability": "default",
     },
   },
 }

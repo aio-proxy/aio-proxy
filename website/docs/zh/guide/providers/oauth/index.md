@@ -67,7 +67,7 @@ aio-proxy provider login
     "my-account": {
       "kind": "oauth",
       "plugin": "@aio-proxy/plugin-openai-chatgpt",
-      "capability": "chatgpt",
+      "capability": "default",
       "priority": 10,
       "weight": 100,
       // 可选：排除不想对外暴露的模型

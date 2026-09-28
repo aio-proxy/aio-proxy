@@ -12,8 +12,9 @@ Connect OpenCode Go accounts.
 {
   "providers": {
     "opencode-go": {
-      "kind": "plugin",
+      "kind": "oauth",
       "plugin": "@aio-proxy/plugin-opencode-go",
+      "capability": "default",
     },
   },
 }
