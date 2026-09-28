@@ -699,10 +699,8 @@
         "col_traffic": "트래픽",
         "col_providers": "대상 / 알려진",
         "col_overrides": "재정의",
-        "col_actions": "작업",
         "overrides_yes": "재정의",
         "overrides_no": "기본값",
-        "edit": "편집",
         "disabled": "사용 안 함",
         "empty_filtered": "이 필터와 일치하는 모델이 없습니다.",
         "empty_deviation_unknown": "이 기간의 트래픽을 불러오지 못해 설정된 가중치와의 편차를 판단할 수 없습니다.",
@@ -733,7 +731,6 @@
         "provider_unavailable": "사용 불가",
         "provider_disabled": "Provider 사용 안 함",
         "board_help": "위쪽 계층부터 시도됩니다. 같은 계층의 비중은 슬라이더로 조정합니다.",
-        "tier": "{value}단계",
         "unused": "이 모델에서 사용 안 함",
         "slot_high": "여기에 놓아 먼저 시도",
         "slot_low": "여기에 놓아 마지막에 시도",
@@ -839,10 +836,13 @@
         "model_count": "{count}개 모델",
         "risk_count": "{count}개 주의 필요"
       },
+      "tier_label": {
+        "tier": "{value}단계",
+        "priority": "우선순위 {value}"
+      },
       "share": {
-        "configured": "설정",
-        "actual": "실제",
-        "tier": "{value}단계"
+        "configured": "설정 트래픽 비율",
+        "actual": "실제 트래픽 비율"
       },
       "traffic": {
         "none": "트래픽 없음",
@@ -888,7 +888,6 @@
       "routing": {
         "manage": "우선순위 관리",
         "add_tier": "단계 추가",
-        "tier": "{tier}단계",
         "provider_count": "프로바이더 {count}개",
         "share": "트래픽 비중",
         "parked": "중단됨",

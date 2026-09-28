@@ -699,10 +699,8 @@
         "col_traffic": "トラフィック",
         "col_providers": "対象 / 既知",
         "col_overrides": "上書き",
-        "col_actions": "操作",
         "overrides_yes": "上書きあり",
         "overrides_no": "既定",
-        "edit": "編集",
         "disabled": "無効",
         "empty_filtered": "この条件に一致するモデルはありません。",
         "empty_deviation_unknown": "この期間のトラフィックが読み込まれていないため、設定された重みとの乖離は判定できません。",
@@ -733,7 +731,6 @@
         "provider_unavailable": "利用不可",
         "provider_disabled": "Provider 無効",
         "board_help": "上の層から先に試されます。同じ層内の配分はスライダーで変えます。",
-        "tier": "第 {value} ティア",
         "unused": "このモデルでは未使用",
         "slot_high": "ここにドロップして最初に試す",
         "slot_low": "ここにドロップして最後に試す",
@@ -839,10 +836,13 @@
         "model_count": "{count} モデル",
         "risk_count": "{count} 件要対応"
       },
+      "tier_label": {
+        "tier": "ティア {value}",
+        "priority": "優先度 {value}"
+      },
       "share": {
-        "configured": "設定",
-        "actual": "実際",
-        "tier": "ティア {value}"
+        "configured": "設定トラフィック比率",
+        "actual": "実際のトラフィック比率"
       },
       "traffic": {
         "none": "トラフィックなし",
@@ -888,7 +888,6 @@
       "routing": {
         "manage": "優先度を管理",
         "add_tier": "ティアを追加",
-        "tier": "第 {tier} ティア",
         "provider_count": "{count} プロバイダー",
         "share": "トラフィック比率",
         "parked": "停止中",

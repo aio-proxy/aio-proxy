@@ -23,8 +23,8 @@ const item = (id: string, name: string): WeightedTierBoardItem<FixtureItem> => (
 });
 
 const tiers = [
-  { id: 'high', items: [item('a', 'Alpha')] },
-  { id: 'low', items: [item('b', 'Beta')] },
+  { id: 'high', priority: 10, items: [item('a', 'Alpha')] },
+  { id: 'low', priority: 0, items: [item('b', 'Beta')] },
 ];
 
 const labels = {

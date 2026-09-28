@@ -2,6 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel } from '@aio-proxy/types';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
+import { useNavigate } from '@tanstack/react-router';
 import type React from 'react';
 import { Fragment, useMemo } from 'react';
 
@@ -26,6 +27,7 @@ interface RoutingTableProps {
 export const RoutingTable: React.FC<RoutingTableProps> = ({ models, traffic, lab, onLabChange }) => {
   'use no memo';
 
+  const navigate = useNavigate();
   const columns = useMemo(() => createRoutingColumns({ traffic }), [traffic]);
   const { table } = useDataTable(models, columns, { getRowId: (model) => model.modelId });
 
@@ -89,9 +91,22 @@ export const RoutingTable: React.FC<RoutingTableProps> = ({ models, traffic, lab
                   : [];
               return [
                 ...groupRow,
-                <TableRow key={row.id} data-testid={`routing-row-${row.original.modelId}`}>
+                <TableRow
+                  key={row.id}
+                  data-testid={`routing-row-${row.original.modelId}`}
+                  role="link"
+                  tabIndex={0}
+                  aria-label={row.original.modelId}
+                  className="cursor-pointer"
+                  onClick={() => void navigate({ to: '/routing/$', params: { _splat: row.original.modelId } })}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    void navigate({ to: '/routing/$', params: { _splat: row.original.modelId } });
+                  }}
+                >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className={cell.column.id === 'actions' ? 'text-right' : undefined}>
+                    <TableCell key={cell.id}>
                       <table.FlexRender cell={cell} />
                     </TableCell>
                   ))}

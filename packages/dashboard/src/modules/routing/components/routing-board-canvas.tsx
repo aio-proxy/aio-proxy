@@ -2,6 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import { ROUTING_VALUE_MAX, type DashboardRoutingModel, type DashboardRoutingProvider } from '@aio-proxy/types';
 import { useMemo } from 'react';
 
+import { RoutingTierLabel } from '@/components/routing-tier-label';
 import {
   WeightedTierBoard,
   type WeightedTierBoardItem,
@@ -73,6 +74,7 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
     const shareMax = Math.max(1, Math.min(ROUTING_VALUE_MAX, basis - (tier.items.length - 1)));
     return {
       id: `tier:${tier.priority}`,
+      priority: tier.priority,
       items: tier.items.flatMap((item) =>
         toItem(item).map((entry) => ({
           ...entry,
@@ -141,7 +143,7 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
         parking={parking}
         writable={writable}
         labels={{
-          tier: (index) => m['dashboard.routing.editor.tier']({ value: index + 1 }),
+          tier: (index, priority) => <RoutingTierLabel tier={index + 1} priority={priority} />,
           tierCount: (count) => m['dashboard.providers.routing.provider_count']({ count }),
           dragTier: (index) => m['dashboard.providers.routing.drag_tier']({ tier: index + 1 }),
           newTier: m['dashboard.routing.editor.new_priority'](),

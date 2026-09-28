@@ -2,11 +2,13 @@ import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import type React from 'react';
 
+import { RoutingTierLabel } from '@/components/routing-tier-label';
 import { WeightedTierBoard, type WeightedTierBoardTier } from '@/components/weighted-tier-board';
 
 import {
   applyProviderRoutingLayout,
   applyProviderShare,
+  providerRoutingMutation,
   providerTierPercentages,
   type ProviderRoutingBoard as ProviderRoutingBoardModel,
 } from '../../lib/provider-routing-board';
@@ -20,10 +22,18 @@ interface ProviderRoutingBoardProps {
 
 export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({ board, providers, onChange }) => {
   const providersById = new Map(providers.map((provider) => [provider.id, provider]));
+  const prioritiesByProviderId = new Map(
+    Object.entries(providerRoutingMutation(board, '').providers).map(
+      ([providerId, value]) => [providerId, value.priority] as const,
+    ),
+  );
   const tiers: WeightedTierBoardTier<DashboardProviderSummary>[] = board.tiers.map((tier) => {
     const percentages = providerTierPercentages(tier);
+    const priority =
+      tier.items.map((item) => prioritiesByProviderId.get(item.providerId)).find((value) => value !== undefined) ?? 0;
     return {
       id: tier.id,
+      priority,
       items: tier.items.flatMap((item) => {
         const provider = providersById.get(item.providerId);
         if (provider === undefined) return [];
@@ -61,7 +71,7 @@ export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({ boar
       tiers={tiers}
       writable
       labels={{
-        tier: (index) => m['dashboard.providers.routing.tier']({ tier: index + 1 }),
+        tier: (index, priority) => <RoutingTierLabel tier={index + 1} priority={priority} />,
         tierCount: (count) => m['dashboard.providers.routing.provider_count']({ count }),
         dragTier: (index) => m['dashboard.providers.routing.drag_tier']({ tier: index + 1 }),
         newTier: m['dashboard.providers.routing.add_tier'](),

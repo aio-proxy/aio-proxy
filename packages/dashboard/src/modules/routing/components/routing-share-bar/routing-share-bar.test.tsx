@@ -1,6 +1,10 @@
 import { m } from '@aio-proxy/i18n';
+import { TooltipProvider } from '@aio-proxy/ui/components/tooltip';
 import { expect, test } from '@rstest/core';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+
+import { ProviderCatalogProvider } from '@/hooks/use-provider-catalog';
+import { providerStub } from '@/lib/provider-fixtures';
 
 import { RoutingShareBar } from './routing-share-bar';
 
@@ -19,71 +23,85 @@ const actual = [
   { providerId: 'fallback', actualShare: 0.07, successRate: 1, p95LatencyMs: 10, finalCount: 7n },
 ] as const;
 
-/** Segment widths in document order, for the configured row (0) or an actual row. */
-const widthsOf = (container: HTMLElement, row: 'configured' | number): readonly string[] => {
-  const node =
-    row === 'configured'
-      ? container.querySelector('.flex.h-3')
-      : container.querySelectorAll('[data-testid="routing-share-actual"]')[row];
-  return [...(node?.children ?? [])].map((child) => (child as HTMLElement).style.width);
-};
+test('shows the configured share beside each Provider', () => {
+  render(<RoutingShareBar tiers={tiers} actual={undefined} />);
 
-test('draws a configured segment per provider at its configured width', () => {
-  const { container } = render(<RoutingShareBar tiers={tiers} actual={undefined} />);
-
-  expect(screen.getByLabelText(/primary/u)).toBeInTheDocument();
-  expect(screen.getByLabelText(/fallback/u)).toBeInTheDocument();
-  expect(widthsOf(container, 'configured')).toStrictEqual(['50%', '50%']);
+  expect(screen.getByText('primary')).toBeInTheDocument();
+  expect(screen.getByText('fallback')).toBeInTheDocument();
+  expect(screen.getAllByText('50%')).toHaveLength(2);
 });
 
-test('omits the actual overlay entirely when traffic is unknown', () => {
+test('omits the actual row entirely when traffic is unknown', () => {
   const { container } = render(<RoutingShareBar tiers={tiers} actual={undefined} />);
 
   // Absent is not zero: a 0-width overlay would read as "actual share is zero".
   expect(container.querySelectorAll('[data-testid="routing-share-actual"]')).toHaveLength(0);
 });
 
-test('draws the actual overlay at the measured widths once traffic is known', () => {
+test('shows actual shares once traffic is known', () => {
   const { container } = render(<RoutingShareBar tiers={tiers} actual={actual} />);
 
   expect(container.querySelectorAll('[data-testid="routing-share-actual"]')).toHaveLength(1);
-  expect(widthsOf(container, 0)).toStrictEqual(['93%', '7%']);
+  expect(screen.getByTestId('routing-share-actual')).toHaveTextContent(m['dashboard.routing.share.actual']());
+  expect(screen.getByText('93%')).toBeInTheDocument();
+  expect(screen.getByText('7%')).toBeInTheDocument();
 });
 
 test('keeps a silent provider in position instead of shifting the tier left', () => {
   // The actual row once mapped only the providers that had traffic, so a provider serving nothing
   // dropped out and its neighbour's segment slid under its configured share — the operator read
   // the surviving provider as over-serving when the split was the exact opposite.
-  const { container } = render(
+  render(
     <RoutingShareBar
       tiers={tiers}
       actual={[{ providerId: 'fallback', actualShare: 1, successRate: 1, p95LatencyMs: 10, finalCount: 7n }]}
     />,
   );
 
-  expect(widthsOf(container, 0)).toStrictEqual(['0%', '100%']);
-  expect(screen.getByLabelText(`primary, ${m['dashboard.routing.share.actual']()}, 0%`)).toBeInTheDocument();
+  expect(screen.getByText('0%')).toBeInTheDocument();
+  expect(screen.getByText('100%')).toBeInTheDocument();
 });
 
-test('gives a provider the same colour in both rows of its tier', () => {
-  // Widths alone cannot be matched up once a segment collapses to nothing, so colour is what makes
-  // the configured and actual rows comparable.
-  const { container } = render(<RoutingShareBar tiers={tiers} actual={actual} />);
-
-  const colourOf = (node: Element) => (node as HTMLElement).style.backgroundColor;
-  const configured = [...(container.querySelector('.flex.h-3')?.children ?? [])].map(colourOf);
-  const measured = [...(container.querySelectorAll('[data-testid="routing-share-actual"]')[0]?.children ?? [])].map(
-    colourOf,
+test('labels each row by tier and exposes its priority on the tier tooltip', async () => {
+  render(
+    <TooltipProvider>
+      <RoutingShareBar tiers={tiers} actual={undefined} />
+    </TooltipProvider>,
   );
 
-  expect(configured).toStrictEqual(measured);
-  expect(new Set(configured).size).toBe(2);
+  const tierLabel = screen.getByText(m['dashboard.routing.tier_label.tier']({ value: 1 }));
+  expect(tierLabel).toBeInTheDocument();
+  expect(screen.getAllByText('50%')).toHaveLength(2);
+  fireEvent.pointerEnter(tierLabel, { pointerType: 'mouse' });
+  fireEvent.mouseEnter(tierLabel);
+  expect(await screen.findByText(m['dashboard.routing.tier_label.priority']({ value: 30 }))).toBeInTheDocument();
 });
 
-test('names the priority tier each row belongs to', () => {
-  render(<RoutingShareBar tiers={tiers} actual={undefined} />);
+test('keeps a long Provider list compact and exposes the full summary on hover', () => {
+  const providers = Array.from({ length: 5 }, (_, index) => ({
+    providerId: `provider-${index + 1}`,
+    weight: 1,
+    share: 0.2,
+  }));
 
-  expect(screen.getByText(m['dashboard.routing.share.tier']({ value: 30 }))).toBeInTheDocument();
+  render(<RoutingShareBar tiers={[{ priority: 0, providers }]} actual={undefined} />);
+
+  expect(screen.getByText('+2')).toBeInTheDocument();
+  expect(
+    screen.getByTitle('provider-1 20% · provider-2 20% · provider-3 20% · provider-4 20% · provider-5 20%'),
+  ).toBeInTheDocument();
+});
+
+test('uses the shared Provider display name in the share list', () => {
+  render(
+    <ProviderCatalogProvider
+      value={{ providers: [providerStub({ id: 'primary', name: 'Model Hub' })], plugins: [], status: 'ready' }}
+    >
+      <RoutingShareBar tiers={tiers} actual={undefined} />
+    </ProviderCatalogProvider>,
+  );
+
+  expect(screen.getByText('Model Hub')).toBeInTheDocument();
 });
 
 test('draws each priority tier actual shares in its own row', () => {
@@ -101,17 +119,8 @@ test('draws each priority tier actual shares in its own row', () => {
   );
 
   expect(container.querySelectorAll('[data-testid="routing-share-actual"]')).toHaveLength(2);
-  // Each tier's share is taken over its own members, so both rows are full width.
-  expect(widthsOf(container, 0)).toStrictEqual(['100%']);
-  expect(widthsOf(container, 1)).toStrictEqual(['100%']);
-});
-
-test('makes configured and actual share segments keyboard focusable images', () => {
-  render(<RoutingShareBar tiers={tiers} actual={actual} />);
-
-  for (const segment of screen.getAllByRole('img')) {
-    expect(segment).toHaveAttribute('tabindex', '0');
-  }
+  expect(screen.getByText(m['dashboard.routing.tier_label.tier']({ value: 1 }))).toBeInTheDocument();
+  expect(screen.getByText(m['dashboard.routing.tier_label.tier']({ value: 2 }))).toBeInTheDocument();
 });
 
 test('renders a disabled badge when no tier has an eligible provider', () => {

@@ -16,6 +16,7 @@ interface WeightedTierProps<TItem> {
   readonly id: string;
   readonly index: number;
   readonly items: readonly WeightedTierBoardItem<TItem>[];
+  readonly priority: number;
   readonly labels: WeightedTierBoardLabels;
   readonly renderItem: (value: TItem) => React.ReactNode;
   readonly testId?: string;
@@ -26,6 +27,7 @@ export const WeightedTier = <TItem,>({
   id,
   index,
   items,
+  priority,
   labels,
   renderItem,
   testId,
@@ -66,6 +68,7 @@ export const WeightedTier = <TItem,>({
         handleRef={handleRef}
         index={index}
         itemCount={items.length}
+        priority={priority}
         labels={labels}
         writable={writable}
       />

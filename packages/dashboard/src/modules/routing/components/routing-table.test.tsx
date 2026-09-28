@@ -1,4 +1,3 @@
-import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
@@ -9,7 +8,7 @@ import {
   createRoute,
   createRouter,
 } from '@tanstack/react-router';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 
 import { ProviderCatalogProvider } from '@/hooks/use-provider-catalog';
@@ -89,7 +88,7 @@ const renderTable = async (table: ReactElement) => {
     history: createMemoryHistory({ initialEntries: ['/routing/'] }),
   });
   await router.load();
-  return render(<RouterProvider router={router} />);
+  return { ...render(<RouterProvider router={router} />), router };
 };
 
 test('renders every known model including zero-eligible and single-Provider routes', async () => {
@@ -169,7 +168,7 @@ test('renders every known model including zero-eligible and single-Provider rout
   expect(screen.getByTestId('routing-row-openai/gpt-5')).toBeInTheDocument();
   expect(screen.getByTestId('routing-row-solo-model')).toBeInTheDocument();
   expect(screen.getByTestId('routing-row-disabled-model')).toBeInTheDocument();
-  expect(within(screen.getByTestId('routing-row-openai/gpt-5')).getByLabelText(/^a,/u)).toBeInTheDocument();
+  expect(within(screen.getByTestId('routing-row-openai/gpt-5')).getByText('60%')).toBeInTheDocument();
   expect(within(screen.getByTestId('routing-row-disabled-model')).getByText(/0\s*\/\s*1/u)).toBeInTheDocument();
 });
 
@@ -217,17 +216,6 @@ test('does not render the column visibility control for the routing table', asyn
   await renderTable(<RoutingTable models={[modelFixture('gpt-5')]} traffic={undefined} />);
 
   expect(screen.queryByRole('button', { name: /Columns|列/u })).not.toBeInTheDocument();
-});
-
-test('aligns the actions header and edit controls to the same right edge', async () => {
-  await renderTable(<RoutingTable models={[modelFixture('gpt-5')]} traffic={undefined} />);
-
-  const header = screen.getByRole('columnheader', { name: m['dashboard.routing.table.col_actions']() });
-  const row = screen.getByTestId('routing-row-gpt-5');
-  const actionCell = within(row).getAllByRole('cell').at(-1);
-
-  expect(header.querySelector(':scope > span')).toHaveClass('block', 'text-right');
-  expect(actionCell?.firstElementChild).toHaveClass('flex', 'justify-end');
 });
 
 test('filters models through the shared DataTable controls', async () => {
@@ -299,12 +287,15 @@ test('shows no-traffic rather than zeros for a model the measured window has no 
 });
 
 test('links each row to its detail page instead of opening a drawer', async () => {
-  await renderTable(<RoutingTable models={[modelFixture('anthropic/claude-sonnet-4.5')]} traffic={undefined} />);
-
-  expect(await screen.findByRole('link', { name: /编辑|Edit/u })).toHaveAttribute(
-    'href',
-    '/routing/anthropic/claude-sonnet-4.5',
+  const { router } = await renderTable(
+    <RoutingTable models={[modelFixture('anthropic/claude-sonnet-4.5')]} traffic={undefined} />,
   );
+
+  const row = screen.getByTestId('routing-row-anthropic/claude-sonnet-4.5');
+  expect(row).toHaveAttribute('role', 'link');
+  expect(row).toHaveAttribute('tabindex', '0');
+  fireEvent.keyDown(row, { key: 'Enter' });
+  await waitFor(() => expect(router.state.location.pathname).toBe('/routing/anthropic/claude-sonnet-4.5'));
 });
 
 test('orders the traffic column numerically, across the whole BigInt range', async () => {
@@ -334,7 +325,7 @@ test('orders the traffic column numerically, across the whole BigInt range', asy
 
   const idsInOrder = () =>
     screen
-      .getAllByRole('row')
+      .getAllByTestId(/^routing-row-/u)
       .map((row) => row.getAttribute('data-testid'))
       .filter((id): id is string => id !== null);
 

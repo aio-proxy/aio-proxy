@@ -45,6 +45,7 @@ export interface WeightedTierBoardItem<TItem> {
 
 export interface WeightedTierBoardTier<TItem> {
   readonly id: string;
+  readonly priority: number;
   readonly items: readonly WeightedTierBoardItem<TItem>[];
 }
 
@@ -60,7 +61,7 @@ export interface WeightedTierBoardLabels {
   readonly dragTier: (index: number) => string;
   readonly emptyTier: string;
   readonly newTier: string;
-  readonly tier: (index: number) => string;
+  readonly tier: (index: number, priority: number) => React.ReactNode;
   readonly tierCount: (count: number) => string;
 }
 
@@ -120,9 +121,13 @@ export const WeightedTierBoard = <TItem,>({
       const item = itemsById.get(weightedTierItemIdFromSortable(id) ?? '');
       return item === undefined ? [] : [item];
     });
-  const previewFor = (listId: string): { readonly index: number; readonly itemCount: number } | undefined => {
+  const previewFor = (
+    listId: string,
+  ): { readonly index: number; readonly itemCount: number; readonly priority: number } | undefined => {
     const preview = tiersById.get(weightedTierIdFromSortable(lists[listId]?.[0] ?? '') ?? '');
-    return preview === undefined ? undefined : { index: preview.index, itemCount: preview.tier.items.length };
+    return preview === undefined
+      ? undefined
+      : { index: preview.index, itemCount: preview.tier.items.length, priority: preview.tier.priority };
   };
 
   return (
@@ -179,6 +184,7 @@ export const WeightedTierBoard = <TItem,>({
                 id={tier.id}
                 index={index}
                 items={itemsFor(lists[listId] ?? [])}
+                priority={tier.priority}
                 labels={labels}
                 renderItem={renderItem}
                 testId={tierTestId?.(index, tier.id)}

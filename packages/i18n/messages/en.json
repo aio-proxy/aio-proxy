@@ -699,10 +699,8 @@
         "col_traffic": "Traffic",
         "col_providers": "Eligible / known",
         "col_overrides": "Overrides",
-        "col_actions": "Actions",
         "overrides_yes": "Overrides",
         "overrides_no": "Defaults",
-        "edit": "Edit",
         "disabled": "Disabled",
         "empty_filtered": "No models match these filters.",
         "empty_deviation_unknown": "Traffic for this range has not loaded, so divergence from the configured weights cannot be evaluated.",
@@ -733,7 +731,6 @@
         "provider_unavailable": "Unavailable",
         "provider_disabled": "Provider disabled",
         "board_help": "Providers in the first tier are tried first. Use the slider to change traffic share within a tier.",
-        "tier": "Tier {value}",
         "unused": "Not used for this model",
         "slot_high": "Drop to try first",
         "slot_low": "Drop to try last",
@@ -839,10 +836,13 @@
         "model_count": "{count} models",
         "risk_count": "{count} need attention"
       },
+      "tier_label": {
+        "tier": "Tier {value}",
+        "priority": "Priority {value}"
+      },
       "share": {
-        "configured": "Configured",
-        "actual": "Actual",
-        "tier": "Tier {value}"
+        "configured": "Configured traffic share",
+        "actual": "Actual traffic share"
       },
       "traffic": {
         "none": "No traffic",
@@ -888,7 +888,6 @@
       "routing": {
         "manage": "Manage priorities",
         "add_tier": "Add tier",
-        "tier": "Tier {tier}",
         "provider_count": "{count} Providers",
         "share": "Traffic share",
         "parked": "Parked",

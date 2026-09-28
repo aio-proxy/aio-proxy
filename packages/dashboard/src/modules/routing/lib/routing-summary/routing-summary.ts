@@ -71,7 +71,7 @@ export const formatRoutingTiers = (tiers: readonly RoutingTier[]): string =>
           tier.providers.length === 1 ? entry.providerId : `${entry.providerId} ${Math.round(entry.share * 100)}%`,
         )
         .join(' / ');
-      return `${m['dashboard.routing.editor.tier']({ value: index + 1 })}: ${members}`;
+      return `${m['dashboard.routing.tier_label.tier']({ value: index + 1 })}: ${members}`;
     })
     .join(' → ');
 

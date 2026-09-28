@@ -10,6 +10,7 @@ interface WeightedTierHeaderProps {
   readonly index: number;
   readonly itemCount: number;
   readonly labels: WeightedTierBoardLabels;
+  readonly priority: number;
   readonly preview?: boolean;
   readonly writable: boolean;
 }
@@ -19,6 +20,7 @@ export const WeightedTierHeader: React.FC<WeightedTierHeaderProps> = ({
   index,
   itemCount,
   labels,
+  priority,
   preview = false,
   writable,
 }) => (
@@ -38,7 +40,7 @@ export const WeightedTierHeader: React.FC<WeightedTierHeaderProps> = ({
         {index + 1}
       </Button>
     ) : null}
-    <h3 className="min-w-0 flex-1 font-heading text-sm font-medium">{labels.tier(index)}</h3>
+    <h3 className="min-w-0 flex-1 font-heading text-sm font-medium">{labels.tier(index, priority)}</h3>
     <span className="text-xs text-muted-foreground">{labels.tierCount(itemCount)}</span>
   </div>
 );

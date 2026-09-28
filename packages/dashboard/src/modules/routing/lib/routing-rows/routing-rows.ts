@@ -1,4 +1,5 @@
 import type { DashboardRoutingModel } from '@aio-proxy/types';
+import { upperFirst } from 'es-toolkit/string';
 
 import { modelRisks } from '../routing-risk';
 import type { RoutingSearch } from '../routing-search';
@@ -8,16 +9,23 @@ import type { RoutingTrafficIndex } from '../routing-traffic';
  * maker. Sorted last rather than alphabetically, so it never lands between two real labs. */
 export const UNKNOWN_LAB = 'unknown';
 
-const LAB_DISPLAY_NAMES: Readonly<Record<string, string>> = {
-  anthropic: 'Anthropic',
-  google: 'Google',
+const LAB_NAME_OVERRIDES: Readonly<Record<string, string>> = {
+  alibaba: 'Alibaba',
   meta: 'Meta',
-  mistral: 'Mistral',
+  minimax: 'MiniMax',
+  moonshotai: 'Moonshot AI',
   openai: 'OpenAI',
+  perplexity: 'Perplexity',
+  stepfun: 'StepFun',
   xai: 'xAI',
+  zhipuai: 'Zhipu AI',
 };
 
-export const labDisplayName = (lab: string): string => LAB_DISPLAY_NAMES[lab] ?? lab;
+export const labDisplayName = (lab: string): string => {
+  const override = LAB_NAME_OVERRIDES[lab];
+  if (override !== undefined) return override;
+  return lab.split('-').map(upperFirst).join(' ');
+};
 
 export const labOf = (model: DashboardRoutingModel): string => model.catalog?.lab ?? UNKNOWN_LAB;
 

@@ -1,9 +1,9 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel } from '@aio-proxy/types';
-import { Badge } from '@aio-proxy/ui/components/badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@aio-proxy/ui/components/tooltip';
-import { cn } from '@aio-proxy/ui/lib/utils';
 import type React from 'react';
+
+import { ProviderLabel } from '@/components/provider-label';
+import { RoutingTierLabel } from '@/components/routing-tier-label';
 
 import { formatRoutingShare } from '../../lib/routing-summary';
 import type { RoutingTierShare } from '../../lib/routing-traffic';
@@ -13,28 +13,17 @@ interface RoutingShareBarProps {
   readonly actual: readonly RoutingTierShare[] | undefined;
 }
 
-const segmentLabel = (providerId: string, kind: 'configured' | 'actual', share: number): string => {
-  const role =
-    kind === 'configured' ? m['dashboard.routing.share.configured']() : m['dashboard.routing.share.actual']();
-  return `${providerId}, ${role}, ${formatRoutingShare(share)}`;
-};
-
-/** A Provider keeps one colour in both rows of its tier, which is what makes the rows comparable:
- * widths alone cannot be matched up once a Provider serves nothing and its segment collapses. */
-const segmentColor = (index: number) => `var(--chart-${(index % 5) + 1})`;
-
-/** Trimmed to four decimals so a share like `0.07` does not reach the DOM as `7.000000000000001%`.
- * Far finer than a pixel at any table width, so the segments still sum to the full bar. */
-const segmentWidth = (share: number) => `${Number((share * 100).toFixed(4))}%`;
+const shareText = (share: number) => formatRoutingShare(share);
+const visibleProviderLimit = 3;
 
 export const RoutingShareBar: React.FC<RoutingShareBarProps> = ({ tiers, actual }) => {
   if (tiers.length === 0) {
-    return <Badge variant="outline">{m['dashboard.routing.table.disabled']()}</Badge>;
+    return <span className="text-sm text-muted-foreground">{m['dashboard.routing.table.disabled']()}</span>;
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      {tiers.map((tier) => {
+    <div className="relative flex min-w-0 flex-col gap-3 before:absolute before:inset-y-3 before:left-2 before:w-px before:bg-border">
+      {tiers.map((tier, tierIndex) => {
         // Both rows walk `tier.providers`, so segment N is the same Provider in each. Reading the
         // measured shares off their own array instead would drop the Providers that served nothing
         // and shift every remaining segment left, under a neighbour's configured share.
@@ -46,55 +35,72 @@ export const RoutingShareBar: React.FC<RoutingShareBarProps> = ({ tiers, actual 
               );
 
         return (
-          <div key={tier.priority} className="flex flex-col gap-1">
-            <span className="text-[0.625rem] leading-none text-muted-foreground">
-              {m['dashboard.routing.share.tier']({ value: tier.priority })}
+          <div key={tier.priority} className="relative grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] gap-2.5">
+            <span className="z-[1] mt-0.5 flex size-5 items-center justify-center rounded-full border border-muted-foreground bg-background font-mono text-sm leading-none text-muted-foreground">
+              {tierIndex + 1}
             </span>
-            <div className="flex h-3 w-full overflow-hidden rounded-sm bg-muted">
-              {tier.providers.map((provider, index) => {
-                const label = segmentLabel(provider.providerId, 'configured', provider.share);
-                return (
-                  <Tooltip key={provider.providerId}>
-                    <TooltipTrigger
-                      render={
-                        <div
-                          className={cn('h-full shrink-0', index > 0 && 'border-l border-background')}
-                          style={{ width: segmentWidth(provider.share), backgroundColor: segmentColor(index) }}
-                          aria-label={label}
-                          role="img"
-                          tabIndex={0}
-                        />
-                      }
-                    />
-                    <TooltipContent>{label}</TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
-            {measured === undefined ? null : (
-              <div data-testid="routing-share-actual" className="flex h-1 w-full overflow-hidden rounded-sm bg-muted">
-                {tier.providers.map((provider, index) => {
-                  const share = measured[index] ?? 0;
-                  const label = segmentLabel(provider.providerId, 'actual', share);
-                  return (
-                    <Tooltip key={provider.providerId}>
-                      <TooltipTrigger
-                        render={
-                          <div
-                            className={cn('h-full shrink-0', index > 0 && 'border-l border-background')}
-                            style={{ width: segmentWidth(share), backgroundColor: segmentColor(index) }}
-                            aria-label={label}
-                            role="img"
-                            tabIndex={0}
-                          />
-                        }
-                      />
-                      <TooltipContent>{label}</TooltipContent>
-                    </Tooltip>
-                  );
-                })}
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-baseline justify-between gap-3">
+                <RoutingTierLabel
+                  tier={tierIndex + 1}
+                  priority={tier.priority}
+                  className="truncate text-sm leading-5 font-medium text-foreground"
+                />
               </div>
-            )}
+              <div
+                className="flex min-w-0 flex-nowrap items-baseline gap-x-4 overflow-hidden text-sm text-ellipsis whitespace-nowrap"
+                title={tier.providers
+                  .map((provider) => `${provider.providerId} ${shareText(provider.share)}`)
+                  .join(' · ')}
+              >
+                {tier.providers.slice(0, visibleProviderLimit).map((provider) => (
+                  <ProviderLabel key={provider.providerId} providerId={provider.providerId}>
+                    {({ name, providerId }) => (
+                      <span className="inline-flex min-w-0 items-baseline gap-2" title={providerId}>
+                        <span className="truncate">{name}</span>
+                        <span className="shrink-0 font-mono text-sm text-muted-foreground tabular-nums">
+                          {shareText(provider.share)}
+                        </span>
+                      </span>
+                    )}
+                  </ProviderLabel>
+                ))}
+                {tier.providers.length > visibleProviderLimit ? (
+                  <span className="shrink-0 text-sm text-muted-foreground">
+                    +{tier.providers.length - visibleProviderLimit}
+                  </span>
+                ) : null}
+              </div>
+              {measured === undefined ? null : (
+                <div
+                  data-testid="routing-share-actual"
+                  className="flex min-w-0 flex-nowrap items-baseline gap-x-3 overflow-hidden text-sm text-ellipsis whitespace-nowrap text-muted-foreground"
+                  title={tier.providers
+                    .map((provider, index) => `${provider.providerId} ${shareText(measured[index] ?? 0)}`)
+                    .join(' · ')}
+                >
+                  <span className="shrink-0">{m['dashboard.routing.share.actual']()}</span>
+                  {tier.providers.slice(0, visibleProviderLimit).map((provider, index) => {
+                    const share = measured[index] ?? 0;
+                    return (
+                      <ProviderLabel key={provider.providerId} providerId={provider.providerId}>
+                        {({ name, providerId }) => (
+                          <span className="inline-flex min-w-0 items-baseline gap-2" title={providerId}>
+                            <span className="truncate">{name}</span>
+                            <span className="shrink-0 font-mono text-sm text-foreground tabular-nums">
+                              {shareText(share)}
+                            </span>
+                          </span>
+                        )}
+                      </ProviderLabel>
+                    );
+                  })}
+                  {tier.providers.length > visibleProviderLimit ? (
+                    <span className="shrink-0 text-sm">+{tier.providers.length - visibleProviderLimit}</span>
+                  ) : null}
+                </div>
+              )}
+            </div>
           </div>
         );
       })}

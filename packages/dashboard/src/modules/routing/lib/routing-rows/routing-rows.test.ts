@@ -20,10 +20,12 @@ test('groups a model with no catalog under a single unknown lab', () => {
   expect(labOf(model('y', { lab: 'openai' }))).toBe('openai');
 });
 
-test('maps known model vendors to display names and preserves unknown IDs', () => {
+test('matches models.dev lab naming rules', () => {
   expect(labDisplayName('openai')).toBe('OpenAI');
   expect(labDisplayName('anthropic')).toBe('Anthropic');
-  expect(labDisplayName('custom-lab')).toBe('custom-lab');
+  expect(labDisplayName('moonshotai')).toBe('Moonshot AI');
+  expect(labDisplayName('custom-lab')).toBe('Custom Lab');
+  expect(labDisplayName('custom')).toBe('Custom');
 });
 
 test('orders by lab, then newest release first, then model id', () => {

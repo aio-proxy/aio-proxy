@@ -1,38 +1,17 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel } from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
-import { buttonVariants } from '@aio-proxy/ui/components/button';
-import { Link } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { tableHead } from '@/components/data-table/table-head';
 import { ProviderLabel } from '@/components/provider-label';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
 
-import { modelRisks } from '../lib/routing-risk';
-import { UNKNOWN_LAB, labDisplayName, labOf } from '../lib/routing-rows';
-import type { RoutingRiskFilter } from '../lib/routing-search';
 import { type RoutingTrafficIndex, modelTrafficSummary, tierActualShares } from '../lib/routing-traffic';
 import { RoutingShareBar } from './routing-share-bar/routing-share-bar';
 
 const numberFormatter = new Intl.NumberFormat();
 const percentFormatter = new Intl.NumberFormat(undefined, { style: 'percent', maximumFractionDigits: 0 });
-
-const labLabel = (model: DashboardRoutingModel): string => {
-  const lab = labOf(model);
-  return lab === UNKNOWN_LAB ? m['dashboard.routing.lab.unknown']() : labDisplayName(lab);
-};
-
-const riskLabel = (risk: RoutingRiskFilter): string => {
-  switch (risk) {
-    case 'no-eligible':
-      return m['dashboard.routing.risk.no_eligible']();
-    case 'single-point':
-      return m['dashboard.routing.risk.single_point']();
-    case 'deviating':
-      return m['dashboard.routing.risk.deviating']();
-  }
-};
 
 interface CreateRoutingColumnsOptions {
   readonly traffic: RoutingTrafficIndex | undefined;
@@ -47,31 +26,7 @@ export const createRoutingColumns = ({
     accessorKey: 'modelId',
     meta: { label: () => m['dashboard.routing.table.col_model']() },
     header: tableHead(() => m['dashboard.routing.table.col_model']()),
-    cell: ({ row }) => {
-      const model = row.original;
-      const risks = modelRisks(model, traffic?.get(model.modelId));
-      return (
-        <div className="flex min-w-0 flex-col gap-1">
-          <span className="font-mono text-sm">{model.modelId}</span>
-          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-            <span>{labLabel(model)}</span>
-            {model.catalog?.releaseDate !== undefined ? <span>{model.catalog.releaseDate}</span> : null}
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {risks.map((risk) => (
-              <Badge key={risk} variant="outline" className="text-xs">
-                {riskLabel(risk)}
-              </Badge>
-            ))}
-            {model.hasOverrides ? (
-              <Badge variant="secondary" className="text-xs">
-                {m['dashboard.routing.table.overrides_yes']()}
-              </Badge>
-            ) : null}
-          </div>
-        </div>
-      );
-    },
+    cell: ({ row }) => <span className="font-mono text-sm">{row.original.modelId}</span>,
   },
   {
     id: 'route',
@@ -172,23 +127,6 @@ export const createRoutingColumns = ({
           ? m['dashboard.routing.table.overrides_yes']()
           : m['dashboard.routing.table.overrides_no']()}
       </Badge>
-    ),
-  },
-  {
-    id: 'actions',
-    enableHiding: false,
-    enableSorting: false,
-    header: tableHead(() => m['dashboard.routing.table.col_actions'](), 'text-right'),
-    cell: ({ row }) => (
-      <div className="flex justify-end">
-        <Link
-          to="/routing/$"
-          params={{ _splat: row.original.modelId }}
-          className={buttonVariants({ variant: 'outline', size: 'sm' })}
-        >
-          {m['dashboard.routing.table.edit']()}
-        </Link>
-      </div>
     ),
   },
 ];

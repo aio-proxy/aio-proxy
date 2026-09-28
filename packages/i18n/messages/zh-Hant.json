@@ -699,10 +699,8 @@
         "col_traffic": "流量",
         "col_overrides": "覆寫",
         "col_providers": "可用 / 已知",
-        "col_actions": "操作",
         "overrides_yes": "有覆寫",
         "overrides_no": "預設",
-        "edit": "編輯",
         "disabled": "已停用",
         "empty_filtered": "沒有模型符合這些篩選條件。",
         "empty_deviation_unknown": "該時間範圍的流量尚未載入，無法判斷是否偏離設定的權重。",
@@ -733,7 +731,6 @@
         "provider_unavailable": "無法使用",
         "provider_disabled": "Provider 已停用",
         "board_help": "優先嘗試第一梯隊，同一梯隊內用滑桿調整流量占比。",
-        "tier": "第 {value} 梯隊",
         "unused": "不參與此模型",
         "slot_high": "拖到這裡最先嘗試",
         "slot_low": "拖到這裡最後嘗試",
@@ -839,10 +836,13 @@
         "model_count": "{count} 個模型",
         "risk_count": "{count} 個需處理"
       },
+      "tier_label": {
+        "tier": "第 {value} 梯隊",
+        "priority": "優先順序 {value}"
+      },
       "share": {
-        "configured": "設定",
-        "actual": "實際",
-        "tier": "第 {value} 層"
+        "configured": "設定流量佔比",
+        "actual": "實際流量佔比"
       },
       "traffic": {
         "none": "無流量",
@@ -888,7 +888,6 @@
       "routing": {
         "manage": "管理優先級",
         "add_tier": "新增梯隊",
-        "tier": "第 {tier} 梯隊",
         "provider_count": "{count} 個提供商",
         "share": "流量占比",
         "parked": "已停用",

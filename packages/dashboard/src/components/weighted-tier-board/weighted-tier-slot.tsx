@@ -12,7 +12,7 @@ interface WeightedTierSlotProps<TItem> {
   readonly listId: string;
   readonly renderItem: (value: TItem) => React.ReactNode;
   readonly testId?: string;
-  readonly tierPreview?: { readonly index: number; readonly itemCount: number };
+  readonly tierPreview?: { readonly index: number; readonly itemCount: number; readonly priority: number };
 }
 
 export const WeightedTierSlot = <TItem,>({
@@ -44,6 +44,7 @@ export const WeightedTierSlot = <TItem,>({
           index={tierPreview.index}
           itemCount={tierPreview.itemCount}
           labels={labels}
+          priority={tierPreview.priority}
           preview
           writable={false}
         />

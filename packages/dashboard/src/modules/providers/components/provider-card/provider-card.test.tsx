@@ -49,7 +49,7 @@ test('the card body is one link and never a nested-interactive button', () => {
     <ProviderCard
       {...baseProps}
       provider={providerStub({ id: 'p', name: 'P' })}
-      routing={{ tier: 1, share: 100, parked: false }}
+      routing={{ tier: 1, priority: 10, share: 100, parked: false }}
     />,
   );
 

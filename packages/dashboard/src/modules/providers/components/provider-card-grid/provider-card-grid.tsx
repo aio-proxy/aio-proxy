@@ -67,6 +67,10 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({
   );
   const visible = useMemo(() => visibleProviders(providers, filters), [providers, filters]);
   const defaultBoard = useMemo(() => buildProviderRoutingBoard(providers), [providers]);
+  const defaultPriorities = useMemo(
+    () => new Map(Object.entries(providerRoutingMutation(defaultBoard, routingRevision).providers)),
+    [defaultBoard, routingRevision],
+  );
   const routingByProvider = useMemo(
     () =>
       new Map(
@@ -78,6 +82,7 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({
                 item.providerId,
                 {
                   tier: index + 1,
+                  priority: defaultPriorities.get(item.providerId)?.priority ?? 0,
                   share: percentages.get(item.providerId) ?? 0,
                   parked: item.weight === 0,
                 },
@@ -85,7 +90,7 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({
           );
         }),
       ),
-    [defaultBoard],
+    [defaultBoard, defaultPriorities],
   );
   const currentBoard = draft?.board ?? defaultBoard;
   const savedBoard = draft?.savedBoard ?? currentBoard;
