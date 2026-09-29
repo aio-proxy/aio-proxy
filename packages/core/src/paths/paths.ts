@@ -16,9 +16,12 @@ export function aioHome(): string {
   return home === undefined || home === '' ? join(homedir(), '.aio-proxy') : home;
 }
 
-export function configPath(): string {
-  const home = aioHome();
+export function configPathIn(home: string): string {
   return CONFIG_FILE_NAMES.map((name) => join(home, name)).find(existsSync) ?? join(home, 'config.jsonc');
+}
+
+export function configPath(): string {
+  return configPathIn(aioHome());
 }
 
 export function dbPath(): string {

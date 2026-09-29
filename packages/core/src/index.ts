@@ -241,7 +241,7 @@ export {
 } from './npm';
 export { type InstalledNpmPackage, listInstalledNpmPackages } from './npm-list';
 export { canonicalizeLoopbackHost } from './network/index';
-export { aioHome, configPath, dbPath, packagesDir, updateCheckPath } from './paths/index';
+export { aioHome, configPath, configPathIn, dbPath, packagesDir, updateCheckPath } from './paths/index';
 export {
   DESKTOP_TOKEN_FILE,
   DesktopTokenRejectedError,
