@@ -1,7 +1,7 @@
 # macOS menu-bar desktop client
 
 Date: 2026-09-29
-Status: draft (rev 2, after review)
+Status: draft (rev 3, after two review rounds)
 
 ## Goal
 
@@ -15,16 +15,18 @@ Windows and Linux are committed follow-ups. Phase 1 is macOS on Apple Silicon on
 
 - Re-implementing any Web Dashboard feature natively: Provider create/edit, OAuth flows, routing rules, API keys, trace payloads, JSON config editing, large log tables.
 - Owning the proxy process. launchd owns it; the desktop app never runs aio-proxy as its own child.
-- Replacing a user's existing CLI-installed service with the desktop's bundled version.
+- Changing an external (CLI-installed) service without an explicit user click.
 - Intel Macs. macOS 26 is the last Intel release; Intel users keep the CLI.
 - Windows and Linux in phase 1. On Linux the anchored popover is not achievable under Wayland (no client-side global positioning, no tray icon rect) and GNOME hides tray icons without an extension; that degraded design is a phase-2 decision.
+- Live push (SSE) in phase 1. The panel polls while visible; see Refresh policy.
 - A per-refresh CLI protocol. CLI commands are used only for discovery and lifecycle; data goes over HTTP.
 
 ## Platform baseline
 
 - Architecture: `arm64` only.
-- Minimum macOS: **13.0**, set by `SMAppService.mainApp` (launch at login). Sparkle 2 and GPUI both support older systems, so 13.0 is the binding floor.
-- The single value is propagated to `MACOSX_DEPLOYMENT_TARGET` (Rust build), `LSMinimumSystemVersion` (`Info.plist`), and `sparkle:minimumSystemVersion` (appcast).
+- Minimum macOS: **13.0**, set by `SMAppService.mainApp` (launch at login).
+- The value is propagated to `MACOSX_DEPLOYMENT_TARGET` (Rust build), `LSMinimumSystemVersion` (`Info.plist`), and `sparkle:minimumSystemVersion` (appcast), and the bundle step checks every Mach-O's `minos` (`vtool -show-build`) is ≤ 13.0, including the prebuilt Bun sidecar and Sparkle.
+- Install location: the app only performs persistent operations (symlink, service, login item) when it runs from `/Applications` or `~/Applications` on a writable volume. Anywhere else (a mounted DMG, Downloads, a translocated path) it shows "Move to Applications" and runs read-only. This is a location policy, not translocation detection, which Apple provides no supported API for.
 
 ## Stack
 
@@ -35,83 +37,101 @@ Windows and Linux are committed follow-ups. Phase 1 is macOS on Apple Silicon on
 | Panel window | GPUI `WindowKind::PopUp` | Borderless, above other windows; hide on deactivation via GPUI window-activation observation |
 | No Dock / Cmd+Tab | `LSUIElement` in `Info.plist` | Native, zero code |
 | App launch at login | `SMAppService.mainApp` via objc2 | Native API, macOS 13+ |
-| Updates | Sparkle 2 via objc2 (`SPUStandardUpdaterController`) | Standard for non-App-Store apps; EdDSA-verified |
-| HTTP | The reqwest client already in the GPUI dependency tree | No extra HTTP dependency |
+| Updates | Sparkle 2, pinned version and SHA-256, via objc2 (`SPUStandardUpdaterController`) | Standard for non-App-Store apps; EdDSA-verified |
+| Local HTTP | Decided in spike check 2 between GPUI's `HttpClient` (`gpui-pre-reqwest-client`) and an explicitly declared client; must meet the transport rules below without adding a second async runtime | "Already in the dependency tree" is not an integration decision |
 | Proxy | The existing Bun standalone binary from `packages/cli/scripts/build-binary.ts` (`darwin-arm64`) | Already built and resigned in CI |
 | Toolchain | Root `mise.toml` for local dev, reading `.bun-version` and `desktop/rust-toolchain.toml` | Each tool keeps one version source; CI reads the same files |
 
 GPUI Kit pins an exact `gpui-pre` snapshot because snapshots break API. The desktop crate pins `gpui-kit` exactly and bumps it deliberately.
 
-## Process model and discovery
+## Service model
 
-The desktop app does not spawn the proxy. The proxy runs as the existing launchd user agent (`com.aio-proxy.agent`), and the desktop app talks to it through the bundled CLI (rare lifecycle calls) and HTTP (all data).
+The desktop app does not spawn the proxy. The proxy runs as the existing launchd user agent (`com.aio-proxy.agent`); the desktop app observes it through the bundled CLI and HTTP, and changes it only under the rules below.
 
 ### Bundled binary and stable symlink
 
 - The `.app` ships `Contents/MacOS/aio-proxy` next to `Contents/MacOS/aio-proxy-desktop`.
-- On every launch the app atomically (create temp symlink + rename) ensures `~/Library/Application Support/aio-proxy-desktop/bin/aio-proxy` points at its own bundled binary, re-pointing it if the app moved.
-- The launchd plist for a desktop-owned service points at that symlink, not into the bundle. After a Sparkle update the symlink already resolves to the new binary; the running process keeps its old inode until restart.
-- The app refuses to proceed from a translocated location (launched from Downloads) and asks the user to move it to `/Applications`. A translocated path is random and changes on reboot, and Sparkle requires a writable location anyway.
+- A desktop-owned plist points at `~/Library/Application Support/aio-proxy-desktop/bin/aio-proxy`, a symlink to a bundled binary, never into a bundle directly. After a Sparkle update the symlink already resolves to the new binary; the running process keeps its old inode until restart.
+- **Single instance:** the app takes an exclusive `flock` on `~/Library/Application Support/aio-proxy-desktop/instance.lock` at launch. A second copy exits.
+- **No downgrade:** before re-pointing, the app runs `<current target> --version`. It re-points only when the target is missing or not newer than its own bundled version. If an installed copy is newer, this copy runs read-only with a notice naming that copy's path.
+- Re-pointing is create-temp-symlink + `rename`, and only happens after the install-location check passes.
 
-### Startup flow
+### Discovery: `__desktop-connect`
 
-1. Run `<symlink> __desktop-connect`. It prints one JSON line on stdout:
+A hidden CLI command, run through the symlink (or the bundled binary before the symlink exists), prints one JSON object on stdout and nothing else; human-readable messages go to stderr. It separates facts that rev 2 conflated:
 
-   ```json
-   {
-     "protocolVersion": 1,
-     "bundledVersion": "0.37.0",
-     "running": true,
-     "runningVersion": "0.36.0",
-     "url": "http://127.0.0.1:9317",
-     "dashboardUrl": "http://127.0.0.1:9317/dashboard",
-     "token": "<local token or null>",
-     "service": { "installed": true, "owner": "desktop" }
-   }
-   ```
+```json
+{
+  "protocolVersion": 1,
+  "bundledVersion": "0.37.0",
+  "unit": {
+    "present": true,
+    "wrapperValid": true,
+    "target": "/Users/me/Library/Application Support/aio-proxy-desktop/bin/aio-proxy",
+    "home": "/Users/me/.aio-proxy",
+    "owner": "desktop"
+  },
+  "job": { "loaded": true, "disabled": false, "pid": 4312 },
+  "instance": {
+    "controlUrl": "http://127.0.0.1:9317",
+    "dashboardUrl": "http://127.0.0.1:9317/dashboard",
+    "reachable": true,
+    "version": "0.36.0",
+    "pid": 4312,
+    "matchesJob": true
+  },
+  "token": "<local token or null>"
+}
+```
 
-   `bundledVersion` is the CLI's own version (it runs from the symlink, so it is the desktop's bundled sidecar). `running`/`url`/`runningVersion` reuse `resolveControlAddress` + `probeHealth` from `status`. `owner` is `"desktop"` when the installed plist's executable equals the symlink path, `"external"` when a plist exists with any other executable, and `null` when no plist exists.
-2. `running: true`: connect, then apply the version rules below.
-3. `running: false`, no service installed: run `service install` then `service start`. The service is now desktop-owned.
-4. `running: false`, service installed: run `service start`. The plist is not rewritten.
+- **`unit`** comes from parsing the plist. The aio-proxy path is not `ProgramArguments[0]` (that is `/bin/sh`); `wrapperValid` requires `ProgramArguments` to be exactly `["/bin/sh", "-c", <known wrapper>, <target>]`, and `target` is the fourth element. `home` is the plist's `AIO_PROXY_HOME`. `owner` is `desktop` when `target` equals the symlink path, `external` for any other valid target, `unknown` when the wrapper is not recognized, `null` when no plist exists.
+- **`job`** comes from `launchctl print gui/<uid>/com.aio-proxy.agent` (loaded, pid) and `launchctl print-disabled gui/<uid>` (disabled). The disk plist and the loaded job can differ; both are reported.
+- **`instance`** resolves the address with `AIO_PROXY_HOME` set to `unit.home` (the service's own config, not the calling process's environment), else the default home. A wildcard bind maps to its loopback (`0.0.0.0` → `127.0.0.1`, `::` → `::1`); a non-loopback bind yields `controlUrl: null` and no token is ever sent. `version` and `pid` come from `GET /dashboard/api/desktop-summary` (authenticated), not `/health`, so an instance is identified by a credential only a same-user process can read. `matchesJob` is `instance.pid == job.pid`.
+- **`token`** is read from `<home>/desktop-token`; `null` if absent or failing the file checks below.
+- Timeouts: 10s for the whole command, 2s per HTTP probe.
 
-Every CLI invocation goes through the symlink with `AIO_PROXY_DESKTOP_EXEC=<symlink>` set, so any plist the desktop app writes always points at the symlink. The implementation plan must confirm that `service start` and `service stop` never rewrite an existing plist; only `install` and `restart` do today.
+### What the app does automatically
 
-### Version rules
+Automatic mutation requires **`owner: desktop` and either `matchesJob: true` or no reachable instance**, plus a valid install location. Everything else is read-only until the user clicks.
 
-| Situation | Behavior |
+| State | Automatic action |
 | --- | --- |
-| `runningVersion == bundledVersion` | Normal |
-| Desktop-owned, versions differ (the app was just updated) | `service restart` via the symlink, wait for `/health`, re-run `__desktop-connect` |
-| External, `desktop-summary` answers with a supported `protocolVersion` | Normal, plus a "proxy is version X" notice |
-| External, `desktop-summary` missing (404) or unsupported `protocolVersion` | Degraded panel: status, endpoint, Open Dashboard, Reload only |
+| No plist | `service install` + `service start` (fresh install; the app now owns the service) |
+| Desktop, loaded, enabled, no process | `service start` (which kickstarts, see CLI changes) — the recovery path after a dangling-symlink exit |
+| Desktop, not loaded, enabled | `service start` |
+| Desktop, disabled | Nothing. The user stopped it; show Stopped with a Start button |
+| Desktop, running, `instance.version < bundledVersion` | `service restart`, then wait up to 30s for `/health` reporting `bundledVersion`. One attempt per app launch; on failure show the error, no retry loop |
+| Desktop, running, `instance.version >= bundledVersion` | Nothing (never downgrade) |
+| External or unknown owner, or `matchesJob: false` | Nothing, ever. Buttons act only on click |
 
-The app never replaces an external instance. Update coordination needs no pre-install proxy stop: the symlink path is stable, the old process keeps running on its old inode while Sparkle swaps the bundle, and the relaunched app restarts the desktop-owned service onto the new binary. This keeps proxy downtime to one restart. If the proxy happens to crash during the swap, the dangling-symlink guard below stops it cleanly, and the relaunched app's `service start` brings it back.
+The version-triggered restart interrupts in-flight requests: `shutdownProxyServer` is not a drain (`app.close()` then `server.stop(true)`). This is an accepted product decision for phase 1; the restart runs right after an update is installed, which the user has already consented to through Sparkle.
 
-### Actions by ownership
+Every mutating command re-runs `__desktop-connect` first and aborts if ownership or `matchesJob` changed since the panel rendered.
 
-| Action | `owner: desktop` | `owner: external` | No service (manual `aio-proxy run`) |
+### User actions
+
+| Action | Desktop owner | External owner | Unknown owner / no plist |
 | --- | --- | --- | --- |
-| Restart | `service restart` via the symlink (rewrites the plist to the current symlink) | `launchctl kickstart -k gui/<uid>/com.aio-proxy.agent` (never rewrites the plist) | Not offered |
-| Reload config | `POST /admin/reload` (already allowed from loopback without auth) | same | same |
-| Stop | `service stop` | same | Not offered |
-| Quit app | Proxy keeps running | same | same |
+| Start | `service start` | `service start` (does not rewrite an installed plist) | Not offered |
+| Restart | `service restart` (rewrites the plist to the symlink) | `launchctl kickstart -k gui/<uid>/com.aio-proxy.agent` (never rewrites the plist) | Not offered |
+| Stop | `service stop` | `service stop` | Not offered |
+| Reload config | `POST /admin/reload` (loopback, no auth) | same | same |
 
-`service restart` must never run against an external service: `writeManagedUnit` rewrites the plist with the invoking binary, which would silently switch a user's npm/brew service to the desktop binary.
+Completion conditions differ per action: Restart waits for `/health` with the expected version; Stop waits for `job.pid == null` and the instance unreachable; Reload reports the response (`409` carries `error` and `stage`). Then the panel refetches.
 
-After any action the app initiates, it refetches immediately once `/health` answers; it does not wait for an SSE event.
+`service restart` is never used on an external service: `writeManagedUnit` rewrites the plist with the invoking binary.
 
-"Proxy starts at login" is the launchd service itself (`RunAtLoad`). "App starts at login" is a separate toggle backed by `SMAppService`.
+"Proxy starts at login" is the launchd job itself (`RunAtLoad`). "App starts at login" is a separate toggle backed by `SMAppService`, whose UI reflects the real status including "requires approval" (with a link to System Settings).
 
 ### Dangling symlink
 
-The current launchd plist uses a conditional `KeepAlive` (`SuccessfulExit = false`): launchd relaunches only on a non-zero exit. The `/bin/sh` wrapper already maps exit 1 to 0 for this reason. The wrapper gains `[ -x "$0" ] || exit 0` before `"$0" run`, so a missing executable (app deleted, brew uninstalled) is a clean exit that launchd does not relaunch. `RunAtLoad` then makes it run once per login, exit 0, and stay quiet. Spike check 1 observes this for 10 minutes rather than trusting the documented semantics.
+The launchd plist uses a conditional `KeepAlive` (`SuccessfulExit = false`); the `/bin/sh` wrapper already maps exit 1 to 0 so launchd does not relaunch on unrecoverable config errors. The wrapper gains `[ -x "$0" ] || exit 0` before `"$0" run`, so a missing executable is a clean exit launchd does not relaunch. The job stays loaded; recovery is the "loaded, enabled, no process" row above, which requires `service start` to kickstart a loaded job (CLI changes).
 
 ### Health check
 
-- Timeout 2s. Two consecutive failures mark the proxy down.
-- It only updates the tray icon state and triggers rediscovery (`__desktop-connect`). It never restarts anything. Crash recovery is launchd's `KeepAlive` for both desktop-owned and external services.
-- Runs every 60s while the panel is closed, and immediately on panel open and on wake from sleep (`NSWorkspaceDidWakeNotification`).
+- `GET /health`, 2s timeout; two consecutive failures mark the proxy down.
+- Updates the tray icon and triggers rediscovery. Never mutates anything by itself; the automatic-action table is the only mutation path, and crash recovery is launchd's `KeepAlive`.
+- Every 60s, plus immediately on panel open and on wake (`NSWorkspaceDidWakeNotification`).
 
 ## Server and CLI changes
 
@@ -119,50 +139,91 @@ The current launchd plist uses a conditional `KeepAlive` (`SuccessfulExit = fals
 
 | Property | Rule |
 | --- | --- |
-| Location | `$AIO_PROXY_HOME/desktop-token`, mode `0600` |
-| Created by | The server, at boot, if absent (write temp + rename). The CLI only reads it. |
-| Lifetime | Persistent across restarts, service reinstalls, and app updates. Not tied to ownership. |
-| Read by the server | From the file on each desktop-authorized request (two low-rate routes), so replacing the file rotates the token without a restart |
-| Missing while the server runs | `__desktop-connect` returns `token: null`; the desktop app restarts a desktop-owned service or shows "restart the proxy" for an external one |
-| Transport to the app | The stdout pipe of `__desktop-connect`. Never an environment variable, never a URL query. |
-| Transport to the server | `Authorization: Bearer`, including on the SSE request |
-| Logging | Never logged by the desktop app; the desktop app's logger redacts `Authorization` |
+| Value | 32 bytes from the OS CSPRNG, base64url |
+| Location | `$AIO_PROXY_HOME/desktop-token` |
+| Created by | The server at boot, if absent. The CLI only reads. |
+| Creation | Temp file opened `O_CREAT \| O_EXCL` with mode `0600`, written, then `link()` to the final name (fails if another process won; the loser reads the winner's file), then unlink temp |
+| Read checks | `lstat`: regular file, not a symlink, owned by the current uid, no group/other permission bits. A failing check means "no token" plus a logged reason; permissions are never widened or repaired silently |
+| Lifetime | Loaded by the server once at boot. Persistent across restarts, reinstalls, and app updates. Rotation = replace the file and restart the proxy |
+| Transport to the app | The stdout pipe of `__desktop-connect`. Never an environment variable or URL |
+| Transport to the server | `Authorization: Bearer` |
+| Logging | The Rust token type has a redacting `Debug`; the app never logs `__desktop-connect` stdout or `Authorization` |
 
-**Scope: least privilege.** The token authorizes exactly two routes, both `GET`:
+This is a same-user local credential, not proof that the caller is the official app.
 
-- `GET /dashboard/api/desktop-summary`
-- `GET /dashboard/api/events`
+**Scope.** The token authorizes exactly one route: `GET /dashboard/api/desktop-summary`. That route has its own guard and always requires the desktop token, with or without a dashboard password. It is exempted from the dashboard session middleware; `DashboardAuthentication.verify()` is not changed, so the token is never a dashboard session. No other route accepts it. Being a `GET`, it never touches the CSRF guard.
 
-It is not a general dashboard session. The desktop app needs nothing else: reload goes through `/admin/reload`, which already accepts loopback requests without auth. Because both routes are `GET`, the same-origin CSRF guard (which only inspects state-changing methods) is untouched. No origin check is bypassed anywhere.
+**Loopback.** The route accepts the token only when `isDashboardLoopbackRequest` passes, which uses the socket peer from Bun's `requestIP` (`127.0.0.0/8`, `::1`, `::ffff:127.*`), not `Host`, `Origin`, or `X-Forwarded-For`. `requireLoopbackHost` also runs in front of `/dashboard/api/*`, but only when no dashboard password is set; the design does not rely on it.
 
-**Loopback.** The token is accepted only when the existing `isDashboardLoopbackRequest` passes. That check uses the socket peer from Bun's `requestIP`, not `Host`, `Origin`, or `X-Forwarded-For`, and already treats `127.0.0.0/8`, `::1`, and `::ffff:127.*` as loopback. The existing `requireLoopbackHost` Host-header guard against DNS rebinding stays in front of it.
-
-A proxy bound to `0.0.0.0` still rejects the token from non-loopback peers.
+**401 handling (client).** Re-run discovery once to pick up a replaced token. Still 401: show "authentication failed", never restart the proxy.
 
 ### CLI
 
-- Hidden command `__desktop-connect` as specified above.
-- `resolveAgentExecutable` honors `AIO_PROXY_DESKTOP_EXEC` when set: the plist's executable becomes that path and the unit carries `AIO_PROXY_UPGRADE_METHOD=desktop`.
-- The auto-update hooks treat `AIO_PROXY_UPGRADE_METHOD=desktop` as "never self-upgrade". Sparkle owns updates for desktop-owned services; a self-upgrade would break the app's code signature.
+- `__desktop-connect` as specified above.
+- `serviceStart` on macOS: when the job is already loaded, `launchctl kickstart gui/<uid>/com.aio-proxy.agent` instead of `load -w` (which does not start an already-loaded job). Benefits CLI users too.
+- `resolveAgentExecutable` checks `AIO_PROXY_DESKTOP_EXEC` first, before PATH and realpath resolution, and returns it verbatim (not passed through `resolveStableManagedExec`, so the symlink is never resolved into the bundle).
+- When `AIO_PROXY_DESKTOP_EXEC` is set, `writeManagedUnit` writes the plist environment with `AIO_PROXY_DESKTOP_EXEC=<symlink>` and `AIO_PROXY_UPGRADE_METHOD=desktop`, skipping upgrade-method detection. Because the running daemon then inherits `AIO_PROXY_DESKTOP_EXEC`, every later rewrite from inside it (including `migratePreMarkerManagedUnit` at `run` startup) keeps the symlink and the marker. `UnitOptions.upgradeMethod` gains `'desktop'`.
+- **No self-upgrade of desktop binaries.** `runUpgradeCommand` is the shared write path for `aio-proxy upgrade`, Dashboard "apply update" (`/dashboard/api/release/apply` → auto-update hooks), and background auto-update. It refuses when `AIO_PROXY_UPGRADE_METHOD=desktop` or the executable resolves inside a `.app` bundle, returning a result that tells the user to update through the desktop app.
 - The launchd wrapper guard described above.
+
+### Quota cache additions
+
+The cache keeps successes in `entries`, first failures in `failures`, permanently unsupported Providers in `unsupported`, and running reads in `inFlight`. A peek of `entries` alone cannot tell "loading" from "first read failed". Two additions:
+
+- `status(providerId)`, synchronous: `unsupported` | `failed` (in `failures`, no entry) | `ready` (entry; its `stale` flag means "last refresh failed, showing the previous snapshot", not "old") | `loading` (in flight, no entry) | `none`.
+- `refresh(providerId)`: starts a background read bypassing cooldown, through the same `start()` so in-flight dedupe and generation isolation still apply. Never awaited by callers.
+
+Read timeouts are already enforced by the host, not just signalled: `withOAuthAccountContext` wraps the plugin call in `withAbort(request.signal, …)` so a plugin that ignores its signal cannot hold the read past the cache's 15s `AbortSignal.timeout` (`oauth-account-context.ts`). A test still pins that `inFlight` clears after the timeout.
 
 ### `GET /dashboard/api/desktop-summary`
 
-One versioned endpoint rather than several dashboard-internal ones. When the desktop app attaches to an external instance of a different version, this is the stable contract. The Rust client never tracks four internal response shapes.
+One versioned endpoint rather than several dashboard-internal ones: when the app attaches to an instance of a different version, this DTO is the contract. It is an explicit mapping, never a spread of internal objects.
 
-Every field comes from existing code:
+```ts
+type DesktopSummaryV1 = {
+  protocolVersion: 1;
+  generatedAt: string;                 // RFC 3339, UTC
+  server: { version: string; pid: number };
+  usage24h: {
+    requests: string;                  // decimal integer strings, like the existing overview API
+    failedRequests: string;
+    inputTokens: string;
+    outputTokens: string;
+    estimatedCostNanoUsd: string | null; // null when no Provider has pricing
+  };
+  trend7d: Array<{ date: string /* YYYY-MM-DD, server-local */; requests: string; totalTokens: string; estimatedCostNanoUsd: string | null }>;
+  activity: Array<{ date: string; requests: string }>; // up to 365 days
+  providers: Array<{
+    id: string;
+    name: string;
+    enabled: boolean;
+    state: 'ok' | 'degraded' | 'cooldown' | 'disabled' | 'unknown';
+    lastStatus: number | null;
+    lastLatencyMs: number | null;
+    quota:
+      | { status: 'none' | 'unsupported' | 'loading' | 'failed' }
+      | { status: 'ready'; sampledAt: string; refreshFailed: boolean;
+          windows: Array<{ label: string; usedFraction: number | null; resetsAt: string | null }> };
+  }>;
+  alerts: Array<{ providerId: string; kind: 'credential' | 'cooldown' | 'quota_exhausted'; message: string }>;
+};
+```
+
+Sources (the implementation plan confirms each mapping against the current type):
 
 | Field | Source |
 | --- | --- |
-| `usage` (last 24h: requests, input/output tokens, estimated cost, failure rate) | `traceStore.overviewDashboard({ range: '24h' }).summary` |
-| `trend` (7 days) | `traceStore.overviewDashboard({ range: '7d' })` series |
-| `activity` (heatmap) | `traceStore.overviewDashboardActivity()` |
-| `providers` (id, name, state, last status/latency, quota) | `state.providerSummaries({ probe: false })` + quota cache (below) |
-| `alerts` | Derived from providers: credential failure, cooldown, exhausted quota window |
+| `usage24h` | `traceStore.overviewDashboard({ range: '24h' }).summary`; `failedRequests` from `overviewDashboardDiagnostics({ range: '24h' })` |
+| `trend7d` | `traceStore.overviewDashboard({ range: '7d' })` series |
+| `activity` | `traceStore.overviewDashboardActivity()` |
+| `providers` | `state.providerSummaries({ probe: false })` + `quotaCache.status()` / entry snapshot windows |
+| `alerts` | Derived from providers |
 
-The response carries `protocolVersion: 1` and `generatedAt`. Clients ignore unknown fields. "Today" means the existing rolling 24h window; no calendar-day range is added. One Provider's quota failure is reported on that Provider (`{ status: 'error' }`) and never fails the whole response.
+Compatibility: Rust parses `protocolVersion` first and only then the body; unknown fields are ignored; unknown enum values map to an `Unknown` variant. "Today" is the existing rolling 24h window. One Provider's quota failure is reported on that Provider and never fails the response.
 
-#### Quota never blocks the summary
+`?refresh=true` calls `quotaCache.refresh()` for quota-capable Providers and returns immediately with current state.
+
+#### Why quota never blocks
 
 Measured on a live 0.35.1 instance (6 Providers, 25 MB DB, median of 30):
 
@@ -176,37 +237,27 @@ Measured on a live 0.35.1 instance (6 Providers, 25 MB DB, median of 30):
 | Quota, cache hit | 6–13 ms per Provider |
 | Quota, cache miss (upstream) | 690–1320 ms per Provider |
 
-Local aggregation costs the same in one endpoint or four: the server is single-threaded and SQLite reads are synchronous, so parallel requests do not overlap. The ~3 ms event-loop hold happens only while the panel is open, at most every 15–30s, which is what the Web Dashboard already does.
-
-Quota is the real risk. `createOAuthQuotaCache` keeps entries behind a 5-minute cooldown and, once it lapses, `read()` awaits upstream with no stale-while-revalidate. A summary that awaited quota would stall ~1.3s every 5 minutes.
-
-So:
-
-- Add `peek(providerId): OAuthQuotaCacheEntry | undefined` to the quota cache: a synchronous read of the current entry, no fetch.
-- The summary calls `peek` then the existing `warm` (which already respects cooldown, dedupes in flight, and bounds each read with its own 15s timeout detached from any caller) for each quota-capable Provider. The summary holds no promise, so an aborted summary request leaves nothing behind but the cache's own bounded read.
-- Each Provider's quota is `{ status: 'ready', snapshot, sampledAt, stale }`, `{ status: 'pending' }`, or `{ status: 'error' }`.
-- `?refresh=true` forces a background refresh (bypassing cooldown) and still does not await it.
+Local aggregation costs the same in one endpoint or four: SQLite reads are synchronous on a single-threaded server. The summary then only reads `status()` and calls the existing `warm()`; it holds no quota promise. At the refresh policy below (at most every 15s, only while the panel is open) the ~3 ms event-loop hold is negligible. A larger database scales the 24h query; the spike re-measures on a synthetic 1 GB trace DB.
 
 ### Refresh policy (client)
 
-The event stream carries `config.changed`, `events.dropped`, `trace.start`, `trace.delta`, `trace.end`. There is no service-status or quota event; service state changes the app causes itself are handled by the immediate post-action refetch above.
-
 | Trigger | Response |
 | --- | --- |
-| Panel opens | Fetch immediately; subscribe to SSE |
-| `config.changed`, `events.dropped` | Fetch immediately |
-| `trace.end` | Trailing debounce 1s |
-| `trace.start`, `trace.delta` | Ignored |
-| 30s since the last fetch | Fetch (fallback for a silent stream) |
-| Any Provider `pending` after a fetch | One shared refetch after 2s |
-| Panel closes | Abort the SSE request, cancel all timers and the pending retry |
+| Panel opens | New panel session; fetch immediately |
+| Every 15s while open | Fetch |
+| User action completes | Fetch (after the action's own completion condition) |
+| Any Provider `loading` after a fetch | One shared refetch after 2s; still `loading` afterwards → keep rendering it until the next 15s tick |
+| Manual refresh | Fetch with `?refresh=true` |
+| Panel closes | Cancel the in-flight request and all timers |
 
-Rules:
+- At most one request in flight, 5s deadline. A trigger during a request marks dirty; one more fetch runs when it finishes, subject to the 15s floor except for panel-open, user actions, and manual refresh.
+- Every response is tagged with (panel session, instance identity, request counter); a response from a closed session, a different instance, or an older counter is discarded.
 
-- At most one fetch in flight. A trigger during a fetch marks "dirty"; one more fetch runs when it completes.
-- Each fetch carries a generation number; a response older than the latest applied one is discarded.
-- A newer fetch replaces a scheduled pending retry. If Providers are still `pending` after that one retry, render `pending` and wait for an event or a manual refresh; no polling loop.
-- SSE reconnects with capped exponential backoff (1s doubling to 30s, reset on a successful event). A parse error closes and reconnects through the same backoff, never a tight loop. Reconnects re-fetch the summary; event IDs are not resumed.
+### Local HTTP transport rules
+
+- A dedicated client for the local instance: no proxy (ignores system and environment proxy settings), no redirects, connect timeout 1s, request timeout 5s.
+- The token is attached only when the URL host is a literal loopback IP (`127.0.0.1` or `::1`); never to a hostname, never to a non-loopback address.
+- The token is never set as a default header on any client.
 
 ## Desktop app structure
 
@@ -214,95 +265,99 @@ One Cargo binary crate at `desktop/`, outside the Bun workspace.
 
 | Module | Responsibility |
 | --- | --- |
-| `main.rs` | GPUI application, tray creation, app lifecycle, wake notification |
+| `main.rs` | GPUI application, single-instance lock, tray creation, wake notification, `--version` |
 | `tray.rs` | `tray-icon` setup; left click toggles the panel with the icon rect; right click opens a native menu (Open Dashboard, Quit); three icon states |
-| `panel/` | PopUp window placement (below the menu bar, horizontally centered on the icon, clamped to the icon's screen) and views: stat cards, Provider quota list, 7-day trend, heatmap, action row |
-| `connect.rs` | Symlink maintenance, `__desktop-connect` invocation and parsing, version rules, service commands, `launchctl kickstart` |
-| `client.rs` | Summary fetch, SSE subscription, the refresh policy above |
-| `summary.rs` | Serde types for `desktop-summary`, tolerant of unknown fields |
-| `login_item.rs` | `SMAppService.mainApp` register/unregister |
-| `updater.rs` | Sparkle controller |
+| `panel/` | PopUp placement (below the menu bar, centered on the icon, clamped to the icon's screen) and views: stat cards, Provider quota list, 7-day trend, heatmap, action row |
+| `install.rs` | Install-location policy, symlink maintenance and no-downgrade rule |
+| `connect.rs` | `__desktop-connect` invocation and parsing, automatic-action table, user actions with completion conditions |
+| `client.rs` | Local HTTP transport and the refresh policy |
+| `summary.rs` | `DesktopSummaryV1` types; version-first parsing |
+| `login_item.rs` | `SMAppService.mainApp` register/unregister/status |
+| `updater.rs` | Sparkle controller on the main thread |
 
 Panel details:
 
 - No arrow, matching arrowless system menu-bar popovers such as Control Center.
-- The heatmap is a plain grid of cells. GPUI Kit has no heatmap component, and one is not needed for a fixed-size 365-cell grid.
-- Window lifecycle on close is decided by spike check 3 (below); the summary model and last response survive either way.
+- The heatmap is a plain grid of cells; GPUI Kit has no heatmap component and a fixed 365-cell grid does not need one.
+- Window lifecycle on close is decided by spike check 3; the model and last response survive either way.
 - "Open logs" reveals `$AIO_PROXY_HOME/logs` in Finder. The app's own log goes to `~/Library/Logs/aio-proxy-desktop/`.
-- The actions offered follow the ownership table above.
+- An instance whose `desktop-summary` is missing (404, older version) or has an unsupported `protocolVersion` gets a degraded panel: status, endpoint, Open Dashboard, Reload.
 
 ## Build, sign, release
 
 ### Bundle command
 
-One top-level command, `bun run desktop:bundle` (script `desktop/scripts/bundle.ts`), used by both CI and release so no caller can produce a sidecar missing its embedded dashboard:
+`bun run desktop:bundle` (`desktop/scripts/bundle.ts`) is the only entry point for CI and release:
 
-1. Verify required tools (`cargo`, `codesign`, `xcrun`, Sparkle tools) and fail fast.
-2. `bun run build` (the workspace build, including the dashboard `dist` the compiled entry embeds).
-3. `build-binary.ts darwin-arm64 <out>`; verify `THIRD_PARTY_NOTICES` was written next to it.
-4. `cargo build --release --target aarch64-apple-darwin` with `MACOSX_DEPLOYMENT_TARGET=13.0`.
+1. Verify tools (`cargo`, `codesign`, `xcrun notarytool`, `vtool`, pinned Sparkle tools) and fail fast.
+2. `bun run build` (includes the dashboard `dist` the compiled entry embeds).
+3. `build-binary.ts darwin-arm64 <out>`; require `THIRD_PARTY_NOTICES` next to it.
+4. `cargo build --release --target aarch64-apple-darwin` with `MACOSX_DEPLOYMENT_TARGET=13.0`. `build.rs` links `Sparkle.framework` and adds the rpath `@loader_path/../Frameworks`.
 5. Assemble the `.app`:
    - `Contents/MacOS/aio-proxy-desktop`, `Contents/MacOS/aio-proxy`
-   - `Contents/Frameworks/Sparkle.framework`, copied whole from the official release with its symlinks intact (it contains nested XPC services and helpers)
-   - `Contents/Resources/THIRD_PARTY_NOTICES` (aio-proxy's, plus Sparkle's license)
+   - `Contents/Frameworks/Sparkle.framework`, the pinned release (SHA-256 checked), copied with symlinks intact
+   - `Contents/Resources/THIRD_PARTY_NOTICES` (aio-proxy's plus Sparkle's license)
    - `Info.plist`: `CFBundleIdentifier`, `CFBundleExecutable`, `CFBundleName`, `CFBundleDisplayName`, `CFBundleShortVersionString`, `CFBundleVersion`, `LSUIElement`, `LSMinimumSystemVersion`, `SUFeedURL`, `SUPublicEDKey`
-6. Verify both executables are arm64 (`lipo -archs`).
-7. `--unsigned` stops here with an ad-hoc signature (CI smoke). Release continues.
+6. Checks: `lipo -archs` is `arm64` for every Mach-O; `vtool -show-build` `minos` ≤ 13.0 for every Mach-O; `aio-proxy-desktop --version` runs (proves dyld resolves Sparkle through the rpath).
+7. Runtime smoke (below).
+8. `--unsigned` stops here with an ad-hoc signature. Release continues to signing.
 
-Version: `CFBundleShortVersionString` and `CFBundleVersion` are both the `version` of `npm/aio-proxy/package.json` (the product package; lockstep with every workspace package through the Changesets `fixed` group). A stable `X.Y.Z` is already monotonic and Sparkle compares it correctly, so no separate build counter. Canary builds skip the desktop, so prerelease strings never reach `CFBundleVersion`. If desktop prereleases are ever shipped, add a numeric `CFBundleVersion` then.
+Version: `CFBundleShortVersionString` and `CFBundleVersion` are both the `version` of `npm/aio-proxy/package.json` (the product package; lockstep through the Changesets `fixed` group). A stable `X.Y.Z` is monotonic and Sparkle compares it correctly. Canary builds skip the desktop, so prerelease strings never reach `CFBundleVersion`; if desktop prereleases ship later, add a numeric build number then.
 
-The Sparkle public key lives in `Info.plist`; the private key exists only as a CI secret.
+### Runtime smoke
+
+Against the assembled bundle, with a temporary `AIO_PROXY_HOME` holding a minimal config on a free port, and `PATH=/usr/bin:/bin` (no Bun, Node, or user tools): start `aio-proxy run` from the bundle, then check `/health` reports the bundle version, `/dashboard` returns HTML and one asset it references returns 200, and `desktop-summary` answers 200 with the token from the temp home; then SIGTERM it. It never installs a launchd job.
 
 ### Signing and notarization
 
-Entitlements for the sidecar are a committed, fixed file (`desktop/entitlements/aio-proxy.plist`) with a comment justifying each key. Spike check 1 derives the minimum set by removal, starting from `com.apple.security.cs.allow-jit` and `com.apple.security.cs.allow-unsigned-executable-memory`, and separately testing whether `com.apple.security.cs.disable-library-validation` is needed. Hardened-runtime acceptance covers a real proxied request, an OAuth Provider, a plugin load, and the SQLite database. The release script never adds entitlements dynamically. The host executable gets no entitlements unless the spike proves one necessary.
+The sidecar's entitlements are a committed, fixed file (`desktop/entitlements/aio-proxy.plist`) with a comment justifying each key. Spike check 1 starts from Bun's documented standalone set (`allow-jit`, `allow-unsigned-executable-memory`, `disable-executable-page-protection`, `allow-dyld-environment-variables`, `disable-library-validation`), confirms the real release sidecar works with it, then removes keys one at a time while re-running the workload: a proxied request, an OAuth Provider, a plugin load, and SQLite. The release script never adds entitlements. The host executable gets none unless the spike proves one necessary. Sparkle's components are signed per the pinned Sparkle version's documented procedure, including `--preserve-metadata=entitlements` on `Downloader.xpc`; they never receive the sidecar's file.
 
-`build-binary.ts` already ad-hoc resigns the Bun output (Bun's linker signature is rejected on macOS 27); the Developer ID signature replaces it.
+`build-binary.ts` ad-hoc resigns Bun output (its comment says the arm64 signer was fixed in Bun 1.4.1 and the x64 target still fails); the Developer ID signature replaces it either way.
 
 Order:
 
-1. Sign inside-out with Developer ID, hardened runtime, and `--timestamp`: Sparkle's nested XPC services and helpers, `Sparkle.framework`, `aio-proxy` (with its entitlements), `aio-proxy-desktop`, then the `.app`. `--deep` is never used for signing.
-2. Verify: `codesign --verify --deep --strict --verbose=2` and `spctl --assess --type execute --verbose=4` on the `.app`.
-3. Zip the `.app` (`ditto -c -k --keepParent`), `notarytool submit --wait`, then `stapler staple` the `.app`.
-4. Build the `.dmg` from the stapled `.app` with `hdiutil`, sign it, `notarytool submit --wait`, `stapler staple`.
-5. Verify: `spctl --assess --type open --context context:primary-signature --verbose=4` on the `.dmg`; `stapler validate` on both.
-6. Sign the `.dmg` for Sparkle (EdDSA) via `generate_appcast` below, and confirm it verifies against `SUPublicEDKey`.
+1. Sign inside-out with Developer ID, hardened runtime, and `--timestamp`: Sparkle's nested helpers and XPC services, `Sparkle.framework`, `aio-proxy`, `aio-proxy-desktop`, then the `.app`. `--deep` is never used for signing.
+2. `codesign --verify --deep --strict --verbose=2` on the `.app` (structure only; Gatekeeper assessment of an un-notarized app is expected to fail and is not a gate here).
+3. Zip with `ditto -c -k --keepParent`, `notarytool submit --wait`, `stapler staple` the `.app`.
+4. Gatekeeper assessment of the `.app`: `syspolicy_check distribution` and `spctl --assess --type execute`.
+5. Build the `.dmg` from the stapled `.app`, sign it, `notarytool submit --wait`, `stapler staple`.
+6. `spctl --assess --type open --context context:primary-signature` on the `.dmg`; `stapler validate` on both.
+7. EdDSA-sign the final `.dmg` bytes (via `generate_appcast`) and verify against `SUPublicEDKey`.
 
-### Appcast
+### Release job and feed
 
-- Generated by Sparkle's `generate_appcast`, never hand-written.
-- The job downloads the previous release's `appcast.xml`, places it beside the new `.dmg`, and runs `generate_appcast` so prior items are kept (history, skipping, and future critical-update or minimum-system fields remain possible).
-- Enclosure URLs are versioned: `https://github.com/aio-proxy/aio-proxy/releases/download/v<version>/aio-proxy-<version>-arm64.dmg`. Only the feed URL uses `releases/latest/download/appcast.xml`.
-- Upload order: `.dmg` first, verify it downloads (HTTP 200 on the versioned URL), then `appcast.xml`. A failure before the appcast upload leaves the previous feed intact; re-running is safe because the existing upload step already refuses `--clobber`.
-- Moving the feed to a fixed static host (the repo's website deploy) is a later option, not phase 1.
-
-### Release workflow
-
-- The existing `release` job runs on `macos-latest`. The desktop step pins its runner to an arm64 image, sets up Rust from `desktop/rust-toolchain.toml` with `rustup target add aarch64-apple-darwin`, and runs after "Upload platform tarballs and SHA256SUMS".
-- Canary releases skip the desktop step.
+- A separate `desktop` job, `needs: release`, on a pinned arm64 macOS runner label (the runner is per job, so it cannot be a step in the existing job). It sets up Bun from `.bun-version` and Rust from `desktop/rust-toolchain.toml` with `rustup target add aarch64-apple-darwin`.
+- It also has a `workflow_dispatch` entry taking a release tag, so a failed desktop publish is resumed for the same immutable version without re-running the npm publish.
+- Idempotence: if `aio-proxy-<version>-arm64.dmg` already exists on the tag's Release, the job downloads it and re-verifies it instead of rebuilding; it never uploads different bytes under the same name.
+- **Feed.** `SUFeedURL` is `https://github.com/aio-proxy/aio-proxy/releases/download/desktop-feed/appcast.xml`: a dedicated prerelease tag `desktop-feed` that never becomes "latest" and holds only `appcast.xml`. The Changesets Release becoming latest therefore never affects the feed.
+- Publish sequence, with the feed upload as the single commit point:
+  1. Upload the `.dmg` to the version's Release (or reuse it, above).
+  2. Verify the versioned URL `https://github.com/aio-proxy/aio-proxy/releases/download/v<version>/aio-proxy-<version>-arm64.dmg` answers 200.
+  3. Download the current `appcast.xml` from `desktop-feed`.
+  4. Run the pinned `generate_appcast` with that file beside the new `.dmg`, `--download-url-prefix` set to the versioned Release URL, and `--maximum-versions 3` stated explicitly. It reads prior items from the existing XML; old `.dmg` files are not needed locally.
+  5. `gh release upload desktop-feed appcast.xml --clobber`. The replace has a brief window where the feed 404s; Sparkle treats that as a failed check and retries on its schedule.
+- Canary releases skip the desktop job.
 - New secrets: Developer ID certificate (p12 + password), App Store Connect API key for `notarytool`, Sparkle EdDSA private key.
 
 ### CI
 
-Two macOS jobs:
-
 | Job | Paths | Runs |
 | --- | --- | --- |
 | Rust | `desktop/**` | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` |
-| Bundle smoke | `desktop/**`, `packages/cli/scripts/**`, `.github/workflows/**`, `bun.lock`, `.bun-version` | `bun run desktop:bundle --unsigned`; check bundle layout, `Info.plist` keys, arm64, `THIRD_PARTY_NOTICES`; launch the sidecar with `--version` |
+| Bundle smoke | `desktop/**`, `packages/cli/scripts/**`, `.github/workflows/**`, `bun.lock`, `.bun-version` | `bun run desktop:bundle --unsigned` (includes the runtime smoke) |
 
-Server and dashboard changes are not in the smoke paths: macOS runner minutes are expensive, and those changes cannot alter the bundle layout. The desktop's runtime contract with the server is guarded by the server-side `desktop-summary` tests instead.
+Server and dashboard changes can break the compiled sidecar without changing the bundle layout. They are not in the PR smoke paths to spare macOS minutes, but the release `desktop` job always runs the full runtime smoke before signing, so a broken sidecar blocks only the desktop publish, which is resumable by tag.
 
 ### Changesets
 
-`desktop/` is not a workspace package. Desktop release notes target `aio-proxy`, per the repo rule that user-facing changesets must target a product package. Server/CLI changes list `@aio-proxy/server` / `@aio-proxy/cli` alongside `aio-proxy`. A desktop-only changeset targeting `aio-proxy` still bumps the desktop version, because the bundle reads the product package version; `desktop/` does not need to become a workspace package for versioning.
+`desktop/` is not a workspace package. Desktop release notes target `aio-proxy`, per the repo rule that user-facing changesets must target a product package. Server/CLI changes list `@aio-proxy/server` / `@aio-proxy/cli` alongside `aio-proxy`. A desktop-only changeset targeting `aio-proxy` still bumps the desktop version, because the bundle reads the product package version.
 
 ## Phasing
 
-The release/lifecycle risks block the plan, so they are proven before any product contract merges.
+Release and lifecycle risks block the plan, so they are proven before any product contract merges.
 
-0. **Spike** (throwaway code; the output is the go/no-go below). Check 1 runs first.
-1. **Server + CLI.** Local token, `__desktop-connect`, `AIO_PROXY_DESKTOP_EXEC`, `AIO_PROXY_UPGRADE_METHOD=desktop`, launchd wrapper guard, quota `peek`, `desktop-summary`.
+0. **Spike** (throwaway code; the output is the go/no-go below). Check 1 first.
+1. **Server + CLI.** Token, `__desktop-connect`, `serviceStart` kickstart, `AIO_PROXY_DESKTOP_EXEC` + marker, upgrade refusal, wrapper guard, quota `status`/`refresh`, `desktop-summary`.
 2. **Desktop app** in `desktop/`.
 3. **Release pipeline.**
 
@@ -310,9 +365,9 @@ The release/lifecycle risks block the plan, so they are proven before any produc
 
 | # | Check | Pass | If it fails |
 | --- | --- | --- | --- |
-| 1 | A minimal Bun standalone sidecar signed with Developer ID + hardened runtime + the minimal entitlement set, inside a signed/notarized/stapled `.app` and `.dmg` per the order above; launched by launchd through the symlink; a minimal Sparkle update from one build to the next; then delete the app and watch `launchctl print` and the unified log for 10 minutes | All verification commands pass on a clean Mac; sidecar serves a request; the update installs; after deletion there are no relaunches and no log spam | Blocks the plan as specified |
-| 2 | GPUI Kit PopUp + `tray-icon`: anchoring, hide on deactivation, absent from Dock and Cmd+Tab, multiple displays with different scale factors, full-screen Spaces, sleep/wake | Correct in every case | Create an `NSPanel` via objc2 and host GPUI content in it |
-| 3 | Window lifecycle and resources | See matrix below; in every strategy the panel-closed RSS is ≤ 40 MB with ≤ 1 idle wakeup/s | — |
+| 1 | The real release sidecar (not hello-world) and a minimal GPUI host with Sparkle, signed and notarized per the order above, as `.app` and `.dmg`; installed on a clean Mac by browser download (quarantine set); launched by launchd through the symlink; one Sparkle update from build N to N+1 with the proxy restarted onto N+1; then: delete the app, kill the running daemon so the wrapper's missing-executable branch actually runs, watch `launchctl print` and the unified log for 10 minutes, restore the app, launch it, and confirm the loaded job is kickstarted back | Every verification command passes; the sidecar serves the entitlement workload; the update installs; no relaunch or log spam while missing; recovery succeeds | Blocks the plan as specified |
+| 2 | GPUI Kit PopUp + `tray-icon`: anchoring, hide on deactivation, absent from Dock and Cmd+Tab, multiple displays with different scale factors, full-screen Spaces, sleep/wake. Also fixes the local HTTP stack (meets the transport rules, cancellation, no second runtime) and Sparkle's integration with GPUI's main loop | Correct in every case | Try hosting GPUI content in an objc2-created `NSPanel`; unverified that the pinned GPUI supports this, so a failure here reopens the UI stack decision |
+| 3 | Window lifecycle and resources; plus the 24h summary query on a synthetic 1 GB trace DB | Matrix below; panel-closed RSS ≤ 40 MB with ≤ 1 idle wakeup/s; summary ≤ 50 ms | Destroy vs hide per matrix; a slow summary moves aggregation behind a cache |
 
 Check 3 decision matrix:
 
@@ -322,27 +377,31 @@ Check 3 decision matrix:
 | Hide/show | Destroy/recreate misses the reopen or flash criteria, and a hidden window still meets the closed-panel budget |
 | Hybrid | Keep the model and last summary, destroy the window and its Metal surface; choose when it meets the destroy criteria with less reopen work |
 
-Measured for each: RSS after close, whether the Metal surface is released, 100-cycle growth, first-frame flash, stale state after display changes.
-
 ## Testing
 
 Each automated test guards one concrete failure.
 
 - **Server**
-  - The desktop token authorizes `desktop-summary` and `events` from a loopback peer and nothing else (another `/dashboard/api/*` route answers 401).
-  - The token is rejected from a non-loopback peer, including when `Host`, `Origin`, or `X-Forwarded-For` claim loopback. Covers an IPv4, an IPv6, and an IPv4-mapped peer via injected connection metadata, plus one real-socket integration test.
-  - Replacing the token file rotates the token without a restart.
-  - `desktop-summary` returns promptly with `pending` quota when the quota reader never resolves (guards the measured 1.3s stall).
-  - One Provider's quota error is reported on that Provider and the response is still 200.
+  - `desktop-summary` accepts the desktop token from a loopback peer, with and without a dashboard password.
+  - With a dashboard password set, the desktop token gets 401 on another `/dashboard/api/*` route (it adds no dashboard privilege). Without a password, a request with the token gets exactly what an anonymous loopback request gets.
+  - The token is rejected from a non-loopback peer even when `Host`, `Origin`, or `X-Forwarded-For` claim loopback: IPv4, IPv6, and IPv4-mapped peers via injected connection metadata, plus one real-socket integration test.
+  - Token file checks: a symlink, a group-readable file, and a file owned by another uid each yield "no token"; two concurrent creators end with one token both read.
+  - `desktop-summary` returns promptly with `loading` quota when the quota reader never resolves (guards the measured 1.3s stall); a first-read failure shows `failed`, not `loading`; one Provider's failure leaves the response 200.
+  - A never-settling quota read clears `inFlight` after the timeout and a later read can start.
+  - The DTO: golden fixture shared with the Rust tests; internal fields added to Provider summaries do not appear in the response.
 - **CLI**
-  - `__desktop-connect` reports `owner` correctly for desktop, external, and absent plists, and `token: null` when the file is missing.
-  - The launchd wrapper exits 0 when its executable is missing, asserted by executing the wrapper, not by string-matching the template.
-  - With `AIO_PROXY_DESKTOP_EXEC` set, the written plist points at that path and carries `AIO_PROXY_UPGRADE_METHOD=desktop`.
+  - `__desktop-connect`: `owner` for desktop, external, unrecognized-wrapper, and absent plists; `home` taken from the plist, not the environment; wildcard bind mapped to loopback; non-loopback bind yields `controlUrl: null`; stdout is exactly one JSON object when the command fails partway.
+  - `serviceStart` kickstarts an already-loaded job and loads an unloaded one (manager calls injected).
+  - With `AIO_PROXY_DESKTOP_EXEC` set, the written plist targets that exact path (not its realpath) and carries both env markers; a rewrite from a process that inherited the markers keeps them.
+  - `runUpgradeCommand` refuses for a desktop-marked process and for an executable inside a `.app`, without invoking any installer.
+  - The launchd wrapper exits 0 when its executable is missing, asserted by executing the wrapper.
 - **Rust**
   - Panel placement clamps to the screen for icons near an edge.
-  - Summary deserialization ignores unknown fields; an unsupported `protocolVersion` selects the degraded panel.
-  - The refresh scheduler: a stale response never overwrites a newer one; an event burst yields one fetch; closing the panel cancels the stream, the debounce, and the pending retry; SSE backoff caps at 30s and a parse error does not reconnect immediately.
-  - Version rules pick the right action for each row of the version table.
-  - Symlink maintenance replaces a dangling or wrong-target symlink atomically.
-- **Release** (in the bundle script, failing the job): both executables are arm64; `codesign --verify --strict` and `spctl` pass for the `.app` and `.dmg`; `stapler validate` passes for both; the Sparkle signature verifies against `SUPublicEDKey`; the versioned `.dmg` URL answers 200 before the appcast is uploaded.
-- **Manual acceptance (UI and lifecycle):** toggle via icon; click outside hides; not in Dock or Cmd+Tab; second display with a different scale factor; full-screen app in another Space; sleep/wake with panel open and closed; restart/stop/reload per ownership; an external service is never stopped or restarted by anything other than an explicit user action and never has its plist rewritten; quit leaves the proxy running; a Sparkle update restarts a desktop-owned proxy onto the new version; app deleted leaves launchd quiet.
+  - Summary parsing: unknown fields ignored, unknown enum values map to `Unknown`, unsupported `protocolVersion` selects the degraded panel; the golden fixture parses.
+  - The automatic-action table: every row, including never acting on external/unknown/mismatched instances and never downgrading.
+  - Refresh scheduler: responses from a closed session, another instance, or an older counter are discarded; the 15s floor holds under a trigger storm; closing cancels everything.
+  - Transport: the token is not attached to a hostname, a non-loopback IP, or a redirect target; proxy environment variables are ignored.
+  - Install policy and symlink: outside `/Applications` nothing persistent happens; a newer installed copy is never re-pointed to an older one; a second instance exits.
+  - The token type's `Debug` output is redacted.
+- **Release** (the bundle script fails the job): arm64 and `minos` for every Mach-O; `codesign --verify --strict`; post-notarization `syspolicy_check`/`spctl` for the `.app` and `.dmg`; `stapler validate` for both; the Sparkle signature verifies against `SUPublicEDKey`; the versioned `.dmg` URL answers 200 before the feed is replaced.
+- **Manual acceptance (UI and lifecycle):** toggle via icon; click outside hides; not in Dock or Cmd+Tab; second display with a different scale factor; full-screen app in another Space; sleep/wake with panel open and closed; each user action per ownership with its completion condition; an external service is never changed without a click and never has its plist rewritten; a user-stopped desktop service stays stopped across app relaunch; quit leaves the proxy running; a Sparkle update restarts a desktop-owned proxy onto the new version; opening an older app copy does not downgrade; app deleted leaves launchd quiet and restoring it recovers.
