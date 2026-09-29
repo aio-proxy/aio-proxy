@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { getReleaseLine, renderReleaseLine, stripGitHubAuthorLinks } from './changeset-changelog.mjs';
+import { getReleaseLine, renderReleaseLine, stripGitHubAuthorLinks } from './changelog';
 
 describe('stripGitHubAuthorLinks', () => {
   test('keeps the author mention while removing the profile link', () => {
@@ -23,6 +23,15 @@ describe('stripGitHubAuthorLinks', () => {
         'Thanks [@baranwang](https://github.com/baranwang), [@aio-proxy](https://github.com/aio-proxy)! - xxxx',
       ),
     ).toBe('Thanks @baranwang, @aio-proxy - xxxx');
+  });
+
+  test('only removes punctuation from the generated attribution', () => {
+    const line =
+      '\n\n- [#123](https://github.com/aio-proxy/aio-proxy/pull/123) Thanks [@author](https://github.com/author)! - Thanks [@baranwang](https://github.com/baranwang)! - hello\n';
+
+    expect(renderReleaseLine(line, { removeThanksPunctuation: true })).toBe(
+      '\n\n- [#123](https://github.com/aio-proxy/aio-proxy/pull/123) Thanks @author - Thanks @baranwang! - hello\n',
+    );
   });
 
   test('leaves non-GitHub profile links untouched', () => {
