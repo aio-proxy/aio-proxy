@@ -86,7 +86,7 @@ A hidden CLI command, run through the symlink (or the bundled binary before the 
 
 - **`unit`** comes from parsing the plist. The aio-proxy path is not `ProgramArguments[0]` (that is `/bin/sh`); `wrapperValid` requires `ProgramArguments` to be exactly `["/bin/sh", "-c", <known wrapper>, <target>]`, and `target` is the fourth element. `home` is the plist's `AIO_PROXY_HOME`. `owner` is `desktop` when `target` equals the symlink path, `external` for any other valid target, `unknown` when the wrapper is not recognized, `null` when no plist exists.
 - **`job`** comes from `launchctl print gui/<uid>/com.aio-proxy.agent` (loaded, pid) and `launchctl print-disabled gui/<uid>` (disabled). The disk plist and the loaded job can differ; both are reported.
-- **`instance`** resolves the address with `AIO_PROXY_HOME` set to `unit.home` (the service's own config, not the calling process's environment), else the default home. A wildcard bind maps to its loopback (`0.0.0.0` → `127.0.0.1`, `::` → `::1`); a non-loopback bind yields `controlUrl: null` and no token is ever sent. `version` and `pid` come from `GET /dashboard/api/desktop-summary` (authenticated), not `/health`, so an instance is identified by a credential only a same-user process can read. `matchesJob` is `instance.pid == job.pid`.
+- **`instance`** resolves the address with `AIO_PROXY_HOME` set to `unit.home` (the service's own config, not the calling process's environment), else the default home. A wildcard bind maps to its loopback (`0.0.0.0` → `127.0.0.1`, `::` → `::1`); a non-loopback bind yields `controlUrl: null` and no token is ever sent. `version` and `pid` come from `GET /dashboard/api/desktop-summary` (authenticated), not `/health`, so an instance is identified by a credential only a same-user process can read. `matchesJob` is `instance.pid == job.pid`, and `null` when either pid is unknown (an older instance without `desktop-summary` reports `version` from `/health` and `pid: null`); `null` counts as not matching for automation.
 - **`token`** is read from `<home>/desktop-token`; `null` if absent or failing the file checks below.
 - Timeouts: 10s for the whole command, 2s per HTTP probe.
 
@@ -189,35 +189,36 @@ type DesktopSummaryV1 = {
     failedRequests: string;
     inputTokens: string;
     outputTokens: string;
-    estimatedCostNanoUsd: string | null; // null when no Provider has pricing
+    estimatedCostNanoUsd: string;
+    pricingCoverage: number | null;    // 0..1; null when nothing was priceable
   };
-  trend7d: Array<{ date: string /* YYYY-MM-DD, server-local */; requests: string; totalTokens: string; estimatedCostNanoUsd: string | null }>;
-  activity: Array<{ date: string; requests: string }>; // up to 365 days
+  trend7d: Array<{ start: string /* bucket start, RFC 3339 */; requests: string; totalTokens: string; estimatedCostNanoUsd: string }>;
+  activity: Array<{ date: string /* YYYY-MM-DD */; totalTokens: string }>; // up to 365 days
   providers: Array<{
     id: string;
     name: string;
     enabled: boolean;
-    state: 'ok' | 'degraded' | 'cooldown' | 'disabled' | 'unknown';
-    lastStatus: number | null;
-    lastLatencyMs: number | null;
+    state: 'ok' | 'degraded' | 'unavailable' | 'disabled';
+    diagnostic: { code: string; summary: string } | null;
     quota:
       | { status: 'none' | 'unsupported' | 'loading' | 'failed' }
       | { status: 'ready'; sampledAt: string; refreshFailed: boolean;
-          windows: Array<{ label: string; usedFraction: number | null; resetsAt: string | null }> };
+          windows: Array<{ id: string; label: string | Record<string, string>; remainingRatio: number | null;
+                           resetsAt: string | null; windowMinutes: number | null }> };
   }>;
-  alerts: Array<{ providerId: string; kind: 'credential' | 'cooldown' | 'quota_exhausted'; message: string }>;
+  alerts: Array<{ providerId: string; kind: 'diagnostic' | 'quota_exhausted'; message: string }>;
 };
 ```
 
-Sources (the implementation plan confirms each mapping against the current type):
+Sources:
 
 | Field | Source |
 | --- | --- |
-| `usage24h` | `traceStore.overviewDashboard({ range: '24h' }).summary`; `failedRequests` from `overviewDashboardDiagnostics({ range: '24h' })` |
-| `trend7d` | `traceStore.overviewDashboard({ range: '7d' })` series |
-| `activity` | `traceStore.overviewDashboardActivity()` |
-| `providers` | `state.providerSummaries({ probe: false })` + `quotaCache.status()` / entry snapshot windows |
-| `alerts` | Derived from providers |
+| `usage24h` | `traceStore.overview({ range: '24h', metric: 'requests', groupBy: 'provider' }).summary` (`requestCount`, `failureCount`, tokens, cost, `pricingCoverage`) |
+| `trend7d` | `traceStore.overviewDashboard({ range: '7d' }).modelTrendByMetric.{requests,tokens,cost}.buckets`, summing each bucket's per-model values |
+| `activity` | `traceStore.overviewDashboardActivity().items` (the existing heatmap source counts tokens, not requests) |
+| `providers` | `state.providerSummaries({ probe: false })` (`state.status` + `diagnostic`, `enabled`) + `quotaCache.status()`; quota items map 1:1 to windows. Probe-only fields (`last_status`, `last_latency`) are omitted because they are `unknown` without a probe |
+| `alerts` | A provider diagnostic, or any quota window with `remainingRatio === 0` |
 
 Compatibility: Rust parses `protocolVersion` first and only then the body; unknown fields are ignored; unknown enum values map to an `Unknown` variant. "Today" is the existing rolling 24h window. One Provider's quota failure is reported on that Provider and never fails the response.
 
@@ -386,8 +387,9 @@ Each automated test guards one concrete failure.
   - With a dashboard password set, the desktop token gets 401 on another `/dashboard/api/*` route (it adds no dashboard privilege). Without a password, a request with the token gets exactly what an anonymous loopback request gets.
   - The token is rejected from a non-loopback peer even when `Host`, `Origin`, or `X-Forwarded-For` claim loopback: IPv4, IPv6, and IPv4-mapped peers via injected connection metadata, plus one real-socket integration test.
   - Token file checks: a symlink, a group-readable file, and a file owned by another uid each yield "no token"; two concurrent creators end with one token both read.
+  - A server with no resolvable home, or whose token file fails the checks, still boots and answers 401 on `desktop-summary`.
   - `desktop-summary` returns promptly with `loading` quota when the quota reader never resolves (guards the measured 1.3s stall); a first-read failure shows `failed`, not `loading`; one Provider's failure leaves the response 200.
-  - A never-settling quota read clears `inFlight` after the timeout and a later read can start.
+  - A never-settling quota read is aborted by the host: already covered by `plugin-quota/read.test.ts` ("aborts a plugin read that ignores its signal…"); the cache's `finally` then clears `inFlight`.
   - The DTO: golden fixture shared with the Rust tests; internal fields added to Provider summaries do not appear in the response.
 - **CLI**
   - `__desktop-connect`: `owner` for desktop, external, unrecognized-wrapper, and absent plists; `home` taken from the plist, not the environment; wildcard bind mapped to loopback; non-loopback bind yields `controlUrl: null`; stdout is exactly one JSON object when the command fails partway.
