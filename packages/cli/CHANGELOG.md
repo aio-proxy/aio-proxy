@@ -21,9 +21,9 @@
 
 ### Patch Changes
 
-- [#448](https://github.com/aio-proxy/aio-proxy/pull/448) [`c867d58`](https://github.com/aio-proxy/aio-proxy/commit/c867d58f4c660b4f9882447faba42bb38501b533) Thanks [@baranwang](https://github.com/baranwang)! - Keep Codex model catalog entries forward-compatible by inheriting the first remote model as the synthesis template, and configure Codex with its explicit model catalog URL and API-key discovery feature.
+- [#448](https://github.com/aio-proxy/aio-proxy/pull/448) [`c867d58`](https://github.com/aio-proxy/aio-proxy/commit/c867d58f4c660b4f9882447faba42bb38501b533) Thanks @baranwang - Keep Codex model catalog entries forward-compatible by inheriting the first remote model as the synthesis template, and configure Codex with its explicit model catalog URL and API-key discovery feature.
 
-- [#445](https://github.com/aio-proxy/aio-proxy/pull/445) [`de8be7f`](https://github.com/aio-proxy/aio-proxy/commit/de8be7fedb0aa8f5359db8ab14a6fcb12abf1139) Thanks [@olivewind](https://github.com/olivewind)! - Managed services now retain Agent executable search paths, so the dashboard detects locally installed Agents after restarts. Codex also recognizes the CLI bundled with current ChatGPT desktop builds.
+- [#445](https://github.com/aio-proxy/aio-proxy/pull/445) [`de8be7f`](https://github.com/aio-proxy/aio-proxy/commit/de8be7fedb0aa8f5359db8ab14a6fcb12abf1139) Thanks @olivewind - Managed services now retain Agent executable search paths, so the dashboard detects locally installed Agents after restarts. Codex also recognizes the CLI bundled with current ChatGPT desktop builds.
 - Updated dependencies [[`c867d58`](https://github.com/aio-proxy/aio-proxy/commit/c867d58f4c660b4f9882447faba42bb38501b533), [`5a02aa1`](https://github.com/aio-proxy/aio-proxy/commit/5a02aa1360cc391ed99421e461bed5a558b40840), [`0250a99`](https://github.com/aio-proxy/aio-proxy/commit/0250a99f2f5b98d40ec54a76560b21268eaa3008), [`76e2bc6`](https://github.com/aio-proxy/aio-proxy/commit/76e2bc6a2405ab48dca41ffcfbcc22189602d349)]:
   - @aio-proxy/server@0.35.0
   - @aio-proxy/dashboard@0.35.0
@@ -41,11 +41,11 @@
 
 ### Minor Changes
 
-- [#442](https://github.com/aio-proxy/aio-proxy/pull/442) [`6dbb50d`](https://github.com/aio-proxy/aio-proxy/commit/6dbb50deb8a3f7540802e67484056c5bfcfecd54) Thanks [@baranwang](https://github.com/baranwang)! - The dashboard has a new Agents page listing OpenCode, Pi, oh-my-pi, Codex, and Grok Build with their local status and authorizations. When the dashboard is opened on the machine running aio-proxy, each Agent can be configured, updated, repaired, or removed with one click, Codex through a setup form, and the device approval happens on the same page. Remote browsers and containers see read-only state and a link to each Agent's setup guide.
+- [#442](https://github.com/aio-proxy/aio-proxy/pull/442) [`6dbb50d`](https://github.com/aio-proxy/aio-proxy/commit/6dbb50deb8a3f7540802e67484056c5bfcfecd54) Thanks @baranwang - The dashboard has a new Agents page listing OpenCode, Pi, oh-my-pi, Codex, and Grok Build with their local status and authorizations. When the dashboard is opened on the machine running aio-proxy, each Agent can be configured, updated, repaired, or removed with one click, Codex through a setup form, and the device approval happens on the same page. Remote browsers and containers see read-only state and a link to each Agent's setup guide.
 
 ### Patch Changes
 
-- [#438](https://github.com/aio-proxy/aio-proxy/pull/438) [`f72415a`](https://github.com/aio-proxy/aio-proxy/commit/f72415a1252cb887989c3cfffd77fc0dc99a49c6) Thanks [@baranwang](https://github.com/baranwang)! - Pi and OMP list the aio-proxy extension as aio-proxy. They previously showed an internal entry path.
+- [#438](https://github.com/aio-proxy/aio-proxy/pull/438) [`f72415a`](https://github.com/aio-proxy/aio-proxy/commit/f72415a1252cb887989c3cfffd77fc0dc99a49c6) Thanks @baranwang - Pi and OMP list the aio-proxy extension as aio-proxy. They previously showed an internal entry path.
 - Updated dependencies [[`5dea413`](https://github.com/aio-proxy/aio-proxy/commit/5dea4139c4567284858ae04c8636dd961e47af72), [`6dbb50d`](https://github.com/aio-proxy/aio-proxy/commit/6dbb50deb8a3f7540802e67484056c5bfcfecd54), [`b2fb4a4`](https://github.com/aio-proxy/aio-proxy/commit/b2fb4a4c6fb246ee56502063ed410be19aad4f44)]:
   - @aio-proxy/dashboard@0.34.0
   - @aio-proxy/i18n@0.34.0
@@ -63,7 +63,7 @@
 
 ### Patch Changes
 
-- [#433](https://github.com/aio-proxy/aio-proxy/pull/433) [`aab9a9a`](https://github.com/aio-proxy/aio-proxy/commit/aab9a9aabf02664dc973e1afdb1c9daab911be65) Thanks [@baranwang](https://github.com/baranwang)! - `aiop agent configure codex` finds the Codex CLI shipped inside the ChatGPT app when `codex` is not on `PATH`. A missing CLI is reported directly instead of as an unexpected internal error.
+- [#433](https://github.com/aio-proxy/aio-proxy/pull/433) [`aab9a9a`](https://github.com/aio-proxy/aio-proxy/commit/aab9a9aabf02664dc973e1afdb1c9daab911be65) Thanks @baranwang - `aiop agent configure codex` finds the Codex CLI shipped inside the ChatGPT app when `codex` is not on `PATH`. A missing CLI is reported directly instead of as an unexpected internal error.
 - Updated dependencies [[`aab9a9a`](https://github.com/aio-proxy/aio-proxy/commit/aab9a9aabf02664dc973e1afdb1c9daab911be65), [`3279743`](https://github.com/aio-proxy/aio-proxy/commit/3279743ec7c8447decba5df6c8836405071261e1)]:
   - @aio-proxy/i18n@0.33.4
   - @aio-proxy/core@0.33.4
@@ -132,7 +132,7 @@
 
 ### Minor Changes
 
-- [#422](https://github.com/aio-proxy/aio-proxy/pull/422) [`24a1468`](https://github.com/aio-proxy/aio-proxy/commit/24a14688083a14639af225a0d8d908373cf8f568) Thanks [@baranwang](https://github.com/baranwang)! - ChatGPT OAuth now offers optional Guardian approval strategies that evaluate with a selected System One Provider and model. The default keeps Codex behavior, and supported System One decisions can be final or send denials to the original model for review; unavailable evaluations fall back safely.
+- [#422](https://github.com/aio-proxy/aio-proxy/pull/422) [`24a1468`](https://github.com/aio-proxy/aio-proxy/commit/24a14688083a14639af225a0d8d908373cf8f568) Thanks @baranwang - ChatGPT OAuth now offers optional Guardian approval strategies that evaluate with a selected System One Provider and model. The default keeps Codex behavior, and supported System One decisions can be final or send denials to the original model for review; unavailable evaluations fall back safely.
 
 ### Patch Changes
 
@@ -170,7 +170,7 @@
 
 ### Patch Changes
 
-- [#408](https://github.com/aio-proxy/aio-proxy/pull/408) [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a) Thanks [@baranwang](https://github.com/baranwang)! - Human prompts and the named result views now share one terminal style. `--json`, shell completion, version, and auth protocol output are unchanged.
+- [#408](https://github.com/aio-proxy/aio-proxy/pull/408) [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a) Thanks @baranwang - Human prompts and the named result views now share one terminal style. `--json`, shell completion, version, and auth protocol output are unchanged.
 - Updated dependencies [[`f0b3105`](https://github.com/aio-proxy/aio-proxy/commit/f0b3105e4dc74a674303c89e1d2eb2e106b7b12b), [`24209ab`](https://github.com/aio-proxy/aio-proxy/commit/24209ab085ab5155cb37055383b77e5ef11e9c9a), [`38b4c2d`](https://github.com/aio-proxy/aio-proxy/commit/38b4c2d47697aee41c12f5b6ab4fc28cd1d2d8b0), [`fd01333`](https://github.com/aio-proxy/aio-proxy/commit/fd01333243b264180db8480a1220909b39af72ae)]:
   - @aio-proxy/plugin-sdk@0.31.0
   - @aio-proxy/core@0.31.0
@@ -188,7 +188,7 @@
 
 ### Patch Changes
 
-- [#406](https://github.com/aio-proxy/aio-proxy/pull/406) [`23faacb`](https://github.com/aio-proxy/aio-proxy/commit/23faacb68ea76edfc0f379e602f16023ad749b46) Thanks [@baranwang](https://github.com/baranwang)! - Codex configuration always lets you choose which session history sources to migrate, including when only one source is available. While history is scanned, the prompt shows a loading indicator. When API key authentication is off, the note that no key is needed is shown as a status line instead of an error.
+- [#406](https://github.com/aio-proxy/aio-proxy/pull/406) [`23faacb`](https://github.com/aio-proxy/aio-proxy/commit/23faacb68ea76edfc0f379e602f16023ad749b46) Thanks @baranwang - Codex configuration always lets you choose which session history sources to migrate, including when only one source is available. While history is scanned, the prompt shows a loading indicator. When API key authentication is off, the note that no key is needed is shown as a status line instead of an error.
 - Updated dependencies [[`23faacb`](https://github.com/aio-proxy/aio-proxy/commit/23faacb68ea76edfc0f379e602f16023ad749b46), [`69867fc`](https://github.com/aio-proxy/aio-proxy/commit/69867fc1cf275d3f72f4ebea41a0ad8b4f398493), [`739e846`](https://github.com/aio-proxy/aio-proxy/commit/739e8465e605c866bcfaaedb1ba05ef1a81db8d4), [`e9e80c0`](https://github.com/aio-proxy/aio-proxy/commit/e9e80c0cd7224886d1e04a0c98f0547803cd0ccf)]:
   - @aio-proxy/i18n@0.30.0
   - @aio-proxy/types@0.30.0
@@ -257,7 +257,7 @@
 
 ### Patch Changes
 
-- [#384](https://github.com/aio-proxy/aio-proxy/pull/384) [`da17aef`](https://github.com/aio-proxy/aio-proxy/commit/da17aefae1728ebe418a8d8c30c42714568ffbb0) Thanks [@baranwang](https://github.com/baranwang)! - Fix Codex history migration so existing JSONL threads keep working after `aiop agent configure codex`. Desktop sessions stored as paginated history, including those still labeled `newapi`, are rewritten to the managed provider instead of being skipped.
+- [#384](https://github.com/aio-proxy/aio-proxy/pull/384) [`da17aef`](https://github.com/aio-proxy/aio-proxy/commit/da17aefae1728ebe418a8d8c30c42714568ffbb0) Thanks @baranwang - Fix Codex history migration so existing JSONL threads keep working after `aiop agent configure codex`. Desktop sessions stored as paginated history, including those still labeled `newapi`, are rewritten to the managed provider instead of being skipped.
 - Updated dependencies [[`6273746`](https://github.com/aio-proxy/aio-proxy/commit/62737462d25a35c9d6051a7dd3ad510fb0125cc5), [`37ac185`](https://github.com/aio-proxy/aio-proxy/commit/37ac185ab77e4f4d4b59e541f7f4399217a0f801), [`bafe0fa`](https://github.com/aio-proxy/aio-proxy/commit/bafe0fa2277d32ff502cf03f0cdb7e96c7970c30)]:
   - @aio-proxy/core@0.27.0
   - @aio-proxy/dashboard@0.27.0
@@ -292,7 +292,7 @@
 
 ### Minor Changes
 
-- [#372](https://github.com/aio-proxy/aio-proxy/pull/372) [`c0e2cab`](https://github.com/aio-proxy/aio-proxy/commit/c0e2cab47228253c7d8e5e042bcff9397c369430) Thanks [@baranwang](https://github.com/baranwang)! - Add a built-in OpenCode Go plugin. Paste an OpenCode API key from opencode.ai/auth to use the Go subscription catalog, with per-model Chat Completions, Responses, and Anthropic Messages routing.
+- [#372](https://github.com/aio-proxy/aio-proxy/pull/372) [`c0e2cab`](https://github.com/aio-proxy/aio-proxy/commit/c0e2cab47228253c7d8e5e042bcff9397c369430) Thanks @baranwang - Add a built-in OpenCode Go plugin. Paste an OpenCode API key from opencode.ai/auth to use the Go subscription catalog, with per-model Chat Completions, Responses, and Anthropic Messages routing.
 
 ### Patch Changes
 
@@ -330,7 +330,7 @@
 
 ### Patch Changes
 
-- [#360](https://github.com/aio-proxy/aio-proxy/pull/360) [`6e54855`](https://github.com/aio-proxy/aio-proxy/commit/6e548551c2fe9f94816ede2fd8a4ea3b9882672c) Thanks [@baranwang](https://github.com/baranwang)! - Fixed `aio-proxy upgrade --version` on prerelease versions. The post-install check dropped the prerelease suffix when reading the new binary's version, so it compared `0.23.1` against the requested `0.23.1-canary.…`, judged the install a failure, and rolled the working binary back.
+- [#360](https://github.com/aio-proxy/aio-proxy/pull/360) [`6e54855`](https://github.com/aio-proxy/aio-proxy/commit/6e548551c2fe9f94816ede2fd8a4ea3b9882672c) Thanks @baranwang - Fixed `aio-proxy upgrade --version` on prerelease versions. The post-install check dropped the prerelease suffix when reading the new binary's version, so it compared `0.23.1` against the requested `0.23.1-canary.…`, judged the install a failure, and rolled the working binary back.
 - Updated dependencies [[`3bf7004`](https://github.com/aio-proxy/aio-proxy/commit/3bf7004feb80ae77ac64030d0255a601e1488a2c), [`f4d4ed1`](https://github.com/aio-proxy/aio-proxy/commit/f4d4ed10166dfa1379e31b19938f64e64488e97a)]:
   - @aio-proxy/core@0.23.2
   - @aio-proxy/dashboard@0.23.2
@@ -399,13 +399,13 @@
 
 ### Minor Changes
 
-- [#351](https://github.com/aio-proxy/aio-proxy/pull/351) [`c98e10c`](https://github.com/aio-proxy/aio-proxy/commit/c98e10c1decd66972d10561b3e0fdaa5aae84da0) Thanks [@baranwang](https://github.com/baranwang)! - Add interactive Codex setup with a customizable Provider ID and a choice to keep ChatGPT login via an existing proxy API key or use command authentication. Command authentication uses AIO Proxy device authorization and reuses a still-valid helper token. Setup preserves model settings and can migrate legacy history; removal respects user edits, revokes command credentials, and blocks when the config cannot be restored.
+- [#351](https://github.com/aio-proxy/aio-proxy/pull/351) [`c98e10c`](https://github.com/aio-proxy/aio-proxy/commit/c98e10c1decd66972d10561b3e0fdaa5aae84da0) Thanks @baranwang - Add interactive Codex setup with a customizable Provider ID and a choice to keep ChatGPT login via an existing proxy API key or use command authentication. Command authentication uses AIO Proxy device authorization and reuses a still-valid helper token. Setup preserves model settings and can migrate legacy history; removal respects user edits, revokes command credentials, and blocks when the config cannot be restored.
 
-- [#344](https://github.com/aio-proxy/aio-proxy/pull/344) [`2d05095`](https://github.com/aio-proxy/aio-proxy/commit/2d0509557bbb35a14046ab0a5dcc0cc5e9563b4f) Thanks [@baranwang](https://github.com/baranwang)! - Add Grok Build integration with native AIO Proxy login, automatic credential refresh, installation revocation, and safe configuration removal.
+- [#344](https://github.com/aio-proxy/aio-proxy/pull/344) [`2d05095`](https://github.com/aio-proxy/aio-proxy/commit/2d0509557bbb35a14046ab0a5dcc0cc5e9563b4f) Thanks @baranwang - Add Grok Build integration with native AIO Proxy login, automatic credential refresh, installation revocation, and safe configuration removal.
 
 ### Patch Changes
 
-- [#347](https://github.com/aio-proxy/aio-proxy/pull/347) [`00a17a3`](https://github.com/aio-proxy/aio-proxy/commit/00a17a399d7bebb58cc929b77923935f3be8927a) Thanks [@olivewind](https://github.com/olivewind)! - Automatically install and start a missing per-user background service when running service start or restart on macOS and Linux. If automatic setup fails, show the underlying error and manual recovery commands.
+- [#347](https://github.com/aio-proxy/aio-proxy/pull/347) [`00a17a3`](https://github.com/aio-proxy/aio-proxy/commit/00a17a399d7bebb58cc929b77923935f3be8927a) Thanks @olivewind - Automatically install and start a missing per-user background service when running service start or restart on macOS and Linux. If automatic setup fails, show the underlying error and manual recovery commands.
 - Updated dependencies [[`c98e10c`](https://github.com/aio-proxy/aio-proxy/commit/c98e10c1decd66972d10561b3e0fdaa5aae84da0), [`2d05095`](https://github.com/aio-proxy/aio-proxy/commit/2d0509557bbb35a14046ab0a5dcc0cc5e9563b4f), [`00a17a3`](https://github.com/aio-proxy/aio-proxy/commit/00a17a399d7bebb58cc929b77923935f3be8927a), [`834f9b3`](https://github.com/aio-proxy/aio-proxy/commit/834f9b359f29b229e3930a0b435200d805361789), [`4c57408`](https://github.com/aio-proxy/aio-proxy/commit/4c574088a806967bab32485a7dc0e4d72affe899)]:
   - @aio-proxy/types@0.22.0
   - @aio-proxy/core@0.22.0
@@ -423,7 +423,7 @@
 
 ### Patch Changes
 
-- [#343](https://github.com/aio-proxy/aio-proxy/pull/343) [`52b07ce`](https://github.com/aio-proxy/aio-proxy/commit/52b07ce1deba1c2e23ececd5c9689994d359b1dc) Thanks [@baranwang](https://github.com/baranwang)! - Updating from the dashboard now always restarts the service after a successful install. The install
+- [#343](https://github.com/aio-proxy/aio-proxy/pull/343) [`52b07ce`](https://github.com/aio-proxy/aio-proxy/commit/52b07ce1deba1c2e23ececd5c9689994d359b1dc) Thanks @baranwang - Updating from the dashboard now always restarts the service after a successful install. The install
   step first asked over HTTP whether a daemon was running, even though it was running inside that very
   daemon, so a busy server, a slow answer, or a `server.host` that is not locally reachable made it
   conclude there was nothing to restart. The new version was installed and then never started, with no
@@ -476,7 +476,7 @@
 
 ### Patch Changes
 
-- [#321](https://github.com/aio-proxy/aio-proxy/pull/321) [`8e5ee08`](https://github.com/aio-proxy/aio-proxy/commit/8e5ee083ad9ac96fb70b8394d93501342c8ca905) Thanks [@baranwang](https://github.com/baranwang)! - Prevent duplicate desktop upgrade notifications when multiple instances use different data directories. Only a successfully sent notification suppresses repeat reminders for the same OS user when shared storage is available; failed delivery can be retried by another instance, and notifications still work if that storage cannot be written.
+- [#321](https://github.com/aio-proxy/aio-proxy/pull/321) [`8e5ee08`](https://github.com/aio-proxy/aio-proxy/commit/8e5ee083ad9ac96fb70b8394d93501342c8ca905) Thanks @baranwang - Prevent duplicate desktop upgrade notifications when multiple instances use different data directories. Only a successfully sent notification suppresses repeat reminders for the same OS user when shared storage is available; failed delivery can be retried by another instance, and notifications still work if that storage cannot be written.
 - Updated dependencies [[`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8)]:
   - @aio-proxy/core@0.20.3
   - @aio-proxy/types@0.20.3
@@ -493,9 +493,9 @@
 
 ### Patch Changes
 
-- [#315](https://github.com/aio-proxy/aio-proxy/pull/315) [`adb01e8`](https://github.com/aio-proxy/aio-proxy/commit/adb01e84078ccad4ec34f0fd13ef10a79f10f604) Thanks [@baranwang](https://github.com/baranwang)! - The About card now uses the same row spacing as the other settings groups. Check for updates is hidden as soon as an update starts. After a successful install, aio-proxy restarts itself and the dashboard reloads instead of asking you to restart by hand.
+- [#315](https://github.com/aio-proxy/aio-proxy/pull/315) [`adb01e8`](https://github.com/aio-proxy/aio-proxy/commit/adb01e84078ccad4ec34f0fd13ef10a79f10f604) Thanks @baranwang - The About card now uses the same row spacing as the other settings groups. Check for updates is hidden as soon as an update starts. After a successful install, aio-proxy restarts itself and the dashboard reloads instead of asking you to restart by hand.
 
-- [#316](https://github.com/aio-proxy/aio-proxy/pull/316) [`3b4c12e`](https://github.com/aio-proxy/aio-proxy/commit/3b4c12e0e3f5b502cacf4c22aa9a88188608c3da) Thanks [@baranwang](https://github.com/baranwang)! - The plugin SDK now exports shared abortableSleep and dedupeQuotaItemIds helpers, preserving OAuth cancellation reasons and provider-specific quota IDs. Removed unused UI and internal wrappers, plus the unused AioModelMessage and AioStreamPart schemas and associated types from @aio-proxy/types.
+- [#316](https://github.com/aio-proxy/aio-proxy/pull/316) [`3b4c12e`](https://github.com/aio-proxy/aio-proxy/commit/3b4c12e0e3f5b502cacf4c22aa9a88188608c3da) Thanks @baranwang - The plugin SDK now exports shared abortableSleep and dedupeQuotaItemIds helpers, preserving OAuth cancellation reasons and provider-specific quota IDs. Removed unused UI and internal wrappers, plus the unused AioModelMessage and AioStreamPart schemas and associated types from @aio-proxy/types.
 - Updated dependencies [[`adb01e8`](https://github.com/aio-proxy/aio-proxy/commit/adb01e84078ccad4ec34f0fd13ef10a79f10f604), [`3b4c12e`](https://github.com/aio-proxy/aio-proxy/commit/3b4c12e0e3f5b502cacf4c22aa9a88188608c3da)]:
   - @aio-proxy/dashboard@0.20.2
   - @aio-proxy/types@0.20.2
@@ -528,18 +528,11 @@
 
 ### Minor Changes
 
-- [#298](https://github.com/aio-proxy/aio-proxy/pull/298) [`13a6c91`](https://github.com/aio-proxy/aio-proxy/commit/13a6c9153739049dab5443dd3ac7d570f7e80690) Thanks [@baranwang](https://github.com/baranwang)! - Serve the Codex Live / Realtime endpoint family as signaling passthrough. `POST /v1/live`,
-  `POST /v1/realtime` and `POST /v1/realtime/calls` forward an SDP offer to the ChatGPT Codex realtime
-  upstream and answer with its SDP; `GET /v1/live/:call_id`, `GET /v1/realtime/calls/:call_id` and
-  `GET /v1/realtime` relay the sideband WebSocket, with provider selection, per-model overrides and
-  failover matching ordinary routing. Plugins can serve realtime through a new optional `realtime`
-  runtime capability (`models`, `fetch`, `dial`). WebRTC media stays a direct client-to-upstream
-  connection, and endpoints the ChatGPT upstream has no equivalent for answer `501`. An embedder that
-  builds its own `Bun.serve` must now pass `@aio-proxy/server`'s exported `websocket` handler.
+- [#298](https://github.com/aio-proxy/aio-proxy/pull/298) [`13a6c91`](https://github.com/aio-proxy/aio-proxy/commit/13a6c9153739049dab5443dd3ac7d570f7e80690) Thanks @baranwang - Serve the Codex Live / Realtime endpoint family as signaling passthrough.
 
-- [#300](https://github.com/aio-proxy/aio-proxy/pull/300) [`692795c`](https://github.com/aio-proxy/aio-proxy/commit/692795c49f26e93e93af79cb611043a1e82c307a) Thanks [@baranwang](https://github.com/baranwang)! - A running process checks npm `latest` on start, every 24 hours, and when the Dashboard mounts. It persists the result, prompts once per new version (Dashboard sidebar, CLI stderr banner, OS notification), and installs only after Update now or `aio-proxy upgrade`. Leftover `server.autoUpdate` in an existing config is ignored.
+- [#300](https://github.com/aio-proxy/aio-proxy/pull/300) [`692795c`](https://github.com/aio-proxy/aio-proxy/commit/692795c49f26e93e93af79cb611043a1e82c307a) Thanks @baranwang - A running process checks npm `latest` on start, every 24 hours, and when the Dashboard mounts. It persists the result, prompts once per new version (Dashboard sidebar, CLI stderr banner, OS notification), and installs only after Update now or `aio-proxy upgrade`. Leftover `server.autoUpdate` in an existing config is ignored.
 
-- [#303](https://github.com/aio-proxy/aio-proxy/pull/303) [`84b206c`](https://github.com/aio-proxy/aio-proxy/commit/84b206c1d2f296748d2b86cedf0ef97c2b65d8e2) Thanks [@baranwang](https://github.com/baranwang)! - Add a built-in OpenRouter OAuth plugin that signs in with PKCE, mints a durable user-controlled API key, discovers models, and reads remaining key credits. Loopback parse now requires callback `state` only when the opened authorize URL sent `state`, so OpenRouter (no state echo) can finish without weakening ChatGPT or Antigravity CSRF.
+- [#303](https://github.com/aio-proxy/aio-proxy/pull/303) [`84b206c`](https://github.com/aio-proxy/aio-proxy/commit/84b206c1d2f296748d2b86cedf0ef97c2b65d8e2) Thanks @baranwang - Add a built-in OpenRouter OAuth plugin that signs in with PKCE, mints a durable user-controlled API key, discovers models, and reads remaining key credits. Loopback parse now requires callback `state` only when the opened authorize URL sent `state`, so OpenRouter (no state echo) can finish without weakening ChatGPT or Antigravity CSRF.
 
 ### Patch Changes
 
@@ -559,13 +552,9 @@
 
 ### Patch Changes
 
-- [#297](https://github.com/aio-proxy/aio-proxy/pull/297) [`ec132d7`](https://github.com/aio-proxy/aio-proxy/commit/ec132d7347491f28ea21445f76bc697a4535b76c) Thanks [@baranwang](https://github.com/baranwang)! - cli: accept `aio-proxy update` as an alias of `aio-proxy upgrade`, including the same flags and shell completion.
+- [#297](https://github.com/aio-proxy/aio-proxy/pull/297) [`ec132d7`](https://github.com/aio-proxy/aio-proxy/commit/ec132d7347491f28ea21445f76bc697a4535b76c) Thanks @baranwang - cli: accept `aio-proxy update` as an alias of `aio-proxy upgrade`, including the same flags and shell completion.
 
-- [#289](https://github.com/aio-proxy/aio-proxy/pull/289) [`dd0e007`](https://github.com/aio-proxy/aio-proxy/commit/dd0e007bcf4832ebeb1b54862fb0cbfc1dfda76a) Thanks [@baranwang](https://github.com/baranwang)! - Serve the config JSON Schema from `@aio-proxy/types` instead of duplicating it in the launcher package.
-
-  `@aio-proxy/types` is a published package and already exports the generated schema, so the `aio-proxy` launcher no longer copies it in at pack time. A bootstrapped `config.jsonc` now gets `"$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json"` — unpinned, because nothing rewrites that line after bootstrap and a pinned version would go stale as the schema grows.
-
-  Existing configs keep working: they point at a released version whose tarball still carries the old copy. Update the line to the new URL to keep editor completion and validation current on future releases.
+- [#289](https://github.com/aio-proxy/aio-proxy/pull/289) [`dd0e007`](https://github.com/aio-proxy/aio-proxy/commit/dd0e007bcf4832ebeb1b54862fb0cbfc1dfda76a) Thanks @baranwang - Serve the config JSON Schema from `@aio-proxy/types` instead of duplicating it in the launcher package.
 
 - Updated dependencies [[`83c67f1`](https://github.com/aio-proxy/aio-proxy/commit/83c67f1cf670752e14ebf66bc95ab0799923b48e), [`46087fb`](https://github.com/aio-proxy/aio-proxy/commit/46087fb5ab1d28295e9912d8873e2ef574963c2a), [`4f4e324`](https://github.com/aio-proxy/aio-proxy/commit/4f4e324c4625a1d4582d4292b7b9e3e96cbdabb6), [`f71a576`](https://github.com/aio-proxy/aio-proxy/commit/f71a5760db5852f2c340e089c3858ae81da7053c), [`4f3154e`](https://github.com/aio-proxy/aio-proxy/commit/4f3154e79a3f2bf1d5d23081e8dd099cc7841ecd), [`cf45f02`](https://github.com/aio-proxy/aio-proxy/commit/cf45f0222aa85754e64f19dee184228769c97ddd)]:
   - @aio-proxy/server@0.19.2
@@ -647,9 +636,9 @@
 
 ### Patch Changes
 
-- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`17a68c2`](https://github.com/aio-proxy/aio-proxy/commit/17a68c228a961afa04a61ed46cb84808b2e33830) Thanks [@baranwang](https://github.com/baranwang)! - Attach the loopback OAuth-error rejection handler before the callback request so the test no longer fails intermittently on an unhandled rejection.
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`17a68c2`](https://github.com/aio-proxy/aio-proxy/commit/17a68c228a961afa04a61ed46cb84808b2e33830) Thanks @baranwang - Attach the loopback OAuth-error rejection handler before the callback request so the test no longer fails intermittently on an unhandled rejection.
 
-- [#271](https://github.com/aio-proxy/aio-proxy/pull/271) [`8150738`](https://github.com/aio-proxy/aio-proxy/commit/815073848e78ed7195f7f6d97077f3b495d103bd) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: manage Provider and per-model priority tiers with one drag editor that moves whole tiers, creates tiers at drop slots, and adjusts traffic shares without an add-tier button
+- [#271](https://github.com/aio-proxy/aio-proxy/pull/271) [`8150738`](https://github.com/aio-proxy/aio-proxy/commit/815073848e78ed7195f7f6d97077f3b495d103bd) Thanks @baranwang - dashboard: manage Provider and per-model priority tiers with one drag editor that moves whole tiers, creates tiers at drop slots, and adjusts traffic shares without an add-tier button
 - Updated dependencies [[`0934b54`](https://github.com/aio-proxy/aio-proxy/commit/0934b54a8e8dfb1c9c03ceff1f521b7c82ff600f), [`d3eb521`](https://github.com/aio-proxy/aio-proxy/commit/d3eb5215724009b43705a515ca17666097d578f8), [`c2acd49`](https://github.com/aio-proxy/aio-proxy/commit/c2acd49f937aa833b8cf7f5937d45cd2a227cd70), [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f), [`b0e6181`](https://github.com/aio-proxy/aio-proxy/commit/b0e6181122aa8424d90f9533b9deef7f57bb6810), [`9b80f0c`](https://github.com/aio-proxy/aio-proxy/commit/9b80f0cbb813a709a42638915224d81f1e16241e), [`fd1c284`](https://github.com/aio-proxy/aio-proxy/commit/fd1c28430f0678bc22a558677feeff3146f7eba6), [`962e433`](https://github.com/aio-proxy/aio-proxy/commit/962e433bc648cb44604ed98423ecec3c17a6b721), [`2c6da7a`](https://github.com/aio-proxy/aio-proxy/commit/2c6da7a8ccd7246bcc81daf83001e046ce376e16), [`6d02c87`](https://github.com/aio-proxy/aio-proxy/commit/6d02c876980ee55963fd0db6298adffe23bc42a2), [`2621cb3`](https://github.com/aio-proxy/aio-proxy/commit/2621cb3221abdc8a7d98cbde7eb54e6b35feef37), [`31b4339`](https://github.com/aio-proxy/aio-proxy/commit/31b4339d6b59ca72c0a3b5b33bcd2c339e631f1a), [`4c93909`](https://github.com/aio-proxy/aio-proxy/commit/4c939090f89ac0799768ab356e74310c91940b7a), [`7ecb445`](https://github.com/aio-proxy/aio-proxy/commit/7ecb4452f35b3b1fafa8215d2710e134b60425e7), [`fe76256`](https://github.com/aio-proxy/aio-proxy/commit/fe762564e204fb81535ed99fc82dfbff72c63e0d), [`5c7f017`](https://github.com/aio-proxy/aio-proxy/commit/5c7f01716a840a8f02850b08bcd3ad7cf254f740), [`8150738`](https://github.com/aio-proxy/aio-proxy/commit/815073848e78ed7195f7f6d97077f3b495d103bd)]:
   - @aio-proxy/core@0.17.0
   - @aio-proxy/server@0.17.0
@@ -682,7 +671,7 @@
 
 ### Minor Changes
 
-- [#244](https://github.com/aio-proxy/aio-proxy/pull/244) [`44a3b38`](https://github.com/aio-proxy/aio-proxy/commit/44a3b383bda177c8ee0124e53325cb8c63e1752d) Thanks [@baranwang](https://github.com/baranwang)! - cli: add `aiop` as a short command for `aio-proxy`
+- [#244](https://github.com/aio-proxy/aio-proxy/pull/244) [`44a3b38`](https://github.com/aio-proxy/aio-proxy/commit/44a3b383bda177c8ee0124e53325cb8c63e1752d) Thanks @baranwang - cli: add `aiop` as a short command for `aio-proxy`
 
 ### Patch Changes
 
@@ -718,21 +707,7 @@
 
 ### Minor Changes
 
-- [#239](https://github.com/aio-proxy/aio-proxy/pull/239) [`b1f5bff`](https://github.com/aio-proxy/aio-proxy/commit/b1f5bff2f2e92abfd54b90fb32b29b4b145e8c1d) Thanks [@baranwang](https://github.com/baranwang)! - Redesign the dashboard Provider list as a card grid and surface OAuth remaining quota.
-
-  Each Provider — including each OAuth account — is now one card showing its name, kind, protocols,
-  plan, routing priority and weight, 24-hour success rate and p95 latency, model count, and request
-  count, with search and availability/enablement/kind filters replacing the old table's pagination and
-  grouping. OAuth Providers whose plugin exposes a quota capability show a remaining-quota ring that
-  opens a detail dialog with one bar per quota window that reports a remaining amount.
-
-  The quota read is cached in memory behind a per-provider five-minute cooldown, refreshed
-  asynchronously once a Provider has finished answering a model request, and exposed at
-  `QUERY /dashboard/api/providers/:id/quota`; the dialog's refresh button bypasses the cooldown, and the
-  Providers page polls the reading the way it already polls health. `OAuthQuotaSnapshot` gains an
-  optional `plan`, which `kimi-code` and `xai-grok` now populate, and `xai-grok` also reports per-product
-  usage. Dashboard Provider summaries gain `protocols` and `hasQuota` in place of the single `protocol`
-  field.
+- [#239](https://github.com/aio-proxy/aio-proxy/pull/239) [`b1f5bff`](https://github.com/aio-proxy/aio-proxy/commit/b1f5bff2f2e92abfd54b90fb32b29b4b145e8c1d) Thanks @baranwang - Redesign the dashboard Provider list as a card grid and surface OAuth remaining quota.
 
 ### Patch Changes
 
@@ -800,7 +775,7 @@
 
 ### Patch Changes
 
-- [#228](https://github.com/aio-proxy/aio-proxy/pull/228) [`2cb5333`](https://github.com/aio-proxy/aio-proxy/commit/2cb5333493e582b676e34565246cfa0defb24dca) Thanks [@baranwang](https://github.com/baranwang)! - Upgrade Zod to 4.5 and compile inbound protocol request schemas with `z.compile()` (except OpenAI Responses, whose unknown-item transform logs). Upgrade es-toolkit to 1.52. Use `isPlainObject` for JSON and other plain data. Structural plugin/SDK contracts that may be class instances use `isRecord` from the published `@aio-proxy/shared` leaf package. Replace spread-Set arrays with `uniq` in packages that already depend on es-toolkit.
+- [#228](https://github.com/aio-proxy/aio-proxy/pull/228) [`2cb5333`](https://github.com/aio-proxy/aio-proxy/commit/2cb5333493e582b676e34565246cfa0defb24dca) Thanks @baranwang - Upgrade Zod to 4.5 and compile inbound protocol request schemas with `z.compile()` (except OpenAI Responses, whose unknown-item transform logs). Upgrade es-toolkit to 1.52. Use `isPlainObject` for JSON and other plain data. Structural plugin/SDK contracts that may be class instances use `isRecord` from the published `@aio-proxy/shared` leaf package. Replace spread-Set arrays with `uniq` in packages that already depend on es-toolkit.
 - Updated dependencies [[`9c16d0b`](https://github.com/aio-proxy/aio-proxy/commit/9c16d0b56a954563a296e5363869d5bae12ffda2), [`2cb5333`](https://github.com/aio-proxy/aio-proxy/commit/2cb5333493e582b676e34565246cfa0defb24dca)]:
   - @aio-proxy/plugin-sdk@0.12.0
   - @aio-proxy/core@0.12.0
@@ -862,7 +837,7 @@
 
 ### Minor Changes
 
-- [#203](https://github.com/aio-proxy/aio-proxy/pull/203) [`076c67b`](https://github.com/aio-proxy/aio-proxy/commit/076c67ba698c4cd7a3756ef370adc7a62a530402) Thanks [@baranwang](https://github.com/baranwang)! - Add `aio-proxy provider import [path]` to copy supported CPA OAuth auth files into aio-proxy accounts. OAuth plugins can declare typed CPA credential importers through the plugin SDK, and the built-in ChatGPT, Google Antigravity, Kimi Code, and xAI Grok plugins now provide them.
+- [#203](https://github.com/aio-proxy/aio-proxy/pull/203) [`076c67b`](https://github.com/aio-proxy/aio-proxy/commit/076c67ba698c4cd7a3756ef370adc7a62a530402) Thanks @baranwang - Add `aio-proxy provider import [path]` to copy supported CPA OAuth auth files into aio-proxy accounts. OAuth plugins can declare typed CPA credential importers through the plugin SDK, and the built-in ChatGPT, Google Antigravity, Kimi Code, and xAI Grok plugins now provide them.
 
 ### Patch Changes
 
@@ -896,11 +871,11 @@
 
 ### Minor Changes
 
-- [#187](https://github.com/aio-proxy/aio-proxy/pull/187) [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b) Thanks [@baranwang](https://github.com/baranwang)! - Add managed OpenCode, Pi, and oh-my-pi Agent integrations. Configure them with `aio-proxy agent configure` (floors: OpenCode 1.17.10, Pi 0.84.2, oh-my-pi 17.3.7; login with `opencode auth login --provider aio-proxy` or `/login aio-proxy`). `aio-proxy upgrade` refreshes managed adapters; reload or restart the Agent after configure or upgrade. Exact string KPI values no longer lose visible precision. The plugin SDK descriptor contract, brand, and host accepted version are restored to v1; v2 descriptors are rejected. The xAI artifact smoke gate now follows plugin API v1.
+- [#187](https://github.com/aio-proxy/aio-proxy/pull/187) [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b) Thanks @baranwang - Add managed OpenCode, Pi, and oh-my-pi Agent integrations.
 
 ### Patch Changes
 
-- [#188](https://github.com/aio-proxy/aio-proxy/pull/188) [`4bddead`](https://github.com/aio-proxy/aio-proxy/commit/4bddead355c37861e89dd57cf2a6a3514d4b35dc) Thanks [@baranwang](https://github.com/baranwang)! - core: pin the bundled Bun runtime to 1.4.0 and restore streamed request bodies through HTTP proxies. Bun 1.4.0 ships the `fetch` + `proxy` `ReadableStream` body fix, so `createProxyFetch` no longer buffers the request. Plugin runtime compatibility is now Bun `>=1.4.0`. Compiled macOS binaries are ad-hoc re-signed after `bun build --compile` so they launch on macOS 27. Release runs on macOS so that signature is applied when the CLI is actually published.
+- [#188](https://github.com/aio-proxy/aio-proxy/pull/188) [`4bddead`](https://github.com/aio-proxy/aio-proxy/commit/4bddead355c37861e89dd57cf2a6a3514d4b35dc) Thanks @baranwang - core: pin the bundled Bun runtime to 1.4.0 and restore streamed request bodies through HTTP proxies. Bun 1.4.0 ships the `fetch` + `proxy` `ReadableStream` body fix, so `createProxyFetch` no longer buffers the request. Plugin runtime compatibility is now Bun `>=1.4.0`. Compiled macOS binaries are ad-hoc re-signed after `bun build --compile` so they launch on macOS 27. Release runs on macOS so that signature is applied when the CLI is actually published.
 - Updated dependencies [[`f8947e7`](https://github.com/aio-proxy/aio-proxy/commit/f8947e78bc3ec3c7ccfa04e6c82606d7fa7989d9), [`3f0e371`](https://github.com/aio-proxy/aio-proxy/commit/3f0e3719028e1a506b2dffd81982c2def32d1db8), [`6560946`](https://github.com/aio-proxy/aio-proxy/commit/65609463e6ede5798787c54614d716f2120e8148), [`87126aa`](https://github.com/aio-proxy/aio-proxy/commit/87126aadb95151258c8d1a4e52e0f3e854ee0e54), [`b1d9481`](https://github.com/aio-proxy/aio-proxy/commit/b1d948127f8f289a588aa3c9fe4ae7329b8d06b9), [`bf6e779`](https://github.com/aio-proxy/aio-proxy/commit/bf6e779aad3d64f0edb4cdb4662f1063f1c6b279), [`ed5f7b7`](https://github.com/aio-proxy/aio-proxy/commit/ed5f7b78654738c9ca75178e2a060d3be628782b), [`b1d9481`](https://github.com/aio-proxy/aio-proxy/commit/b1d948127f8f289a588aa3c9fe4ae7329b8d06b9), [`f25104e`](https://github.com/aio-proxy/aio-proxy/commit/f25104ea345daeb6f4ec07f5db8fe505e6ca5da6), [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b), [`b71e13c`](https://github.com/aio-proxy/aio-proxy/commit/b71e13c8c991d3482a5446fdbd980ffc37a73ae1), [`2797531`](https://github.com/aio-proxy/aio-proxy/commit/2797531548755924713f880e6ef0cbcb00923bf5), [`21883d3`](https://github.com/aio-proxy/aio-proxy/commit/21883d33ab3ceb0081e123aaa985f42b4622f33d), [`ebaeb73`](https://github.com/aio-proxy/aio-proxy/commit/ebaeb73a04968dcb97a435a4037394a08e831a00), [`1dcaf2d`](https://github.com/aio-proxy/aio-proxy/commit/1dcaf2d27278874035494b320690b43dfc5334fa), [`237d9cd`](https://github.com/aio-proxy/aio-proxy/commit/237d9cd4f6810b6695a0624b61d7805991507e1e), [`30113ac`](https://github.com/aio-proxy/aio-proxy/commit/30113ac44315a690a30360121fe196f1104a69be), [`b0cdf26`](https://github.com/aio-proxy/aio-proxy/commit/b0cdf2696d3b8125d4d7c5a4df239a45bbe0dcc1), [`237d9cd`](https://github.com/aio-proxy/aio-proxy/commit/237d9cd4f6810b6695a0624b61d7805991507e1e), [`cd6c5a3`](https://github.com/aio-proxy/aio-proxy/commit/cd6c5a3dd352ea22198d99345a6da3272510caca), [`798e1e2`](https://github.com/aio-proxy/aio-proxy/commit/798e1e2c230dd925f6a2df1741b52ee75c955852), [`cff1a38`](https://github.com/aio-proxy/aio-proxy/commit/cff1a38dda0e9c6e3c0be008580f8144f62ea725), [`35dacf3`](https://github.com/aio-proxy/aio-proxy/commit/35dacf3cfbd006598e0f1f7a4082f1f2399971c6), [`3cb3b81`](https://github.com/aio-proxy/aio-proxy/commit/3cb3b8135f109c0eb6ee9fab138e83ee32136ae0), [`165d4c1`](https://github.com/aio-proxy/aio-proxy/commit/165d4c1ef27a9519ff6a76387c1740643c038db1), [`e3ff7aa`](https://github.com/aio-proxy/aio-proxy/commit/e3ff7aa430a1a0d4429aa93e34f7e77836063c83), [`d50d78d`](https://github.com/aio-proxy/aio-proxy/commit/d50d78d7dcdac086fb529dfbafca425ce2281e62), [`c73de2d`](https://github.com/aio-proxy/aio-proxy/commit/c73de2d1bd7c849a239d8e6a3fe139f7b6be4da6), [`02c0a8b`](https://github.com/aio-proxy/aio-proxy/commit/02c0a8bc9b53175e72e2cc432275a04f8fb934dc), [`a3cf9b5`](https://github.com/aio-proxy/aio-proxy/commit/a3cf9b55e0377cd8df102acf3fd9463ff5899207), [`6fb3a79`](https://github.com/aio-proxy/aio-proxy/commit/6fb3a799f2abd3ee6f4fd11b01a7040be226257f), [`c5b04c1`](https://github.com/aio-proxy/aio-proxy/commit/c5b04c183b0a9669f518bcb18f38019e96d3a8ca), [`ef90e90`](https://github.com/aio-proxy/aio-proxy/commit/ef90e90173a91816649d5c76053caf776b30e5dc), [`ecb6e0c`](https://github.com/aio-proxy/aio-proxy/commit/ecb6e0c74220388cc4dd51445e994b0cef0865a5), [`b1bcb8d`](https://github.com/aio-proxy/aio-proxy/commit/b1bcb8dc140edff15f9534a8058dd038a2ee5717), [`5be2d7c`](https://github.com/aio-proxy/aio-proxy/commit/5be2d7c0c1f2e9d844b33ce17b3fcefc78afd62e), [`4c33182`](https://github.com/aio-proxy/aio-proxy/commit/4c33182e52533af7b613df3e67c82a3cba09cdb0), [`ea6b1c9`](https://github.com/aio-proxy/aio-proxy/commit/ea6b1c98ca4c9a9ba35b39de91df4b1b25165135), [`0a93cfd`](https://github.com/aio-proxy/aio-proxy/commit/0a93cfd509c919280fcfea53528e1a706edd36d5), [`e86cff1`](https://github.com/aio-proxy/aio-proxy/commit/e86cff1401ae66805faee73f5fa990a5249d52fb), [`f2d1122`](https://github.com/aio-proxy/aio-proxy/commit/f2d1122b6a946a302902070b288c9093d091808b), [`c22a6ec`](https://github.com/aio-proxy/aio-proxy/commit/c22a6ec1e96f9b6e1b014f8601609565bef6ca23), [`bf7a1cc`](https://github.com/aio-proxy/aio-proxy/commit/bf7a1cce861313f8294822bb78e2d573c658c250), [`f75367e`](https://github.com/aio-proxy/aio-proxy/commit/f75367ebf14dfd6a47c86c19f0851f27065c6876), [`476b0a8`](https://github.com/aio-proxy/aio-proxy/commit/476b0a8133f3c2a46e710e682006bf8074170bb5), [`4bddead`](https://github.com/aio-proxy/aio-proxy/commit/4bddead355c37861e89dd57cf2a6a3514d4b35dc), [`60996d3`](https://github.com/aio-proxy/aio-proxy/commit/60996d3f0927636a3531c01fce35ba30015973a7), [`9b6f0a3`](https://github.com/aio-proxy/aio-proxy/commit/9b6f0a3f26d6bb22fc20298dc203825dca818309)]:
   - @aio-proxy/dashboard@0.9.0
   - @aio-proxy/i18n@0.9.0
@@ -929,7 +904,7 @@
 
 ### Minor Changes
 
-- [#175](https://github.com/aio-proxy/aio-proxy/pull/175) [`a218496`](https://github.com/aio-proxy/aio-proxy/commit/a218496f461450d1e87757c2aed9770e75b9a6e5) Thanks [@baranwang](https://github.com/baranwang)! - Plugins move display identity into descriptor metadata (`displayName` / `accountLabel`; remove legacy `label` and OAuth capability icons). Add Cursor account OAuth/provider support. Normalize OpenAI Responses errors to `response.failed` for Codex.
+- [#175](https://github.com/aio-proxy/aio-proxy/pull/175) [`a218496`](https://github.com/aio-proxy/aio-proxy/commit/a218496f461450d1e87757c2aed9770e75b9a6e5) Thanks @baranwang - Plugins move display identity into descriptor metadata (`displayName` / `accountLabel`; remove legacy `label` and OAuth capability icons). Add Cursor account OAuth/provider support. Normalize OpenAI Responses errors to `response.failed` for Codex.
 
 ### Patch Changes
 
@@ -1050,7 +1025,7 @@
 
 ### Patch Changes
 
-- [#123](https://github.com/aio-proxy/aio-proxy/pull/123) [`d460128`](https://github.com/aio-proxy/aio-proxy/commit/d4601280f29a5322a30b4baa516bc1906d0ea324) Thanks [@baranwang](https://github.com/baranwang)! - cli: fix the managed service becoming unreachable after `brew upgrade`. The service unit now records the stable PATH launcher instead of the version-pinned Cellar binary, `service restart` regenerates an already-installed unit with a freshly resolved executable (recovering units that still point at a deleted old binary), and `resolveExec` falls back to the PATH launcher when the running executable was deleted mid-upgrade. `aio-proxy upgrade` now always restarts a managed daemon after upgrading (the `--restart` flag is removed); a manually started daemon still gets a self-restart hint.
+- [#123](https://github.com/aio-proxy/aio-proxy/pull/123) [`d460128`](https://github.com/aio-proxy/aio-proxy/commit/d4601280f29a5322a30b4baa516bc1906d0ea324) Thanks @baranwang - cli: fix the managed service becoming unreachable after `brew upgrade`.
 - Updated dependencies [[`2d1d035`](https://github.com/aio-proxy/aio-proxy/commit/2d1d03580db04a8ff957df3b3dd17d0879599282)]:
   - @aio-proxy/i18n@0.4.0
   - @aio-proxy/core@0.4.0
@@ -1064,7 +1039,7 @@
 
 ### Minor Changes
 
-- [#117](https://github.com/aio-proxy/aio-proxy/pull/117) [`55d3ccd`](https://github.com/aio-proxy/aio-proxy/commit/55d3ccd49cb6819b8a413050a7a668efc9df17c0) Thanks [@baranwang](https://github.com/baranwang)! - cli: publish a multi-arch (amd64/arm64) Docker image to GHCR on release, and add a Dockerfile and docker-compose example for running aio-proxy in a container
+- [#117](https://github.com/aio-proxy/aio-proxy/pull/117) [`55d3ccd`](https://github.com/aio-proxy/aio-proxy/commit/55d3ccd49cb6819b8a413050a7a668efc9df17c0) Thanks @baranwang - cli: publish a multi-arch (amd64/arm64) Docker image to GHCR on release, and add a Dockerfile and docker-compose example for running aio-proxy in a container
 
 ### Patch Changes
 
