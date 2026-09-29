@@ -8,7 +8,7 @@
 
 **Tech Stack:** Bun, TypeScript, Hono, zod v4, bun:test, launchd (`launchctl`, `plutil`).
 
-**Spec:** `docs/superpowers/specs/2026-09-29-desktop-client-design.md` (Phase 1 of its Phasing section). Do not start this plan until the Phase 0 spike (`docs/superpowers/plans/2026-09-29-desktop-spike.md`) reports go.
+**Spec:** `docs/superpowers/specs/2026-09-29-desktop-client-design.md` (Phase 1 of its Phasing section, rev 4). The Phase 0 spike reported CONDITIONAL GO (`docs/superpowers/specs/2026-09-29-desktop-spike-findings.md`). Its pending human checks concern the UI stack, Developer ID signing and resource numbers, not a contract in this plan. This plan already carries the spike's corrections: `server.ppid` and `matchesJob` (C1), bootstrap-or-kickstart with `launchctl print` verification (C4), and the bounded `run` shutdown (C8).
 
 ## Global Constraints
 
@@ -22,6 +22,8 @@
 - Colocated tests: `foo/index.ts` + `foo/foo.ts` + `foo/foo.test.ts`. Non-test files stay under 500 lines.
 - Before completion: `bun run preflight` (or `bun run check` plus affected package tests), and a build followed by `bun run lint:types`.
 - Changeset targets `aio-proxy` plus each touched internal package, same bump level.
+- A `launchctl` exit status is never proof that a job is loaded (legacy `load` exits 0 on "Load failed: 5"); read it back with `launchctl print`.
+- `launchctl print`'s `pid` is the `/bin/sh` wrapper, not the sidecar. Anything comparing it with a server pid uses the server's `ppid`.
 
 ## Review Focus
 
@@ -30,6 +32,9 @@
 - A server created with neither `configPath` nor `dbHome` (embedded use, many tests) must boot and answer 401 — pinned in Task 5.
 - A Provider whose quota capability is permanently unavailable must report `unsupported`, not `loading` forever — pinned in Task 4.
 - A token file written by hand with a trailing newline must still be accepted — pinned in Task 1.
+- A healthy desktop-owned service must report `matchesJob: true` although `job.pid` is the wrapper — pinned in Task 11.
+- `service stop` leaves a disabled override that `launchctl bootstrap` refuses; `service start` must `enable` first — pinned in Task 8.
+- The shutdown deadline timer must not keep a cleanly stopped process alive for 3 s (every `kickstart -k` would wait) — pinned in Task 12.
 
 ---
 
@@ -255,7 +260,7 @@ git commit -m "feat(core): add local desktop token file"
 {
   "protocolVersion": 1,
   "generatedAt": "2026-09-29T08:00:00.000Z",
-  "server": { "version": "0.36.0", "pid": 4312 },
+  "server": { "version": "0.36.0", "pid": 4312, "ppid": 4310 },
   "usage24h": {
     "requests": "257",
     "failedRequests": "53",
@@ -366,7 +371,10 @@ export const DesktopSummaryV1Schema = z
   .object({
     protocolVersion: z.literal(1),
     generatedAt: z.iso.datetime(),
-    server: z.object({ version: z.string().min(1), pid: z.number().int().positive() }).strict(),
+    // ppid lets discovery match the sidecar to launchd's job pid, which is the /bin/sh wrapper.
+    server: z
+      .object({ version: z.string().min(1), pid: z.number().int().positive(), ppid: z.number().int().nonnegative() })
+      .strict(),
     usage24h: z
       .object({
         requests: NonNegativeIntegerStringSchema,
@@ -580,7 +588,7 @@ git commit -m "feat(server): expose non-blocking quota cache status"
     readonly providerSummaries: ServerState['providerSummaries'];
     readonly quotaCache: Pick<OAuthQuotaCache, 'status' | 'warm' | 'refresh'>;
   };
-  export type DesktopSummaryInput = { readonly version: string; readonly pid: number; readonly now: Date; readonly refresh: boolean };
+  export type DesktopSummaryInput = { readonly version: string; readonly pid: number; readonly ppid: number; readonly now: Date; readonly refresh: boolean };
   export async function buildDesktopSummary(source: DesktopSummarySource, input: DesktopSummaryInput): Promise<DesktopSummaryV1>;
   ```
 
@@ -657,7 +665,7 @@ const source = (
   quotaCache: createOAuthQuotaCache({ read }),
 });
 
-const input = { version: '0.36.0', pid: 4312, now, refresh: false };
+const input = { version: '0.36.0', pid: 4312, ppid: 4310, now, refresh: false };
 
 test('maps usage, the 7-day trend, and activity into the strict v1 shape', async () => {
   const summary = await buildDesktopSummary(source([], async () => ({ items: [] })), input);
@@ -670,7 +678,7 @@ test('maps usage, the 7-day trend, and activity into the strict v1 shape', async
     { start: '2026-09-28T16:00:00.000Z', requests: '10', totalTokens: '100', estimatedCostNanoUsd: '3' },
   ]);
   expect(summary.activity).toEqual([{ date: '2026-09-29', totalTokens: '1000' }]);
-  expect(summary.server).toEqual({ version: '0.36.0', pid: 4312 });
+  expect(summary.server).toEqual({ version: '0.36.0', pid: 4312, ppid: 4310 });
 });
 
 test('returns at once with quota loading while upstream never answers', async () => {
@@ -795,6 +803,7 @@ export type DesktopSummarySource = {
 export type DesktopSummaryInput = {
   readonly version: string;
   readonly pid: number;
+  readonly ppid: number;
   readonly now: Date;
   readonly refresh: boolean;
 };
@@ -884,7 +893,7 @@ export async function buildDesktopSummary(
   return {
     protocolVersion: 1,
     generatedAt: input.now.toISOString(),
-    server: { version: input.version, pid: input.pid },
+    server: { version: input.version, pid: input.pid, ppid: input.ppid },
     usage24h: {
       requests: usage.requestCount,
       failedRequests: usage.failureCount,
@@ -1147,6 +1156,7 @@ export const createDesktopSummaryRoute = (state: ServerState, version: string) =
       await buildDesktopSummary(state, {
         version,
         pid: process.pid,
+        ppid: process.ppid,
         now: new Date(),
         refresh: context.req.query('refresh') === 'true',
       }),
@@ -1407,81 +1417,233 @@ git commit -m "feat(cli): let the desktop app own the managed unit through a sta
 
 ---
 
-### Task 8: `service start` kickstarts an already-loaded launchd job
+### Task 8: `service start` bootstraps or kickstarts the launchd job and verifies it with `launchctl print`
+
+The spike measured two launchd facts this task relies on:
+
+- `launchctl load -w` does not start an already-loaded job.
+- On "Load failed: 5: Input/output error" it exits 0.
+
+So start and restart must pick `kickstart` or `bootstrap` themselves and read the result back from launchd.
 
 **Files:**
-- Modify: `packages/cli/src/service/service.ts:167-190` (`ServiceStartIo`, `serviceStart`)
-- Test: `packages/cli/src/service/service.test.ts:67-78` (existing darwin start test) plus a new test
+- Modify: `packages/cli/src/service/service.ts:168-192` (`ServiceStartIo`, `serviceStart`), `:203-214` (`ServiceRestartIo`), `:252-260` (the in-process darwin branch of `serviceRestart`)
+- Modify: `packages/cli/src/service/index.ts` (export `launchdDomain`, `launchdJobTarget`, `managedUnitPath`)
+- Test: `packages/cli/src/service/service.test.ts:17-78` (the platform loop) and `:565-587` (Darwin TTY restart), plus new tests
 
 **Interfaces:**
-- Produces: `launchdJobTarget(uid?: number): string` (`gui/<uid>/com.aio-proxy.agent`), exported for Task 11; `ServiceStartIo.jobLoaded?: () => Promise<boolean>`.
+- Produces:
+  - `launchdDomain(uid?: number): string` (`gui/<uid>`) and `launchdJobTarget(uid?: number): string` (`gui/<uid>/com.aio-proxy.agent`), both exported for Task 11.
+  - `ServiceRestartIo.printJob?: () => Promise<number>`, the exit code of `launchctl print <job target>`, where 0 means launchd holds the job. `ServiceStartIo` picks it too.
 
-- [ ] **Step 1: Write the failing test and pin the existing one**
+- [ ] **Step 1: Write the failing tests and update the existing darwin expectations**
 
-Change the existing `serviceStart on ${platform} starts an installed service through its manager` test to pass `jobLoaded: async () => false` (so it never shells out to the real `launchctl`), and add:
+Add after the imports in `service.test.ts` (and add `launchdDomain`, `launchdJobTarget` to the `./service` import):
 
 ```ts
-test('serviceStart kickstarts a loaded launchd job instead of re-loading it', async () => {
+// A stand-in for launchd: `print` reports the job loaded after bootstrap or kickstart and unloaded
+// after bootout. `bootstrapLoads: false` models launchctl exiting 0 while launchd never took the job.
+const fakeLaunchd = (loaded: boolean, options: { readonly bootstrapLoads?: boolean } = {}) => {
+  const calls: string[] = [];
+  let held = loaded;
+  return {
+    calls,
+    runManager: async (cmd: readonly string[]) => {
+      calls.push(cmd.join(' '));
+      if (cmd[1] === 'bootout') held = false;
+      if (cmd[1] === 'bootstrap' && options.bootstrapLoads !== false) held = true;
+      return 0;
+    },
+    printJob: async () => (held ? 0 : 113),
+  };
+};
+```
+
+Replace the body of the loop test `${command.name} on ${platform} installs a missing user service before starting it` with:
+
+```ts
+      const launchd = fakeLaunchd(false);
+      const writeManagedUnit = mock(async () => '/tmp/unused');
+      await command({
+        platform,
+        unitInstalled: () => false,
+        install: async (options) => {
+          expect(options?.system).not.toBe(true);
+          launchd.calls.push('install');
+        },
+        runManager: launchd.runManager,
+        printJob: launchd.printJob,
+        unitPath: '/tmp/service.plist',
+        writeManagedUnit,
+      });
+      expect(launchd.calls).toEqual(
+        platform === 'linux'
+          ? ['install', 'systemctl --user start aio-proxy.service']
+          : ['install', `launchctl enable ${launchdJobTarget()}`, `launchctl bootstrap ${launchdDomain()} /tmp/service.plist`],
+      );
+      expect(writeManagedUnit).not.toHaveBeenCalled();
+```
+
+The loop's `shows recovery instructions only after automatic start fails` tests stay unchanged. On darwin the first manager call is now `enable`, which throws there, so `runManager` is still called exactly once and `printJob` is never reached.
+
+Move `serviceStart on ${platform} starts an installed service through its manager` out of the platform loop as a linux-only test:
+
+```ts
+test('serviceStart on linux starts an installed service through its manager', async () => {
   const runManager = mock(async () => 0);
-  await serviceStart({
+  const install = mock(async () => {});
+  await serviceStart({ platform: 'linux', unitInstalled: () => true, runManager, install });
+  expect(install).not.toHaveBeenCalled();
+  expect(runManager).toHaveBeenCalledWith(['systemctl', '--user', 'start', 'aio-proxy.service']);
+});
+```
+
+Add the darwin tests:
+
+```ts
+test('serviceStart bootstraps an unloaded launchd job after clearing the override a stop leaves', async () => {
+  const launchd = fakeLaunchd(false);
+  await serviceStart({ platform: 'darwin', unitInstalled: () => true, unitPath: '/tmp/service.plist', ...launchd });
+  expect(launchd.calls).toEqual([
+    `launchctl enable ${launchdJobTarget()}`,
+    `launchctl bootstrap ${launchdDomain()} /tmp/service.plist`,
+  ]);
+});
+
+test('serviceStart kickstarts a loaded launchd job instead of re-loading it', async () => {
+  const launchd = fakeLaunchd(true);
+  await serviceStart({ platform: 'darwin', unitInstalled: () => true, unitPath: '/tmp/service.plist', ...launchd });
+  expect(launchd.calls).toEqual([`launchctl enable ${launchdJobTarget()}`, `launchctl kickstart ${launchdJobTarget()}`]);
+});
+
+test('serviceStart fails when launchd does not hold the job although every launchctl call exited 0', async () => {
+  const launchd = fakeLaunchd(false, { bootstrapLoads: false });
+  const error = await serviceStart({
     platform: 'darwin',
     unitInstalled: () => true,
     unitPath: '/tmp/service.plist',
-    runManager,
-    install: async () => {},
-    jobLoaded: async () => true,
-  });
-  expect(runManager).toHaveBeenCalledWith(['launchctl', 'kickstart', launchdJobTarget()]);
-  expect(runManager).not.toHaveBeenCalledWith(['launchctl', 'load', '-w', '/tmp/service.plist']);
+    ...launchd,
+  }).catch((caught: unknown) => caught);
+  expect(error).toBeInstanceOf(CliExit);
+  expect((error as CliExit).message).toContain(`launchctl print ${launchdJobTarget()}`);
 });
 ```
+
+Replace the test `Darwin TTY serviceRestart unloads in-process and does not spawn a detached helper` with:
+
+```ts
+test('Darwin TTY serviceRestart boots the job out and bootstraps the rewritten plist in-process', async () => {
+  const spawned: string[][] = [];
+  const launchd = fakeLaunchd(true);
+  await serviceRestart({
+    platform: 'darwin',
+    env: { XPC_SERVICE_NAME: 'com.aio-proxy.agent', AIO_PROXY_MANAGED: '1' },
+    isTTY: true,
+    unitInstalled: () => true,
+    unitPath: '/tmp/com.aio-proxy.agent.plist',
+    writeManagedUnit: async () => '/tmp/com.aio-proxy.agent.plist',
+    spawn: ((cmd: string[]) => {
+      spawned.push(cmd);
+      return { unref() {} };
+    }) as typeof Bun.spawn,
+    ...launchd,
+  });
+  expect(spawned).toEqual([]);
+  // kickstart -k would restart the old definition; bootout + bootstrap re-reads the rewritten plist.
+  expect(launchd.calls).toEqual([
+    `launchctl bootout ${launchdJobTarget()}`,
+    `launchctl enable ${launchdJobTarget()}`,
+    `launchctl bootstrap ${launchdDomain()} /tmp/com.aio-proxy.agent.plist`,
+  ]);
+});
+```
+
+`Darwin in-job serviceRestart spawns a detached helper…` stays unchanged: the detached helper still runs `unload -w`/`load -w`, because nobody is left to observe its result.
 
 - [ ] **Step 2: Run to verify failure**
 
 Run: `cd packages/cli && bun test src/service/service.test.ts`
-Expected: FAIL — `launchdJobTarget` is not exported / `load -w` is called.
+Expected: FAIL. Either `launchdJobTarget` / `launchdDomain` are not exported, or the darwin calls show `launchctl load -w`.
 
 - [ ] **Step 3: Implement**
 
+In `service.ts`, below `launchdPlistPath()`:
+
 ```ts
-export const launchdJobTarget = (uid: number = process.getuid?.() ?? 0): string => `gui/${uid}/${LAUNCHD_LABEL}`;
+export const launchdDomain = (uid: number = process.getuid?.() ?? 0): string => `gui/${uid}`;
 
-const launchdJobLoaded = async (): Promise<boolean> =>
-  (await Bun.spawn(['launchctl', 'print', launchdJobTarget()], { stdout: 'ignore', stderr: 'ignore' }).exited) === 0;
+export const launchdJobTarget = (uid?: number): string => `${launchdDomain(uid)}/${LAUNCHD_LABEL}`;
 
-type ServiceStartIo = Pick<ServiceRestartIo, 'platform' | 'unitInstalled' | 'unitPath' | 'runManager' | 'install'> & {
-  readonly jobLoaded?: () => Promise<boolean>;
-};
+// `launchctl print` exits 0 only while launchd holds the job: the one reliable "is it loaded" check.
+const printLaunchdJob = async (): Promise<number> =>
+  Bun.spawn(['launchctl', 'print', launchdJobTarget()], { stdout: 'ignore', stderr: 'ignore' }).exited;
+
+// Legacy `load`/`unload` exit 0 even on "Load failed: 5", so success is read back from launchd, not
+// taken from an exit status. `bootstrap` and `kickstart` do report failures, but the read-back also
+// catches a job that launchd accepted and dropped.
+async function startLaunchdJob(
+  plist: string,
+  run: (cmd: readonly string[], allowFailure?: boolean) => Promise<number>,
+  printJob: () => Promise<number>,
+): Promise<void> {
+  const target = launchdJobTarget();
+  // `service stop` (`unload -w`) leaves a disabled override that bootstrap refuses; `load -w` used to clear it.
+  await run(['launchctl', 'enable', target]);
+  // A loaded job whose process exited (a clean SIGTERM, the wrapper's missing-executable exit) is only
+  // restarted by kickstart; an unloaded one is bootstrapped, and RunAtLoad starts it.
+  if ((await printJob()) === 0) await run(['launchctl', 'kickstart', target]);
+  else await run(['launchctl', 'bootstrap', launchdDomain(), plist]);
+  const code = await printJob();
+  if (code !== 0) {
+    throw new CliExit(EXIT.transient, m['cli.service.command_failed']({ command: `launchctl print ${target}`, code }));
+  }
+}
 ```
 
-and replace the darwin branch inside `serviceStart`'s `try`:
+Add to `ServiceRestartIo`:
+
+```ts
+  /** Exit code of `launchctl print <job>`; 0 while launchd holds the job. Injected by tests. */
+  readonly printJob?: () => Promise<number>;
+```
+
+and widen `ServiceStartIo` to `Pick<ServiceRestartIo, 'platform' | 'unitInstalled' | 'unitPath' | 'runManager' | 'install' | 'printJob'>`.
+
+Replace the darwin branch inside `serviceStart`'s `try`:
 
 ```ts
     if (os === 'darwin') {
-      // `load -w` does nothing for a job launchd already holds, so a loaded job whose process exited
-      // (a clean stop, or the wrapper's missing-executable exit) has to be kickstarted instead.
-      if (installed && (await (io.jobLoaded ?? launchdJobLoaded)())) {
-        await run(['launchctl', 'kickstart', launchdJobTarget()]);
-        return;
-      }
-      // RunAtLoad=true means `load -w` also starts the job.
-      await run(['launchctl', 'load', '-w', io.unitPath ?? launchdPlistPath()]);
+      await startLaunchdJob(io.unitPath ?? launchdPlistPath(), run, io.printJob ?? printLaunchdJob);
       return;
     }
 ```
 
-Add `launchdJobTarget` and the existing `managedUnitPath` to the `./service` export list in `packages/cli/src/service/index.ts` (Task 11 imports both from `../service`).
+In `serviceRestart`, replace the two in-process lines `await run(['launchctl', 'unload', '-w', plist]); await run(['launchctl', 'load', '-w', plist]);` with:
+
+```ts
+    // bootout + bootstrap re-reads the plist just rewritten; kickstart -k would restart the old
+    // definition. bootout of a job that is not loaded fails harmlessly.
+    await run(['launchctl', 'bootout', launchdJobTarget()], true);
+    await startLaunchdJob(plist, run, io.printJob ?? printLaunchdJob);
+```
+
+Add `launchdDomain`, `launchdJobTarget` and the existing `managedUnitPath` to the `./service` export list in `packages/cli/src/service/index.ts` (Task 11 imports `launchdJobTarget` and `managedUnitPath` from `../service`).
 
 - [ ] **Step 4: Run tests**
 
 Run: `cd packages/cli && bun test src/service src/upgrade`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Manual check on a Mac with a CLI-installed service (optional, touches the real job)**
+
+Run: `aio-proxy service stop && bun packages/cli/src/main.dev.ts service start && launchctl print gui/$(id -u)/com.aio-proxy.agent | grep -E 'state|pid'`
+Expected: `state = running` (the start re-enabled the override that `service stop` set, then bootstrapped the job).
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add packages/cli/src/service
-git commit -m "fix(cli): restart a loaded but stopped launchd job on service start"
+git commit -m "fix(cli): start launchd jobs by bootstrap or kickstart and verify they loaded"
 ```
 
 ---
@@ -1722,7 +1884,7 @@ git commit -m "feat(cli): resolve a control address for an explicit home"
     readonly bundledVersion: string;
     readonly unit: { readonly present: boolean; readonly wrapperValid: boolean; readonly target: string | null; readonly home: string | null; readonly owner: 'desktop' | 'external' | 'unknown' | null };
     readonly job: { readonly loaded: boolean; readonly disabled: boolean; readonly pid: number | null };
-    readonly instance: { readonly controlUrl: string | null; readonly dashboardUrl: string | null; readonly reachable: boolean; readonly version: string | null; readonly pid: number | null; readonly matchesJob: boolean | null };
+    readonly instance: { readonly controlUrl: string | null; readonly dashboardUrl: string | null; readonly reachable: boolean; readonly version: string | null; readonly pid: number | null; readonly ppid: number | null; readonly matchesJob: boolean | null };
     readonly token: string | null;
   };
   export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopConnectResult>;
@@ -1879,6 +2041,7 @@ type Scenario = {
   readonly disabled?: string;
   readonly token?: string;
   readonly summaryPid?: number;
+  readonly summaryPpid?: number;
   readonly failLaunchctl?: boolean;
 };
 
@@ -1901,7 +2064,10 @@ const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | 
     requests.push({ url, auth: new Headers(init?.headers).get('authorization') });
     if (url.endsWith('/health')) return Response.json({ status: 'ok', version: '0.36.0' });
     if (scenario.summaryPid === undefined) return new Response('not found', { status: 404 });
-    return Response.json({ protocolVersion: 1, server: { version: '0.36.0', pid: scenario.summaryPid } });
+    return Response.json({
+      protocolVersion: 1,
+      server: { version: '0.36.0', pid: scenario.summaryPid, ppid: scenario.summaryPpid ?? 1 },
+    });
   }) as typeof fetch,
 });
 
@@ -1910,35 +2076,38 @@ const desktopPlist = (target = link) => ({
   EnvironmentVariables: { AIO_PROXY_HOME: home() },
 });
 
-test('a desktop-owned running service is identified end to end', async () => {
+// launchd's job pid is the /bin/sh wrapper (4310); the sidecar (4312) is its child, as measured in the spike.
+test('a desktop-owned running service is identified end to end through its wrapper pid', async () => {
   writeConfig(home(), '127.0.0.1', 19317);
   const result = await desktopConnect(
     deps({
       plist: desktopPlist(),
-      jobPrint: { code: 0, stdout: 'state = running\n\tpid = 4312\n' },
+      jobPrint: { code: 0, stdout: 'state = running\n\tpid = 4310\n' },
       disabled: '"com.aio-proxy.agent" => enabled',
       token: 'T'.repeat(43),
       summaryPid: 4312,
+      summaryPpid: 4310,
     }),
   );
   expect(result).toEqual({
     protocolVersion: 1,
     bundledVersion: '0.37.0',
     unit: { present: true, wrapperValid: true, target: link, home: home(), owner: 'desktop' },
-    job: { loaded: true, disabled: false, pid: 4312 },
+    job: { loaded: true, disabled: false, pid: 4310 },
     instance: {
       controlUrl: 'http://127.0.0.1:19317',
       dashboardUrl: 'http://127.0.0.1:19317/dashboard',
       reachable: true,
       version: '0.36.0',
       pid: 4312,
+      ppid: 4310,
       matchesJob: true,
     },
     token: 'T'.repeat(43),
   });
 });
 
-test("an external service is probed at the plist's home, and a pid mismatch is reported", async () => {
+test("an external service is probed at the plist's home, and an orphaned sidecar does not match the job", async () => {
   writeConfig(home(), '0.0.0.0', 29317);
   writeConfig(join(root, 'default-home'), '127.0.0.1', 9317);
   const requests: Array<{ url: string; auth: string | null }> = [];
@@ -1948,7 +2117,9 @@ test("an external service is probed at the plist's home, and a pid mismatch is r
         plist: desktopPlist('/opt/homebrew/bin/aio-proxy'),
         jobPrint: { code: 0, stdout: 'pid = 100\n' },
         token: 'T'.repeat(43),
+        // Reparented to launchd: its wrapper died, so it is not the process the job manages.
         summaryPid: 200,
+        summaryPpid: 1,
       },
       requests,
     ),
@@ -1964,7 +2135,7 @@ test('a non-loopback bind yields no control URL and no request carries the token
   const requests: Array<{ url: string; auth: string | null }> = [];
   const result = await desktopConnect(deps({ plist: desktopPlist(), token: 'T'.repeat(43) }, requests));
   expect(result.instance).toEqual({
-    controlUrl: null, dashboardUrl: null, reachable: false, version: null, pid: null, matchesJob: null,
+    controlUrl: null, dashboardUrl: null, reachable: false, version: null, pid: null, ppid: null, matchesJob: null,
   });
   expect(requests).toEqual([]);
 });
@@ -1974,7 +2145,7 @@ test('an older instance without desktop-summary reports its /health version and 
   const result = await desktopConnect(
     deps({ plist: desktopPlist(), jobPrint: { code: 0, stdout: 'pid = 7\n' }, token: 'T'.repeat(43) }),
   );
-  expect(result.instance).toMatchObject({ reachable: true, version: '0.36.0', pid: null, matchesJob: null });
+  expect(result.instance).toMatchObject({ reachable: true, version: '0.36.0', pid: null, ppid: null, matchesJob: null });
 });
 
 test('no plist falls back to the default home and reports no owner', async () => {
@@ -2045,6 +2216,7 @@ export type DesktopConnectResult = {
     readonly reachable: boolean;
     readonly version: string | null;
     readonly pid: number | null;
+    readonly ppid: number | null;
     readonly matchesJob: boolean | null;
   };
   readonly token: string | null;
@@ -2052,7 +2224,7 @@ export type DesktopConnectResult = {
 
 const NO_UNIT: UnitInspection = { present: false, wrapperValid: false, target: null, home: null };
 const UNREACHABLE: DesktopConnectResult['instance'] = {
-  controlUrl: null, dashboardUrl: null, reachable: false, version: null, pid: null, matchesJob: null,
+  controlUrl: null, dashboardUrl: null, reachable: false, version: null, pid: null, ppid: null, matchesJob: null,
 };
 
 async function readUnit(deps: DesktopConnectDeps): Promise<UnitInspection> {
@@ -2079,7 +2251,7 @@ async function summaryIdentity(
   deps: DesktopConnectDeps,
   controlUrl: string,
   token: string | undefined,
-): Promise<{ readonly version: string; readonly pid: number } | undefined> {
+): Promise<{ readonly version: string; readonly pid: number; readonly ppid: number | null } | undefined> {
   if (token === undefined) return undefined;
   try {
     const res = await deps.fetch(`${controlUrl}/dashboard/api/desktop-summary`, {
@@ -2091,7 +2263,7 @@ async function summaryIdentity(
     const body: unknown = await res.json();
     const server = isPlainObject(body) ? body['server'] : undefined;
     if (!isPlainObject(server) || typeof server['version'] !== 'string' || typeof server['pid'] !== 'number') return undefined;
-    return { version: server['version'], pid: server['pid'] };
+    return { version: server['version'], pid: server['pid'], ppid: typeof server['ppid'] === 'number' ? server['ppid'] : null };
   } catch {
     return undefined;
   }
@@ -2112,6 +2284,7 @@ export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopC
   const health = await probeHealth(controlUrl, deps.fetch, PROBE_TIMEOUT_MS);
   const identity = health === null ? undefined : await summaryIdentity(deps, controlUrl, token);
   const pid = identity?.pid ?? null;
+  const ppid = identity?.ppid ?? null;
   return {
     protocolVersion: 1,
     bundledVersion: deps.bundledVersion,
@@ -2123,7 +2296,9 @@ export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopC
       reachable: health !== null,
       version: identity?.version ?? health?.version ?? null,
       pid,
-      matchesJob: pid === null || job.pid === null ? null : pid === job.pid,
+      ppid,
+      // job.pid is the /bin/sh wrapper launchd started; a managed sidecar is its child, so ppid matches.
+      matchesJob: pid === null || job.pid === null ? null : pid === job.pid || ppid === job.pid,
     },
     token: token ?? null,
   };
@@ -2184,7 +2359,7 @@ Expected: PASS.
 - [ ] **Step 8: Manual check on a Mac with a running service**
 
 Run: `cd packages/cli && bun src/main.dev.ts __desktop-connect | python3 -m json.tool`
-Expected: one JSON object; `unit.owner` is `external` (a CLI-installed service) or `null`; `instance.reachable` matches whether the proxy is running. Do not paste the `token` value anywhere.
+Expected: one JSON object; `unit.owner` is `external` (a CLI-installed service) or `null`; `instance.reachable` matches whether the proxy is running. For a running service built from this branch, `job.pid` equals `instance.ppid` (`pgrep -P <job.pid>` prints `instance.pid`) and `matchesJob` is `true`. Do not paste the `token` value anywhere.
 
 - [ ] **Step 9: Commit**
 
@@ -2195,7 +2370,110 @@ git commit -m "feat(cli): add hidden desktop discovery command"
 
 ---
 
-### Task 12: Changeset and full verification
+### Task 12: Bounded shutdown for `aio-proxy run`
+
+The spike found that launchd sends one SIGTERM to the job's process group and never escalates to SIGKILL. A stand-in sidecar that ignored SIGTERM survived 60 s as an orphan holding its port while `kickstart -k` started a new instance. A real sidecar whose shutdown hangs does the same; the spike saw SIGTERM hang on slow outbound connections. The new instance then fails to bind and exits 1, the wrapper remaps that to 0, and the service silently stays on the old binary. The sidecar therefore bounds its own shutdown.
+
+**Files:**
+- Modify: `packages/cli/src/run/run.ts:258-270` (the signal handling at the end of `run`)
+- Test: `packages/cli/src/run/run.test.ts`
+
+**Interfaces:**
+- Produces: `SHUTDOWN_DEADLINE_MS = 3_000`; `onShutdownSignal(shutdown: () => void, deadlineMs?: number): void`, which installs the SIGINT/SIGTERM handlers `run` used inline before.
+
+- [ ] **Step 1: Write the failing tests** (append to `run.test.ts`; add `join` from `node:path`)
+
+```ts
+/** launchd never SIGKILLs a sidecar that outlives SIGTERM, so the process must bound its own exit.
+ *  Run in a child process because the behavior under test is the process exiting. `releases` says
+ *  whether the shutdown callback frees the only handle keeping the event loop alive, standing in for
+ *  a clean shutdown (true) versus one stuck on an outbound connection (false). */
+const stopWithSigterm = async (releases: boolean) => {
+  const script = `
+    import { onShutdownSignal } from ${JSON.stringify(join(import.meta.dir, 'run.ts'))};
+    const busy = setInterval(() => {}, 1_000);
+    onShutdownSignal(() => { ${releases ? 'clearInterval(busy);' : ''} }, 1_000);
+    console.log('ready');
+  `;
+  const child = Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'inherit' });
+  await child.stdout.getReader().read();
+  const started = performance.now();
+  child.kill('SIGTERM');
+  const code = await child.exited;
+  return { code, elapsedMs: performance.now() - started };
+};
+
+test('a shutdown that leaves the event loop busy still exits cleanly at the deadline', async () => {
+  const { code, elapsedMs } = await stopWithSigterm(false);
+  expect(code).toBe(0);
+  expect(elapsedMs).toBeGreaterThanOrEqual(900);
+  expect(elapsedMs).toBeLessThan(3_000);
+});
+
+test('a clean shutdown exits at once instead of waiting for the deadline', async () => {
+  const { code, elapsedMs } = await stopWithSigterm(true);
+  expect(code).toBe(0);
+  expect(elapsedMs).toBeLessThan(800);
+});
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `cd packages/cli && bun test src/run/run.test.ts`
+Expected: FAIL. The child exits 1 with `SyntaxError: Export named 'onShutdownSignal' not found`.
+
+- [ ] **Step 3: Implement**
+
+In `run.ts`, after `shutdownProxyServer`:
+
+```ts
+/** launchd sends one SIGTERM and never escalates, and `shutdownProxyServer` returning does not end the
+ *  process: an outbound upstream connection or a timer can keep Bun's event loop alive. An orphan
+ *  would then keep the port while a restarted instance fails to bind, so the process bounds its own
+ *  exit. Exit 0 makes a forced stop look like a clean one to KeepAlive (SuccessfulExit=false). */
+export const SHUTDOWN_DEADLINE_MS = 3_000;
+
+export const onShutdownSignal = (shutdown: () => void, deadlineMs: number = SHUTDOWN_DEADLINE_MS): void => {
+  let closing = false;
+  const handle = (): void => {
+    if (closing) return;
+    closing = true;
+    // Armed first so a throwing or hanging shutdown is bounded too. unref() keeps the timer itself
+    // from holding the loop open, so a clean shutdown still exits as soon as the loop drains.
+    setTimeout(() => process.exit(0), deadlineMs).unref();
+    try {
+      shutdown();
+    } finally {
+      process.off('SIGINT', handle);
+      process.off('SIGTERM', handle);
+    }
+  };
+  process.once('SIGINT', handle);
+  process.once('SIGTERM', handle);
+};
+```
+
+In `run`, replace the block from `let closing = false;` through `process.once('SIGTERM', shutdown);` with:
+
+```ts
+  onShutdownSignal(() => shutdownProxyServer(server, app));
+```
+
+- [ ] **Step 4: Run tests**
+
+Run: `cd packages/cli && bun test src/run`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/cli/src/run
+git commit -m "fix(cli): bound aio-proxy run shutdown after a stop signal"
+```
+
+---
+
+### Task 13: Changeset and full verification
 
 **Files:**
 - Create: `.changeset/<generated-name>.md` via `bun changeset`
@@ -2205,7 +2483,7 @@ git commit -m "feat(cli): add hidden desktop discovery command"
 Run: `bun changeset` and select `aio-proxy`, `@aio-proxy/core`, `@aio-proxy/server`, `@aio-proxy/cli`, `@aio-proxy/types`, `@aio-proxy/i18n`, all `minor`. Body:
 
 ```md
-`aio-proxy service start` now restarts a launchd service that is loaded but not running, and a service whose binary was removed no longer respawns in a loop. The proxy also exposes a token-protected local summary endpoint and a discovery command for the upcoming macOS desktop app, and refuses to self-upgrade a binary that the desktop app manages.
+`aio-proxy service start` now restarts a launchd service that is loaded but not running, and it reports an error when launchd did not actually load the service instead of claiming success. A service whose binary was removed no longer respawns in a loop, and a stopping proxy now exits within 3 seconds, so a restart can no longer leave the old process holding the port. The proxy also exposes a token-protected local summary endpoint and a discovery command for the upcoming macOS desktop app, and refuses to self-upgrade a binary that the desktop app manages.
 ```
 
 - [ ] **Step 2: Run the full gate**
