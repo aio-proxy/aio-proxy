@@ -196,7 +196,15 @@ export async function runWithin(
 export const defaultDesktopConnectDeps = (
   bundledVersion: string,
   spawnDeadline: number = Date.now() + SPAWN_BUDGET_MS,
-): DesktopConnectDeps => ({
+): DesktopConnectDeps => {
+  // Bun's fetch honours HTTP_PROXY even for loopback, which would hand the desktop token's bearer
+  // header to the proxy. `*` bypasses every host (a plain `::1` entry does not match [::1]); set on
+  // both spellings because the lowercase one wins. This process only probes the local control address.
+  process.env['NO_PROXY'] = process.env['no_proxy'] = '*';
+  return desktopConnectDeps(bundledVersion, spawnDeadline);
+};
+
+const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number): DesktopConnectDeps => ({
   platform: process.platform,
   env: process.env,
   bundledVersion,

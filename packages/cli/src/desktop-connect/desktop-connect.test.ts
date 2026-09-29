@@ -233,3 +233,50 @@ test('a helper that outlives the command budget is killed instead of hanging dis
   expect(performance.now() - started).toBeLessThan(2_000);
   await expect(runWithin(['true'], Date.now() - 1)).rejects.toThrow('budget');
 });
+
+test('discovery probes never route the desktop token through an environment proxy', async () => {
+  const seenByProxy: string[] = [];
+  const proxy = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: (req) => {
+      seenByProxy.push(req.headers.get('authorization') ?? '');
+      return new Response('proxied');
+    },
+  });
+  const seenByTarget: string[] = [];
+  const target = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch: (req) => {
+      seenByTarget.push(req.headers.get('authorization') ?? '');
+      return new Response('direct');
+    },
+  });
+  try {
+    const script = `
+      import { defaultDesktopConnectDeps } from ${JSON.stringify(join(import.meta.dir, 'desktop-connect.ts'))};
+      const deps = defaultDesktopConnectDeps('0.0.0');
+      const res = await deps.fetch(${JSON.stringify(`http://127.0.0.1:${target.port}/`)}, { headers: { authorization: 'Bearer secret' } });
+      console.log(await res.text());
+    `;
+    const child = Bun.spawn([process.execPath, '-e', script], {
+      stdout: 'pipe',
+      stderr: 'inherit',
+      env: {
+        ...process.env,
+        HTTP_PROXY: `http://127.0.0.1:${proxy.port}`,
+        http_proxy: `http://127.0.0.1:${proxy.port}`,
+        NO_PROXY: '',
+        no_proxy: '',
+      },
+    });
+    expect((await new Response(child.stdout).text()).trim()).toBe('direct');
+    await child.exited;
+    expect(seenByProxy).toEqual([]);
+    expect(seenByTarget).toEqual(['Bearer secret']);
+  } finally {
+    await proxy.stop(true);
+    await target.stop(true);
+  }
+});
