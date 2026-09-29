@@ -94,6 +94,8 @@ export type ServerState = ProviderRouteSource & {
   readonly agentIdentity: AgentIdentityService;
   readonly close: () => void;
   readonly configPath: string | undefined;
+  /** The local desktop client's credential, loaded once at boot; absent when there is no home or the file was rejected. */
+  readonly desktopToken?: string;
   readonly configStore: ConfigStore;
   readonly events: DashboardEventHub;
   readonly modelRouting: ModelRoutingControlPlane;

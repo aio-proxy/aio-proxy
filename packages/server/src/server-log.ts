@@ -1,3 +1,5 @@
+import type { DesktopTokenRejection } from '@aio-proxy/core';
+
 import { safeDiagnosticFields } from './request-logging/capture-policy';
 import { capturesRequestPayload } from './request-logging/context';
 import type { HttpRequestMetadata } from './request-logging/request-metadata';
@@ -11,6 +13,12 @@ export type ConfigReloadLog = {
 export type ConfigOAuthLeftoverModelsLog = {
   readonly event: 'config.oauth_leftover_models';
   readonly providerId: string;
+};
+
+export type DesktopTokenUnavailableLog = {
+  readonly event: 'desktop_token.unavailable';
+  /** A closed vocabulary: never the token path or an errno message. */
+  readonly reason: DesktopTokenRejection | 'unwritable';
 };
 
 export type DashboardAuthUnavailableLog = {
@@ -298,6 +306,7 @@ export type ServerLog =
   | ConfigOAuthLeftoverModelsLog
   | ConfigReloadLog
   | DashboardAuthUnavailableLog
+  | DesktopTokenUnavailableLog
   | GuardianEvaluationUnavailableLog
   | OtelExportLog
   | RealtimeCallCreatedLog
