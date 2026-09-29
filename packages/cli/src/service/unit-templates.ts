@@ -51,7 +51,16 @@ WantedBy=default.target
 // mirrors the systemd unit's RestartPreventExitStatus=1. RunAtLoad starts it on
 // load. The wrapper only remaps the exit code; it never sources the env file
 // (the daemon loads service.env itself), so no shell touches provider secrets.
-const LAUNCHD_EXEC_WRAPPER = '"$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"';
+//
+// `[ -x "$0" ] || exit 0` turns a vanished executable (desktop app deleted, brew uninstalled) into a
+// clean exit, which SuccessfulExit=false does not relaunch; otherwise launchd respawns it forever.
+export const LAUNCHD_EXEC_WRAPPER =
+  '[ -x "$0" ] || exit 0; "$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"';
+
+/** Wrappers written by earlier releases; still recognized as ours when inspecting an installed plist. */
+export const LEGACY_LAUNCHD_EXEC_WRAPPERS: readonly string[] = [
+  '"$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"',
+];
 
 const launchdText = (name: string, value: string): Bun.XML.NodeInput => ({ name, children: [value] });
 const launchdEmpty = (name: string): Bun.XML.NodeInput => ({ name, children: [] });

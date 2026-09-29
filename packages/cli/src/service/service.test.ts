@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,6 +13,7 @@ import {
   serviceStart,
   writeManagedUnit,
 } from './service';
+import { LAUNCHD_EXEC_WRAPPER } from './unit-templates';
 
 for (const platform of ['linux', 'darwin'] as const) {
   for (const command of [serviceStart, serviceRestart]) {
@@ -154,7 +155,7 @@ test('launchd plist serializes a valid launchd document', () => {
   expect(elements(at(3).children).map(text)).toEqual([
     '/bin/sh',
     '-c',
-    '"$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"',
+    LAUNCHD_EXEC_WRAPPER,
     '/usr/local/bin/aio-proxy',
   ]);
   expect(text(at(4))).toBe('EnvironmentVariables');
@@ -584,4 +585,23 @@ test('Darwin TTY serviceRestart unloads in-process and does not spawn a detached
   expect(spawned).toEqual([]);
   expect(manager.some((cmd) => cmd.includes('unload'))).toBe(true);
   expect(manager.some((cmd) => cmd.includes('load'))).toBe(true);
+});
+
+const runWrapper = (exec: string) =>
+  Bun.spawnSync(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, exec], { stdout: 'ignore', stderr: 'ignore' }).exitCode;
+
+test('the launchd wrapper exits cleanly when its executable is gone, so KeepAlive does not respawn it', () => {
+  expect(runWrapper(join(tmpdir(), 'aio-proxy-missing', 'aio-proxy'))).toBe(0);
+});
+
+test('the launchd wrapper still reports real failures and remaps only exit 1', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-wrapper-'));
+  const exitsWith = (code: number) => {
+    const path = join(dir, `exit-${code}`);
+    writeFileSync(path, `#!/bin/sh\nexit ${code}\n`);
+    chmodSync(path, 0o755);
+    return path;
+  };
+  expect(runWrapper(exitsWith(3))).toBe(3);
+  expect(runWrapper(exitsWith(1))).toBe(0);
 });
