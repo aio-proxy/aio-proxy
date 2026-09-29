@@ -74,7 +74,7 @@
 
 ### Minor Changes
 
-- [#399](https://github.com/aio-proxy/aio-proxy/pull/399) [`571c394`](https://github.com/aio-proxy/aio-proxy/commit/571c3944b9345196468a241212618def08955d9d) Thanks [@baranwang](https://github.com/baranwang)! - Trace timelines now use stable start ordering, standard HTTP and GenAI semantics, redacted upstream URLs, and accurate provider, failover, TTFT, and usage attribution. OAuth runtimes can explicitly declare their GenAI provider identity; raw transports can declare upstream URL templates, while converted calls omit templates unless authoritative transport metadata is available.
+- [#399](https://github.com/aio-proxy/aio-proxy/pull/399) [`571c394`](https://github.com/aio-proxy/aio-proxy/commit/571c3944b9345196468a241212618def08955d9d) Thanks @baranwang - Trace timelines now use stable start ordering, standard HTTP and GenAI semantics, redacted upstream URLs, and accurate provider, failover, TTFT, and usage attribution. OAuth runtimes can explicitly declare their GenAI provider identity; raw transports can declare upstream URL templates, while converted calls omit templates unless authoritative transport metadata is available.
 
 ### Patch Changes
 
@@ -197,7 +197,7 @@
 
 ### Patch Changes
 
-- [#311](https://github.com/aio-proxy/aio-proxy/pull/311) [`1018663`](https://github.com/aio-proxy/aio-proxy/commit/1018663bbc459485c25a995a2bfb81454738b3f1) Thanks [@baranwang](https://github.com/baranwang)! - Rename the built-in Claude Pro/Max plugin to `@aio-proxy/plugin-claude-code`
+- [#311](https://github.com/aio-proxy/aio-proxy/pull/311) [`1018663`](https://github.com/aio-proxy/aio-proxy/commit/1018663bbc459485c25a995a2bfb81454738b3f1) Thanks @baranwang - Rename the built-in Claude Pro/Max plugin to `@aio-proxy/plugin-claude-code`
 - Updated dependencies []:
   - @aio-proxy/plugin-sdk@0.20.1
 
@@ -205,7 +205,7 @@
 
 ### Minor Changes
 
-- [#302](https://github.com/aio-proxy/aio-proxy/pull/302) [`b3b181a`](https://github.com/aio-proxy/aio-proxy/commit/b3b181aebd9a8c36de14dc05076c137e96a49332) Thanks [@baranwang](https://github.com/baranwang)! - anthropic-claude: add Claude Pro/Max subscription OAuth login, model discovery, and Anthropic runtime
+- [#302](https://github.com/aio-proxy/aio-proxy/pull/302) [`b3b181a`](https://github.com/aio-proxy/aio-proxy/commit/b3b181aebd9a8c36de14dc05076c137e96a49332) Thanks @baranwang - anthropic-claude: add Claude Pro/Max subscription OAuth login, model discovery, and Anthropic runtime
 
 ### Patch Changes
 

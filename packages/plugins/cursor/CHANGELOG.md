@@ -116,7 +116,7 @@
 
 ### Patch Changes
 
-- [#378](https://github.com/aio-proxy/aio-proxy/pull/378) [`67e63dd`](https://github.com/aio-proxy/aio-proxy/commit/67e63dde4e3b60b0cae31cbf37f1d70d1aac02e9) Thanks [@baranwang](https://github.com/baranwang)! - Fixed Cursor multimodal follow-up requests failing after an inline image moved into conversation history, including pending tool resumes, without dropping Cursor-owned conversation turns.
+- [#378](https://github.com/aio-proxy/aio-proxy/pull/378) [`67e63dd`](https://github.com/aio-proxy/aio-proxy/commit/67e63dde4e3b60b0cae31cbf37f1d70d1aac02e9) Thanks @baranwang - Fixed Cursor multimodal follow-up requests failing after an inline image moved into conversation history, including pending tool resumes, without dropping Cursor-owned conversation turns.
 - Updated dependencies []:
   - @aio-proxy/plugin-sdk@0.26.0
   - @aio-proxy/types@0.26.0
@@ -205,7 +205,7 @@
 
 ### Patch Changes
 
-- [#324](https://github.com/aio-proxy/aio-proxy/pull/324) [`7877705`](https://github.com/aio-proxy/aio-proxy/commit/7877705e72bacd55ef197117e71b683888026789) Thanks [@baranwang](https://github.com/baranwang)! - Cursor now returns explicit failures for unsupported native tools and completes rejected tool execution streams so the upstream turn can continue. Bounded protocol diagnostics help investigate remaining stalls.
+- [#324](https://github.com/aio-proxy/aio-proxy/pull/324) [`7877705`](https://github.com/aio-proxy/aio-proxy/commit/7877705e72bacd55ef197117e71b683888026789) Thanks @baranwang - Cursor now returns explicit failures for unsupported native tools and completes rejected tool execution streams so the upstream turn can continue. Bounded protocol diagnostics help investigate remaining stalls.
 - Updated dependencies [[`6eca232`](https://github.com/aio-proxy/aio-proxy/commit/6eca2326aec9908634e4975448485b9972ea0ee8)]:
   - @aio-proxy/types@0.20.3
   - @aio-proxy/plugin-sdk@0.20.3
@@ -214,9 +214,9 @@
 
 ### Patch Changes
 
-- [#317](https://github.com/aio-proxy/aio-proxy/pull/317) [`06be481`](https://github.com/aio-proxy/aio-proxy/commit/06be481bd9e14795561b498dd855c8432e243289) Thanks [@baranwang](https://github.com/baranwang)! - Fix Cursor OAuth requests hanging on interaction or stream completion, losing tool arguments or sibling calls, and repeating tools because resumed context omitted their calls and results. Stalled runs now terminate with clearer diagnostics.
+- [#317](https://github.com/aio-proxy/aio-proxy/pull/317) [`06be481`](https://github.com/aio-proxy/aio-proxy/commit/06be481bd9e14795561b498dd855c8432e243289) Thanks @baranwang - Fix Cursor OAuth requests hanging on interaction or stream completion, losing tool arguments or sibling calls, and repeating tools because resumed context omitted their calls and results. Stalled runs now terminate with clearer diagnostics.
 
-- [#316](https://github.com/aio-proxy/aio-proxy/pull/316) [`3b4c12e`](https://github.com/aio-proxy/aio-proxy/commit/3b4c12e0e3f5b502cacf4c22aa9a88188608c3da) Thanks [@baranwang](https://github.com/baranwang)! - The plugin SDK now exports shared abortableSleep and dedupeQuotaItemIds helpers, preserving OAuth cancellation reasons and provider-specific quota IDs. Removed unused UI and internal wrappers, plus the unused AioModelMessage and AioStreamPart schemas and associated types from @aio-proxy/types.
+- [#316](https://github.com/aio-proxy/aio-proxy/pull/316) [`3b4c12e`](https://github.com/aio-proxy/aio-proxy/commit/3b4c12e0e3f5b502cacf4c22aa9a88188608c3da) Thanks @baranwang - The plugin SDK now exports shared abortableSleep and dedupeQuotaItemIds helpers, preserving OAuth cancellation reasons and provider-specific quota IDs. Removed unused UI and internal wrappers, plus the unused AioModelMessage and AioStreamPart schemas and associated types from @aio-proxy/types.
 - Updated dependencies [[`3b4c12e`](https://github.com/aio-proxy/aio-proxy/commit/3b4c12e0e3f5b502cacf4c22aa9a88188608c3da)]:
   - @aio-proxy/types@0.20.2
   - @aio-proxy/plugin-sdk@0.20.2
@@ -233,7 +233,7 @@
 
 ### Minor Changes
 
-- [#308](https://github.com/aio-proxy/aio-proxy/pull/308) [`8b02edd`](https://github.com/aio-proxy/aio-proxy/commit/8b02edd711a54102661c41199a60f10396f7dce3) Thanks [@baranwang](https://github.com/baranwang)! - Subscription quota bars now mark where an even burn would have left the allowance by now, turning
+- [#308](https://github.com/aio-proxy/aio-proxy/pull/308) [`8b02edd`](https://github.com/aio-proxy/aio-proxy/commit/8b02edd711a54102661c41199a60f10396f7dce3) Thanks @baranwang - Subscription quota bars now mark where an even burn would have left the allowance by now, turning
   red when the window is being spent faster than that and drawing nothing while it tracks even. The
   marker appears wherever the provider reports how long the window lasts, which the bundled OAuth
   plugins now do; plugins can opt in through the new optional `OAuthQuotaItem.windowMinutes`. The
@@ -241,7 +241,7 @@
 
 ### Patch Changes
 
-- [#309](https://github.com/aio-proxy/aio-proxy/pull/309) [`1340b97`](https://github.com/aio-proxy/aio-proxy/commit/1340b97cfa5d277a886bbda43ebb4abdbc7fffc6) Thanks [@baranwang](https://github.com/baranwang)! - Fix Cursor OAuth account labels to use the account email after sign-in or credential refresh even when the access token omits it. If the account lookup is unavailable, keep the existing label without failing authentication.
+- [#309](https://github.com/aio-proxy/aio-proxy/pull/309) [`1340b97`](https://github.com/aio-proxy/aio-proxy/commit/1340b97cfa5d277a886bbda43ebb4abdbc7fffc6) Thanks @baranwang - Fix Cursor OAuth account labels to use the account email after sign-in or credential refresh even when the access token omits it. If the account lookup is unavailable, keep the existing label without failing authentication.
 - Updated dependencies [[`13a6c91`](https://github.com/aio-proxy/aio-proxy/commit/13a6c9153739049dab5443dd3ac7d570f7e80690), [`692795c`](https://github.com/aio-proxy/aio-proxy/commit/692795c49f26e93e93af79cb611043a1e82c307a), [`681b039`](https://github.com/aio-proxy/aio-proxy/commit/681b039164281d7ab28c09ce1a61aae064caa6a0), [`8b02edd`](https://github.com/aio-proxy/aio-proxy/commit/8b02edd711a54102661c41199a60f10396f7dce3)]:
   - @aio-proxy/plugin-sdk@0.20.0
   - @aio-proxy/types@0.20.0
@@ -290,11 +290,11 @@
 
 ### Minor Changes
 
-- [#263](https://github.com/aio-proxy/aio-proxy/pull/263) [`1d688b5`](https://github.com/aio-proxy/aio-proxy/commit/1d688b5090fdbb004435f7e41042464e24885936) Thanks [@baranwang](https://github.com/baranwang)! - cursor: report Cursor OAuth quota in the dashboard
+- [#263](https://github.com/aio-proxy/aio-proxy/pull/263) [`1d688b5`](https://github.com/aio-proxy/aio-proxy/commit/1d688b5090fdbb004435f7e41042464e24885936) Thanks @baranwang - cursor: report Cursor OAuth quota in the dashboard
 
   The Cursor OAuth adapter now reads `cursor.com/api/usage-summary`, so its Provider card shows the quota ring: plan usage, the Auto and named-model lanes, the on-demand budget when the account has a cap, and the Cursor subscription tier, all resetting at the billing-cycle end. Accounts with a Grok Bot allowance also get its weekly lane; that read is best-effort and never fails the monthly bars. No re-login is needed — the session is derived from the access token already on file.
 
-- [#260](https://github.com/aio-proxy/aio-proxy/pull/260) [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f) Thanks [@baranwang](https://github.com/baranwang)! - Refresh an OAuth Provider's credential on demand from the dashboard Provider card menu.
+- [#260](https://github.com/aio-proxy/aio-proxy/pull/260) [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f) Thanks @baranwang - Refresh an OAuth Provider's credential on demand from the dashboard Provider card menu.
 
   OAuth Providers whose plugin supports it gain a "Refresh Credential" entry in the card's ⋯ menu that
   forces an upstream token exchange even when the current credential has not expired, clears a stale
@@ -370,7 +370,7 @@
 
 ### Patch Changes
 
-- [#230](https://github.com/aio-proxy/aio-proxy/pull/230) [`e674d9a`](https://github.com/aio-proxy/aio-proxy/commit/e674d9a225d36d03fb388c223a6559beff6adb4d) Thanks [@baranwang](https://github.com/baranwang)! - oauth: show normalized account emails for connected OAuth providers
+- [#230](https://github.com/aio-proxy/aio-proxy/pull/230) [`e674d9a`](https://github.com/aio-proxy/aio-proxy/commit/e674d9a225d36d03fb388c223a6559beff6adb4d) Thanks @baranwang - oauth: show normalized account emails for connected OAuth providers
 - Updated dependencies [[`70756e3`](https://github.com/aio-proxy/aio-proxy/commit/70756e3fe1bd63be4871bd2dc9901b159db47de6)]:
   - @aio-proxy/types@0.12.1
   - @aio-proxy/plugin-sdk@0.12.1
@@ -379,13 +379,13 @@
 
 ### Minor Changes
 
-- [#226](https://github.com/aio-proxy/aio-proxy/pull/226) [`9c16d0b`](https://github.com/aio-proxy/aio-proxy/commit/9c16d0b56a954563a296e5363869d5bae12ffda2) Thanks [@baranwang](https://github.com/baranwang)! - Configure model metadata once per exposed model at `router.models.<slug>.metadata`, including `extend`, with per-Provider `cost` and `limit` overrides under `router.models.<slug>.providers.<id>`. The removed `providers.<id>.metadata` field is silently ignored, and metadata keys no longer create routes; expose models through `providers.<id>.models` or `alias`. Metadata editing now lives in the Dashboard routing drawer instead of the Provider editor.
+- [#226](https://github.com/aio-proxy/aio-proxy/pull/226) [`9c16d0b`](https://github.com/aio-proxy/aio-proxy/commit/9c16d0b56a954563a296e5363869d5bae12ffda2) Thanks @baranwang - Configure model metadata once per exposed model at `router.models.<slug>.metadata`, including `extend`, with per-Provider `cost` and `limit` overrides under `router.models.<slug>.providers.<id>`. The removed `providers.<id>.metadata` field is silently ignored, and metadata keys no longer create routes; expose models through `providers.<id>.models` or `alias`. Metadata editing now lives in the Dashboard routing drawer instead of the Provider editor.
 
   Rename the plugin SDK's free-form `ModelDescriptor.metadata`, `ModelCatalog.metadata`, and raw-resolver `metadata` input to `extra`, and add typed `ModelDescriptor.modelMetadata` for host-consumed model metadata. Publish `@aio-proxy/types` as the SDK metadata type source.
 
 ### Patch Changes
 
-- [#228](https://github.com/aio-proxy/aio-proxy/pull/228) [`2cb5333`](https://github.com/aio-proxy/aio-proxy/commit/2cb5333493e582b676e34565246cfa0defb24dca) Thanks [@baranwang](https://github.com/baranwang)! - Upgrade Zod to 4.5 and compile inbound protocol request schemas with `z.compile()` (except OpenAI Responses, whose unknown-item transform logs). Upgrade es-toolkit to 1.52. Use `isPlainObject` for JSON and other plain data. Structural plugin/SDK contracts that may be class instances use `isRecord` from the published `@aio-proxy/shared` leaf package. Replace spread-Set arrays with `uniq` in packages that already depend on es-toolkit.
+- [#228](https://github.com/aio-proxy/aio-proxy/pull/228) [`2cb5333`](https://github.com/aio-proxy/aio-proxy/commit/2cb5333493e582b676e34565246cfa0defb24dca) Thanks @baranwang - Upgrade Zod to 4.5 and compile inbound protocol request schemas with `z.compile()` (except OpenAI Responses, whose unknown-item transform logs). Upgrade es-toolkit to 1.52. Use `isPlainObject` for JSON and other plain data. Structural plugin/SDK contracts that may be class instances use `isRecord` from the published `@aio-proxy/shared` leaf package. Replace spread-Set arrays with `uniq` in packages that already depend on es-toolkit.
 - Updated dependencies [[`9c16d0b`](https://github.com/aio-proxy/aio-proxy/commit/9c16d0b56a954563a296e5363869d5bae12ffda2), [`2cb5333`](https://github.com/aio-proxy/aio-proxy/commit/2cb5333493e582b676e34565246cfa0defb24dca)]:
   - @aio-proxy/plugin-sdk@0.12.0
   - @aio-proxy/types@0.12.0
@@ -434,7 +434,7 @@
 
 ### Patch Changes
 
-- [#184](https://github.com/aio-proxy/aio-proxy/pull/184) [`9b6f0a3`](https://github.com/aio-proxy/aio-proxy/commit/9b6f0a3f26d6bb22fc20298dc203825dca818309) Thanks [@baranwang](https://github.com/baranwang)! - Cursor first-login now writes family aliases from AvailableModels, so clients can request names like `claude-sonnet-4-6` / `grok-4.6` and match thinking, effort, and speed onto the live wire slug.
+- [#184](https://github.com/aio-proxy/aio-proxy/pull/184) [`9b6f0a3`](https://github.com/aio-proxy/aio-proxy/commit/9b6f0a3f26d6bb22fc20298dc203825dca818309) Thanks @baranwang - Cursor first-login now writes family aliases from AvailableModels, so clients can request names like `claude-sonnet-4-6` / `grok-4.6` and match thinking, effort, and speed onto the live wire slug.
 - Updated dependencies [[`3f0e371`](https://github.com/aio-proxy/aio-proxy/commit/3f0e3719028e1a506b2dffd81982c2def32d1db8), [`87126aa`](https://github.com/aio-proxy/aio-proxy/commit/87126aadb95151258c8d1a4e52e0f3e854ee0e54), [`b1d9481`](https://github.com/aio-proxy/aio-proxy/commit/b1d948127f8f289a588aa3c9fe4ae7329b8d06b9), [`b1d9481`](https://github.com/aio-proxy/aio-proxy/commit/b1d948127f8f289a588aa3c9fe4ae7329b8d06b9), [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b), [`2797531`](https://github.com/aio-proxy/aio-proxy/commit/2797531548755924713f880e6ef0cbcb00923bf5), [`c5b04c1`](https://github.com/aio-proxy/aio-proxy/commit/c5b04c183b0a9669f518bcb18f38019e96d3a8ca), [`f2d1122`](https://github.com/aio-proxy/aio-proxy/commit/f2d1122b6a946a302902070b288c9093d091808b), [`bf7a1cc`](https://github.com/aio-proxy/aio-proxy/commit/bf7a1cce861313f8294822bb78e2d573c658c250), [`4bddead`](https://github.com/aio-proxy/aio-proxy/commit/4bddead355c37861e89dd57cf2a6a3514d4b35dc), [`60996d3`](https://github.com/aio-proxy/aio-proxy/commit/60996d3f0927636a3531c01fce35ba30015973a7), [`9b6f0a3`](https://github.com/aio-proxy/aio-proxy/commit/9b6f0a3f26d6bb22fc20298dc203825dca818309)]:
   - @aio-proxy/types@0.9.0
   - @aio-proxy/plugin-sdk@0.9.0
@@ -450,7 +450,7 @@
 
 ### Minor Changes
 
-- [#175](https://github.com/aio-proxy/aio-proxy/pull/175) [`a218496`](https://github.com/aio-proxy/aio-proxy/commit/a218496f461450d1e87757c2aed9770e75b9a6e5) Thanks [@baranwang](https://github.com/baranwang)! - Plugins move display identity into descriptor metadata (`displayName` / `accountLabel`; remove legacy `label` and OAuth capability icons). Add Cursor account OAuth/provider support. Normalize OpenAI Responses errors to `response.failed` for Codex.
+- [#175](https://github.com/aio-proxy/aio-proxy/pull/175) [`a218496`](https://github.com/aio-proxy/aio-proxy/commit/a218496f461450d1e87757c2aed9770e75b9a6e5) Thanks @baranwang - Plugins move display identity into descriptor metadata (`displayName` / `accountLabel`; remove legacy `label` and OAuth capability icons). Add Cursor account OAuth/provider support. Normalize OpenAI Responses errors to `response.failed` for Codex.
 
 ### Patch Changes
 

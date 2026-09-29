@@ -120,7 +120,7 @@ No changes in this release.
 
 ### Patch Changes
 
-- [#293](https://github.com/aio-proxy/aio-proxy/pull/293) [`cf45f02`](https://github.com/aio-proxy/aio-proxy/commit/cf45f0222aa85754e64f19dee184228769c97ddd) Thanks [@baranwang](https://github.com/baranwang)! - Render the AIO Proxy wordmark from vector geometry instead of a webfont
+- [#293](https://github.com/aio-proxy/aio-proxy/pull/293) [`cf45f02`](https://github.com/aio-proxy/aio-proxy/commit/cf45f0222aa85754e64f19dee184228769c97ddd) Thanks @baranwang - Render the AIO Proxy wordmark from vector geometry instead of a webfont
 
   The dashboard logo drew "Proxy" with an SVG `<text>` element styled
   `font-heading font-semibold`. If that webfont had not loaded when the logo

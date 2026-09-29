@@ -100,7 +100,7 @@
 
 ### Patch Changes
 
-- [#395](https://github.com/aio-proxy/aio-proxy/pull/395) [`46d63d1`](https://github.com/aio-proxy/aio-proxy/commit/46d63d187f1e91165f6a29a63dbe960826e128e9) Thanks [@baranwang](https://github.com/baranwang)! - Route Pi-family gpt-, claude-, and gemini- models through their native Responses, Anthropic, and Gemini APIs while preserving OpenAI Completions as the fallback. GPT sessions now forward stable cache and affinity identifiers to aio-proxy. Pi and OMP display the provider as AIO Proxy.
+- [#395](https://github.com/aio-proxy/aio-proxy/pull/395) [`46d63d1`](https://github.com/aio-proxy/aio-proxy/commit/46d63d187f1e91165f6a29a63dbe960826e128e9) Thanks @baranwang - Route Pi-family gpt-, claude-, and gemini- models through their native Responses, Anthropic, and Gemini APIs while preserving OpenAI Completions as the fallback. GPT sessions now forward stable cache and affinity identifiers to aio-proxy. Pi and OMP display the provider as AIO Proxy.
 - Updated dependencies []:
   - @aio-proxy/agent-provider-runtime@0.27.1
   - @aio-proxy/types@0.27.1
@@ -389,7 +389,7 @@
 
 ### Minor Changes
 
-- [#187](https://github.com/aio-proxy/aio-proxy/pull/187) [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b) Thanks [@baranwang](https://github.com/baranwang)! - Add managed OpenCode, Pi, and oh-my-pi Agent integrations. Configure them with `aio-proxy agent configure` (floors: OpenCode 1.17.10, Pi 0.84.2, oh-my-pi 17.3.7; login with `opencode auth login --provider aio-proxy` or `/login aio-proxy`). `aio-proxy upgrade` refreshes managed adapters; reload or restart the Agent after configure or upgrade. Exact string KPI values no longer lose visible precision. The plugin SDK descriptor contract, brand, and host accepted version are restored to v1; v2 descriptors are rejected. The xAI artifact smoke gate now follows plugin API v1.
+- [#187](https://github.com/aio-proxy/aio-proxy/pull/187) [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b) Thanks @baranwang - Add managed OpenCode, Pi, and oh-my-pi Agent integrations. Configure them with `aio-proxy agent configure` (floors: OpenCode 1.17.10, Pi 0.84.2, oh-my-pi 17.3.7; login with `opencode auth login --provider aio-proxy` or `/login aio-proxy`). `aio-proxy upgrade` refreshes managed adapters; reload or restart the Agent after configure or upgrade. Exact string KPI values no longer lose visible precision. The plugin SDK descriptor contract, brand, and host accepted version are restored to v1; v2 descriptors are rejected. The xAI artifact smoke gate now follows plugin API v1.
 
 ### Patch Changes
 
