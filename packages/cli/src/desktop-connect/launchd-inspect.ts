@@ -34,7 +34,7 @@ export function unitOwner(
 ): 'desktop' | 'external' | 'unknown' | null {
   if (!unit.present) return null;
   if (!unit.wrapperValid || unit.target === null) return 'unknown';
-  return desktopExec !== undefined && unit.target === desktopExec ? 'desktop' : 'external';
+  return desktopExec !== undefined && desktopExec !== '' && unit.target === desktopExec ? 'desktop' : 'external';
 }
 
 export function parseJobPrint(code: number, stdout: string): { readonly loaded: boolean; readonly pid: number | null } {

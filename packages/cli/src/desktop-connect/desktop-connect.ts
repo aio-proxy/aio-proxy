@@ -67,9 +67,14 @@ async function readJob(deps: DesktopConnectDeps): Promise<DesktopConnectResult['
   try {
     const printed = await deps.run(['launchctl', 'print', launchdJobTarget()]);
     const disabled = await deps.run(['launchctl', 'print-disabled', launchdDomain()]);
-    return { ...parseJobPrint(printed.code, printed.stdout), disabled: parseDisabled(disabled.stdout) };
+    // Fail closed: an unreadable disabled state must never look "enabled", or the app would `enable` a
+    // job the user stopped.
+    return {
+      ...parseJobPrint(printed.code, printed.stdout),
+      disabled: disabled.code !== 0 || parseDisabled(disabled.stdout),
+    };
   } catch {
-    return { loaded: false, disabled: false, pid: null };
+    return { loaded: false, disabled: true, pid: null };
   }
 }
 
@@ -101,6 +106,14 @@ async function summaryIdentity(
   }
 }
 
+function readTokenSafely(deps: DesktopConnectDeps, home: string): string | undefined {
+  try {
+    return deps.readToken(home);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopConnectResult> {
   const unit = await readUnit(deps);
   const owner = unitOwner(unit, deps.env['AIO_PROXY_DESKTOP_EXEC']);
@@ -108,7 +121,8 @@ export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopC
   // The service's own home, not this process's environment: the app is launched from Finder and
   // does not inherit the shell that installed the service.
   const home = unit.home ?? deps.defaultHome();
-  const token = deps.readToken(home);
+  // An unreadable token degrades only the token; the unit/job/instance facts are still worth reporting.
+  const token = readTokenSafely(deps, home);
   const address = await resolveControlAddress({}, configPathIn(home));
   const host = localControlHost(address.host);
   if (host === undefined) {

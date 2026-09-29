@@ -38,6 +38,7 @@ test('owner compares the wrapper target with the desktop symlink', () => {
   expect(unitOwner(unit, '/link/aio-proxy')).toBe('desktop');
   expect(unitOwner(unit, '/other/aio-proxy')).toBe('external');
   expect(unitOwner(unit, undefined)).toBe('external');
+  expect(unitOwner(inspectUnit(plist(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, ''])), '')).toBe('external');
   expect(unitOwner(inspectUnit(plist(['/usr/local/bin/aio-proxy', 'run'])), '/link/aio-proxy')).toBe('unknown');
   expect(unitOwner({ present: false, wrapperValid: false, target: null, home: null }, '/link/aio-proxy')).toBeNull();
 });

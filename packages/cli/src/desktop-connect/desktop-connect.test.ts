@@ -30,6 +30,7 @@ type Scenario = {
   readonly summaryPid?: number;
   readonly summaryPpid?: number;
   readonly failLaunchctl?: boolean;
+  readonly disabledCode?: number;
 };
 
 const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | null }> = []): DesktopConnectDeps => ({
@@ -44,7 +45,7 @@ const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | 
     if (cmd[0] === 'plutil') return { code: 0, stdout: JSON.stringify(scenario.plist) };
     if (scenario.failLaunchctl === true) throw new Error('launchctl missing');
     if (cmd[1] === 'print') return scenario.jobPrint ?? { code: 113, stdout: '' };
-    return { code: 0, stdout: scenario.disabled ?? '' };
+    return { code: scenario.disabledCode ?? 0, stdout: scenario.disabled ?? '' };
   },
   fetch: (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -154,10 +155,32 @@ test('no plist falls back to the default home and reports no owner', async () =>
   expect(result.instance.controlUrl).toBe('http://127.0.0.1:9317');
 });
 
-test('a launchctl failure degrades the job fields instead of aborting', async () => {
+// An unknown disabled state must not read as "enabled": the app would then `enable` a job the user stopped.
+test('a launchctl failure degrades the job fields and fails closed on disabled', async () => {
   writeConfig(home(), '127.0.0.1', 9317);
   const result = await desktopConnect(deps({ plist: desktopPlist(), failLaunchctl: true }));
-  expect(result.job).toEqual({ loaded: false, disabled: false, pid: null });
+  expect(result.job).toEqual({ loaded: false, disabled: true, pid: null });
+});
+
+test('a print-disabled that exits non-zero reports disabled', async () => {
+  writeConfig(home(), '127.0.0.1', 9317);
+  const result = await desktopConnect(
+    deps({ plist: desktopPlist(), jobPrint: { code: 0, stdout: 'pid = 7\n' }, disabledCode: 1 }),
+  );
+  expect(result.job).toEqual({ loaded: true, disabled: true, pid: 7 });
+});
+
+test('an unreadable token degrades only the token', async () => {
+  writeConfig(home(), '127.0.0.1', 9317);
+  const result = await desktopConnect({
+    ...deps({ plist: desktopPlist() }),
+    readToken: () => {
+      throw new Error('EACCES: permission denied');
+    },
+  });
+  expect(result.token).toBeNull();
+  expect(result.unit.owner).toBe('desktop');
+  expect(result.instance.reachable).toBe(true);
 });
 
 test('the command prints exactly one JSON line', async () => {
@@ -176,7 +199,7 @@ test('a discovery step that throws still prints one JSON object, and it permits 
   let output = '';
   const throwing: DesktopConnectDeps = {
     ...deps({ plist: desktopPlist() }),
-    readToken: () => {
+    plistExists: () => {
       throw new Error('EACCES: permission denied');
     },
   };
