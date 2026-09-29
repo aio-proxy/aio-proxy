@@ -207,6 +207,31 @@ export const shutdownProxyServer = (
   }
 };
 
+/** launchd sends one SIGTERM and never escalates, and `shutdownProxyServer` returning does not end the
+ *  process: an outbound upstream connection or a timer can keep Bun's event loop alive. The listener is
+ *  already closed by then, but the orphan and its background work would linger, so the process bounds
+ *  its own exit. Exit 0 makes a forced stop look like a clean one to KeepAlive (SuccessfulExit=false). */
+export const SHUTDOWN_DEADLINE_MS = 3_000;
+
+export const onShutdownSignal = (shutdown: () => void, deadlineMs: number = SHUTDOWN_DEADLINE_MS): void => {
+  let closing = false;
+  const handle = (): void => {
+    if (closing) return;
+    closing = true;
+    // Armed first so a throwing or hanging shutdown is bounded too. unref() keeps the timer itself
+    // from holding the loop open, so a clean shutdown still exits as soon as the loop drains.
+    setTimeout(() => process.exit(0), deadlineMs).unref();
+    try {
+      shutdown();
+    } finally {
+      process.off('SIGINT', handle);
+      process.off('SIGTERM', handle);
+    }
+  };
+  process.once('SIGINT', handle);
+  process.once('SIGTERM', handle);
+};
+
 export const run = (deps: CliDeps) => async (options: RunOptions) => {
   const resolvedConfigPath = configPath();
   const dashboardUrlFor = (host: string, port: number) => {
@@ -255,19 +280,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
     throw error;
   }
 
-  let closing = false;
-  const shutdown = (): void => {
-    if (closing) return;
-    closing = true;
-    try {
-      shutdownProxyServer(server, app);
-    } finally {
-      process.off('SIGINT', shutdown);
-      process.off('SIGTERM', shutdown);
-    }
-  };
-  process.once('SIGINT', shutdown);
-  process.once('SIGTERM', shutdown);
+  onShutdownSignal(() => shutdownProxyServer(server, app));
   console.error(formatRunSummary(controlBaseUrl(server.hostname ?? host, String(server.port)), dashboardUrl));
   if (options.open === true) {
     openBrowser(dashboardUrl);
