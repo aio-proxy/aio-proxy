@@ -14,7 +14,7 @@ Spike code: branch `spike/desktop`, commits `d3c12c105` through `85b85767d`. The
 
 ## Verdict
 
-**CONDITIONAL GO.** Every automatable check passed or was settled by a ruling; each spike check still has human confirmation items.
+**CONDITIONAL GO.** Every automatable check passed or was settled by a ruling; each spike check still has human confirmation items. The Phase 1 plan may be implemented on its feature branch, but it does not merge to `main` until check 1's human items (6, 9, 10 and 11 below, plus 7 and 8 for the entitlements) pass.
 
 | Check | Result | Still pending |
 | --- | --- | --- |
@@ -171,6 +171,7 @@ Measured on the bundled ad-hoc app, default std HTTP. Wakeups come from `proc_pi
 
 - The ~10 MB growth with default animation is one leaked `NSAnimation` thread per cycle, because the locked session never finishes the utility-window animation. `NSWindowAnimationBehaviorNone` removes it (flat after cycle 25, 7 threads).
 - **Window lifecycle: hybrid, PROVISIONAL** (ruling). On close, destroy the window and its Metal surface, and keep the summary model and last response in an app-level entity. Set `NSWindowAnimationBehaviorNone` on the GPUI panel after creation. Hybrid over destroy is a UX choice (no empty panel on reopen), not a measured difference. Switch to destroy if flash or latency testing argues against it; hide fails the closed budget.
+- **The chosen combination was never measured.** Hybrid ran only with the default animation, and animation None ran only with destroy. That hybrid with animation None stays flat like destroy-noanim is an expectation; human item 13 measures it.
 - Open questions: the rise from 0.10 to 0.37 wakeups/s after the first open/close (in every variant, so not the animation leak), and 7.7 MB of footprint that stays after the first open/close (mostly IOAccelerator +2.9 MB and malloc +3.6 MB; flat afterwards).
 
 ## Summary query on a 1 GB trace DB (Task 6)
@@ -264,8 +265,9 @@ Setup for all items: `git switch spike/desktop` (or `git worktree add ../aio-spi
     - `bench/measure.sh m-std; bench/measure.sh m-gpui SPIKE_HTTP=gpui`
     - `for s in destroy hide hybrid; do bench/cycles.sh c-$s SPIKE_CLOSE=$s > /tmp/spike6/c-$s.out; done`
     - `bench/cycles.sh c-destroy-noanim SPIKE_CLOSE=destroy SPIKE_NO_ANIM=1 > /tmp/spike6/c-destroy-noanim.out`
+    - `bench/cycles.sh c-hybrid-noanim SPIKE_CLOSE=hybrid SPIKE_NO_ANIM=1 > /tmp/spike6/c-hybrid-noanim.out` (the chosen lifecycle; never measured in the spike)
     - Do not touch the input devices while cycles run.
-    - Pass: closed footprint ≤ 40 MB; 100-cycle growth ≤ 10 MB with animation None; hide logs `next_frame_ms`. Report whether default-animation growth disappears (about 7 threads in `ps -M`) and whether the ~190 MB transient reproduces (`/tmp/spike6/fp <pid> 2000` around a toggle).
+    - Pass: closed footprint ≤ 40 MB; 100-cycle growth ≤ 10 MB with animation None, for both `c-destroy-noanim` and `c-hybrid-noanim`; hide logs `next_frame_ms`. If hybrid-noanim grows where destroy-noanim does not, fall back to destroy. Report whether default-animation growth disappears (about 7 threads in `ps -M`) and whether the ~190 MB transient reproduces (`/tmp/spike6/fp <pid> 2000` around a toggle).
 14. **powermetrics wakeups.**
     - After `bench/measure.sh m-std` has opened and closed the panel once: `sudo powermetrics --samplers tasks --show-process-wakeups -i 10000 -n 3 | grep -A2 aio-proxy-desktop`
     - Pass: ≤ 1 interrupt wakeup/s (expect about 0.4). Report whether the 0.10 → 0.37/s rise after the first open reproduces.

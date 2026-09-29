@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-29-desktop-client-design.md` (Phase 1 of its Phasing section, rev 4). The Phase 0 spike reported CONDITIONAL GO (`docs/superpowers/specs/2026-09-29-desktop-spike-findings.md`). Its pending human checks concern the UI stack, Developer ID signing and resource numbers, not a contract in this plan. This plan already carries the spike's corrections: `server.ppid` and `matchesJob` (C1), bootstrap-or-kickstart with `launchctl print` verification (C4), and the bounded `run` shutdown (C8).
 
+**Merge gate:** this plan may be implemented and reviewed on its feature branch now, but it must **not merge to `main`** until spike check 1's human items pass: Developer ID signing, notarization, the clean-Mac browser install, and the Developer ID Sparkle update (findings, human checklist items 6-11). A failure there blocks the plan as specified, and nothing here would ship without the app.
+
 ## Global Constraints
 
 - The desktop token authorizes exactly one route: `GET /dashboard/api/desktop-summary`. `DashboardAuthentication.verify()` is not changed. No other route accepts the token.
@@ -24,10 +26,18 @@
 - Changeset targets `aio-proxy` plus each touched internal package, same bump level.
 - A `launchctl` exit status is never proof that a job is loaded (legacy `load` exits 0 on "Load failed: 5"); read it back with `launchctl print`.
 - `launchctl print`'s `pid` is the `/bin/sh` wrapper, not the sidecar. Anything comparing it with a server pid uses the server's `ppid`.
+- `@aio-proxy/core` and `@aio-proxy/types` resolve to their built `dist` from other packages (`exports` → `./dist/index.js`). After a task changes either package's public exports, rebuild it (`bunx turbo run build --filter=@aio-proxy/core`, or `--filter=@aio-proxy/types`) before any other package's test uses the new export. `dist` is git-ignored, so the build is never committed.
+- Server and CLI tests run through each package's `test:unit` script (`bun run test:unit <paths>`), which preloads `__tests__/setup.ts`: an isolated `AIO_PROXY_HOME`, the models.dev fetch guard, and (server) closing every tracked server. A bare `bun test` there skips all three. Core runs `bun test <paths>`; types runs `bun test <paths>` (its `test:unit` always adds `./__tests__ ./src`).
+- A desktop-owned unit (wrapper target equal to its own `AIO_PROXY_DESKTOP_EXEC` marker) runs the app's binary. A CLI install's upgrade never restarts or rewrites it, and a desktop-managed sidecar never offers or announces a CLI update.
 
 ## Review Focus
 
-- A config whose `server.host` is `localhost` or `::1` (not only wildcards) must yield a literal loopback `controlUrl` — pinned in Task 10.
+- A config whose `server.host` is `localhost`, `::1` or `[::1]` (not only wildcards) must yield a literal loopback `controlUrl` — pinned in Task 10.
+- A token file that exists but cannot be read (mode `0000`) must read as "no token", never throw out of discovery — pinned in Task 1, with a last-resort JSON fallback in Task 11.
+- `__desktop-connect`'s fallback when discovery throws must report `owner: 'unknown'`, never `null`: `null` means "no plist", which the app answers with a fresh install — pinned in Task 11.
+- One plugin returning a `NaN` `resetsAt` or a ratio outside `0..1` must fail only that Provider's quota, not the summary — pinned in Task 4.
+- `bootout` can return before launchd has removed the job; `service restart` must wait for `launchctl print` to stop finding it before bootstrapping — pinned in Task 8.
+- A Homebrew `aio-proxy upgrade` next to a desktop-owned service must not restart it (the restart would rewrite the app's plist to the Homebrew binary) — pinned in Task 9.
 - A plist edited by hand so it lacks `EnvironmentVariables.AIO_PROXY_HOME` must fall back to the default home, not crash discovery — pinned in Task 11.
 - A server created with neither `configPath` nor `dbHome` (embedded use, many tests) must boot and answer 401 — pinned in Task 5.
 - A Provider whose quota capability is permanently unavailable must report `unsupported`, not `loading` forever — pinned in Task 4.
@@ -49,8 +59,10 @@
 **Interfaces:**
 - Produces:
   - `DESKTOP_TOKEN_FILE: 'desktop-token'`
-  - `readDesktopToken(home: string, options?: { readonly uid?: number }): string | undefined`
-  - `ensureDesktopToken(home: string, options?: { readonly uid?: number }): string` (throws `Error` whose message starts with `desktop token file rejected:` when a file exists but fails checks)
+  - `type DesktopTokenRejection = 'not_regular_file' | 'foreign_owner' | 'insecure_mode' | 'unreadable' | 'malformed'` — a closed set, so the server can log it (Task 5) without paths or errno text.
+  - `class DesktopTokenRejectedError extends Error { readonly reason: DesktopTokenRejection }`, message `desktop token file rejected: <reason>`.
+  - `readDesktopToken(home: string, options?: { readonly uid?: number }): string | undefined` — never throws for a present file; any failed check or read is `undefined`.
+  - `ensureDesktopToken(home: string, options?: { readonly uid?: number }): string` (throws `DesktopTokenRejectedError` when a file exists but fails checks; plain fs errors when the home is not writable)
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -61,7 +73,13 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, wr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { DESKTOP_TOKEN_FILE, ensureDesktopToken, readDesktopToken } from './desktop-token';
+import {
+  DESKTOP_TOKEN_FILE,
+  DesktopTokenRejectedError,
+  type DesktopTokenRejection,
+  ensureDesktopToken,
+  readDesktopToken,
+} from './desktop-token';
 
 let home: string;
 beforeEach(() => {
@@ -73,6 +91,16 @@ afterEach(() => {
 
 const tokenPath = () => join(home, DESKTOP_TOKEN_FILE);
 const validToken = 'A'.repeat(43);
+
+const rejectionOf = (create: () => unknown): DesktopTokenRejection | undefined => {
+  try {
+    create();
+  } catch (error) {
+    if (error instanceof DesktopTokenRejectedError) return error.reason;
+    throw error;
+  }
+  return undefined;
+};
 
 test('creates a private token once and returns the same value afterwards', () => {
   const first = ensureDesktopToken(home);
@@ -92,23 +120,23 @@ test('a missing file reads as no token', () => {
   expect(readDesktopToken(home)).toBeUndefined();
 });
 
-for (const [name, arrange] of [
-  ['group-readable', () => {
+for (const [name, reason, arrange] of [
+  ['group-readable', 'insecure_mode', () => {
     writeFileSync(tokenPath(), validToken, { mode: 0o600 });
     chmodSync(tokenPath(), 0o640);
   }],
-  ['a symlink', () => {
+  ['a symlink', 'not_regular_file', () => {
     const target = join(home, 'elsewhere');
     writeFileSync(target, validToken, { mode: 0o600 });
     symlinkSync(target, tokenPath());
   }],
-  ['malformed', () => writeFileSync(tokenPath(), 'short', { mode: 0o600 })],
+  ['malformed', 'malformed', () => writeFileSync(tokenPath(), 'short', { mode: 0o600 })],
 ] as const) {
-  test(`a ${name} token file is rejected and left untouched`, () => {
+  test(`a ${name} token file is rejected as ${reason} and left untouched`, () => {
     arrange();
     const before = readFileSync(tokenPath(), 'utf8');
     expect(readDesktopToken(home)).toBeUndefined();
-    expect(() => ensureDesktopToken(home)).toThrow(/^desktop token file rejected:/u);
+    expect(rejectionOf(() => ensureDesktopToken(home))).toBe(reason);
     expect(readFileSync(tokenPath(), 'utf8')).toBe(before);
   });
 }
@@ -117,7 +145,22 @@ test('a token file owned by another uid is rejected', () => {
   writeFileSync(tokenPath(), validToken, { mode: 0o600 });
   const otherUid = (process.getuid?.() ?? 0) + 1;
   expect(readDesktopToken(home, { uid: otherUid })).toBeUndefined();
-  expect(() => ensureDesktopToken(home, { uid: otherUid })).toThrow(/owned by another user/u);
+  expect(rejectionOf(() => ensureDesktopToken(home, { uid: otherUid }))).toBe('foreign_owner');
+});
+
+// Root can read a 0000 file, so the case only exists for a normal user.
+test.skipIf(process.getuid?.() === 0)('an unreadable token file reads as no token instead of throwing', () => {
+  writeFileSync(tokenPath(), validToken, { mode: 0o600 });
+  chmodSync(tokenPath(), 0o000);
+  expect(readDesktopToken(home)).toBeUndefined();
+  expect(rejectionOf(() => ensureDesktopToken(home))).toBe('unreadable');
+});
+
+// Opening a FIFO for reading blocks until a writer appears; the check must not hang the server's boot.
+test('a FIFO planted as the token file is rejected without blocking', () => {
+  expect(Bun.spawnSync(['mkfifo', tokenPath()]).exitCode).toBe(0);
+  expect(readDesktopToken(home)).toBeUndefined();
+  expect(rejectionOf(() => ensureDesktopToken(home))).toBe('not_regular_file');
 });
 
 test('concurrent creators in separate processes agree on one token', async () => {
@@ -146,8 +189,8 @@ import { randomBytes } from 'node:crypto';
 import {
   closeSync,
   constants,
+  fstatSync,
   linkSync,
-  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -158,29 +201,54 @@ import { join } from 'node:path';
 
 export const DESKTOP_TOKEN_FILE = 'desktop-token';
 
+/** Why a present token file was refused. Closed so it can be logged without a path or errno text. */
+export type DesktopTokenRejection = 'not_regular_file' | 'foreign_owner' | 'insecure_mode' | 'unreadable' | 'malformed';
+
+export class DesktopTokenRejectedError extends Error {
+  readonly reason: DesktopTokenRejection;
+
+  constructor(reason: DesktopTokenRejection) {
+    super(`desktop token file rejected: ${reason}`);
+    this.name = 'DesktopTokenRejectedError';
+    this.reason = reason;
+  }
+}
+
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 
 type TokenOptions = { readonly uid?: number };
-type Inspection = { readonly token: string } | { readonly missing: true } | { readonly rejected: string };
+type Inspection =
+  | { readonly token: string }
+  | { readonly missing: true }
+  | { readonly rejected: DesktopTokenRejection };
 
 function inspect(path: string, options: TokenOptions): Inspection {
-  let stat;
+  let fd: number;
   try {
-    stat = lstatSync(path);
+    // O_NOFOLLOW refuses a symlink (ELOOP); O_NONBLOCK keeps a planted FIFO from blocking the open.
+    // Every check below runs on the opened descriptor, so nothing can be swapped in between.
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { missing: true };
-    return { rejected: `cannot stat (${(error as Error).message})` };
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') return { missing: true };
+    return { rejected: code === 'ELOOP' ? 'not_regular_file' : 'unreadable' };
   }
-  // lstat does not follow links, so a symlink is not a regular file here.
-  if (!stat.isFile()) return { rejected: 'not a regular file' };
-  const uid = options.uid ?? process.getuid?.();
-  if (uid !== undefined && stat.uid !== uid) return { rejected: 'owned by another user' };
-  if ((stat.mode & 0o077) !== 0) return { rejected: 'readable or writable by group or others' };
-  const token = readFileSync(path, 'utf8').trim();
-  return TOKEN_PATTERN.test(token) ? { token } : { rejected: 'malformed contents' };
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) return { rejected: 'not_regular_file' };
+    const uid = options.uid ?? process.getuid?.();
+    if (uid !== undefined && stat.uid !== uid) return { rejected: 'foreign_owner' };
+    if ((stat.mode & 0o077) !== 0) return { rejected: 'insecure_mode' };
+    const token = readFileSync(fd, 'utf8').trim();
+    return TOKEN_PATTERN.test(token) ? { token } : { rejected: 'malformed' };
+  } catch {
+    return { rejected: 'unreadable' };
+  } finally {
+    closeSync(fd);
+  }
 }
 
-/** The desktop token, or `undefined` when the file is missing or fails the ownership and permission checks. */
+/** The desktop token, or `undefined` when the file is missing, unreadable, or fails the ownership and permission checks. */
 export function readDesktopToken(home: string, options: TokenOptions = {}): string | undefined {
   const result = inspect(join(home, DESKTOP_TOKEN_FILE), options);
   return 'token' in result ? result.token : undefined;
@@ -194,7 +262,7 @@ export function ensureDesktopToken(home: string, options: TokenOptions = {}): st
   const path = join(home, DESKTOP_TOKEN_FILE);
   const existing = inspect(path, options);
   if ('token' in existing) return existing.token;
-  if ('rejected' in existing) throw new Error(`desktop token file rejected: ${existing.rejected}`);
+  if ('rejected' in existing) throw new DesktopTokenRejectedError(existing.rejected);
   mkdirSync(home, { recursive: true, mode: 0o700 });
   const temp = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
   const fd = openSync(temp, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
@@ -213,27 +281,47 @@ export function ensureDesktopToken(home: string, options: TokenOptions = {}): st
   }
   const created = inspect(path, options);
   if ('token' in created) return created.token;
-  throw new Error(`desktop token file rejected: ${'rejected' in created ? created.rejected : 'missing after create'}`);
+  if ('rejected' in created) throw new DesktopTokenRejectedError(created.rejected);
+  throw new Error('desktop token file missing after create');
 }
 ```
 
 ```ts
 // packages/core/src/desktop-token/index.ts
-export { DESKTOP_TOKEN_FILE, ensureDesktopToken, readDesktopToken } from './desktop-token';
+export {
+  DESKTOP_TOKEN_FILE,
+  DesktopTokenRejectedError,
+  type DesktopTokenRejection,
+  ensureDesktopToken,
+  readDesktopToken,
+} from './desktop-token';
 ```
 
 In `packages/core/src/index.ts`, next to line 244 (`export { aioHome, configPath, ... } from './paths/index';`), add:
 
 ```ts
-export { DESKTOP_TOKEN_FILE, ensureDesktopToken, readDesktopToken } from './desktop-token/index';
+export {
+  DESKTOP_TOKEN_FILE,
+  DesktopTokenRejectedError,
+  type DesktopTokenRejection,
+  ensureDesktopToken,
+  readDesktopToken,
+} from './desktop-token/index';
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `cd packages/core && bun test src/desktop-token`
-Expected: PASS (7 tests).
+Expected: PASS (10 tests; the unreadable-file test is skipped when run as root).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Rebuild core for its consumers**
+
+Tasks 5 and 11 import these names from `@aio-proxy/core`, which resolves to `packages/core/dist`.
+
+Run: `bunx turbo run build --filter=@aio-proxy/core && cd packages/server && bun -e "const core = await import('@aio-proxy/core'); console.log(typeof core.ensureDesktopToken, typeof core.DesktopTokenRejectedError)"`
+Expected: the build succeeds, then `function function`.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add packages/core/src/desktop-token packages/core/src/index.ts
@@ -285,7 +373,7 @@ git commit -m "feat(core): add local desktop token file"
         "sampledAt": "2026-09-29T07:58:00.000Z",
         "refreshFailed": false,
         "windows": [
-          { "id": "primary", "label": { "en": "5 hours", "zh-Hans": "5 小时" }, "remainingRatio": 0.4, "resetsAt": "2026-09-29T10:00:00.000Z", "windowMinutes": 300 }
+          { "id": "primary", "label": { "default": "5 hours", "zh-Hans": "5 小时" }, "remainingRatio": 0.4, "resetsAt": "2026-09-29T10:00:00.000Z", "windowMinutes": 300 }
         ]
       }
     },
@@ -326,7 +414,7 @@ Expected: FAIL — `Cannot find module './desktop-summary'`.
 // packages/types/src/desktop-summary/desktop-summary.ts
 import { z } from 'zod';
 
-import { NonNegativeIntegerStringSchema } from '../dashboard/dashboard';
+import { NonNegativeIntegerStringSchema } from '../dashboard/index';
 import { DashboardLocalizedTextSchema } from '../dashboard-localized-text';
 
 // Every object is strict: this DTO is a cross-version contract with a native client, so an internal
@@ -426,14 +514,21 @@ export {
 } from './desktop-summary';
 ```
 
-Check `DashboardLocalizedTextSchema` accepts both a plain string and a locale map (read `packages/types/src/dashboard-localized-text.ts`); if it rejects the fixture's `{ "en": …, "zh-Hans": … }` shape, replace it in `DesktopQuotaWindowSchema` with `z.union([z.string().min(1), z.record(z.string(), z.string().min(1))])`.
+`DashboardLocalizedTextSchema` (`packages/types/src/dashboard-localized-text.ts`) accepts a trimmed non-empty string, or a map that **must** contain a `default` key plus canonical locale tags. That is why the fixture's label is `{ "default": …, "zh-Hans": … }`, the same shape plugins author as `LocalizedText`. Keep the schema as is.
 
 - [ ] **Step 4: Run tests**
 
-Run: `cd packages/types && bun test src/desktop-summary && bun test src/package-export.test.ts`
-Expected: PASS. If `package-export.test.ts` enumerates public exports, add the new names where it expects them.
+Run: `cd packages/types && bun test src/desktop-summary`
+Expected: PASS (1 test).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Rebuild types for its consumers**
+
+Tasks 4 and 5 import `DesktopSummaryV1Schema` and `DesktopQuotaSchema` from `@aio-proxy/types`, which resolves to `packages/types/dist`.
+
+Run: `bunx turbo run build --filter=@aio-proxy/types && cd packages/server && bun -e "const types = await import('@aio-proxy/types'); console.log(typeof types.DesktopSummaryV1Schema, typeof types.DesktopQuotaSchema)"`
+Expected: the build succeeds, then `object object`.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add packages/types/src/desktop-summary packages/types/src/index.ts
@@ -498,21 +593,37 @@ test('status reports a permanently unsupported provider as unsupported', async (
 });
 
 test('refresh bypasses the cooldown in the background and shares one in-flight read', async () => {
-  const reader = countingReader([snapshot('a'), snapshot('b')]);
-  const cache = createOAuthQuotaCache(reader);
+  // The refresh read stays pending until released, so the test never depends on how many microtask
+  // turns the cache's promise chain takes.
+  let release: (value: OAuthQuotaSnapshot) => void = () => {};
+  let calls = 0;
+  const cache = createOAuthQuotaCache({
+    read: () => {
+      calls += 1;
+      if (calls === 1) return Promise.resolve(snapshot('a'));
+      return new Promise<OAuthQuotaSnapshot>((resolve) => {
+        release = resolve;
+      });
+    },
+  });
   await cache.read('p');
   cache.refresh('p');
   cache.refresh('p');
-  expect(reader.calls()).toBe(2);
-  await cache.read('p');
-  const status = cache.status('p');
-  expect(status.kind === 'ready' && status.entry.snapshot).toEqual(snapshot('b'));
+  expect(calls).toBe(2);
+  const during = cache.status('p');
+  expect(during.kind === 'ready' && during.entry.snapshot).toEqual(snapshot('a'));
+  release(snapshot('b'));
+  // read(…, true) joins the refresh already in flight instead of starting a third read.
+  await cache.read('p', true);
+  expect(calls).toBe(2);
+  const after = cache.status('p');
+  expect(after.kind === 'ready' && after.entry.snapshot).toEqual(snapshot('b'));
 });
 ```
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd packages/server && bun test src/plugin-quota/cache`
+Run: `cd packages/server && bun run test:unit src/plugin-quota/cache`
 Expected: FAIL — `cache.status is not a function`.
 
 - [ ] **Step 3: Implement**
@@ -560,7 +671,7 @@ In `cache/index.ts`, export `type OAuthQuotaCacheStatus` alongside the existing 
 
 - [ ] **Step 4: Run tests**
 
-Run: `cd packages/server && bun test src/plugin-quota src/server-state/quota-invalidation`
+Run: `cd packages/server && bun run test:unit src/plugin-quota src/server-state/quota-invalidation`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -580,7 +691,7 @@ git commit -m "feat(server): expose non-blocking quota cache status"
 - (Task 5 adds `index.ts` and the route file in the same directory.)
 
 **Interfaces:**
-- Consumes: `OAuthQuotaCacheStatus`, `status`/`refresh` from Task 3; `DesktopSummaryV1`, `DesktopSummaryV1Schema` from Task 2.
+- Consumes: `OAuthQuotaCacheStatus`, `status`/`refresh` from Task 3; `DesktopSummaryV1`, `DesktopSummaryV1Schema`, `DesktopQuotaSchema` from Task 2 (through the `types` dist rebuilt in Task 2 Step 5).
 - Produces:
   ```ts
   export type DesktopSummarySource = {
@@ -667,9 +778,51 @@ const source = (
 
 const input = { version: '0.36.0', pid: 4312, ppid: 4310, now, refresh: false };
 
-test('maps usage, the 7-day trend, and activity into the strict v1 shape', async () => {
-  const summary = await buildDesktopSummary(source([], async () => ({ items: [] })), input);
+test('maps usage, the 7-day trend, activity, and providers into the strict v1 shape', async () => {
+  const diagnostic = {
+    code: 'CREDENTIAL_REFRESH_FAILED' as const, summary: 'Refresh token expired', retryable: true,
+    occurredAt: now.toISOString(),
+  };
+  const cache = createOAuthQuotaCache({
+    read: async () => ({
+      items: [{
+        id: 'primary', displayName: { default: '5 hours', 'zh-Hans': '5 小时' }, remainingRatio: 0.4,
+        resetsAt: Date.parse('2026-09-29T10:00:00.000Z'), windowMinutes: 300,
+      }],
+    }),
+  });
+  await cache.read('codex');
+  // The input carries every internal summary field (kind, protocols, last_status, clientModels, …);
+  // the strict schema throws if any of them leaks into the DTO.
+  const summary = await buildDesktopSummary(
+    {
+      traceStore,
+      providerSummaries: async () => [
+        provider({ id: 'codex', name: 'Codex', hasQuota: true, state: { status: 'ready', diagnostic } }),
+      ],
+      quotaCache: cache,
+    },
+    input,
+  );
   expect(DesktopSummaryV1Schema.parse(summary)).toEqual(summary);
+  expect(summary.providers).toEqual([
+    {
+      id: 'codex',
+      name: 'Codex',
+      enabled: true,
+      state: 'degraded',
+      diagnostic: { code: 'CREDENTIAL_REFRESH_FAILED', summary: 'Refresh token expired' },
+      quota: {
+        status: 'ready',
+        sampledAt: expect.any(String),
+        refreshFailed: false,
+        windows: [{
+          id: 'primary', label: { default: '5 hours', 'zh-Hans': '5 小时' }, remainingRatio: 0.4,
+          resetsAt: '2026-09-29T10:00:00.000Z', windowMinutes: 300,
+        }],
+      },
+    },
+  ]);
   expect(summary.usage24h).toEqual({
     requests: '10', failedRequests: '3', inputTokens: '600', outputTokens: '400',
     estimatedCostNanoUsd: '20', pricingCoverage: 0.5,
@@ -716,6 +869,40 @@ test('one provider failing its quota read does not fail the summary', async () =
     windows: [{ id: 'primary', label: 'Primary', remainingRatio: 0, resetsAt: '2026-09-29T10:00:00.000Z', windowMinutes: 300 }],
   });
   expect(summary.alerts).toContainEqual({ providerId: 'good', kind: 'quota_exhausted', message: 'Primary' });
+});
+
+test('an exhausted window with a localized label alerts with its default text', async () => {
+  const cache = createOAuthQuotaCache({
+    read: async () => ({ items: [{ id: 'weekly', displayName: { 'zh-Hans': '每周', default: 'Weekly' }, remainingRatio: 0 }] }),
+  });
+  await cache.read('p');
+  const summary = await buildDesktopSummary(
+    { traceStore, providerSummaries: async () => [provider({ hasQuota: true })], quotaCache: cache },
+    input,
+  );
+  expect(summary.alerts).toEqual([{ providerId: 'p', kind: 'quota_exhausted', message: 'Weekly' }]);
+});
+
+// Plugin quota values are not validated at runtime. A NaN resetsAt makes toISOString throw, and a
+// ratio above 1 would break the contract; either must fail only its own Provider.
+test('a plugin returning an invalid quota window fails only that provider', async () => {
+  const items = {
+    nan: [{ id: 'w', displayName: 'W', resetsAt: Number.NaN }],
+    ratio: [{ id: 'w', displayName: 'W', remainingRatio: 1.5 }],
+    fine: [{ id: 'w', displayName: 'W', remainingRatio: 0.5 }],
+  } as const;
+  const cache = createOAuthQuotaCache({ read: async (id) => ({ items: items[id as keyof typeof items] }) });
+  for (const id of Object.keys(items)) await cache.read(id);
+  const summary = await buildDesktopSummary(
+    {
+      traceStore,
+      providerSummaries: async () => Object.keys(items).map((id) => provider({ id, hasQuota: true })),
+      quotaCache: cache,
+    },
+    input,
+  );
+  expect(summary.providers.map((entry) => entry.quota.status)).toEqual(['failed', 'failed', 'ready']);
+  expect(DesktopSummaryV1Schema.safeParse(summary).success).toBe(true);
 });
 
 test('a permanently unsupported quota capability reports unsupported, not loading forever', async () => {
@@ -780,7 +967,7 @@ If `DashboardUsageOverviewResponse`, `DashboardOverviewActivityResponse`, or `OA
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd packages/server && bun test src/dashboard-routes/desktop-summary`
+Run: `cd packages/server && bun run test:unit src/dashboard-routes/desktop-summary`
 Expected: FAIL — `Cannot find module './desktop-summary'`.
 
 - [ ] **Step 3: Implement**
@@ -789,9 +976,15 @@ Expected: FAIL — `Cannot find module './desktop-summary'`.
 // packages/server/src/dashboard-routes/desktop-summary/desktop-summary.ts
 import type { TraceStore } from '@aio-proxy/core/db';
 import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
-import type { DashboardProviderSummary, DesktopProvider, DesktopQuota, DesktopSummaryV1 } from '@aio-proxy/types';
+import {
+  DesktopQuotaSchema,
+  type DashboardProviderSummary,
+  type DesktopProvider,
+  type DesktopQuota,
+  type DesktopSummaryV1,
+} from '@aio-proxy/types';
 
-import type { OAuthQuotaCache } from '../../plugin-quota';
+import type { OAuthQuotaCache, OAuthQuotaCacheEntry } from '../../plugin-quota';
 import type { ServerState } from '../../server-state';
 
 export type DesktopSummarySource = {
@@ -836,13 +1029,24 @@ function quotaFor(cache: DesktopSummarySource['quotaCache'], summary: DashboardP
   if (refresh) cache.refresh(summary.id);
   else cache.warm(summary.id);
   const status = cache.status(summary.id);
-  if (status.kind !== 'ready') return { status: status.kind };
-  return {
-    status: 'ready',
-    sampledAt: new Date(status.entry.sampledAt).toISOString(),
-    refreshFailed: status.entry.stale,
-    windows: quotaWindows(status.entry.snapshot),
-  };
+  return status.kind === 'ready' ? readyQuota(status.entry) : { status: status.kind };
+}
+
+// Plugin quota values are typed but not validated at runtime: a NaN `resetsAt` throws in
+// toISOString, and a ratio outside 0..1 or an empty label would break the contract. One bad plugin
+// reports `failed` for its own Provider instead of failing the whole summary.
+function readyQuota(entry: OAuthQuotaCacheEntry): DesktopQuota {
+  try {
+    const quota = DesktopQuotaSchema.safeParse({
+      status: 'ready',
+      sampledAt: new Date(entry.sampledAt).toISOString(),
+      refreshFailed: entry.stale,
+      windows: quotaWindows(entry.snapshot),
+    });
+    return quota.success ? quota.data : { status: 'failed' };
+  } catch {
+    return { status: 'failed' };
+  }
 }
 
 function providerState(summary: DashboardProviderSummary): DesktopProvider['state'] {
@@ -872,7 +1076,8 @@ function alertsFor(providers: readonly DesktopProvider[]): DesktopSummaryV1['ale
     if (entry.quota.status !== 'ready') continue;
     for (const window of entry.quota.windows) {
       if (window.remainingRatio !== 0) continue;
-      const message = typeof window.label === 'string' ? window.label : (Object.values(window.label)[0] ?? window.id);
+      // The schema guarantees a map label has `default`; the id fallback only satisfies the index type.
+      const message = typeof window.label === 'string' ? window.label : (window.label['default'] ?? window.id);
       alerts.push({ providerId: entry.id, kind: 'quota_exhausted', message });
     }
   }
@@ -917,8 +1122,8 @@ export async function buildDesktopSummary(
 
 - [ ] **Step 4: Run tests**
 
-Run: `cd packages/server && bun test src/dashboard-routes/desktop-summary`
-Expected: PASS (6 tests). If `overviewDashboard`'s bucket `key` is not an RFC 3339 datetime at runtime, `DesktopSummaryV1Schema.parse` in the first test fails; convert with `new Date(bucket.key).toISOString()` rather than loosening the schema.
+Run: `cd packages/server && bun run test:unit src/dashboard-routes/desktop-summary`
+Expected: PASS (8 tests). If `overviewDashboard`'s bucket `key` is not an RFC 3339 datetime at runtime, `DesktopSummaryV1Schema.parse` in the first test fails; convert with `new Date(bucket.key).toISOString()` rather than loosening the schema.
 
 - [ ] **Step 5: Commit**
 
@@ -939,39 +1144,46 @@ git commit -m "feat(server): build the desktop summary without awaiting quota"
 - Modify: `packages/server/src/server-state/lifecycle.ts:142-161` (`ServerStateParts` pick list) and `:172-240` (`assembleServerState`)
 - Modify: `packages/server/src/server-state/index.ts` (compute the token next to `serverDbOptions`, pass into `assembleServerState` at ~line 258)
 - Modify: `packages/server/src/server-log.ts` (new log type + union member at ~line 295)
+- Modify: `packages/server/src/logging/bridge/bridge.ts:7-33` (`SERVER_LOG_LEVEL` must list every `ServerLog` event: it is `satisfies Record<ServerLog['event'], LogLevel>`, so a missing key fails `lint:types`)
 - Modify: `packages/server/src/server/create-routes.ts` (mount right after the `/health` route, ~line 234)
 
 **Interfaces:**
-- Consumes: `ensureDesktopToken` (Task 1), `buildDesktopSummary` (Task 4).
-- Produces: `ServerState.desktopToken?: string`; `createDesktopSummaryRoute(state: ServerState, version: string): Hono`; `requireDesktopToken(expected: () => string | undefined): MiddlewareHandler`.
+- Consumes: `ensureDesktopToken`, `DesktopTokenRejectedError`, `type DesktopTokenRejection` (Task 1, through the core dist rebuilt in Task 1 Step 5); `buildDesktopSummary` (Task 4).
+- Produces: `ServerState.desktopToken?: string`; `createDesktopSummaryRoute(state: ServerState, version: string): Hono`; `requireDesktopToken(expected: () => string | undefined): MiddlewareHandler`; the log event `{ event: 'desktop_token.unavailable', reason: DesktopTokenRejection | 'unwritable' }` at level `warn`.
 
 - [ ] **Step 1: Write the failing tests**
 
+Servers come from `#server-test-lifecycle`, whose `createServer` records every instance; the package preload's `afterEach` closes them and then removes homes made by `createServerTestHome()`, in that order. The one test that needs a server with no home builds it untracked and closes it itself.
+
 ```ts
 // packages/server/src/dashboard-routes/desktop-summary/route.test.ts
-import { afterEach, beforeEach, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { beforeEach, expect, test } from 'bun:test';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { readDesktopToken } from '@aio-proxy/core';
-import { createServer } from '@aio-proxy/server';
 import { DesktopSummaryV1Schema } from '@aio-proxy/types';
 
+import { createServer, createServerTestHome } from '#server-test-lifecycle';
+
 import { loopbackServer } from '../../dashboard-auth/test-support';
+import type { ServerLog } from '../../server-log';
+import { createServer as createUntrackedServer } from '../../server/server';
 
 let dir: string;
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'aio-desktop-summary-'));
-});
-afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  dir = createServerTestHome();
 });
 
 const peer = (address: string) => ({ requestIP: () => ({ address }) });
 const bearer = (token: string) => ({ authorization: `Bearer ${token}`, host: '127.0.0.1:9317' });
-const serve = async (server: Record<string, unknown> = {}) =>
-  createServer({ config: { server: { port: 9_317, ...server }, providers: {} }, dbHome: dir, watchConfig: false });
+const serve = async (server: Record<string, unknown> = {}, logged?: ServerLog[]) =>
+  createServer({
+    config: { server: { port: 9_317, ...server }, providers: {} },
+    dbHome: dir,
+    watchConfig: false,
+    ...(logged === undefined ? {} : { logger: (entry: ServerLog) => logged.push(entry) }),
+  });
 
 test('the desktop token reads the summary without a dashboard password', async () => {
   const app = await serve();
@@ -1003,16 +1215,19 @@ test('a missing or wrong token is refused', async () => {
   expect((await app.request('/dashboard/api/desktop-summary', { headers: bearer('B'.repeat(43)) }, loopbackServer)).status).toBe(401);
 });
 
-test('a non-loopback peer is refused even when headers claim loopback', async () => {
-  const app = await serve();
-  const token = readDesktopToken(dir) ?? '';
-  const res = await app.request(
-    '/dashboard/api/desktop-summary',
-    { headers: { ...bearer(token), origin: 'http://127.0.0.1:9317', 'x-forwarded-for': '127.0.0.1' } },
-    peer('192.168.1.20'),
-  );
-  expect(res.status).toBe(401);
-});
+test.each(['192.168.1.20', '2001:db8::1', 'fe80::1', '::ffff:192.168.1.20'])(
+  'non-loopback peer %s is refused even when headers claim loopback',
+  async (address) => {
+    const app = await serve();
+    const token = readDesktopToken(dir) ?? '';
+    const res = await app.request(
+      '/dashboard/api/desktop-summary',
+      { headers: { ...bearer(token), origin: 'http://127.0.0.1:9317', 'x-forwarded-for': '127.0.0.1' } },
+      peer(address),
+    );
+    expect(res.status).toBe(401);
+  },
+);
 
 test.each(['::1', '::ffff:127.0.0.1', '127.0.0.2'])('loopback peer %s is accepted', async (address) => {
   const app = await serve();
@@ -1037,44 +1252,58 @@ test('a real loopback socket reaches the summary with the token', async () => {
 test('a server with no home still boots and refuses the summary', async () => {
   // Without dbHome/configPath the database falls back to aioHome(); point that at the temp dir so the
   // test never touches the developer's real ~/.aio-proxy. The token home stays undefined regardless.
+  // The tracked createServer would inject a dbHome, so this one is built and closed by hand.
   const previous = process.env['AIO_PROXY_HOME'];
   process.env['AIO_PROXY_HOME'] = dir;
+  const app = await createUntrackedServer({ config: { server: { port: 9_317 }, providers: {} }, watchConfig: false });
   try {
-    const app = await createServer({ config: { server: { port: 9_317 }, providers: {} }, watchConfig: false });
     const res = await app.request('/dashboard/api/desktop-summary', { headers: bearer('A'.repeat(43)) }, loopbackServer);
     expect(res.status).toBe(401);
     expect(readDesktopToken(dir)).toBeUndefined();
   } finally {
+    app.close();
     if (previous === undefined) delete process.env['AIO_PROXY_HOME'];
     else process.env['AIO_PROXY_HOME'] = previous;
   }
 });
 
-test('a rejected token file does not stop the server from booting', async () => {
+test('a rejected token file does not stop the server from booting and is logged by reason only', async () => {
   writeFileSync(join(dir, 'desktop-token'), 'A'.repeat(43), { mode: 0o644 });
-  const app = await serve();
+  const logged: ServerLog[] = [];
+  const app = await serve({}, logged);
   const res = await app.request('/dashboard/api/desktop-summary', { headers: bearer('A'.repeat(43)) }, loopbackServer);
   expect(res.status).toBe(401);
+  // Exactly this shape reaches the sink: a closed reason, never the path or an errno message.
+  expect(logged.filter((entry) => entry.event === 'desktop_token.unavailable')).toEqual([
+    { event: 'desktop_token.unavailable', reason: 'insecure_mode' },
+  ]);
 });
 ```
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd packages/server && bun test src/dashboard-routes/desktop-summary/route.test.ts`
+Run: `cd packages/server && bun run test:unit src/dashboard-routes/desktop-summary/route.test.ts`
 Expected: FAIL — requests to `/dashboard/api/desktop-summary` return 404.
 
 - [ ] **Step 3: Implement the log type**
 
-In `server-log.ts`, next to `DashboardAuthUnavailableLog`:
+In `server-log.ts`, next to `DashboardAuthUnavailableLog` (add `import type { DesktopTokenRejection } from '@aio-proxy/core';`):
 
 ```ts
 export type DesktopTokenUnavailableLog = {
-  readonly error: string;
   readonly event: 'desktop_token.unavailable';
+  /** A closed vocabulary: never the token path or an errno message. */
+  readonly reason: DesktopTokenRejection | 'unwritable';
 };
 ```
 
-and add `| DesktopTokenUnavailableLog` to the `ServerLog` union (line ~295).
+and add `| DesktopTokenUnavailableLog` to the `ServerLog` union (line ~295). In `logging/bridge/bridge.ts`, add to `SERVER_LOG_LEVEL` after `'dashboard.auth_unavailable': 'error',`:
+
+```ts
+  'desktop_token.unavailable': 'warn',
+```
+
+The event is logged at boot, outside any request scope. There `capturesRequestPayload()` is true, so `logServerEvent` hands the entry to the sink unfiltered (the route test pins that shape). Were it ever logged inside a scope that disables payload capture, `safeDiagnosticFields` would keep only `event`. Only a closed `reason` is logged, so neither path can leak anything.
 
 - [ ] **Step 4: Put the token on server state**
 
@@ -1100,22 +1329,26 @@ function loadDesktopToken(home: string | undefined, logger: ServerLogSink): stri
     return ensureDesktopToken(home);
   } catch (error) {
     // A rejected or unwritable token file disables only the desktop client; the proxy must still start.
-    logServerEvent(logger, { event: 'desktop_token.unavailable', error: error instanceof Error ? error.message : String(error) });
+    logServerEvent(logger, {
+      event: 'desktop_token.unavailable',
+      reason: error instanceof DesktopTokenRejectedError ? error.reason : 'unwritable',
+    });
     return undefined;
   }
 }
 ```
 
-(import `ensureDesktopToken` from `@aio-proxy/core`, `logServerEvent` and `type ServerLogSink` from `../server-log` if not already imported), and in the `assembleServerState(runtime, { … })` call add:
+(add `DesktopTokenRejectedError` and `ensureDesktopToken` to the existing `@aio-proxy/core` import, and import `logServerEvent` and `type ServerLogSink` from `../server-log` if not already imported). Compute the token a few lines above the `assembleServerState(runtime, { … })` call, after `logger` is defined:
 
 ```ts
-    ...(() => {
-      const desktopToken = loadDesktopToken(serverDbOptions(options).home, logger);
-      return desktopToken === undefined ? {} : { desktopToken };
-    })(),
+  const desktopToken = loadDesktopToken(serverDbOptions(options).home, logger);
 ```
 
-If the IIFE reads poorly next to the surrounding code, compute `const desktopToken = loadDesktopToken(...)` a few lines above the call and spread `...(desktopToken === undefined ? {} : { desktopToken })`.
+and add to that call's object:
+
+```ts
+    ...(desktopToken === undefined ? {} : { desktopToken }),
+```
 
 - [ ] **Step 5: Implement the route and guard**
 
@@ -1181,8 +1414,10 @@ with `import { createDesktopSummaryRoute } from '../dashboard-routes/desktop-sum
 
 - [ ] **Step 6: Run tests**
 
-Run: `cd packages/server && bun test src/dashboard-routes/desktop-summary src/server`
+Run: `cd packages/server && bun run test:unit src/dashboard-routes/desktop-summary src/server src/logging`
 Expected: PASS, including the existing `dns-rebinding.test.ts` and `server.test.ts`.
+
+If a request that carries the file's token still gets 401, suspect a stale `packages/core/dist` first: the server loads `ensureDesktopToken` from the dist, not from `packages/core/src`. Re-run Task 1 Step 5's build, then this step.
 
 - [ ] **Step 7: Commit**
 
@@ -1230,7 +1465,7 @@ test('the launchd wrapper still reports real failures and remaps only exit 1', (
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd packages/cli && bun test src/service/service.test.ts`
+Run: `cd packages/cli && bun run test:unit src/service/service.test.ts`
 Expected: FAIL — the missing-executable case exits 127 (or `LAUNCHD_EXEC_WRAPPER` is not exported).
 
 - [ ] **Step 3: Implement**
@@ -1257,7 +1492,7 @@ export { LAUNCHD_EXEC_WRAPPER, LAUNCHD_LABEL, LEGACY_LAUNCHD_EXEC_WRAPPERS } fro
 
 - [ ] **Step 4: Run tests**
 
-Run: `cd packages/cli && bun test src/service`
+Run: `cd packages/cli && bun run test:unit src/service`
 Expected: PASS (existing plist assertions still hold: the wrapper still contains `"$0" run` and the exit-1 remap).
 
 - [ ] **Step 5: Commit**
@@ -1326,7 +1561,7 @@ test('a desktop-owned unit keeps the symlink path and carries both desktop marke
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd packages/cli && bun test src/executable src/service`
+Run: `cd packages/cli && bun run test:unit src/executable src/service`
 Expected: FAIL — the override is ignored and the plist lacks the markers.
 
 - [ ] **Step 3: Implement**
@@ -1405,7 +1640,7 @@ Keep the existing detection code byte-for-byte inside the `else`, only replacing
 
 - [ ] **Step 4: Run tests**
 
-Run: `cd packages/cli && bun test src/executable src/service src/run`
+Run: `cd packages/cli && bun run test:unit src/executable src/service src/run`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1435,6 +1670,7 @@ So start and restart must pick `kickstart` or `bootstrap` themselves and read th
 - Produces:
   - `launchdDomain(uid?: number): string` (`gui/<uid>`) and `launchdJobTarget(uid?: number): string` (`gui/<uid>/com.aio-proxy.agent`), both exported for Task 11.
   - `ServiceRestartIo.printJob?: () => Promise<number>`, the exit code of `launchctl print <job target>`, where 0 means launchd holds the job. `ServiceStartIo` picks it too.
+  - `ServiceRestartIo.bootoutTimeoutMs?: number` (default 10 000): how long the in-process restart polls `printJob` after `bootout` before failing with `cli.service.command_failed` for `launchctl bootout …`.
 
 - [ ] **Step 1: Write the failing tests and update the existing darwin expectations**
 
@@ -1443,18 +1679,34 @@ Add after the imports in `service.test.ts` (and add `launchdDomain`, `launchdJob
 ```ts
 // A stand-in for launchd: `print` reports the job loaded after bootstrap or kickstart and unloaded
 // after bootout. `bootstrapLoads: false` models launchctl exiting 0 while launchd never took the job.
-const fakeLaunchd = (loaded: boolean, options: { readonly bootstrapLoads?: boolean } = {}) => {
+// `teardownPolls` models bootout returning early ("36: Operation now in progress"): print keeps
+// finding the job for that many more calls (Infinity: it never goes away).
+const fakeLaunchd = (
+  loaded: boolean,
+  options: { readonly bootstrapLoads?: boolean; readonly teardownPolls?: number } = {},
+) => {
   const calls: string[] = [];
   let held = loaded;
+  let teardown = 0;
   return {
     calls,
     runManager: async (cmd: readonly string[]) => {
       calls.push(cmd.join(' '));
-      if (cmd[1] === 'bootout') held = false;
+      if (cmd[1] === 'bootout') {
+        teardown = options.teardownPolls ?? 0;
+        if (teardown === 0) held = false;
+      }
       if (cmd[1] === 'bootstrap' && options.bootstrapLoads !== false) held = true;
       return 0;
     },
-    printJob: async () => (held ? 0 : 113),
+    printJob: async () => {
+      if (held && teardown > 0) {
+        teardown -= 1;
+        if (teardown === 0) held = false;
+        return 0;
+      }
+      return held ? 0 : 113;
+    },
   };
 };
 ```
@@ -1556,13 +1808,43 @@ test('Darwin TTY serviceRestart boots the job out and bootstraps the rewritten p
     `launchctl bootstrap ${launchdDomain()} /tmp/com.aio-proxy.agent.plist`,
   ]);
 });
+
+const restartInProcess = (launchd: ReturnType<typeof fakeLaunchd>, bootoutTimeoutMs?: number) =>
+  serviceRestart({
+    platform: 'darwin',
+    env: {},
+    isTTY: true,
+    unitInstalled: () => true,
+    unitPath: '/tmp/com.aio-proxy.agent.plist',
+    writeManagedUnit: async () => '/tmp/com.aio-proxy.agent.plist',
+    ...(bootoutTimeoutMs === undefined ? {} : { bootoutTimeoutMs }),
+    ...launchd,
+  });
+
+test('serviceRestart waits for a slow bootout before bootstrapping, instead of kickstarting the dying job', async () => {
+  const launchd = fakeLaunchd(true, { teardownPolls: 3 });
+  await restartInProcess(launchd);
+  expect(launchd.calls).toEqual([
+    `launchctl bootout ${launchdJobTarget()}`,
+    `launchctl enable ${launchdJobTarget()}`,
+    `launchctl bootstrap ${launchdDomain()} /tmp/com.aio-proxy.agent.plist`,
+  ]);
+});
+
+test('serviceRestart fails when bootout never removes the job, and starts nothing', async () => {
+  const launchd = fakeLaunchd(true, { teardownPolls: Number.POSITIVE_INFINITY });
+  const error = await restartInProcess(launchd, 300).catch((caught: unknown) => caught);
+  expect(error).toBeInstanceOf(CliExit);
+  expect((error as CliExit).message).toContain(`launchctl bootout ${launchdJobTarget()}`);
+  expect(launchd.calls).toEqual([`launchctl bootout ${launchdJobTarget()}`]);
+});
 ```
 
 `Darwin in-job serviceRestart spawns a detached helper…` stays unchanged: the detached helper still runs `unload -w`/`load -w`, because nobody is left to observe its result.
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd packages/cli && bun test src/service/service.test.ts`
+Run: `cd packages/cli && bun run test:unit src/service/service.test.ts`
 Expected: FAIL. Either `launchdJobTarget` / `launchdDomain` are not exported, or the darwin calls show `launchctl load -w`.
 
 - [ ] **Step 3: Implement**
@@ -1599,6 +1881,29 @@ async function startLaunchdJob(
     throw new CliExit(EXIT.transient, m['cli.service.command_failed']({ command: `launchctl print ${target}`, code }));
   }
 }
+
+const BOOTOUT_TIMEOUT_MS = 10_000;
+
+// `bootout` can return while launchd is still tearing the job down ("36: Operation now in progress",
+// swallowed by allowFailure). startLaunchdJob would then see the dying job as loaded and kickstart
+// the old definition, or bootstrap would fail with "5: Input/output error". Wait until print stops
+// finding the job; one still there after the deadline is an error, not something to start over.
+async function bootoutLaunchdJob(
+  run: (cmd: readonly string[], allowFailure?: boolean) => Promise<number>,
+  printJob: () => Promise<number>,
+  timeoutMs: number,
+): Promise<void> {
+  const target = launchdJobTarget();
+  // bootout of a job that is not loaded fails harmlessly.
+  const code = await run(['launchctl', 'bootout', target], true);
+  const deadline = Date.now() + timeoutMs;
+  while ((await printJob()) === 0) {
+    if (Date.now() >= deadline) {
+      throw new CliExit(EXIT.transient, m['cli.service.command_failed']({ command: `launchctl bootout ${target}`, code }));
+    }
+    await Bun.sleep(100);
+  }
+}
 ```
 
 Add to `ServiceRestartIo`:
@@ -1606,6 +1911,8 @@ Add to `ServiceRestartIo`:
 ```ts
   /** Exit code of `launchctl print <job>`; 0 while launchd holds the job. Injected by tests. */
   readonly printJob?: () => Promise<number>;
+  /** How long `service restart` waits for `bootout` to remove the job. Injected by tests. */
+  readonly bootoutTimeoutMs?: number;
 ```
 
 and widen `ServiceStartIo` to `Pick<ServiceRestartIo, 'platform' | 'unitInstalled' | 'unitPath' | 'runManager' | 'install' | 'printJob'>`.
@@ -1622,23 +1929,26 @@ Replace the darwin branch inside `serviceStart`'s `try`:
 In `serviceRestart`, replace the two in-process lines `await run(['launchctl', 'unload', '-w', plist]); await run(['launchctl', 'load', '-w', plist]);` with:
 
 ```ts
-    // bootout + bootstrap re-reads the plist just rewritten; kickstart -k would restart the old
-    // definition. bootout of a job that is not loaded fails harmlessly.
-    await run(['launchctl', 'bootout', launchdJobTarget()], true);
-    await startLaunchdJob(plist, run, io.printJob ?? printLaunchdJob);
+    // bootout + bootstrap re-reads the plist just rewritten; kickstart -k would restart the old definition.
+    const printJob = io.printJob ?? printLaunchdJob;
+    await bootoutLaunchdJob(run, printJob, io.bootoutTimeoutMs ?? BOOTOUT_TIMEOUT_MS);
+    await startLaunchdJob(plist, run, printJob);
 ```
 
 Add `launchdDomain`, `launchdJobTarget` and the existing `managedUnitPath` to the `./service` export list in `packages/cli/src/service/index.ts` (Task 11 imports `launchdJobTarget` and `managedUnitPath` from `../service`).
 
 - [ ] **Step 4: Run tests**
 
-Run: `cd packages/cli && bun test src/service src/upgrade`
+Run: `cd packages/cli && bun run test:unit src/service src/upgrade`
 Expected: PASS.
 
 - [ ] **Step 5: Manual check on a Mac with a CLI-installed service (optional, touches the real job)**
 
 Run: `aio-proxy service stop && bun packages/cli/src/main.dev.ts service start && launchctl print gui/$(id -u)/com.aio-proxy.agent | grep -E 'state|pid'`
 Expected: `state = running` (the start re-enabled the override that `service stop` set, then bootstrapped the job).
+
+Then: `launchctl print gui/$(id -u)/com.aio-proxy.agent | grep -E '^\s*pid'; bun packages/cli/src/main.dev.ts service restart && launchctl print gui/$(id -u)/com.aio-proxy.agent | grep -E 'state|pid'`
+Expected: the restart exits 0 without a `launchctl bootout` error, and `state = running` with a `pid` different from the one printed before it (the job was booted out, waited for, and bootstrapped again). The rewritten plist still targets the installed `aio-proxy` on `PATH`: under `bun`, `resolveAgentExecutable` falls back to it.
 
 - [ ] **Step 6: Commit**
 
@@ -1649,28 +1959,54 @@ git commit -m "fix(cli): start launchd jobs by bootstrap or kickstart and verify
 
 ---
 
-### Task 9: Refuse self-upgrade of a desktop-managed binary
+### Task 9: Keep CLI upgrades away from desktop-managed binaries and services
+
+Three paths could touch what the desktop app owns:
+
+- **Self-upgrade of a desktop binary.** `aio-proxy upgrade`, Dashboard apply and auto-update all funnel through `runUpgradeCommand`.
+- **A Homebrew upgrade restarting the app's service.** A Homebrew user with the desktop app running types `aio-proxy upgrade` in a shell. The daemon is running and the plist exists, so `upgrade.ts:189-205` calls `restartService(brewExec)`. That rewrites the desktop plist to the Homebrew binary, drops both markers, and the app then sees `owner: external`.
+- **A desktop sidecar offering CLI updates.** Its auto-update hooks still wire `applyUpdate` (the Dashboard offers an apply that always fails) and `notifyAvailable` (a notification tells the user to upgrade through the CLI).
 
 **Files:**
-- Modify: `packages/cli/src/upgrade/upgrade.ts` (`UpgradeDeps`, `defaultDeps`, start of `runUpgradeCommand`)
-- Modify: `packages/i18n/messages/{en,zh-Hans,zh-Hant,ja,ko}.json` (`cli.upgrade.desktop_managed`)
-- Test: `packages/cli/src/upgrade/upgrade.test.ts`
+- Modify: `packages/cli/src/upgrade/upgrade.ts` (`UpgradeDeps`, `defaultDeps`, start of `runUpgradeCommand`, its managed-restart branch)
+- Modify: `packages/cli/src/service/service.ts` and `packages/cli/src/service/index.ts` (`readDesktopOwnedUnit`)
+- Modify: `packages/cli/src/run/auto-update-hooks/auto-update-hooks.ts` (`createCliAutoUpdateHooks`)
+- Modify: `packages/server/src/server/server.ts:42-47` (`CreateServerOptions.autoUpdate.applyUpdate` becomes optional; the controller already treats a missing one as `unavailable`)
+- Modify: `packages/i18n/messages/{en,zh-Hans,zh-Hant,ja,ko}.json` (`cli.upgrade.desktop_managed`, `cli.upgrade.desktop_service_skipped`)
+- Test: `packages/cli/src/upgrade/upgrade.test.ts`, `packages/cli/src/service/service.test.ts`, `packages/cli/src/run/auto-update-hooks/auto-update-hooks.test.ts`
 
 **Interfaces:**
-- Produces: `isDesktopManagedInstall(env?: NodeJS.ProcessEnv, execPath?: string, realpath?: (p: string) => string): boolean`; `UpgradeDeps.isDesktopManaged: () => boolean`.
+- Consumes: `writeManagedUnit(os, exec, target, env)` and the `AIO_PROXY_DESKTOP_EXEC` marker (Task 7).
+- Produces:
+  - `isDesktopManagedInstall(env?: NodeJS.ProcessEnv, execPath?: string, realpath?: (p: string) => string): boolean`
+  - `readDesktopOwnedUnit(path?: string): boolean` (service; default the launchd plist path): true only when the plist's wrapper target (`ProgramArguments[3]`) equals its own `EnvironmentVariables.AIO_PROXY_DESKTOP_EXEC`. False off macOS, for a missing file, and on any `plutil` or parse failure.
+  - `UpgradeDeps.isDesktopManaged: () => boolean`, `UpgradeDeps.isDesktopOwnedUnit: () => boolean`
+  - `createCliAutoUpdateHooks(deps?: { …existing; readonly isDesktopManaged?: () => boolean }): CliAutoUpdateHooks`, where `applyUpdate` and `notifyAvailable` are omitted for a desktop-managed process.
 
-- [ ] **Step 1: Add the message in all five locales** (inside the existing `cli.upgrade` object of each file, next to `detect_failed`)
+- [ ] **Step 1: Add the messages in all five locales** (inside the existing `cli.upgrade` object of each file, next to `detect_failed`)
 
-- en: `"desktop_managed": "This aio-proxy is managed by the aio-proxy desktop app. Update it from the desktop app."`
-- zh-Hans: `"desktop_managed": "此 aio-proxy 由 aio-proxy 桌面端管理，请通过桌面端更新。"`
-- zh-Hant: `"desktop_managed": "此 aio-proxy 由 aio-proxy 桌面端管理，請透過桌面端更新。"`
-- ja: `"desktop_managed": "この aio-proxy は aio-proxy デスクトップアプリで管理されています。デスクトップアプリから更新してください。"`
-- ko: `"desktop_managed": "이 aio-proxy는 aio-proxy 데스크톱 앱에서 관리됩니다. 데스크톱 앱에서 업데이트하세요."`
+- en:
+  - `"desktop_managed": "This aio-proxy is managed by the aio-proxy desktop app. Update it from the desktop app."`
+  - `"desktop_service_skipped": "The background service belongs to the aio-proxy desktop app and runs the app's own copy, so it was not restarted."`
+- zh-Hans:
+  - `"desktop_managed": "此 aio-proxy 由 aio-proxy 桌面端管理，请通过桌面端更新。"`
+  - `"desktop_service_skipped": "后台服务属于 aio-proxy 桌面端，运行的是桌面端自带的副本，因此未重启。"`
+- zh-Hant:
+  - `"desktop_managed": "此 aio-proxy 由 aio-proxy 桌面端管理，請透過桌面端更新。"`
+  - `"desktop_service_skipped": "背景服務屬於 aio-proxy 桌面端，執行的是桌面端內建的副本，因此未重新啟動。"`
+- ja:
+  - `"desktop_managed": "この aio-proxy は aio-proxy デスクトップアプリで管理されています。デスクトップアプリから更新してください。"`
+  - `"desktop_service_skipped": "バックグラウンドサービスは aio-proxy デスクトップアプリのもので、アプリ同梱のコピーで動作しているため、再起動しませんでした。"`
+- ko:
+  - `"desktop_managed": "이 aio-proxy는 aio-proxy 데스크톱 앱에서 관리됩니다. 데스크톱 앱에서 업데이트하세요."`
+  - `"desktop_service_skipped": "백그라운드 서비스는 aio-proxy 데스크톱 앱의 것이며 앱에 포함된 사본으로 실행되므로 다시 시작하지 않았습니다."`
 
 Run: `cd packages/i18n && bun run build && bun run test`
 Expected: PASS (locale parity).
 
-- [ ] **Step 2: Write the failing tests** (append to `upgrade.test.ts`)
+- [ ] **Step 2: Write the failing tests**
+
+Append to `upgrade.test.ts`. Also add `isDesktopManaged: () => false,` and `isDesktopOwnedUnit: () => false,` to the existing `makeDeps` defaults: without them every existing test would fall through to the real defaults, which read this process's environment and the developer's real LaunchAgents plist.
 
 ```ts
 test('a desktop-managed process refuses to upgrade before touching any installer', async () => {
@@ -1691,16 +2027,67 @@ test('isDesktopManagedInstall recognizes the desktop markers and an app-bundle b
   ).toBe(true);
   expect(isDesktopManagedInstall({}, '/opt/homebrew/bin/aio-proxy', (p) => p)).toBe(false);
 });
+
+test('a CLI upgrade installs but never restarts a service the desktop app owns', async () => {
+  let restarted = false;
+  const { lines, done } = upgradeRun({
+    isDaemonRunning: async () => true,
+    isServiceManaged: () => true,
+    isDesktopOwnedUnit: () => true,
+    restartService: async () => {
+      restarted = true;
+    },
+  });
+  expect(await done).toBe('installed');
+  // A restart would rewrite the app's plist to this binary and hand its service to this install.
+  expect(restarted).toBe(false);
+  expect(lines).toContain(m['cli.upgrade.desktop_service_skipped']());
+});
 ```
 
-(import `m` from `@aio-proxy/i18n`, `mock` from `bun:test`, and `isDesktopManagedInstall` from `./upgrade` if not already imported.)
+(import `m` from `@aio-proxy/i18n` and `isDesktopManagedInstall` from `./upgrade` if not already imported.)
+
+Append to `service.test.ts` (`writeManagedUnit` with `env` is Task 7's):
+
+```ts
+test.skipIf(process.platform !== 'darwin')('readDesktopOwnedUnit tells a desktop-written unit from a CLI-written one', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-desktop-owned-'));
+  const link = join(dir, 'Application Support', 'aio-proxy-desktop', 'bin', 'aio-proxy');
+  const desktop = join(dir, 'desktop.plist');
+  const cli = join(dir, 'cli.plist');
+  await writeManagedUnit('darwin', link, desktop, { AIO_PROXY_DESKTOP_EXEC: link, PATH: '/usr/bin:/bin' });
+  await writeManagedUnit('darwin', join(dir, 'brew', 'aio-proxy'), cli, { PATH: '/usr/bin:/bin' });
+  expect(readDesktopOwnedUnit(desktop)).toBe(true);
+  expect(readDesktopOwnedUnit(cli)).toBe(false);
+  expect(readDesktopOwnedUnit(join(dir, 'missing.plist'))).toBe(false);
+});
+```
+
+(add `readDesktopOwnedUnit` to the `./service` import.)
+
+Append to `auto-update-hooks.test.ts`:
+
+```ts
+// The Dashboard maps a missing applyUpdate to `unavailable` (server auto-update tests); a desktop
+// sidecar is updated by Sparkle, so it must neither offer a CLI apply nor announce a CLI upgrade.
+test('a desktop-managed sidecar offers no update apply and sends no update notification', () => {
+  const hooks = createCliAutoUpdateHooks({ isManagedService: () => true, isDesktopManaged: () => true });
+  expect(hooks.applyUpdate).toBeUndefined();
+  expect(hooks.notifyAvailable).toBeUndefined();
+  expect(hooks.isManagedService()).toBe(true);
+});
+```
+
+In the same file, the existing tests call `hooks.applyUpdate('1.10.0')`. The member is now optional, so change each call to `hooks.applyUpdate?.('1.10.0')`. If the member were missing, the call would give `undefined` and the `toBe('installed' | 'unchanged')` assertion would still fail. Also add `isDesktopManaged: () => false` to each of those `createCliAutoUpdateHooks({ … })` calls, so they never depend on the test process's own environment.
 
 - [ ] **Step 3: Run to verify failure**
 
-Run: `cd packages/cli && bun test src/upgrade/upgrade.test.ts`
-Expected: FAIL — `isDesktopManaged` is not a dependency / function not exported.
+Run: `cd packages/cli && bun run test:unit src/upgrade/upgrade.test.ts src/service/service.test.ts src/run/auto-update-hooks`
+Expected: FAIL. `isDesktopManaged`, `isDesktopOwnedUnit` and `readDesktopOwnedUnit` do not exist yet, the desktop-owned upgrade still calls `restartService`, and the desktop hooks still carry `applyUpdate`.
 
 - [ ] **Step 4: Implement**
+
+In `upgrade.ts`:
 
 ```ts
 /**
@@ -1723,24 +2110,97 @@ export const isDesktopManagedInstall = (
 };
 ```
 
-Add `readonly isDesktopManaged: () => boolean;` to `UpgradeDeps`, `isDesktopManaged: () => isDesktopManagedInstall(),` to `defaultDeps`, and as the first statement after `const deps = createUpgradeDeps(overrides);` in `runUpgradeCommand`:
+Add `readonly isDesktopManaged: () => boolean;` and `readonly isDesktopOwnedUnit: () => boolean;` to `UpgradeDeps`, and `isDesktopManaged: () => isDesktopManagedInstall(),` and `isDesktopOwnedUnit: () => readDesktopOwnedUnit(),` to `defaultDeps` (extend the existing `../service` import with `readDesktopOwnedUnit`). As the first statement after `const deps = createUpgradeDeps(overrides);` in `runUpgradeCommand`:
 
 ```ts
   if (deps.isDesktopManaged()) throw new CliExit(EXIT.unrecoverable, m['cli.upgrade.desktop_managed']());
 ```
 
+and between the `if (!deps.isServiceManaged()) { … }` block and `print(m['cli.upgrade.restarting']());`:
+
+```ts
+  // The desktop app's service runs the app's own binary, which this upgrade did not touch. Restarting
+  // it would rewrite the app's plist to this install and strip its markers (owner flips to external).
+  if (deps.isDesktopOwnedUnit()) {
+    print(m['cli.upgrade.desktop_service_skipped']());
+    return 'installed';
+  }
+```
+
 (import `realpathSync` from `node:fs`.)
+
+In `service.ts` (import `isPlainObject` from `es-toolkit/predicate`), below `managedUnitPath`:
+
+```ts
+/**
+ * Whether the installed plist belongs to the desktop app: its wrapper target is the symlink the app
+ * recorded as `AIO_PROXY_DESKTOP_EXEC` (Task 7 writes both only for a desktop-owned unit, and a CLI
+ * rewrite replaces both). Any read or parse failure answers false, which keeps today's behavior.
+ */
+export function readDesktopOwnedUnit(path: string = launchdPlistPath()): boolean {
+  if (process.platform !== 'darwin' || !existsSync(path)) return false;
+  const converted = Bun.spawnSync(['plutil', '-convert', 'json', '-o', '-', path], { stdout: 'pipe', stderr: 'ignore' });
+  if (converted.exitCode !== 0) return false;
+  try {
+    const plist: unknown = JSON.parse(converted.stdout.toString());
+    if (!isPlainObject(plist)) return false;
+    const env = plist['EnvironmentVariables'];
+    const args = plist['ProgramArguments'];
+    const marker = isPlainObject(env) ? env['AIO_PROXY_DESKTOP_EXEC'] : undefined;
+    return typeof marker === 'string' && marker !== '' && Array.isArray(args) && args[3] === marker;
+  } catch {
+    return false;
+  }
+}
+```
+
+and add `readDesktopOwnedUnit` to the `./service` export list in `service/index.ts`.
+
+In `auto-update-hooks.ts` (extend the `../../upgrade/upgrade` import with `isDesktopManagedInstall`), give the hooks an explicit type and return early for a desktop-managed process. The existing `applyUpdate` body moves unchanged into the second return:
+
+```ts
+export type CliAutoUpdateHooks = {
+  readonly isManagedService: () => boolean;
+  readonly notifyAvailable?: (latest: string) => void | Promise<void>;
+  readonly applyUpdate?: (version: string) => Promise<'installed' | 'unchanged'>;
+};
+
+export const createCliAutoUpdateHooks = (deps?: {
+  readonly isManagedService?: () => boolean;
+  readonly isDesktopManaged?: () => boolean;
+  readonly upgrade?: typeof runUpgradeCommand;
+  readonly resolveExec?: typeof resolveExec;
+  readonly resolveTargetFrom?: typeof resolveUpgradeTargetFrom;
+  readonly relaunchUnmanaged?: () => void;
+  readonly print?: (line: string) => void;
+}): CliAutoUpdateHooks => {
+  const isManagedService = deps?.isManagedService ?? isManagedAutoUpdateProcess;
+  // Sparkle updates a desktop sidecar. Without applyUpdate the Dashboard reports `unavailable`
+  // instead of offering an apply that runUpgradeCommand would refuse, and no notification tells the
+  // user to upgrade through a CLI they may not have.
+  if ((deps?.isDesktopManaged ?? isDesktopManagedInstall)()) return { isManagedService };
+  return {
+    isManagedService,
+    notifyAvailable: (latest: string) => notifyUpdateAvailable(latest),
+    applyUpdate: async (version: string) => {
+      // …existing body unchanged…
+    },
+  };
+};
+```
+
+In `packages/server/src/server/server.ts`, make `applyUpdate` optional in `CreateServerOptions.autoUpdate` (`readonly applyUpdate?: (version: string) => Promise<'installed' | 'unchanged'>;`). `createAutoUpdateController` already takes it as optional and answers `apply()` with `{ status: 'unavailable' }` when it is absent.
 
 - [ ] **Step 5: Run tests**
 
-Run: `cd packages/cli && bun test src/upgrade src/run`
+Run: `cd packages/cli && bun run test:unit src/upgrade src/service src/run && cd ../server && bun run test:unit src/auto-update src/server`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/cli/src/upgrade packages/i18n/messages
-git commit -m "feat(cli): refuse to self-upgrade a desktop-managed binary"
+git add packages/cli/src/upgrade packages/cli/src/service packages/cli/src/run/auto-update-hooks packages/server/src/server/server.ts packages/i18n/messages
+git commit -m "feat(cli): keep upgrades away from desktop-managed binaries and services"
 ```
 
 ---
@@ -1750,13 +2210,15 @@ git commit -m "feat(cli): refuse to self-upgrade a desktop-managed binary"
 **Files:**
 - Modify: `packages/core/src/paths/paths.ts` (add `configPathIn`) and `packages/core/src/paths/index.ts`, `packages/core/src/index.ts:244`
 - Modify: `packages/cli/src/control-plane/control-plane.ts` (`resolveControlAddress` gains a path parameter; add `localControlHost`; `probeHealth` gains `fetchImpl`/`timeoutMs`)
+- Modify: `packages/cli/src/control-plane/index.ts` (export `localControlHost`; Task 11 imports it from `../control-plane`)
 - Test: `packages/core/src/paths/paths.test.ts`, `packages/cli/src/control-plane/control-plane.test.ts`
 
 **Interfaces:**
+- Consumes: `canonicalizeLoopbackHost(host): string | undefined` (existing, `packages/core/src/network/canonicalize-loopback-host.ts`, exported from `@aio-proxy/core`): `::1`/`[::1]` → `::1`, `localhost` → `localhost`, any `127.x.y.z` IPv4 literal → itself, else `undefined`.
 - Produces:
   - `configPathIn(home: string): string` (core); `configPath()` becomes `configPathIn(aioHome())`.
   - `resolveControlAddress(options, path?: string)`, default `configPath()`.
-  - `localControlHost(host: string): string | undefined` — returns a literal loopback IP or `undefined` for a non-loopback bind.
+  - `localControlHost(host: string): string | undefined`, exported from `control-plane/index.ts`. It returns a literal loopback IP, or `undefined` for a non-loopback bind.
   - `probeHealth(base: string, fetchImpl?: typeof fetch, timeoutMs?: number)`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1777,12 +2239,16 @@ test('configPathIn finds the existing config file inside an explicit home', () =
 test.each([
   ['0.0.0.0', '127.0.0.1'],
   ['', '127.0.0.1'],
+  ['*', '127.0.0.1'],
   ['::', '::1'],
+  ['[::]', '::1'],
   ['localhost', '127.0.0.1'],
   ['127.0.0.1', '127.0.0.1'],
   ['127.0.0.5', '127.0.0.5'],
   ['::1', '::1'],
+  ['[::1]', '::1'],
   ['192.168.1.5', undefined],
+  ['::ffff:127.0.0.1', undefined],
   ['proxy.example.com', undefined],
 ])('localControlHost(%p) is %p', (host, expected) => {
   expect(localControlHost(host)).toBe(expected);
@@ -1798,7 +2264,7 @@ test('resolveControlAddress reads the config at an explicit path, not the enviro
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd packages/core && bun test src/paths && cd ../cli && bun test src/control-plane`
+Run: `cd packages/core && bun test src/paths && cd ../cli && bun run test:unit src/control-plane`
 Expected: FAIL — `configPathIn` / `localControlHost` not exported.
 
 - [ ] **Step 3: Implement**
@@ -1841,23 +2307,30 @@ export async function resolveControlAddress(
 }
 
 // A local client must connect to a literal loopback address: a wildcard bind is not a destination,
-// and a hostname or LAN address could route a bearer token off this machine.
+// and a hostname or LAN address could route a bearer token off this machine. `localhost` is mapped
+// to a literal too, because the desktop client attaches the token only to a literal loopback IP.
 export const localControlHost = (host: string): string | undefined => {
-  if (host === '' || host === '0.0.0.0' || host === 'localhost') return '127.0.0.1';
-  if (host === '::' || host === '::1') return '::1';
-  if (/^127(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}$/u.test(host)) return host;
-  return undefined;
+  if (host === '' || host === '0.0.0.0' || host === '*' || host === 'localhost') return '127.0.0.1';
+  if (host === '::' || host === '[::]') return '::1';
+  return canonicalizeLoopbackHost(host);
 };
 ```
 
-and change `probeHealth`'s signature to `(base: string, fetchImpl: typeof fetch = fetch, timeoutMs = 3_000)` using `fetchImpl(`${base}/health`, { signal: AbortSignal.timeout(timeoutMs) })`.
+(add `canonicalizeLoopbackHost` to the existing `@aio-proxy/core` import in `control-plane.ts`.) Change `probeHealth`'s signature to `(base: string, fetchImpl: typeof fetch = fetch, timeoutMs = 3_000)` using `fetchImpl(`${base}/health`, { signal: AbortSignal.timeout(timeoutMs) })`, and add `localControlHost` to the export list in `control-plane/index.ts`.
 
 - [ ] **Step 4: Run tests**
 
-Run: `cd packages/core && bun test src/paths && cd ../cli && bun test src/control-plane src/status src/upgrade`
+Run: `cd packages/core && bun test src/paths && cd ../cli && bun run test:unit src/control-plane src/status src/upgrade`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Rebuild core for its consumers**
+
+Task 11 imports `configPathIn` from `@aio-proxy/core`, which resolves to `packages/core/dist`.
+
+Run: `bunx turbo run build --filter=@aio-proxy/core && cd packages/cli && bun -e "const core = await import('@aio-proxy/core'); console.log(typeof core.configPathIn)"`
+Expected: the build succeeds, then `function`.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add packages/core/src/paths packages/core/src/index.ts packages/cli/src/control-plane
@@ -1877,7 +2350,7 @@ git commit -m "feat(cli): resolve a control address for an explicit home"
 - Modify: `packages/cli/src/main.ts` (register the hidden command next to `registerHiddenPostUpgrade`)
 
 **Interfaces:**
-- Consumes: `LAUNCHD_EXEC_WRAPPER`, `LEGACY_LAUNCHD_EXEC_WRAPPERS` (Task 6); `launchdJobTarget`, `managedUnitPath` (Task 8 / existing); `readDesktopToken` (Task 1); `configPathIn`, `aioHome` (Task 10 / existing); `resolveControlAddress`, `localControlHost`, `controlBaseUrl`, `probeHealth` (Task 10).
+- Consumes: `LAUNCHD_EXEC_WRAPPER`, `LEGACY_LAUNCHD_EXEC_WRAPPERS` (Task 6); `launchdJobTarget`, `managedUnitPath` (Task 8 / existing); `readDesktopToken` (Task 1); `configPathIn`, `aioHome` (Task 10 / existing) — both through the core dist rebuilt in Task 10 Step 5; `resolveControlAddress`, `localControlHost`, `controlBaseUrl`, `probeHealth` (Task 10, from `../control-plane`).
 - Produces (consumed by the Phase 2 Rust client through JSON):
   ```ts
   export type DesktopConnectResult = {
@@ -1889,8 +2362,14 @@ git commit -m "feat(cli): resolve a control address for an explicit home"
     readonly token: string | null;
   };
   export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopConnectResult>;
+  // Never throws past its own catch: on any failure it prints a result with owner 'unknown' and no token.
   export async function printDesktopConnect(deps: DesktopConnectDeps, write: (text: string) => void): Promise<void>;
+  // Kills the helper (SIGKILL) when `deadline` passes; rejects when the budget is already spent.
+  export async function runWithin(cmd: readonly string[], deadline: number): Promise<{ code: number; stdout: string }>;
+  // Helpers share a 6 s budget (10 s command budget minus two 2 s HTTP probes).
+  export const defaultDesktopConnectDeps: (bundledVersion: string, spawnDeadline?: number) => DesktopConnectDeps;
   ```
+- Env contract: owner detection reads only `AIO_PROXY_DESKTOP_EXEC`, which the app sets to its symlink path for this command and for every `service` command it runs.
 
 - [ ] **Step 1: Write the failing inspection tests**
 
@@ -1950,7 +2429,7 @@ test('parses print-disabled in both the current and the older boolean format', (
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd packages/cli && bun test src/desktop-connect`
+Run: `cd packages/cli && bun run test:unit src/desktop-connect`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement the inspection module**
@@ -2018,7 +2497,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { LAUNCHD_EXEC_WRAPPER } from '../service';
-import { desktopConnect, printDesktopConnect, type DesktopConnectDeps } from './desktop-connect';
+import { desktopConnect, printDesktopConnect, runWithin, type DesktopConnectDeps } from './desktop-connect';
 
 let root: string;
 beforeEach(() => {
@@ -2172,11 +2651,45 @@ test('the command prints exactly one JSON line', async () => {
   expect(output.trimEnd().split('\n')).toHaveLength(1);
   expect(JSON.parse(output).protocolVersion).toBe(1);
 });
+
+test('a discovery step that throws still prints one JSON object, and it permits no automation', async () => {
+  writeConfig(home(), '127.0.0.1', 9317);
+  let output = '';
+  const throwing: DesktopConnectDeps = {
+    ...deps({ plist: desktopPlist() }),
+    readToken: () => {
+      throw new Error('EACCES: permission denied');
+    },
+  };
+  await printDesktopConnect(throwing, (text) => {
+    output += text;
+  });
+  expect(output.trimEnd().split('\n')).toHaveLength(1);
+  // `owner: null` would mean "no plist" and trigger a fresh install; `unknown` means "never act".
+  expect(JSON.parse(output)).toEqual({
+    protocolVersion: 1,
+    bundledVersion: '0.37.0',
+    unit: { present: true, wrapperValid: false, target: null, home: null, owner: 'unknown' },
+    job: { loaded: false, disabled: false, pid: null },
+    instance: {
+      controlUrl: null, dashboardUrl: null, reachable: false, version: null, pid: null, ppid: null, matchesJob: null,
+    },
+    token: null,
+  });
+});
+
+test('a helper that outlives the command budget is killed instead of hanging discovery', async () => {
+  const started = performance.now();
+  const { code } = await runWithin(['sleep', '5'], Date.now() + 200);
+  expect(code).not.toBe(0);
+  expect(performance.now() - started).toBeLessThan(2_000);
+  await expect(runWithin(['true'], Date.now() - 1)).rejects.toThrow('budget');
+});
 ```
 
 - [ ] **Step 5: Run to verify failure**
 
-Run: `cd packages/cli && bun test src/desktop-connect/desktop-connect.test.ts`
+Run: `cd packages/cli && bun run test:unit src/desktop-connect/desktop-connect.test.ts`
 Expected: FAIL — module not found.
 
 - [ ] **Step 6: Implement discovery**
@@ -2193,6 +2706,10 @@ import { launchdJobTarget, managedUnitPath } from '../service';
 import { inspectUnit, parseDisabled, parseJobPrint, type UnitInspection, unitOwner } from './launchd-inspect';
 
 const PROBE_TIMEOUT_MS = 2_000;
+// The spec bounds the whole command at 10 s. The two HTTP probes take at most 2 s each, so the
+// helper processes (plutil, launchctl) share what is left.
+const COMMAND_BUDGET_MS = 10_000;
+const SPAWN_BUDGET_MS = COMMAND_BUDGET_MS - 2 * PROBE_TIMEOUT_MS;
 
 export type DesktopConnectDeps = {
   readonly platform: NodeJS.Platform;
@@ -2305,12 +2822,44 @@ export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopC
   };
 }
 
-/** stdout carries exactly this one line; anything human-readable belongs on stderr. */
+// Reported when discovery itself throws. `owner: 'unknown'` is deliberate: `null` means "no plist",
+// which the app answers with a fresh install, while `unknown` permits no automatic action at all.
+const failedDiscovery = (bundledVersion: string): DesktopConnectResult => ({
+  protocolVersion: 1,
+  bundledVersion,
+  unit: { present: true, wrapperValid: false, target: null, home: null, owner: 'unknown' },
+  job: { loaded: false, disabled: false, pid: null },
+  instance: UNREACHABLE,
+  token: null,
+});
+
+/** stdout carries exactly this one line, whatever fails; anything human-readable belongs on stderr. */
 export async function printDesktopConnect(deps: DesktopConnectDeps, write: (text: string) => void): Promise<void> {
-  write(`${JSON.stringify(await desktopConnect(deps))}\n`);
+  let result: DesktopConnectResult;
+  try {
+    result = await desktopConnect(deps);
+  } catch {
+    result = failedDiscovery(deps.bundledVersion);
+  }
+  write(`${JSON.stringify(result)}\n`);
 }
 
-export const defaultDesktopConnectDeps = (bundledVersion: string): DesktopConnectDeps => ({
+/** Runs a helper process inside the command's time budget, killing it when the budget runs out. */
+export async function runWithin(
+  cmd: readonly string[],
+  deadline: number,
+): Promise<{ readonly code: number; readonly stdout: string }> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error('desktop-connect time budget exhausted');
+  const proc = Bun.spawn(cmd as string[], { stdout: 'pipe', stderr: 'ignore', timeout: remaining, killSignal: 'SIGKILL' });
+  const stdout = await new Response(proc.stdout).text();
+  return { code: await proc.exited, stdout };
+}
+
+export const defaultDesktopConnectDeps = (
+  bundledVersion: string,
+  spawnDeadline: number = Date.now() + SPAWN_BUDGET_MS,
+): DesktopConnectDeps => ({
   platform: process.platform,
   env: process.env,
   bundledVersion,
@@ -2321,16 +2870,13 @@ export const defaultDesktopConnectDeps = (bundledVersion: string): DesktopConnec
     return path !== undefined && existsSync(path);
   },
   readToken: (home) => readDesktopToken(home),
-  run: async (cmd) => {
-    const proc = Bun.spawn(cmd as string[], { stdout: 'pipe', stderr: 'ignore' });
-    const stdout = await new Response(proc.stdout).text();
-    return { code: await proc.exited, stdout };
-  },
+  // A killed or budget-exhausted helper degrades its fields like any other launchctl/plutil failure.
+  run: (cmd) => runWithin(cmd, spawnDeadline),
   fetch,
 });
 ```
 
-(`platform` is carried for the command guard below; `resolveControlAddress` uses the global fetch-free config read, and `probeHealth` uses `deps.fetch` from Task 10.)
+(`platform` is carried for the command guard below; `resolveControlAddress` uses the global fetch-free config read, and `probeHealth` uses `deps.fetch` from Task 10. Owner detection reads only `env.AIO_PROXY_DESKTOP_EXEC`: the app sets it to its symlink path for this command and for every `service` command it runs (spec, Discovery). Without it, a desktop-owned plist reports `external`, the safe direction.)
 
 ```ts
 // packages/cli/src/desktop-connect/index.ts
@@ -2354,7 +2900,7 @@ const registerHiddenDesktopConnect = (program: Command): void => {
 
 - [ ] **Step 7: Run tests**
 
-Run: `cd packages/cli && bun test src/desktop-connect src/main`
+Run: `cd packages/cli && bun run test:unit src/desktop-connect src/main`
 Expected: PASS.
 
 - [ ] **Step 8: Manual check on a Mac with a running service**
@@ -2422,7 +2968,7 @@ test('a clean shutdown exits at once instead of waiting for the deadline', async
 
 - [ ] **Step 2: Run to verify failure**
 
-Run: `cd packages/cli && bun test src/run/run.test.ts`
+Run: `cd packages/cli && bun run test:unit src/run/run.test.ts`
 Expected: FAIL. The child exits 1 with `SyntaxError: Export named 'onShutdownSignal' not found`.
 
 - [ ] **Step 3: Implement**
@@ -2464,7 +3010,7 @@ In `run`, replace the block from `let closing = false;` through `process.once('S
 
 - [ ] **Step 4: Run tests**
 
-Run: `cd packages/cli && bun test src/run`
+Run: `cd packages/cli && bun run test:unit src/run`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -2479,15 +3025,27 @@ git commit -m "fix(cli): bound aio-proxy run shutdown after a stop signal"
 ### Task 13: Changeset and full verification
 
 **Files:**
-- Create: `.changeset/<generated-name>.md` via `bun changeset`
+- Create: `.changeset/desktop-server-cli.md`
 
-- [ ] **Step 1: Author the changeset**
+- [ ] **Step 1: Write the changeset**
 
-Run: `bun changeset` and select `aio-proxy`, `@aio-proxy/core`, `@aio-proxy/server`, `@aio-proxy/cli`, `@aio-proxy/types`, `@aio-proxy/i18n`, all `minor`. Body:
+`bun changeset` is interactive, so write the file directly in the format it generates. Every touched internal package is listed next to the product package, all at the same `minor` level:
 
 ```md
-`aio-proxy service start` now restarts a launchd service that is loaded but not running, and it reports an error when launchd did not actually load the service instead of claiming success. A service whose binary was removed no longer respawns in a loop, and a stopping proxy now exits within 3 seconds of a stop signal even when connections are still open. The proxy also exposes a token-protected local summary endpoint and a discovery command for the upcoming macOS desktop app, and refuses to self-upgrade a binary that the desktop app manages.
+---
+'aio-proxy': minor
+'@aio-proxy/core': minor
+'@aio-proxy/server': minor
+'@aio-proxy/cli': minor
+'@aio-proxy/types': minor
+'@aio-proxy/i18n': minor
+---
+
+`aio-proxy service start` now starts a launchd service that is loaded but not running, `service restart` waits for the old service to stop, and both report an error when launchd did not load the service instead of claiming success. A service whose binary was removed no longer respawns in a loop, and a stopping proxy exits within 3 seconds of a stop signal. The proxy is ready for the upcoming macOS menu-bar app: the app can show its usage and Provider summary, and `aio-proxy upgrade` never updates or restarts a copy the app manages.
 ```
+
+Run: `grep -rn "desktop" .changeset/*.md`
+Expected: only this file matches. Any other pending note that describes these behaviors must be folded into this one (repo rule: one note per unreleased change).
 
 - [ ] **Step 2: Run the full gate**
 

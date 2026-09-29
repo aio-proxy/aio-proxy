@@ -89,7 +89,10 @@ A hidden CLI command, run through the symlink (or the bundled binary before the 
 - **`job`** comes from `launchctl print gui/<uid>/com.aio-proxy.agent` (loaded, pid) and `launchctl print-disabled gui/<uid>` (disabled). The disk plist and the loaded job can differ; both are reported. `job.pid` is the `/bin/sh` wrapper launchd started, not the sidecar: the sidecar is the wrapper's child in the same process group.
 - **`instance`** resolves the address with `AIO_PROXY_HOME` set to `unit.home` (the service's own config, not the calling process's environment), else the default home. A wildcard bind maps to its loopback (`0.0.0.0` → `127.0.0.1`, `::` → `::1`); a non-loopback bind yields `controlUrl: null` and no token is ever sent. `version`, `pid` and `ppid` come from `GET /dashboard/api/desktop-summary` (authenticated; `server.version`, `server.pid`, `server.ppid`), not `/health`, so an instance is identified by a credential only a same-user process can read. `matchesJob` is `instance.pid == job.pid || instance.ppid == job.pid`, and `null` when `instance.pid` or `job.pid` is unknown (an older instance without `desktop-summary` reports `version` from `/health` and `pid: null`, `ppid: null`); `null` counts as not matching for automation. A sidecar reparented to launchd (ppid 1, wrapper gone) does not match, so it gets no automation.
 - **`token`** is read from `<home>/desktop-token`; `null` if absent or failing the file checks below.
-- Timeouts: 10s for the whole command, 2s per HTTP probe.
+- Failure: a step that fails degrades its own fields. If discovery throws anyway, the command still prints one object: `unit.present: true`, `owner: "unknown"`, `job` not loaded, `instance` unreachable, `token: null`. It never reports `owner: null`, which means "no plist" and would trigger a fresh install.
+- Timeouts: 10s for the whole command, enforced by the CLI. Each HTTP probe gets 2s, and the helper processes (`plutil`, `launchctl`) share the remaining 6s; a helper still running when that budget ends is killed and its fields degrade.
+
+**Environment contract.** The app runs `__desktop-connect`, and every `service` command it issues, with `AIO_PROXY_DESKTOP_EXEC=<symlink path>` in the child's environment. It is the only input for `owner: desktop` (the CLI never guesses the app's symlink), and it is what makes `service install`/`restart` write a desktop-owned plist (CLI changes). A run without it reports a desktop plist as `external`, the safe direction.
 
 ### What the app does automatically
 
@@ -150,13 +153,15 @@ The launchd plist uses a conditional `KeepAlive` (`SuccessfulExit = false`); the
 | Location | `$AIO_PROXY_HOME/desktop-token` |
 | Created by | The server at boot, if absent. The CLI only reads. |
 | Creation | Temp file opened `O_CREAT \| O_EXCL` with mode `0600`, written, then `link()` to the final name (fails if another process won; the loser reads the winner's file), then unlink temp |
-| Read checks | `lstat`: regular file, not a symlink, owned by the current uid, no group/other permission bits. A failing check means "no token" plus a logged reason; permissions are never widened or repaired silently |
+| Read checks | Open with `O_NOFOLLOW` (a symlink fails) and `O_NONBLOCK` (a FIFO cannot block), then `fstat` the descriptor: regular file, owned by the current uid, no group/other permission bits; read from the same descriptor. A failing check or an unreadable file means "no token" plus a logged reason from a closed set (`not_regular_file`, `foreign_owner`, `insecure_mode`, `unreadable`, `malformed`, or `unwritable` when the server cannot create it); permissions are never widened or repaired silently |
 | Lifetime | Loaded by the server once at boot. Persistent across restarts, reinstalls, and app updates. Rotation = replace the file and restart the proxy |
 | Transport to the app | The stdout pipe of `__desktop-connect`. Never an environment variable or URL |
 | Transport to the server | `Authorization: Bearer` |
 | Logging | The Rust token type has a redacting `Debug`; the app never logs `__desktop-connect` stdout or `Authorization` |
 
 This is a same-user local credential, not proof that the caller is the official app.
+
+**Accepted exposure: whoever answers the port.** Discovery sends the token to whatever answers `GET /health` with `status: "ok"` on the configured loopback address. While the proxy is down, another local process can bind that port, including one run by a different user on a shared Mac, answer `/health`, and receive the token. The impact is capped by the scope below: the token reads one summary and grants nothing else, and it keeps working only until the file is replaced and the proxy restarted. Pinning the listener (for example by checking its pid against `job.pid`) is not done in phase 1.
 
 **Scope.** The token authorizes exactly one route: `GET /dashboard/api/desktop-summary`. That route has its own guard and always requires the desktop token, with or without a dashboard password. It is exempted from the dashboard session middleware; `DashboardAuthentication.verify()` is not changed, so the token is never a dashboard session. No other route accepts it. Being a `GET`, it never touches the CSRF guard.
 
@@ -167,11 +172,12 @@ This is a same-user local credential, not proof that the caller is the official 
 ### CLI
 
 - `__desktop-connect` as specified above.
-- `serviceStart` on macOS: `launchctl enable gui/<uid>/com.aio-proxy.agent` (clearing the override `service stop` leaves, as `load -w` did). Then `launchctl kickstart gui/<uid>/com.aio-proxy.agent` when the job is already loaded (`load -w` does not start a loaded job), or `launchctl bootstrap gui/<uid> <plist>` when it is not. Success is then verified with `launchctl print gui/<uid>/com.aio-proxy.agent`, never taken from an exit status: legacy `launchctl load` exits 0 on "Load failed: 5". `serviceRestart` outside the job does `launchctl bootout` followed by the same sequence, so the rewritten plist is re-read. Benefits CLI users too.
+- `serviceStart` on macOS: `launchctl enable gui/<uid>/com.aio-proxy.agent` (clearing the override `service stop` leaves, as `load -w` did). Then `launchctl kickstart gui/<uid>/com.aio-proxy.agent` when the job is already loaded (`load -w` does not start a loaded job), or `launchctl bootstrap gui/<uid> <plist>` when it is not. Success is then verified with `launchctl print gui/<uid>/com.aio-proxy.agent`, never taken from an exit status: legacy `launchctl load` exits 0 on "Load failed: 5". `serviceRestart` outside the job does `launchctl bootout`, waits up to 10s for `launchctl print` to stop finding the job (bootout can return while teardown is still in progress), then runs the same sequence, so the rewritten plist is re-read. A job still present after the wait is an error. Benefits CLI users too.
 - `aio-proxy run` force-exits with code 0 3 s after SIGTERM or SIGINT if the event loop has not drained, because launchd never escalates. This bounds orphan lifetime and background work after a stop. Exit 0 keeps a forced stop identical to a clean one for `KeepAlive`.
 - `resolveAgentExecutable` checks `AIO_PROXY_DESKTOP_EXEC` first, before PATH and realpath resolution, and returns it verbatim (not passed through `resolveStableManagedExec`, so the symlink is never resolved into the bundle).
 - When `AIO_PROXY_DESKTOP_EXEC` is set, `writeManagedUnit` writes the plist environment with `AIO_PROXY_DESKTOP_EXEC=<symlink>` and `AIO_PROXY_UPGRADE_METHOD=desktop`, skipping upgrade-method detection. Because the running daemon then inherits `AIO_PROXY_DESKTOP_EXEC`, every later rewrite from inside it (including `migratePreMarkerManagedUnit` at `run` startup) keeps the symlink and the marker. `UnitOptions.upgradeMethod` gains `'desktop'`.
-- **No self-upgrade of desktop binaries.** `runUpgradeCommand` is the shared write path for `aio-proxy upgrade`, Dashboard "apply update" (`/dashboard/api/release/apply` → auto-update hooks), and background auto-update. It refuses when `AIO_PROXY_UPGRADE_METHOD=desktop` or the executable resolves inside a `.app` bundle, returning a result that tells the user to update through the desktop app.
+- **No self-upgrade of desktop binaries.** `runUpgradeCommand` is the shared write path for `aio-proxy upgrade`, Dashboard "apply update" (`/dashboard/api/release/apply` → auto-update hooks), and background auto-update. It refuses when `AIO_PROXY_UPGRADE_METHOD=desktop` or the executable resolves inside a `.app` bundle, returning a result that tells the user to update through the desktop app. A desktop-managed sidecar also wires no `applyUpdate` and no update notification, so the Dashboard reports the update action as unavailable instead of offering one that fails.
+- **CLI upgrades leave a desktop-owned service alone.** A desktop-owned plist is one whose wrapper target equals its own `AIO_PROXY_DESKTOP_EXEC` marker. When one is installed, a CLI `aio-proxy upgrade` (for example Homebrew's) installs its own copy but skips the managed-service restart and prints a hint. That restart would rewrite the app's plist to the CLI binary and flip the owner to `external`.
 - The launchd wrapper guard described above.
 
 ### Quota cache additions
@@ -296,7 +302,7 @@ Panel details:
 
 - No arrow, matching arrowless system menu-bar popovers such as Control Center.
 - The heatmap is a plain grid of cells; GPUI Kit has no heatmap component and a fixed 365-cell grid does not need one.
-- Window lifecycle on close: **hybrid** (PROVISIONAL until the human flash and on-screen latency checks).
+- Window lifecycle on close: **hybrid** (PROVISIONAL until the human flash and on-screen latency checks, and the unlocked 100-cycle run of hybrid with animation None, which the spike did not measure).
   - Destroy the window and its Metal surface. Keep the summary model and last response in an app-level entity, so a reopen renders the last numbers at once.
   - Set `NSWindowAnimationBehaviorNone` on the GPUI panel right after creation, reached through `HasWindowHandle`. AppKit's default utility-window animation otherwise runs on its own thread for every open and close.
   - If the checks argue against hybrid, fall back to plain destroy (the same code without the cached model). Hide/show fails the closed-panel budget.
@@ -397,7 +403,7 @@ Server and dashboard changes can break the compiled sidecar without changing the
 
 ## Phasing
 
-Release and lifecycle risks block the plan, so they are proven before any product contract merges.
+Release and lifecycle risks block the plan, so they are proven before any product contract merges. Phase 1 may be implemented and reviewed on its feature branch before that, but it does not merge to `main` until spike check 1's human items pass: Developer ID signing, notarization, the clean-Mac browser install, and the Developer ID Sparkle update.
 
 0. **Spike** (throwaway code; the output is the go/no-go below). Check 1 first.
 1. **Server + CLI.** Token, `__desktop-connect`, `serviceStart`/`serviceRestart` bootstrap-or-kickstart with `launchctl print` verification, bounded `run` shutdown, `AIO_PROXY_DESKTOP_EXEC` + marker, upgrade refusal, wrapper guard, quota `status`/`refresh`, `desktop-summary`.
@@ -422,12 +428,13 @@ Check 3 decision matrix:
 
 Memory is judged by physical footprint (Activity Monitor's "Memory"), not `ps` RSS. RSS counts shared framework and dyld-cache pages: a bare AppKit status-item app is already 44 MB RSS, and the spike host is 92 MB RSS at 32.4 MB footprint with the panel closed. The freed GPU and IOSurface memory never showed in RSS.
 
-**Spike result: CONDITIONAL GO** (`2026-09-29-desktop-spike-findings.md`). Automatable checks passed:
+**Spike result: CONDITIONAL GO** (`2026-09-29-desktop-spike-findings.md`). No check has fully passed yet:
 
-- Check 1 was proven with ad-hoc signatures in a launchd sandbox.
-- Check 3: summary 31 ms at 36k requests/24 h, closed footprint 32.4 MB, 0.37 wakeups/s, hybrid chosen (PROVISIONAL, [locked] measurements).
+- Check 1 is **PENDING**. Its sandboxed mechanics pass (ad-hoc signatures, a launchd sandbox job, recovery, an ad-hoc Sparkle N→N+1), but Developer ID signing, notarization, the clean-Mac install and the Developer ID Sparkle update have not run, and a failure there still blocks the plan.
+- Check 2 is **PENDING** until its interactive rows (click-away, click-again, second display, full-screen Space, sleep/wake) are run.
+- Check 3 is a **conditional GO**: summary 31 ms at 36k requests/24 h, closed footprint 32.4 MB, 0.37 wakeups/s, hybrid chosen (PROVISIONAL, [locked] measurements).
 
-Human confirmations remain for every check. Check 2 is not passed until its interactive rows (click-away, click-again, second display, full-screen Space, sleep/wake) are run.
+Human confirmations remain for every check.
 
 ## Testing
 
@@ -437,18 +444,18 @@ Each automated test guards one concrete failure.
   - `desktop-summary` accepts the desktop token from a loopback peer, with and without a dashboard password.
   - With a dashboard password set, the desktop token gets 401 on another `/dashboard/api/*` route (it adds no dashboard privilege). Without a password, a request with the token gets exactly what an anonymous loopback request gets.
   - The token is rejected from a non-loopback peer even when `Host`, `Origin`, or `X-Forwarded-For` claim loopback: IPv4, IPv6, and IPv4-mapped peers via injected connection metadata, plus one real-socket integration test.
-  - Token file checks: a symlink, a group-readable file, and a file owned by another uid each yield "no token"; two concurrent creators end with one token both read.
+  - Token file checks: a symlink, a group-readable file, a file owned by another uid, an unreadable (`0000`) file and a FIFO each yield "no token" without throwing or blocking; two concurrent creators end with one token both read. A rejected file is logged with its closed-set reason only.
   - A server with no resolvable home, or whose token file fails the checks, still boots and answers 401 on `desktop-summary`.
-  - `desktop-summary` returns promptly with `loading` quota when the quota reader never resolves (guards the measured 1.3s stall); a first-read failure shows `failed`, not `loading`; one Provider's failure leaves the response 200.
+  - `desktop-summary` returns promptly with `loading` quota when the quota reader never resolves (guards the measured 1.3s stall); a first-read failure shows `failed`, not `loading`; one Provider's failure leaves the response 200, including a plugin that returns invalid window values (a `NaN` `resetsAt`, a ratio outside 0..1), which marks only that Provider `failed`.
   - A never-settling quota read is aborted by the host: already covered by `plugin-quota/read.test.ts` ("aborts a plugin read that ignores its signal…"); the cache's `finally` then clears `inFlight`.
   - The DTO: golden fixture shared with the Rust tests; internal fields added to Provider summaries do not appear in the response.
 - **CLI**
-  - `__desktop-connect`: `owner` for desktop, external, unrecognized-wrapper, and absent plists; `home` taken from the plist, not the environment; wildcard bind mapped to loopback; non-loopback bind yields `controlUrl: null`; stdout is exactly one JSON object when the command fails partway.
-  - `serviceStart` enables the job and then kickstarts an already-loaded one or bootstraps an unloaded one. It fails when `launchctl print` does not show the job afterwards, even though every launchctl call exited 0. `serviceRestart` boots out before bootstrapping (manager calls injected).
+  - `__desktop-connect`: `owner` for desktop, external, unrecognized-wrapper, and absent plists; `home` taken from the plist, not the environment; wildcard bind mapped to loopback; non-loopback bind yields `controlUrl: null`; stdout is exactly one JSON object when the command fails partway, and one with `owner: "unknown"` and no token when discovery throws; a helper process that outlives the time budget is killed.
+  - `serviceStart` enables the job and then kickstarts an already-loaded one or bootstraps an unloaded one. It fails when `launchctl print` does not show the job afterwards, even though every launchctl call exited 0. `serviceRestart` boots out before bootstrapping, waits while `launchctl print` still finds the job after bootout, and fails without starting anything when the job never goes away (manager calls injected).
   - `aio-proxy run` exits 0 at its shutdown deadline after SIGTERM when shutdown leaves the event loop busy, and exits at once, without waiting for the deadline, when shutdown drains it.
   - `__desktop-connect`: `matchesJob` is true when the summary's `ppid` equals `job.pid` (the wrapper) and false for a reparented sidecar.
   - With `AIO_PROXY_DESKTOP_EXEC` set, the written plist targets that exact path (not its realpath) and carries both env markers; a rewrite from a process that inherited the markers keeps them.
-  - `runUpgradeCommand` refuses for a desktop-marked process and for an executable inside a `.app`, without invoking any installer.
+  - `runUpgradeCommand` refuses for a desktop-marked process and for an executable inside a `.app`, without invoking any installer. A CLI upgrade with a desktop-owned plist installed never restarts the service. A desktop-managed sidecar's auto-update hooks carry no `applyUpdate` or notification.
   - The launchd wrapper exits 0 when its executable is missing, asserted by executing the wrapper.
 - **Rust**
   - Panel placement clamps to the screen for icons near an edge.
