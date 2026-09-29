@@ -17,6 +17,7 @@ npm/cli-*/bin/
 .reference
 .claude/worktrees/
 .claude/settings.local.json
+.claude/launch.json
 
 # API reference outputs are generated before Rspress starts; overview.md stays authored.
 /website/docs/*/api/*.mdx
