@@ -1,5 +1,25 @@
 # @aio-proxy/cli
 
+## 0.35.0
+
+### Patch Changes
+
+- [#448](https://github.com/aio-proxy/aio-proxy/pull/448) [`c867d58`](https://github.com/aio-proxy/aio-proxy/commit/c867d58f4c660b4f9882447faba42bb38501b533) Thanks [@baranwang](https://github.com/baranwang)! - Keep Codex model catalog entries forward-compatible by inheriting the first remote model as the synthesis template, and configure Codex with its explicit model catalog URL and API-key discovery feature.
+
+- [#445](https://github.com/aio-proxy/aio-proxy/pull/445) [`de8be7f`](https://github.com/aio-proxy/aio-proxy/commit/de8be7fedb0aa8f5359db8ab14a6fcb12abf1139) Thanks [@olivewind](https://github.com/olivewind)! - Managed services now retain Agent executable search paths, so the dashboard detects locally installed Agents after restarts. Codex also recognizes the CLI bundled with current ChatGPT desktop builds.
+- Updated dependencies [[`c867d58`](https://github.com/aio-proxy/aio-proxy/commit/c867d58f4c660b4f9882447faba42bb38501b533), [`5a02aa1`](https://github.com/aio-proxy/aio-proxy/commit/5a02aa1360cc391ed99421e461bed5a558b40840), [`0250a99`](https://github.com/aio-proxy/aio-proxy/commit/0250a99f2f5b98d40ec54a76560b21268eaa3008), [`76e2bc6`](https://github.com/aio-proxy/aio-proxy/commit/76e2bc6a2405ab48dca41ffcfbcc22189602d349)]:
+  - @aio-proxy/server@0.35.0
+  - @aio-proxy/dashboard@0.35.0
+  - @aio-proxy/core@0.35.0
+  - @aio-proxy/types@0.35.0
+  - @aio-proxy/opencode-provider@0.35.0
+  - @aio-proxy/pi-provider@0.35.0
+  - @aio-proxy/agent-provider-runtime@0.35.0
+  - @aio-proxy/plugin-sdk@0.35.0
+  - @aio-proxy/logger@0.35.0
+  - @aio-proxy/i18n@0.35.0
+  - @aio-proxy/shared@0.35.0
+
 ## 0.34.0
 
 ### Minor Changes

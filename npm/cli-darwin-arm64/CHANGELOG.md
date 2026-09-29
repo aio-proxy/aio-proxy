@@ -1,5 +1,9 @@
 # @aio-proxy/cli-darwin-arm64
 
+## 0.35.0
+
+No changes in this release.
+
 ## 0.34.0
 
 No changes in this release.
