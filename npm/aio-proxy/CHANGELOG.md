@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.35.1
+
+### Patch Changes
+
+- [#451](https://github.com/aio-proxy/aio-proxy/pull/451) [`ab6524f`](https://github.com/aio-proxy/aio-proxy/commit/ab6524f69e2c48b2cd3039407916e07d43fd24f9) Thanks [@baranwang](https://github.com/baranwang)! - The dashboard Plugins page now shows Plugins as cards with search and All / Enabled / Failed / Built-in filters. A banner calls out Plugins that failed to load and jumps straight to them, and Add Plugin opens a compact dialog instead of a drawer.
+
 ## 0.35.0
 
 ### Minor Changes
