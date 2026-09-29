@@ -1,1 +1,6 @@
-export { createOAuthQuotaCache, type OAuthQuotaCache, type OAuthQuotaCacheEntry } from './quota-cache';
+export {
+  createOAuthQuotaCache,
+  type OAuthQuotaCache,
+  type OAuthQuotaCacheEntry,
+  type OAuthQuotaCacheStatus,
+} from './quota-cache';
