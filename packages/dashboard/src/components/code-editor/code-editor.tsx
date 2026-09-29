@@ -25,15 +25,33 @@ interface CodeEditorProps {
   readonly id?: string;
   readonly className?: string;
   readonly extensions?: Extension[];
+  /** Renders the document without letting it be edited. Still selectable, scrollable and copyable. */
+  readonly readOnly?: boolean;
 }
 
-export const CodeEditor: React.FC<CodeEditorProps> = ({ className, invalid, id, onChange, value, extensions }) => {
+/**
+ * `readOnly` refuses document changes; `editable` also drops the cursor and the edit affordance, so
+ * the pane reads as a view rather than a field the user cannot work out how to type into.
+ */
+const readOnlyExtensions = (readOnly: boolean): Extension[] =>
+  readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [];
+
+export const CodeEditor: React.FC<CodeEditorProps> = ({
+  className,
+  invalid,
+  id,
+  onChange,
+  value,
+  extensions,
+  readOnly = false,
+}) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
   const a11yCompartment = useRef(new Compartment());
   const extraCompartment = useRef(new Compartment());
+  const readOnlyCompartment = useRef(new Compartment());
   useEffect(() => {
     valueRef.current = value;
     onChangeRef.current = onChange;
@@ -65,6 +83,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className, invalid, id, 
             EditorView.contentAttributes.of(createCodeEditorContentAttributes({ invalid, id })),
           ),
           extraCompartment.current.of(extensions ?? []),
+          readOnlyCompartment.current.of(readOnlyExtensions(readOnly)),
         ],
       }),
     });
@@ -97,6 +116,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className, invalid, id, 
       effects: extraCompartment.current.reconfigure(extensions ?? []),
     });
   }, [extensions]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: readOnlyCompartment.current.reconfigure(readOnlyExtensions(readOnly)),
+    });
+  }, [readOnly]);
 
   return <div ref={parentRef} aria-invalid={invalid || undefined} className={cn(styles['code-editor'], className)} />;
 };

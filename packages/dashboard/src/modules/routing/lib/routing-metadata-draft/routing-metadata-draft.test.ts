@@ -5,7 +5,9 @@ import { expect, test } from '@rstest/core';
 import {
   mergeRoutingMutationDrafts,
   reconcileRoutingMetadataValues,
+  routingDirtyTabs,
   routingMetadataFormValues,
+  routingMetadataTouched,
   routingOverrideDraftsValid,
 } from './routing-metadata-draft';
 
@@ -90,12 +92,52 @@ test('reconcile after a stale reload re-seeds untouched drafts and keeps touched
     ),
   };
 
-  const next = reconcileRoutingMetadataValues(edited, reloaded);
+  const next = reconcileRoutingMetadataValues(edited, reloaded, values);
 
   expect(next.metadata).toEqual({ touched: true, value: { name: 'Mine' } });
   expect(next.overrides['a']?.cost).toEqual({ touched: true, value: { input: 9 } });
   // The untouched limit picks up the freshly stored server value.
   expect(next.overrides['a']?.limit).toEqual({ touched: false, value: { context: 1000 } });
+});
+
+test('reconcile keeps a field another operator changed when the user edited a different one', () => {
+  // The user changed only the input price; the server meanwhile renamed the model and changed the
+  // output price. Replaying the whole touched object would write the stale name and output back.
+  const base = routingMetadataFormValues({ ...model(), metadata: { name: 'Old', cost: { input: 1, output: 2 } } });
+  const edited = { ...base, metadata: { touched: true, value: { name: 'Old', cost: { input: 3, output: 2 } } } };
+  const reloaded: DashboardRoutingModel = {
+    ...model(),
+    metadata: { name: 'New', cost: { input: 1, output: 5 } },
+  };
+
+  const next = reconcileRoutingMetadataValues(edited, reloaded, base);
+
+  expect(next.metadata).toEqual({ touched: true, value: { name: 'New', cost: { input: 3, output: 5 } } });
+});
+
+test('reconcile keeps keys both sides added to a group the baseline did not have', () => {
+  // The baseline had no cost group; the user added an input price, another operator an output price.
+  // Keeping the user's group whole would delete the other operator's addition on save.
+  const base = routingMetadataFormValues(model());
+  const edited = { ...base, metadata: { touched: true, value: { cost: { input: 3 } } } };
+  const reloaded: DashboardRoutingModel = { ...model(), metadata: { cost: { output: 5 } } };
+
+  const next = reconcileRoutingMetadataValues(edited, reloaded, base);
+
+  expect(next.metadata).toEqual({ touched: true, value: { cost: { input: 3, output: 5 } } });
+});
+
+test('a draft the reload already matches is no longer touched', () => {
+  // Both operators renamed the model to the same value: nothing is left to save, so the draft must not
+  // keep the save bar and the navigation guard up.
+  const base = routingMetadataFormValues(model());
+  const edited = { ...base, metadata: { touched: true, value: { name: 'Same' } } };
+  const reloaded: DashboardRoutingModel = { ...model(), metadata: { name: 'Same' } };
+
+  expect(reconcileRoutingMetadataValues(edited, reloaded, base).metadata).toEqual({
+    touched: false,
+    value: { name: 'Same' },
+  });
 });
 
 test('a touched limit with input above context is invalid for Save', () => {
@@ -119,4 +161,43 @@ test('a touched valid or cleared limit stays valid', () => {
       b: { cost: { touched: false, value: undefined }, limit: { touched: true, value: undefined } },
     }),
   ).toBe(true);
+});
+
+const metadataValues = (over: {
+  readonly metadataTouched?: boolean;
+  readonly costTouched?: boolean;
+  readonly limitTouched?: boolean;
+}) => ({
+  metadata: { touched: over.metadataTouched ?? false, value: undefined },
+  overrides: {
+    a: {
+      cost: { touched: over.costTouched ?? false, value: undefined },
+      limit: { touched: over.limitTouched ?? false, value: undefined },
+    },
+  },
+});
+
+test('names the dirty tabs in the order the editor renders them', () => {
+  // The tab markers and the navigation guard both read this, so the order is part of the contract.
+  expect(routingDirtyTabs(true, metadataValues({ metadataTouched: true, costTouched: true }))).toStrictEqual([
+    'topology',
+    'metadata',
+    'cost',
+  ]);
+  expect(routingDirtyTabs(false, metadataValues({}))).toStrictEqual([]);
+});
+
+test('counts a touched limit group as cost-tab work, not metadata-tab work', () => {
+  // Cost and limit overrides share one tab, and neither is the metadata draft.
+  expect(routingDirtyTabs(false, metadataValues({ limitTouched: true }))).toStrictEqual(['cost']);
+  expect(routingDirtyTabs(false, metadataValues({ metadataTouched: true }))).toStrictEqual(['metadata']);
+});
+
+test('reports metadata work from either half of the form', () => {
+  // The model-identity resync refuses to overwrite drafts, so missing either half would silently
+  // discard the user's edits when a refetch brings a new revision.
+  expect(routingMetadataTouched(metadataValues({}))).toBe(false);
+  expect(routingMetadataTouched(metadataValues({ metadataTouched: true }))).toBe(true);
+  expect(routingMetadataTouched(metadataValues({ costTouched: true }))).toBe(true);
+  expect(routingMetadataTouched(metadataValues({ limitTouched: true }))).toBe(true);
 });

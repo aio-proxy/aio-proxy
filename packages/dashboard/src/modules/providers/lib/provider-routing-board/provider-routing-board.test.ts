@@ -6,7 +6,7 @@ import type { WeightedTierLayout } from '@/lib/weighted-tier-layout';
 
 import {
   applyProviderRoutingLayout,
-  applyProviderShare,
+  applyProviderWeight,
   buildProviderRoutingBoard,
   providerRoutingMutation,
   providerTierPercentages,
@@ -19,7 +19,7 @@ const providers = [
   providerStub({ id: 'd', kind: ProviderKind.Api, priority: 10, weight: 1 }),
 ];
 
-test('a normalized tier move preserves every Provider member and weight', () => {
+test('a tier move preserves every Provider member and weight', () => {
   const board = buildProviderRoutingBoard(providers);
   const layout: WeightedTierLayout = {
     tiers: [...board.tiers]
@@ -40,28 +40,39 @@ test('groups Providers by descending priority and distributes displayed percenta
   expect([...providerTierPercentages(board.tiers[1]!).values()]).toEqual([100]);
 });
 
-test('changing one share keeps the tier total at 100 percent', () => {
-  const board = applyProviderShare(buildProviderRoutingBoard(providers), 'tier:20', 'a', 60);
-  expect([...providerTierPercentages(board.tiers[0]!).values()]).toEqual([60, 20, 20]);
+test('a weight edit changes only that Provider, and its share follows', () => {
+  const board = applyProviderWeight(buildProviderRoutingBoard(providers), 'tier:20', 'a', 2);
+  expect(board.tiers[0]!.items.map((item) => item.weight)).toEqual([2, 1, 1]);
+  expect([...providerTierPercentages(board.tiers[0]!).values()]).toEqual([50, 25, 25]);
 });
 
-test('clamps a share so every other Provider retains at least one percent', () => {
-  const board = applyProviderShare(buildProviderRoutingBoard(providers), 'tier:20', 'a', 100);
-  expect([...providerTierPercentages(board.tiers[0]!).values()]).toEqual([98, 1, 1]);
-});
-
-test('moving a Provider rebalances both tiers and removes an empty source tier', () => {
+test('a typed weight is rounded and clamped to the supported range', () => {
   const board = buildProviderRoutingBoard(providers);
+  const weightOf = (next: ReturnType<typeof buildProviderRoutingBoard>) => next.tiers[0]!.items[0]!.weight;
+  expect(weightOf(applyProviderWeight(board, 'tier:20', 'a', 2.6))).toBe(3);
+  expect(weightOf(applyProviderWeight(board, 'tier:20', 'a', 99_999))).toBe(10_000);
+  expect(weightOf(applyProviderWeight(board, 'tier:20', 'a', -4))).toBe(0);
+});
+
+test('moving a Provider keeps every authored weight and removes an empty source tier', () => {
+  // Shares are read off the weights, so a move rebalances nothing: rewriting the tier to an even
+  // split would silently undo the weights the user typed.
+  const weighted = [
+    providerStub({ id: 'a', kind: ProviderKind.Api, priority: 20, weight: 3 }),
+    providerStub({ id: 'b', kind: ProviderKind.Api, priority: 20, weight: 1 }),
+    providerStub({ id: 'd', kind: ProviderKind.Api, priority: 10, weight: 4 }),
+  ];
   const next = applyProviderRoutingLayout(
-    board,
-    {
-      tiers: [{ id: 'tier:20', itemIds: ['a', 'b', 'c', 'd'] }],
-      parking: {},
-    },
+    buildProviderRoutingBoard(weighted),
+    { tiers: [{ id: 'tier:20', itemIds: ['a', 'b', 'd'] }], parking: {} },
     { type: 'item', id: 'd' },
   );
   expect(next.tiers).toHaveLength(1);
-  expect([...providerTierPercentages(next.tiers[0]!).values()]).toEqual([25, 25, 25, 25]);
+  expect(next.tiers[0]!.items.map((item) => [item.providerId, item.weight])).toEqual([
+    ['a', 3],
+    ['b', 1],
+    ['d', 4],
+  ]);
 });
 
 test.each([
@@ -109,7 +120,7 @@ test('tier order becomes compact descending priorities in the mutation', () => {
   });
 });
 
-test('a share-only edit commits the priorities the board already carried', () => {
+test('a weight-only edit commits the priorities the board already carried', () => {
   // Recompacting would be visible past this board: an exact model override is absolute, so lifting
   // two Providers that both sit at 0 to 20 and 10 flips their order against an override pinning one
   // of them at 5. Only a layout change may rewrite priorities.
@@ -117,11 +128,11 @@ test('a share-only edit commits the priorities the board already carried', () =>
     providerStub({ id: 'a', kind: ProviderKind.Api, priority: 0, weight: 1 }),
     providerStub({ id: 'b', kind: ProviderKind.Api, priority: 0, weight: 1 }),
   ];
-  const board = applyProviderShare(buildProviderRoutingBoard(flat), 'tier:0', 'a', 70);
+  const board = applyProviderWeight(buildProviderRoutingBoard(flat), 'tier:0', 'a', 7);
 
   expect(providerRoutingMutation(board, 'revision').providers).toEqual({
-    a: { priority: 0, weight: 7000 },
-    b: { priority: 0, weight: 3000 },
+    a: { priority: 0, weight: 7 },
+    b: { priority: 0, weight: 1 },
   });
 });
 
@@ -192,34 +203,19 @@ test('moving a Provider into a tier leaves a parked member of that tier at zero'
   ]);
 });
 
-test('a share edit never revives a parked Provider it is splitting against', () => {
-  const parked = [
-    providerStub({ id: 'a', kind: ProviderKind.Api, priority: 20, weight: 5000 }),
-    providerStub({ id: 'b', kind: ProviderKind.Api, priority: 20, weight: 0 }),
-  ];
-  const tier = applyProviderShare(buildProviderRoutingBoard(parked), 'tier:20', 'a', 40).tiers[0]!;
-
-  expect(tier.items.find((item) => item.providerId === 'b')?.weight).toBe(0);
-  // `a` is the only active member, so it still carries the whole tier whatever its weight became.
-  expect([...providerTierPercentages(tier)]).toEqual([
-    ['a', 100],
-    ['b', 0],
-  ]);
-});
-
 test('the only Provider in a tier can still be parked and brought back', () => {
   const single = [providerStub({ id: 'a', kind: ProviderKind.Api, priority: 20, weight: 1 })];
   const board = buildProviderRoutingBoard(single);
-  const parked = applyProviderShare(board, 'tier:20', 'a', 0);
+  const parked = applyProviderWeight(board, 'tier:20', 'a', 0);
 
   expect(providerRoutingMutation(parked, 'revision').providers['a']?.weight).toBe(0);
-  expect(providerRoutingMutation(applyProviderShare(parked, 'tier:20', 'a', 100), 'revision').providers['a']).toEqual({
+  expect(providerRoutingMutation(applyProviderWeight(parked, 'tier:20', 'a', 5), 'revision').providers['a']).toEqual({
     priority: 20,
-    weight: 10_000,
+    weight: 5,
   });
 });
 
-test('dragging a parked Provider into another tier is the interaction that unparks it', () => {
+test('dragging a parked Provider into another tier puts it back to work', () => {
   const parked = [...providers, providerStub({ id: 'e', kind: ProviderKind.Api, priority: 10, weight: 0 })];
   const board = buildProviderRoutingBoard(parked);
   const next = applyProviderRoutingLayout(
@@ -234,29 +230,9 @@ test('dragging a parked Provider into another tier is the interaction that unpar
     { type: 'item', id: 'e' },
   );
 
-  expect(next.tiers[0]!.items.find((item) => item.providerId === 'e')?.weight).toBeGreaterThan(0);
+  // It lands with the smallest weight that routes, as a drag on the routing detail page does.
+  expect(next.tiers[0]!.items.find((item) => item.providerId === 'e')?.weight).toBe(1);
   expect([...providerTierPercentages(next.tiers[0]!).values()]).toEqual([25, 25, 25, 25]);
-});
-
-test('a share edit in a tier larger than one hundred keeps every Provider routable', () => {
-  const crowded = Array.from({ length: 101 }, (_, index) =>
-    providerStub({ id: `p${index}`, kind: ProviderKind.Api, priority: 20, weight: 1 }),
-  );
-  const tier = applyProviderShare(buildProviderRoutingBoard(crowded), 'tier:20', 'p0', 50).tiers[0]!;
-
-  expect(tier.items.every((item) => item.weight > 0)).toBe(true);
-  expect(tier.items.find((item) => item.providerId === 'p0')?.weight).toBe(5000);
-});
-
-test('a zero share parks a Provider, and raising it again brings it back', () => {
-  const board = buildProviderRoutingBoard(providers);
-  const parked = applyProviderShare(board, 'tier:20', 'a', 0);
-
-  expect(parked.tiers[0]!.items.find((item) => item.providerId === 'a')?.weight).toBe(0);
-  expect(providerRoutingMutation(parked, 'revision').providers['a']?.weight).toBe(0);
-  expect(
-    applyProviderShare(parked, 'tier:20', 'a', 60).tiers[0]!.items.find((item) => item.providerId === 'a')?.weight,
-  ).toBeGreaterThan(0);
 });
 
 test('a completely packed board still gives every tier a distinct priority', () => {

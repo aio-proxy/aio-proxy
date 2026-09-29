@@ -236,7 +236,7 @@ test('renders a known Provider by its display name in the detail header', () => 
   expect(label.textContent).toBe('Carpool');
   expect(row.queryByText('provider-a')).toBeNull();
   expect(row.queryByRole('img', { hidden: true })).toBeNull();
-  expect(row.queryByTestId('provider-protocol-stack')).toBeNull();
+  expect(row.queryByTestId('provider-kind-mark')).toBeNull();
   expect(row.getByText('claude-sonnet-4-6-20260101')).toBeTruthy();
 });
 

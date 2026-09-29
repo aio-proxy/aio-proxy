@@ -2,6 +2,7 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { overviewDashboard, overviewDashboardActivity, overviewDashboardDiagnostics } from './overview';
 import { providerWindowCost } from './provider-window-cost';
+import { routingTraffic, routingTrafficBuckets } from './routing-traffic';
 import { findAffinity, markResponseAmbiguous, resolveResponse } from './session-state';
 import { complete, prune, recover, startRoot } from './trace-lifecycle/index';
 import { percentile } from './trace-percentile';
@@ -20,6 +21,8 @@ export function createTraceStore(db: BunSQLiteDatabase): TraceStore {
     percentile: (traceId) => percentile(db, traceId),
     overview: (query) => overview(db, query),
     providerWindowCost: (query) => providerWindowCost(db, query),
+    routingTraffic: (query) => routingTraffic(db, query),
+    routingTrafficBuckets: (query) => routingTrafficBuckets(db, query),
     overviewDashboard: (query) => overviewDashboard(db, query),
     overviewDashboardDiagnostics: (query) => overviewDashboardDiagnostics(db, query),
     overviewDashboardActivity: (options) => overviewDashboardActivity(db, options),

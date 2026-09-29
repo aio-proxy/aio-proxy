@@ -33,12 +33,16 @@ export const WeightedTierParkingList = <TItem,>({
       data-testid={list.testId}
       data-drop-target={isDropTarget || undefined}
       className={cn(
-        'space-y-2 rounded-xl border bg-muted/40 p-3 transition-colors',
+        'overflow-hidden rounded-xl border transition-colors',
         isDropTarget && 'border-primary bg-primary/5',
       )}
     >
-      <h3 className="text-sm">{list.label}</h3>
-      <div className="space-y-2">
+      {/* The empty handle column keeps the heading under the tiers' labels, as the rows below it do. */}
+      <div className="flex items-center gap-2.5 bg-muted px-2.5 py-2">
+        {writable ? <span aria-hidden="true" className="size-7 shrink-0" /> : null}
+        <h3 className="min-w-0 flex-1 text-sm">{list.heading ?? list.label}</h3>
+      </div>
+      <div>
         {list.items.map((item, index) => (
           <WeightedTierItem
             key={item.id}
@@ -46,6 +50,7 @@ export const WeightedTierParkingList = <TItem,>({
             item={item}
             listId={listId}
             renderItem={renderItem}
+            handleColumn={writable}
             writable={writable && list.droppable}
           />
         ))}

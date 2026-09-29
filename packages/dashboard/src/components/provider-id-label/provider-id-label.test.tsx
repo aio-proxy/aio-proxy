@@ -27,7 +27,7 @@ test('falls back to the account label, then to the Provider ID', () => {
   expect(screen.getByTitle('grok-f3495225242e')).toHaveTextContent('grok-f3495225242e');
 });
 
-test('draws an API Provider with the same protocol stack as the providers page', () => {
+test('draws an API Provider with the same mark as the providers page', () => {
   renderLabel('gateway', [
     providerStub({
       id: 'gateway',
@@ -37,7 +37,7 @@ test('draws an API Provider with the same protocol stack as the providers page',
     }),
   ]);
 
-  expect(screen.getByTestId('provider-protocol-stack')).toBeTruthy();
+  expect(screen.getByTestId('provider-kind-mark')).toBeTruthy();
   expect(screen.getByTitle('gateway')).toHaveTextContent('Gateway');
 });
 
@@ -58,7 +58,7 @@ test('omits the provider mark when the caller asks for the name alone', () => {
   );
 
   const label = screen.getByTitle('gateway');
-  expect(screen.queryByTestId('provider-protocol-stack')).toBeNull();
+  expect(screen.queryByTestId('provider-kind-mark')).toBeNull();
   expect(label).toHaveTextContent('Gateway');
   expect(label.textContent).toBe('Gateway');
 });

@@ -43,32 +43,6 @@ const distribute = (total: number, weights: readonly number[]): number[] => {
   return values;
 };
 
-const positiveDistribution = (total: number, weights: readonly number[]): number[] => {
-  if (weights.length === 0) return [];
-  const base = weights.map(() => 1);
-  // Every member keeps at least one point, so only the surplus above that floor is distributable.
-  const extra = distribute(
-    Math.max(0, total - weights.length),
-    weights.map((weight) => Math.max(1, weight)),
-  );
-  return base.map((value, index) => value + (extra[index] ?? 0));
-};
-
-// Weight zero deliberately parks a Provider outside normal routing. It holds no share of its tier,
-// so it neither receives budget here nor reserves any. `revive` names the Provider the user just
-// dragged, so a drag into another tier lands it with a share instead of carrying its zero along;
-// raising its share slider is the other way back.
-const normalizedItems = (
-  items: readonly ProviderRoutingBoardItem[],
-  weightOf: (item: ProviderRoutingBoardItem) => number = (item) => item.weight,
-  revive?: string,
-): ProviderRoutingBoardItem[] => {
-  const active = items.filter((item) => item.weight > 0 || item.providerId === revive);
-  const weights = positiveDistribution(ROUTING_VALUE_MAX, active.map(weightOf));
-  const byId = new Map(active.map((item, index) => [item.providerId, weights[index] ?? 1]));
-  return items.map((item) => ({ ...item, weight: byId.get(item.providerId) ?? item.weight }));
-};
-
 export const buildProviderRoutingBoard = (providers: readonly DashboardProviderSummary[]): ProviderRoutingBoard => {
   const routable = providers.filter((provider) => !isDegradedProvider(provider));
   const priorities = [...new Set(routable.map(effectivePriority))].sort((left, right) => right - left);
@@ -142,66 +116,50 @@ export const applyProviderRoutingLayout = (
 
   const movedAcrossTiers = previousTier.id !== targetTierId;
   return {
-    tiers: layout.tiers.map(({ id, itemIds }) => {
-      let items = itemIds.flatMap((itemId) => (itemById.get(itemId) === undefined ? [] : [itemById.get(itemId)!]));
-      if (movedAcrossTiers && id === previousTier.id) items = normalizedItems(items);
-      // The destination tier restarts from an even split so the moved Provider lands with a share,
-      // rather than inheriting whatever ratio the source tier happened to hold. The drag is also the
-      // only way to unpark a Provider, so it is the one item allowed back into the split at zero.
-      if (movedAcrossTiers && id === targetTierId) items = normalizedItems(items, () => 1, operation.id);
-      return { id, items };
-    }),
+    tiers: layout.tiers.map(({ id, itemIds }) => ({
+      id,
+      items: itemIds.flatMap((itemId) => {
+        const item = itemById.get(itemId);
+        if (item === undefined) return [];
+        // Every weight the user authored survives a move: shares are read off the weights, so nothing
+        // needs rebalancing. A parked Provider dragged into another tier is being put back to work, so
+        // it lands with the smallest weight that routes, as the routing detail page does.
+        return movedAcrossTiers && itemId === operation.id && item.weight === 0 ? [{ ...item, weight: 1 }] : [item];
+      }),
+    })),
   };
 };
 
-export const applyProviderShare = (
+/**
+ * Sets one Provider's weight, rounded and clamped to the supported range. Zero is a real value: it
+ * parks the Provider outside normal routing while its Provider-qualified route stays reachable.
+ * The other members keep theirs; their shares follow from the new total.
+ */
+export const applyProviderWeight = (
   board: ProviderRoutingBoard,
   tierId: string,
   providerId: string,
-  percentage: number,
-): ProviderRoutingBoard => ({
-  tiers: board.tiers.map((tier) => {
-    if (tier.id !== tierId) return tier;
-    // Parked Providers keep their zero and are not part of the split, so the share moves only against
-    // the active members. When there are none, the Provider is the whole tier and the only meaningful
-    // question the slider asks is whether it is parked at all.
-    const others = tier.items.filter((item) => item.providerId !== providerId && item.weight > 0);
-    // Zero is a real destination: it parks the Provider outside normal routing while leaving it
-    // reachable through its Provider-qualified route, and the slider is the only place to ask for
-    // that. Above zero the clamp is in weight space, so every other member keeps a visible one
-    // percent while a whole percentage point each still fits and a single weight point beyond —
-    // reserving a percent per member in a tier of more than 100 would park the Provider being
-    // adjusted instead of the one the user chose.
-    const requested = Math.round(percentage);
-    const reservePerOther = others.length <= 99 ? ROUTING_VALUE_MAX / 100 : 1;
-    const selected =
-      requested <= 0
-        ? 0
-        : Math.max(
-            1,
-            Math.min(ROUTING_VALUE_MAX - others.length * reservePerOther, requested * (ROUTING_VALUE_MAX / 100)),
-          );
-    const remaining = positiveDistribution(
-      ROUTING_VALUE_MAX - selected,
-      others.map((item) => item.weight),
-    );
-    return {
-      ...tier,
-      items: tier.items.map((item) => {
-        if (item.providerId === providerId) return { ...item, weight: selected };
-        const index = others.findIndex((other) => other.providerId === item.providerId);
-        return index === -1 ? item : { ...item, weight: remaining[index] ?? 1 };
-      }),
-    };
-  }),
-});
+  weight: number,
+): ProviderRoutingBoard => {
+  const bounded = Math.min(ROUTING_VALUE_MAX, Math.max(0, Math.round(weight)));
+  return {
+    tiers: board.tiers.map((tier) =>
+      tier.id !== tierId
+        ? tier
+        : {
+            ...tier,
+            items: tier.items.map((item) => (item.providerId === providerId ? { ...item, weight: bounded } : item)),
+          },
+    ),
+  };
+};
 
 const TIER_PRIORITY = /^tier:(\d+)$/;
 
 /**
  * The priorities the board already carries, when they are still usable as-is.
  *
- * A tier ID encodes the priority it was built from, so a save that only moved a weight slider can
+ * A tier ID encodes the priority it was built from, so a save that only changed a weight can
  * commit the priorities the config already holds. Rewriting them would be visible beyond this
  * board: exact model overrides are absolute, so recompacting two Providers that both sit at 0 into
  * 20 and 10 flips their order against a model override that pinned one of them at 5.
@@ -243,3 +201,6 @@ export const providerRoutingMutation = (
     ),
   };
 };
+
+/** One Provider row of the routing board and its column header: identity, weight, share. */
+export const PROVIDER_ROUTING_ROW_GRID = 'grid grid-cols-[minmax(0,1fr)_7rem_3.5rem] items-center gap-x-3';

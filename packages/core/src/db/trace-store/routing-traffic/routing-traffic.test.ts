@@ -1,0 +1,391 @@
+import { expect, test } from 'bun:test';
+
+import { createTraceStore } from '../index';
+import { openTestDb } from '../test-support';
+import { attemptSpan, completion, rootSpan, rootStart } from '../trace-store.test-support';
+import type { StoredSpan, TraceStore } from '../types';
+
+const NOW = new Date('2026-09-25T08:00:00.000Z');
+
+type AttemptSeed = {
+  readonly providerId: string;
+  readonly durationMs: number;
+  readonly outcome?: 'success' | 'failure';
+  /** The router records this on the attempt when the model string named its Provider. */
+  readonly selectionSource?: 'provider_qualified';
+};
+
+type TraceSeed = {
+  readonly id: number;
+  readonly requestedModelId: string;
+  readonly attempts: readonly AttemptSeed[];
+  readonly endedAt?: Date;
+  /** Overrides the final owner. Used to build a root-only trace with no attempt spans. */
+  readonly finalProviderId?: string;
+  /**
+   * Terminates the root while it still names a final Provider — the shape `finalFailure()` and a
+   * late cancellation actually persist. Without this the fixtures could only express "served" or
+   * "no Provider at all", which is why unsuccessful roots were counted as served.
+   */
+  readonly terminationReason?: 'failure' | 'cancelled';
+  /** Marks the root a token-count request, the way `begin({ operation: 'token_count' })` does. */
+  readonly operation?: 'token_count';
+};
+
+function seedTrace(store: TraceStore, seed: TraceSeed): void {
+  const traceId = seed.id.toString(16).padStart(32, '0');
+  const spanId = seed.id.toString(16).padStart(16, '0');
+  const endedAt = seed.endedAt ?? NOW;
+  const startedAt = new Date(endedAt.getTime() - 1_000);
+  const finalProviderId =
+    seed.finalProviderId ?? seed.attempts.findLast(({ outcome }) => outcome !== 'failure')?.providerId;
+  const attributes = {
+    'aio_proxy.request.id': `request-${seed.id}`,
+    'aio_proxy.protocol.inbound': 'openai-response',
+    'gen_ai.request.model': seed.requestedModelId,
+    ...(finalProviderId === undefined
+      ? {}
+      : { 'aio_proxy.route.final_provider_id': finalProviderId, 'gen_ai.response.model': seed.requestedModelId }),
+    // Production sets this on the root span as well as in the summary, so mirror both.
+    ...(seed.terminationReason === undefined ? {} : { 'aio_proxy.termination.reason': seed.terminationReason }),
+    ...(seed.operation === undefined ? {} : { 'aio_proxy.operation': seed.operation }),
+  };
+  store.startRoot(rootStart({ traceId, spanId, requestId: `request-${seed.id}`, startedAt, attributes }));
+  const inference = rootSpan({
+    traceId,
+    spanId: seed.id.toString(16).padStart(16, 'f'),
+    parentSpanId: spanId,
+    name: 'aio_proxy.inference',
+    startedAt,
+    endedAt,
+    // request_id is globally unique, so only the root span may carry aio_proxy.request.id.
+    attributes: { 'gen_ai.request.model': seed.requestedModelId },
+  });
+  const attempts: StoredSpan[] = seed.attempts.map((attempt, index) => {
+    const failed = attempt.outcome === 'failure';
+    return attemptSpan({
+      traceId,
+      // Attempts hang off the inference span, not the root: the aggregation can only join on trace_id.
+      parentSpanId: inference.spanId,
+      spanId: `${seed.id.toString(16)}${index.toString(16)}`.padStart(16, 'a'),
+      startedAt: new Date(endedAt.getTime() - attempt.durationMs),
+      endedAt,
+      statusCode: failed ? 2 : 0,
+      attributes: {
+        'aio_proxy.attempt.index': index,
+        'aio_proxy.provider.id': attempt.providerId,
+        ...(attempt.selectionSource === undefined
+          ? {}
+          : { 'aio_proxy.route.selection_source': attempt.selectionSource }),
+        ...(failed ? { 'aio_proxy.termination.reason': 'failure' } : {}),
+      },
+    });
+  });
+  store.complete(
+    completion({
+      traceId,
+      rootSpanId: spanId,
+      spans: [rootSpan({ traceId, spanId, startedAt, endedAt, attributes }), inference, ...attempts],
+      summary:
+        finalProviderId === undefined
+          ? { terminationReason: 'failure' as const }
+          : {
+              finalProviderId,
+              finalModelId: seed.requestedModelId,
+              ...(seed.terminationReason === undefined ? {} : { terminationReason: seed.terminationReason }),
+            },
+    }),
+  );
+}
+
+function withStore(run: (store: TraceStore) => void): void {
+  const handle = openTestDb();
+  try {
+    run(createTraceStore(handle.db));
+  } finally {
+    handle.close();
+  }
+}
+
+test('separates attempts from final ownership so a failed-over Provider keeps its failure rate', () => {
+  withStore((store) => {
+    // primary fails both times and fails over to fallback; fallback succeeds both times.
+    seedTrace(store, {
+      id: 1,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [
+        { providerId: 'primary', durationMs: 50, outcome: 'failure' },
+        { providerId: 'fallback', durationMs: 80 },
+      ],
+    });
+    seedTrace(store, {
+      id: 2,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [
+        { providerId: 'primary', durationMs: 60, outcome: 'failure' },
+        { providerId: 'fallback', durationMs: 90 },
+      ],
+    });
+
+    const traffic = store.routingTraffic({ range: '24h', now: NOW });
+    const model = traffic.models.find(({ modelId }) => modelId === 'anthropic/claude-sonnet-4.5');
+    const byId = new Map(model?.providers.map((entry) => [entry.providerId, entry]));
+
+    // The actual-share numerator only counts who finally served the request: primary never did.
+    expect(byId.get('primary')).toMatchObject({ finalCount: '0', attemptCount: '2', successCount: '0' });
+    expect(byId.get('fallback')).toMatchObject({ finalCount: '2', attemptCount: '2', successCount: '2' });
+    expect(byId.get('primary')?.p95LatencyMs).toBeGreaterThan(0);
+  });
+});
+
+test('reports a null p95 and omits traces whose window falls outside the range', () => {
+  withStore((store) => {
+    seedTrace(store, {
+      id: 3,
+      requestedModelId: 'gpt-5-codex',
+      attempts: [{ providerId: 'primary', durationMs: 10 }],
+      endedAt: new Date(NOW.getTime() - 48 * 60 * 60 * 1000),
+    });
+
+    expect(store.routingTraffic({ range: '24h', now: NOW }).models).toEqual([]);
+    expect(
+      store.routingTraffic({ range: '7d', now: NOW }).models.find(({ modelId }) => modelId === 'gpt-5-codex'),
+    ).toBeDefined();
+  });
+});
+
+test('counts a root-only trace toward final ownership while leaving attempt metrics empty', () => {
+  withStore((store) => {
+    // A trace with no attempt spans (abnormal, but possible): primary really did serve it, so it
+    // must count toward finalCount or the actual share is undercounted — and the actual share is
+    // this page's headline number. attemptCount / successCount are attempt-level metrics and stay
+    // empty here; p95 is null rather than 0. That makes successCount and finalCount disagree in
+    // this one case: consumers must compute the success rate as successCount / attemptCount and
+    // never divide by finalCount.
+    seedTrace(store, { id: 5, requestedModelId: 'gpt-5-codex', attempts: [], finalProviderId: 'primary' });
+
+    const model = store
+      .routingTraffic({ range: '24h', now: NOW })
+      .models.find(({ modelId }) => modelId === 'gpt-5-codex');
+
+    expect(model?.providers).toEqual([
+      { providerId: 'primary', finalCount: '1', attemptCount: '0', successCount: '0', p95LatencyMs: null },
+    ]);
+  });
+});
+
+test('buckets one model densely by Provider', () => {
+  withStore((store) => {
+    seedTrace(store, {
+      id: 4,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'fallback', durationMs: 30 }],
+    });
+
+    const buckets = store.routingTrafficBuckets({
+      range: '24h',
+      modelId: 'anthropic/claude-sonnet-4.5',
+      now: NOW,
+    });
+
+    expect(buckets.bucketUnit).toBe('hour');
+    expect(buckets.buckets).toHaveLength(24);
+    expect(buckets.providerIds).toEqual(['fallback']);
+    expect(buckets.buckets.some(({ values }) => values['fallback'] === '1')).toBe(true);
+    // Empty buckets must exist and read 0, otherwise the chart shows a gap.
+    expect(buckets.buckets.every(({ values }) => typeof values['fallback'] === 'string')).toBe(true);
+  });
+});
+
+test('leaves a request nobody served out of the served totals', () => {
+  withStore((store) => {
+    // `finalFailure()` records the last Provider tried alongside outcome 'failure', so a root that
+    // served nothing still names a Provider. Counting it would credit that Provider with traffic it
+    // never delivered and drag the configured-versus-actual comparison with it.
+    seedTrace(store, {
+      id: 20,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5, outcome: 'failure' }],
+      finalProviderId: 'primary',
+      terminationReason: 'failure',
+    });
+    seedTrace(store, {
+      id: 21,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+      finalProviderId: 'primary',
+      terminationReason: 'cancelled',
+    });
+    seedTrace(store, {
+      id: 22,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+    });
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+    const primary = totals.models[0]?.providers.find((row) => row.providerId === 'primary');
+
+    // One of the three requests was actually served; all three were attempted.
+    expect(primary?.finalCount).toBe('1');
+    expect(primary?.attemptCount).toBe('3');
+  });
+});
+
+test('leaves error-status roots without a termination reason out of the served totals', () => {
+  // Older rows (and any path that set ERROR without a reason) and HTTP error responses carry no
+  // termination reason but still name a final Provider; they failed and must not count as served.
+  const handle = openTestDb();
+  try {
+    const store = createTraceStore(handle.db);
+    for (const id of [30, 31, 32]) {
+      seedTrace(store, {
+        id,
+        requestedModelId: 'anthropic/claude-sonnet-4.5',
+        attempts: [{ providerId: 'primary', durationMs: 5 }],
+      });
+    }
+    const rootId = (id: number) => id.toString(16).padStart(16, '0');
+    handle.db.$client.run(`update trace_span set status_code = 2 where span_id = '${rootId(30)}'`);
+    handle.db.$client.run(`update trace_span set final_http_status = 502 where span_id = '${rootId(31)}'`);
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+    const buckets = store.routingTrafficBuckets({ range: '24h', modelId: 'anthropic/claude-sonnet-4.5', now: NOW });
+
+    expect(totals.models[0]?.providers.find((row) => row.providerId === 'primary')?.finalCount).toBe('1');
+    expect(buckets.buckets.reduce((sum, bucket) => sum + BigInt(bucket.values['primary'] ?? '0'), 0n)).toBe(1n);
+  } finally {
+    handle.close();
+  }
+});
+
+test('does not count an error-status attempt without a termination reason as a success', () => {
+  // The legacy failure shape: status ERROR, no termination reason. It must lower the success rate.
+  const handle = openTestDb();
+  try {
+    const store = createTraceStore(handle.db);
+    seedTrace(store, {
+      id: 40,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+    });
+    const attemptId = `${(40).toString(16)}${(0).toString(16)}`.padStart(16, 'a');
+    handle.db.$client.run(`update trace_span set status_code = 2 where span_id = '${attemptId}'`);
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+
+    expect(totals.models[0]?.providers.find((row) => row.providerId === 'primary')).toMatchObject({
+      attemptCount: '1',
+      successCount: '0',
+    });
+  } finally {
+    handle.close();
+  }
+});
+
+test('leaves a request nobody served out of the chart buckets too', () => {
+  withStore((store) => {
+    // The chart reads its own query, so the filter has to be on both or the bars and the table
+    // disagree about the same window.
+    seedTrace(store, {
+      id: 23,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5, outcome: 'failure' }],
+      finalProviderId: 'primary',
+      terminationReason: 'failure',
+    });
+    seedTrace(store, {
+      id: 24,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+    });
+
+    const buckets = store.routingTrafficBuckets({
+      range: '24h',
+      modelId: 'anthropic/claude-sonnet-4.5',
+      now: NOW,
+    });
+    const served = buckets.buckets.reduce((sum, bucket) => sum + BigInt(bucket.values.primary ?? '0'), 0n);
+
+    expect(served).toBe(1n);
+  });
+});
+
+test('keeps token-count requests out of routing traffic entirely', () => {
+  withStore((store) => {
+    // Counting tokens walks the same candidate list and records its attempts under the same span
+    // name with the same provider attributes, and its root carries a requested model and a final
+    // Provider. Clients count before most calls, so leaving these in would let the counts dominate
+    // every number on the page.
+    for (const id of [30, 31, 32]) {
+      seedTrace(store, {
+        id,
+        requestedModelId: 'anthropic/claude-sonnet-4.5',
+        attempts: [{ providerId: 'primary', durationMs: 5 }],
+        operation: 'token_count',
+      });
+    }
+    seedTrace(store, {
+      id: 33,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+    });
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+    const primary = totals.models[0]?.providers.find((row) => row.providerId === 'primary');
+
+    // Only the one generation request counts, on both the attempt side and the served side.
+    expect(primary?.attemptCount).toBe('1');
+    expect(primary?.finalCount).toBe('1');
+
+    const buckets = store.routingTrafficBuckets({
+      range: '24h',
+      modelId: 'anthropic/claude-sonnet-4.5',
+      now: NOW,
+    });
+    const served = buckets.buckets.reduce((sum, bucket) => sum + BigInt(bucket.values.primary ?? '0'), 0n);
+    expect(served).toBe(1n);
+  });
+});
+
+test('counts rows written before the operation attribute existed as generation', () => {
+  withStore((store) => {
+    // Retention outlives the attribute, so a missing key must not silently drop real traffic.
+    seedTrace(store, {
+      id: 34,
+      requestedModelId: 'anthropic/claude-sonnet-4.5',
+      attempts: [{ providerId: 'primary', durationMs: 5 }],
+    });
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+
+    expect(totals.models[0]?.providers[0]?.finalCount).toBe('1');
+  });
+});
+
+test('keeps Provider-qualified requests out of the normal model they collide with', () => {
+  withStore((store) => {
+    // `openai/gpt-5` is both a Provider-qualified reference (Provider `openai`, model `gpt-5`) and a
+    // model OpenRouter exposes normally. The router takes the qualified route, so that traffic was
+    // never routed among this model's candidates — crediting it here would inflate the served and
+    // attempt totals and list a Provider the model's tiers never contained.
+    seedTrace(store, {
+      id: 40,
+      requestedModelId: 'openai/gpt-5',
+      attempts: [{ providerId: 'openai', durationMs: 5, selectionSource: 'provider_qualified' }],
+    });
+    seedTrace(store, {
+      id: 41,
+      requestedModelId: 'openai/gpt-5',
+      attempts: [{ providerId: 'openrouter', durationMs: 5 }],
+    });
+
+    const totals = store.routingTraffic({ range: '24h', now: NOW });
+    const providers = totals.models[0]?.providers ?? [];
+
+    expect(providers.map((row) => row.providerId)).toEqual(['openrouter']);
+    expect(providers[0]?.finalCount).toBe('1');
+
+    const buckets = store.routingTrafficBuckets({ range: '24h', modelId: 'openai/gpt-5', now: NOW });
+    expect(buckets.providerIds).toEqual(['openrouter']);
+  });
+});

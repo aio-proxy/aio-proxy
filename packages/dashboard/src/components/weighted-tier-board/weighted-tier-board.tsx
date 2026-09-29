@@ -22,34 +22,24 @@ import { WeightedTier } from './weighted-tier';
 import { WeightedTierParkingList as WeightedTierParkingListView } from './weighted-tier-parking-list';
 import { WeightedTierSlot } from './weighted-tier-slot';
 
-export interface WeightedTierBoardControl {
-  readonly ariaLabel: string;
-  readonly max: number;
-  readonly min: number;
-  readonly onChange: (value: number) => void;
-  readonly step?: number;
-  readonly testId?: string;
-  readonly value: number;
-}
-
 export interface WeightedTierBoardItem<TItem> {
-  readonly control?: WeightedTierBoardControl;
   readonly dragLabel: string;
   readonly draggable: boolean;
   readonly id: string;
-  readonly shareLabel?: string;
-  readonly shareTestId?: string;
   readonly testId?: string;
   readonly value: TItem;
 }
 
 export interface WeightedTierBoardTier<TItem> {
   readonly id: string;
+  readonly priority: number;
   readonly items: readonly WeightedTierBoardItem<TItem>[];
 }
 
 export interface WeightedTierParkingList<TItem> {
   readonly droppable: boolean;
+  /** What the list's header shows; defaults to `label`, which always names the list for assistive tech. */
+  readonly heading?: React.ReactNode;
   readonly id: string;
   readonly items: readonly WeightedTierBoardItem<TItem>[];
   readonly label: string;
@@ -60,11 +50,12 @@ export interface WeightedTierBoardLabels {
   readonly dragTier: (index: number) => string;
   readonly emptyTier: string;
   readonly newTier: string;
-  readonly tier: (index: number) => string;
-  readonly tierCount: (count: number) => string;
+  readonly tier: (index: number, priority: number) => React.ReactNode;
 }
 
 interface WeightedTierBoardProps<TItem> {
+  /** Column names drawn at the top of every tier, aligned with the item content. */
+  readonly columns?: React.ReactNode;
   readonly labels: WeightedTierBoardLabels;
   readonly onLayoutChange: (layout: WeightedTierLayout, operation: WeightedTierOperation) => void;
   readonly parking?: readonly WeightedTierParkingList<TItem>[];
@@ -80,6 +71,7 @@ const listContaining = (lists: Readonly<Record<string, readonly string[]>>, id: 
   Object.keys(lists).find((key) => lists[key]?.includes(id));
 
 export const WeightedTierBoard = <TItem,>({
+  columns,
   labels,
   onLayoutChange,
   parking = [],
@@ -120,9 +112,9 @@ export const WeightedTierBoard = <TItem,>({
       const item = itemsById.get(weightedTierItemIdFromSortable(id) ?? '');
       return item === undefined ? [] : [item];
     });
-  const previewFor = (listId: string): { readonly index: number; readonly itemCount: number } | undefined => {
+  const previewFor = (listId: string): { readonly index: number; readonly priority: number } | undefined => {
     const preview = tiersById.get(weightedTierIdFromSortable(lists[listId]?.[0] ?? '') ?? '');
-    return preview === undefined ? undefined : { index: preview.index, itemCount: preview.tier.items.length };
+    return preview === undefined ? undefined : { index: preview.index, priority: preview.tier.priority };
   };
 
   return (
@@ -159,7 +151,8 @@ export const WeightedTierBoard = <TItem,>({
         if (next !== snapshot.current) onLayoutChange(next, operation);
       }}
     >
-      <div className="space-y-0" data-testid={testId}>
+      {/* A writable board spaces its tiers with the drop slots between them. */}
+      <div className={writable ? undefined : 'space-y-2'} data-testid={testId}>
         {writable ? (
           <WeightedTierSlot
             listId={WEIGHTED_TIER_HIGH}
@@ -176,9 +169,11 @@ export const WeightedTierBoard = <TItem,>({
           return (
             <div key={tier.id}>
               <WeightedTier
+                columns={columns}
                 id={tier.id}
                 index={index}
                 items={itemsFor(lists[listId] ?? [])}
+                priority={tier.priority}
                 labels={labels}
                 renderItem={renderItem}
                 testId={tierTestId?.(index, tier.id)}

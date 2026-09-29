@@ -31,34 +31,29 @@ const authorizationLabel = (status: AgentInstallationRow['authorization']): stri
 const createColumns = (canRevoke: boolean): ColumnDef<DataTableFeatures, AgentInstallationRow>[] => [
   {
     id: 'installationId',
-    meta: { label: () => m['dashboard.agents.table.installation']() },
     accessorKey: 'installationId',
     header: tableHead(() => m['dashboard.agents.table.installation']()),
     cell: ({ row }) => <span className="font-mono text-xs">{row.original.installationId}</span>,
   },
   {
     id: 'adapterVersion',
-    meta: { label: () => m['dashboard.agents.table.adapter']() },
     accessorKey: 'adapterVersion',
     header: tableHead(() => m['dashboard.agents.table.adapter']()),
   },
   {
     id: 'createdAt',
-    meta: { label: () => m['dashboard.agents.table.created']() },
     accessorKey: 'createdAt',
     header: tableHead(() => m['dashboard.agents.table.created']()),
     cell: ({ row }) => formatTime(row.original.createdAt),
   },
   {
     id: 'lastAuthorizedAt',
-    meta: { label: () => m['dashboard.agents.table.last_authorized']() },
     accessorKey: 'lastAuthorizedAt',
     header: tableHead(() => m['dashboard.agents.table.last_authorized']()),
     cell: ({ row }) => formatTime(row.original.lastAuthorizedAt),
   },
   {
     id: 'authorization',
-    meta: { label: () => m['dashboard.agents.table.status']() },
     accessorKey: 'authorization',
     header: tableHead(() => m['dashboard.agents.table.status']()),
     cell: ({ row }) => (
@@ -69,7 +64,6 @@ const createColumns = (canRevoke: boolean): ColumnDef<DataTableFeatures, AgentIn
   },
   {
     id: 'local',
-    meta: { label: () => m['dashboard.agents.table.local']() },
     accessorFn: (row) => row.local ?? '',
     header: tableHead(() => m['dashboard.agents.table.local']()),
     cell: ({ row }) =>
@@ -104,7 +98,6 @@ export const InstallationsTable: React.FC<InstallationsTableProps> = ({ installa
         table={table}
         filterLabel={m['dashboard.agents.table.filter']()}
         filterPlaceholder={m['dashboard.agents.table.filter_placeholder']()}
-        columnsLabel={m['dashboard.agents.table.columns']()}
       />
       <Table aria-label={m['dashboard.agents.table.label']()} data-testid="agent-installations-table">
         <TableHeader>

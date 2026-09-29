@@ -1,6 +1,9 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { digestProviderEntry, parseRuntimeConfig } from '@aio-proxy/core';
+import { clearModelsCache, digestProviderEntry, parseRuntimeConfig } from '@aio-proxy/core';
 import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
 import {
   type Config,
@@ -9,7 +12,19 @@ import {
   type ProviderState,
 } from '@aio-proxy/types';
 
+import {
+  clearModelsDevCatalog,
+  modelsDevModel,
+  seedModelsDevCatalogUnderVendor,
+} from '../../__tests__/server.test-support';
 import { assembleRoutingInventory } from './inventory';
+
+// Only the models.dev catalog test below seeds a catalog, and the cold-cache test
+// beside it points the home at one that holds none; clearing after every test keeps
+// those isolated homes from leaking into the rest of the file.
+afterEach(() => {
+  clearModelsDevCatalog();
+});
 
 const unavailable: ProviderState = {
   status: 'unavailable',
@@ -498,5 +513,39 @@ describe('model routing inventory', () => {
       cost: { input: 1 },
       limit: { context: 8_000 },
     });
+  });
+
+  test('carries models.dev lab and release date through to the emitted model', async () => {
+    // `shared` is served by the fixture Providers, so seeding the catalog under
+    // that id makes the assembled model carry catalog facts. Seed it beneath a
+    // real vendor: the bare id pins no models.dev provider, so it resolves through
+    // OpenRouter, and the lab is the vendor segment behind that reselling channel
+    // — `openrouter` itself is never a maker.
+    await seedModelsDevCatalogUnderVendor('mistralai', {
+      shared: modelsDevModel('shared', 'Shared Model', { release_date: '2026-04-09' }),
+    });
+
+    const response = DashboardRoutingModelsResponseSchema.parse(await inventory());
+
+    expect(model(response, 'shared').catalog).toEqual({ lab: 'mistralai', releaseDate: '2026-04-09' });
+  });
+
+  test('omits catalog facts for every model when no models.dev catalog is cached', async () => {
+    // Pin the cold-cache contract: with nothing cached the inventory still assembles and
+    // every model comes back with no `catalog` at all, rather than an empty object or a
+    // failure. An isolated home keeps this independent of both the seeding test above and
+    // whatever the ambient home happens to hold.
+    const home = mkdtempSync(join(tmpdir(), 'aio-proxy-routing-cold-catalog-'));
+    process.env.AIO_PROXY_HOME = home;
+    clearModelsCache();
+
+    try {
+      const response = DashboardRoutingModelsResponseSchema.parse(await inventory());
+
+      expect(response.models.length).toBeGreaterThan(0);
+      for (const entry of response.models) expect(entry).not.toHaveProperty('catalog');
+    } finally {
+      rmSync(home, { force: true, recursive: true });
+    }
   });
 });

@@ -94,6 +94,27 @@ export async function seedModelsDevCatalog(models: Record<string, ModelsDevModel
   await fileCacheStorage.setItem('models-dev-providers', providers);
 }
 
+// Seed a single `openrouter` provider whose model keys are vendor-prefixed.
+// resolveModelEntry builds the OpenRouter fallback slug from OpenRouter's own
+// key, so only this nested shape yields the three-segment
+// `openrouter/<vendor>/<model>` slug that actually names a maker;
+// seedModelsDevCatalog keys every model by a bare id and can only ever produce
+// the two-segment `openrouter/<model>` slug, which names none. The vendor prefix
+// goes on both the key and the record's `id`, because the fallback matches on
+// `model.id` while the slug is built from the key — the two have to agree.
+export async function seedModelsDevCatalogUnderVendor(
+  vendor: string,
+  models: Record<string, ModelsDevModel>,
+): Promise<void> {
+  useIsolatedCatalogHome();
+  const openrouterModels: Record<string, ModelsDevModel> = {};
+  for (const [modelId, model] of Object.entries(models)) {
+    const key = `${vendor}/${modelId}`;
+    openrouterModels[key] = { ...model, id: key };
+  }
+  await fileCacheStorage.setItem('models-dev-providers', { openrouter: { models: openrouterModels } });
+}
+
 // A models.dev record double. Overrides let each test tweak just the fields it
 // exercises; the server derives the Anthropic capabilities shape from this raw
 // Model at the /v1/models boundary.

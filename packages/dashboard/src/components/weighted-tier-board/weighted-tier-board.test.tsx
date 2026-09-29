@@ -12,24 +12,15 @@ const item = (id: string, name: string): WeightedTierBoardItem<FixtureItem> => (
   value: { name },
   draggable: true,
   dragLabel: `Move ${name}`,
-  shareLabel: '50%',
-  control: {
-    ariaLabel: `${name} share`,
-    min: 1,
-    max: 100,
-    value: 50,
-    onChange: rs.fn(),
-  },
 });
 
 const tiers = [
-  { id: 'high', items: [item('a', 'Alpha')] },
-  { id: 'low', items: [item('b', 'Beta')] },
+  { id: 'high', priority: 10, items: [item('a', 'Alpha')] },
+  { id: 'low', priority: 0, items: [item('b', 'Beta')] },
 ];
 
 const labels = {
   tier: (index: number) => `Tier ${index + 1}`,
-  tierCount: (count: number) => `${count} items`,
   dragTier: (index: number) => `Move tier ${index + 1}`,
   newTier: 'New tier',
 };
@@ -70,7 +61,7 @@ test('a whole-tier keyboard drag collapses every tier and cancellation expands t
   expect(onLayoutChange).not.toHaveBeenCalled();
 });
 
-test('read-only boards omit every drag handle, insertion slot, and share slider', () => {
+test('read-only boards omit every drag handle and insertion slot', () => {
   render(
     <WeightedTierBoard
       tiers={tiers}
@@ -83,6 +74,5 @@ test('read-only boards omit every drag handle, insertion slot, and share slider'
 
   expect(screen.queryByRole('button', { name: /Move/ })).not.toBeInTheDocument();
   expect(screen.queryByLabelText('New tier')).not.toBeInTheDocument();
-  expect(screen.queryByRole('slider')).not.toBeInTheDocument();
   expect(screen.getByText('Alpha')).toBeInTheDocument();
 });

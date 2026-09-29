@@ -3,7 +3,7 @@ import type { ModelMetadataInput } from '@aio-proxy/types';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { queries } from '@testing-library/dom';
-import { fireEvent, render, screen, waitFor, type BoundFunctions } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within, type BoundFunctions } from '@testing-library/react';
 import { useState, type ReactNode } from 'react';
 
 import { ModelMetadataEditor } from './model-metadata-editor';
@@ -22,21 +22,27 @@ rs.mock('@/components/json-editor/json-language-service', () => ({
   createJsonLanguageExtensions: () => [],
 }));
 
+// CodeMirror is not exercised in tests, so the stand-in mirrors `readOnly` onto the textarea it
+// renders. That keeps the prop's journey from ModelMetadataEditor down to the editor observable;
+// CodeEditor itself turns it into EditorState.readOnly / EditorView.editable.
 rs.mock('@/components/code-editor', () => ({
   CodeEditor: ({
     id,
     onChange,
     value,
     invalid,
+    readOnly,
   }: {
     id?: string;
     onChange?: (next: string) => void;
     value: string;
     invalid?: boolean;
+    readOnly?: boolean;
   }) => (
     <textarea
       id={id}
       value={value}
+      readOnly={readOnly}
       aria-invalid={invalid ? 'true' : undefined}
       onChange={(event) => onChange?.(event.target.value)}
     />
@@ -61,13 +67,17 @@ const wrapper = ({ children }: { readonly children: ReactNode }) => (
 // The value the controlled editor last handed its owner — what a save body would carry.
 let emitted: ModelMetadataInput | undefined;
 
-const Harness: React.FC<{ readonly initial?: ModelMetadataInput | undefined }> = ({ initial }) => {
+const Harness: React.FC<{
+  readonly initial?: ModelMetadataInput | undefined;
+  readonly readOnly?: boolean;
+}> = ({ initial, readOnly = false }) => {
   const [value, setValue] = useState(initial);
   emitted = value;
-  return <ModelMetadataEditor model="model-a" value={value} onChange={setValue} />;
+  return <ModelMetadataEditor model="model-a" value={value} onChange={setValue} readOnly={readOnly} />;
 };
 
-const renderEditor = (initial?: ModelMetadataInput) => render(<Harness initial={initial} />, { wrapper });
+const renderEditor = (initial?: ModelMetadataInput, options: { readonly readOnly?: boolean } = {}) =>
+  render(<Harness initial={initial} readOnly={options.readOnly ?? false} />, { wrapper });
 
 const jsonDraftField = async (scope: Pick<BoundFunctions<typeof queries>, 'findByTestId'> = screen) => {
   const host = await scope.findByTestId('metadata-json-draft');
@@ -83,6 +93,24 @@ const costInputLabel = () => m['dashboard.routing.editor.metadata_cost_label_inp
 const costCacheReadLabel = () => m['dashboard.routing.editor.metadata_cost_label_cache_read']();
 const costReasoningLabel = () => m['dashboard.routing.editor.metadata_cost_label_reasoning']();
 const nameLabel = () => m['dashboard.routing.editor.metadata_field_label_name']();
+/** A field's override switch, once the reference it would seed from has loaded. */
+const overrideSwitch = async (label: string) => {
+  const control = await screen.findByRole('switch', {
+    name: m['dashboard.routing.profile.override_field']({ field: label }),
+  });
+  await waitFor(() => expect(control).toBeEnabled());
+  return control;
+};
+/** Turns a field's override on and returns its input; a field that follows the reference has none. */
+const overrideField = async (label: string) => {
+  fireEvent.click(await overrideSwitch(label));
+  return screen.getByLabelText(label);
+};
+/** The segment of a capability's follow / supported / unsupported control. */
+const capabilityChoice = async (capability: string, name: string) =>
+  within(await screen.findByTestId(`metadata-capability-${capability}`)).getByRole('button', { name });
+/** What a field that follows the reference shows: the reference value in a disabled input. */
+const followedValue = (id: string) => document.getElementById(id);
 
 beforeEach(() => {
   emitted = undefined;
@@ -111,7 +139,7 @@ describe('ModelMetadataEditor', () => {
   test('a fractional cost typed one keystroke at a time survives, and clearing it deletes the key', async () => {
     renderEditor();
 
-    const cost = (await screen.findByLabelText(costInputLabel())) as HTMLInputElement;
+    const cost = (await overrideField(costInputLabel())) as HTMLInputElement;
     // Append to the live DOM value rather than feeding absolute strings. The regression is React
     // rewriting the field at the `0.0` step, where `Number()` collapses the text to `0`; an absolute
     // next event would overwrite that rewrite, so the test would pass either way. Appending carries
@@ -129,20 +157,17 @@ describe('ModelMetadataEditor', () => {
     await waitFor(() => expect(emitted).toBeUndefined());
   });
 
-  test('the visual tab cannot be entered while the JSON draft is unparseable', async () => {
+  test('the form cannot be re-entered while the JSON draft is unparseable', async () => {
     renderEditor({ name: 'A' });
 
-    expect(screen.getByTestId('metadata-tab-visual')).not.toHaveAttribute('aria-disabled', 'true');
-
-    // Drop the closing brace: the visual tab merges over the parsed draft, so entering it on broken
-    // text would write back an object missing every key the text still carries.
-    fireEvent.click(screen.getByTestId('metadata-tab-json'));
+    // Drop the closing brace: the form merges over the parsed draft, so entering it on broken text
+    // would write back an object missing every key the text still carries.
+    fireEvent.click(await screen.findByTestId('metadata-tab-json'));
+    expect(screen.getByTestId('metadata-tab-visual')).toBeEnabled();
     fireEvent.change(await jsonDraftField(), { target: { value: '{"name":"A"' } });
 
-    // Base UI marks a disabled tab with aria-disabled, not the native attribute.
-    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-disabled', 'true'));
+    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).toBeDisabled());
     fireEvent.click(screen.getByTestId('metadata-tab-visual'));
-    // keepMounted defaults to false, so the visual fields' absence is the assertion.
     expect(screen.queryByLabelText(limitContextLabel())).toBeNull();
 
     // The unparseable text stays local: the owner still holds the last valid value.
@@ -151,56 +176,46 @@ describe('ModelMetadataEditor', () => {
     // Emptying the textarea to start over has no keys to lose, so it must not lock the tab —
     // and it IS a deliberate clear, so the owner now sees undefined.
     fireEvent.change(await jsonDraftField(), { target: { value: '  ' } });
-    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).not.toHaveAttribute('aria-disabled', 'true'));
+    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).toBeEnabled());
     expect(emitted).toBeUndefined();
   });
 
-  // The editor is a form, not a code editor: it opens on the visual tab and only an unparseable
-  // draft may force JSON.
-  test('opens on the visual tab and an unparseable draft forces JSON until repaired', async () => {
+  // The editor is a form, not a code editor: it opens on the form and only an unparseable draft may
+  // force JSON.
+  test('opens on the form and an unparseable draft forces JSON until repaired', async () => {
     renderEditor({ name: 'A' });
 
-    // No click into the visual tab: the fields are there because visual is the default.
-    expect(await screen.findByLabelText(limitContextLabel())).toBeInTheDocument();
-    expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-selected', 'true');
+    // No click needed: the fields are there because the form is the default.
+    expect(await overrideSwitch(limitContextLabel())).toBeInTheDocument();
     expect(screen.queryByTestId('metadata-json-draft')).toBeNull();
 
     fireEvent.click(screen.getByTestId('metadata-tab-json'));
     fireEvent.change(await jsonDraftField(), { target: { value: '{oops' } });
-    await waitFor(() => expect(screen.getByTestId('metadata-tab-json')).toHaveAttribute('aria-selected', 'true'));
+    expect(screen.queryByLabelText(limitContextLabel())).toBeNull();
 
-    // Controlled tabs still have to obey the user: repairing the draft and choosing visual must work,
-    // or forcing json once would strand the user there for the rest of the session.
+    // The mode still has to obey the user: repairing the draft and going back must work, or forcing
+    // JSON once would strand the user there for the rest of the session.
     fireEvent.change(await jsonDraftField(), { target: { value: '{"name":"A"}' } });
     fireEvent.click(screen.getByTestId('metadata-tab-visual'));
-    expect(await screen.findByLabelText(limitContextLabel())).toBeInTheDocument();
+    expect(await overrideSwitch(limitContextLabel())).toBeInTheDocument();
   });
 
   // A two-state switch reads an explicit `false` as "inherit" and silently converts it on save. Only a
   // three-state control can tell the two apart, so both directions are pinned here.
-  test('a capability reads and writes explicit false, and inherit deletes the key', async () => {
+  test('a capability reads and writes explicit false, and follow deletes the key', async () => {
     renderEditor({ capabilities: { attachment: false, reasoning: true } });
 
-    const attachment = await screen.findByTestId('metadata-capability-attachment');
-    expect(attachment).toHaveTextContent(m['dashboard.routing.editor.metadata_capability_unsupported']());
-    expect(screen.getByTestId('metadata-capability-reasoning')).toHaveTextContent(
-      m['dashboard.routing.editor.metadata_capability_supported'](),
-    );
+    const unsupported = m['dashboard.routing.editor.metadata_capability_unsupported']();
+    const supported = m['dashboard.routing.editor.metadata_capability_supported']();
+    expect(await capabilityChoice('attachment', unsupported)).toHaveAttribute('aria-pressed', 'true');
+    expect(await capabilityChoice('reasoning', supported)).toHaveAttribute('aria-pressed', 'true');
 
-    // Inherit is the only choice that writes nothing.
-    fireEvent.click(attachment);
-    fireEvent.keyDown(
-      await screen.findByRole('option', { name: m['dashboard.routing.editor.metadata_capability_inherit']() }),
-      { key: 'Enter' },
-    );
+    // Follow is the only choice that writes nothing.
+    fireEvent.click(await capabilityChoice('attachment', m['dashboard.routing.editor.metadata_capability_inherit']()));
     await waitFor(() => expect(emitted).toEqual({ capabilities: { reasoning: true } }));
 
     // And unsupported writes the boolean rather than dropping the key.
-    fireEvent.click(await screen.findByTestId('metadata-capability-toolCall'));
-    fireEvent.keyDown(
-      await screen.findByRole('option', { name: m['dashboard.routing.editor.metadata_capability_unsupported']() }),
-      { key: 'Enter' },
-    );
+    fireEvent.click(await capabilityChoice('toolCall', unsupported));
     await waitFor(() =>
       expect(emitted).toEqual({
         capabilities: { reasoning: true, toolCall: false },
@@ -211,13 +226,15 @@ describe('ModelMetadataEditor', () => {
   test('the limit, cost, and name fields round-trip into the JSON draft', async () => {
     renderEditor();
 
-    fireEvent.change(await screen.findByLabelText(limitInputLabel()), { target: { value: '8192' } });
-    fireEvent.change(screen.getByLabelText(costCacheReadLabel()), { target: { value: '0.5' } });
-    fireEvent.change(screen.getByLabelText(nameLabel()), { target: { value: 'GPT-5' } });
-    // An empty number field must read as inherit, not as zero.
-    expect(screen.getByLabelText(costReasoningLabel())).toHaveAttribute(
+    fireEvent.change(await overrideField(limitInputLabel()), { target: { value: '8192' } });
+    fireEvent.change(await overrideField(costCacheReadLabel()), { target: { value: '0.5' } });
+    fireEvent.change(await overrideField(nameLabel()), { target: { value: 'GPT-5' } });
+    // A field left off follows the reference model; with none it reads as unset, never as zero.
+    expect(await overrideSwitch(costReasoningLabel())).not.toBeChecked();
+    expect(followedValue('metadata-cost-reasoning')).toHaveValue('');
+    expect(followedValue('metadata-cost-reasoning')).toHaveAttribute(
       'placeholder',
-      m['dashboard.routing.editor.metadata_inherit_placeholder'](),
+      m['dashboard.routing.profile.not_set'](),
     );
 
     // The JSON tab is the same draft seen from the other side; a field wired to nothing shows up here.
@@ -255,18 +272,68 @@ describe('ModelMetadataEditor', () => {
     mocks.slugs.mockResolvedValue({ slugs: ['openai/gpt-5'] });
     fireEvent.click(retry);
 
+    // With the catalog back and no match for the model ID, the field says so instead of erroring.
     await waitFor(() =>
       expect(screen.getByTestId('metadata-extend-status')).toHaveTextContent(
-        m['dashboard.routing.editor.metadata_extend_loaded']({ count: 1 }),
+        m['dashboard.routing.profile.reference_manual'](),
       ),
     );
   });
 
-  test('the extend picker keeps a clear control when a slug is set', async () => {
+  // Without `extend` the saved overrides would name nothing they inherit from, so the first override
+  // writes the automatic match; undoing every override takes it back out, leaving no phantom edit.
+  test('overriding a field of an automatically matched model writes the match into extend', async () => {
+    mocks.lookup.mockResolvedValue({ slug: 'openai/gpt-5', metadata: { name: 'GPT-5' } });
+    renderEditor();
+
+    const name = await overrideSwitch(nameLabel());
+    fireEvent.click(name);
+    await waitFor(() => expect(emitted).toEqual({ extend: 'openai/gpt-5', name: 'GPT-5' }));
+
+    fireEvent.click(name);
+    await waitFor(() => expect(emitted).toBeUndefined());
+  });
+
+  test('undoing the last override after the drawer reopened still drops the pinned match', async () => {
+    // The drawer unmounts the form on close, so this mount has no memory of pinning `extend`; it has
+    // to recognize a bare `extend` that only repeats the automatic match from the value alone.
+    mocks.lookup.mockResolvedValue({ slug: 'openai/gpt-5', metadata: { name: 'GPT-5' } });
+    renderEditor({ extend: 'openai/gpt-5', name: 'GPT-5' });
+
+    fireEvent.click(await overrideSwitch(nameLabel()));
+
+    await waitFor(() => expect(emitted).toBeUndefined());
+  });
+
+  test('the JSON draft names the reference first', async () => {
+    mocks.lookup.mockResolvedValue({ slug: 'openai/gpt-5', metadata: { name: 'GPT-5' } });
+    renderEditor();
+
+    fireEvent.click(await overrideSwitch(nameLabel()));
+    await waitFor(() => expect(emitted).toEqual({ extend: 'openai/gpt-5', name: 'GPT-5' }));
+    fireEvent.click(screen.getByTestId('metadata-tab-json'));
+    expect(Object.keys(JSON.parse((await jsonDraftField()).value))).toEqual(['extend', 'name']);
+  });
+
+  test('clearing a chosen reference returns to the automatic match', async () => {
+    mocks.lookup.mockImplementation(async (id: string) =>
+      id === 'model-a'
+        ? { slug: 'anthropic/claude-opus-4', metadata: { name: 'Claude Opus 4' } }
+        : { slug: id, metadata: { name: 'GPT-5' } },
+    );
     renderEditor({ extend: 'openai/gpt-5' });
 
-    await screen.findByTestId('metadata-extend-status');
-    expect(document.querySelector('[data-slot="combobox-clear"]')).not.toBeNull();
+    await waitFor(() => expect(document.getElementById('metadata-extend')).toHaveValue('openai/gpt-5'));
+    expect(screen.queryByTestId('metadata-extend-matched')).toBeNull();
+    const clear = document.querySelector('[data-slot="combobox-clear"]');
+    if (!(clear instanceof HTMLElement)) throw new Error('a chosen reference has no clear control');
+    fireEvent.click(clear);
+
+    await waitFor(() => expect(emitted).toBeUndefined());
+    await waitFor(() => expect(document.getElementById('metadata-extend')).toHaveValue('anthropic/claude-opus-4'));
+    expect(screen.getByTestId('metadata-extend-matched')).toBeInTheDocument();
+    // The match is not a choice, so there is nothing to clear.
+    expect(document.querySelector('[data-slot="combobox-clear"]')).toBeNull();
   });
 
   test('the extend picker is disabled only while the catalog is loading and no slug is set', async () => {
@@ -295,8 +362,10 @@ describe('ModelMetadataEditor', () => {
     mocks.slugs.mockResolvedValue({ slugs: ['openai/gpt-5'] });
     renderEditor({ extend: 'legacy/missing-slug' });
 
-    await screen.findByTestId('metadata-extend-status');
-    fireEvent.mouseDown(screen.getByRole('button', { expanded: false }));
+    await waitFor(() => expect(document.getElementById('metadata-extend')).toBeEnabled());
+    const picker = document.getElementById('metadata-extend')?.closest('[data-slot="input-group"]');
+    if (!(picker instanceof HTMLElement)) throw new Error('reference picker is missing');
+    fireEvent.mouseDown(within(picker).getByRole('button', { expanded: false }));
     // The typed query is the saved slug itself, so the catalog hit is filtered out; the
     // discriminating check is that the missing slug is still an option and can be picked again.
     expect(await screen.findByRole('option', { name: 'legacy/missing-slug' })).toBeInTheDocument();
@@ -305,20 +374,17 @@ describe('ModelMetadataEditor', () => {
   test('visual metadata fields are named by prose, not config key paths', async () => {
     renderEditor();
 
-    expect(await screen.findByLabelText(limitContextLabel())).toBeInTheDocument();
+    expect(await overrideSwitch(limitContextLabel())).toBeInTheDocument();
+    expect(await overrideSwitch(nameLabel())).toBeInTheDocument();
     expect(
       screen.getByLabelText(m['dashboard.routing.editor.metadata_capability_label_reasoning']()),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Temperature')).toBeInTheDocument();
-    expect(screen.getByLabelText(nameLabel())).toHaveAttribute(
-      'placeholder',
-      m['dashboard.routing.editor.metadata_name_placeholder'](),
-    );
     expect(screen.queryByLabelText('limit.context')).toBeNull();
     expect(screen.queryByLabelText('capabilities.reasoning')).toBeNull();
   });
 
-  test('broken JSON and a schema failure use different alerts, and only the former names the blocked tab', async () => {
+  test('broken JSON and a schema failure use different alerts, and only the former blocks the form', async () => {
     renderEditor({ name: 'A' });
 
     fireEvent.click(screen.getByTestId('metadata-tab-json'));
@@ -327,14 +393,14 @@ describe('ModelMetadataEditor', () => {
     const jsonAlert = await screen.findByRole('alert');
     expect(jsonAlert).toHaveTextContent(m['dashboard.routing.editor.metadata_json_error']());
     expect(jsonAlert).toHaveAttribute('id', 'metadata-visual-blocked');
-    expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('metadata-tab-visual')).toBeDisabled();
 
-    // A legal object that Zod rejects is still a form: the visual tab stays open, and the alert
+    // A legal object that Zod rejects is still a form: the way back stays open, and the alert
     // has to name the field instead of claiming the draft is not an object.
     fireEvent.change(await jsonDraftField(), {
       target: { value: JSON.stringify({ limit: { context: 100, input: 200 } }) },
     });
-    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).not.toHaveAttribute('aria-disabled', 'true'));
+    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).toBeEnabled());
     const schemaAlert = screen.getByRole('alert');
     expect(schemaAlert).toHaveTextContent(
       m['dashboard.routing.editor.metadata_schema_error']({
@@ -346,24 +412,20 @@ describe('ModelMetadataEditor', () => {
     expect(emitted).toEqual({ name: 'A' });
   });
 
-  test('a fallback slug is offered next to the loaded-count status and a click fills extend', async () => {
-    mocks.lookup.mockImplementation(async (id: string) =>
-      id === 'model-a'
-        ? { slug: 'openai/gpt-5', metadata: { name: 'GPT-5' } }
-        : { slug: 'openai/gpt-5', metadata: { name: 'GPT-5' } },
-    );
+  // The proxy falls back to the catalog entry matching the model ID, so that match is shown as the
+  // reference in effect and its values as the ones followed, without writing `extend`.
+  test('a model without a chosen reference follows its automatic match', async () => {
+    mocks.lookup.mockResolvedValue({ slug: 'openai/gpt-5', metadata: { name: 'GPT-5', cost: { input: 2 } } });
     renderEditor();
 
-    const suggest = await screen.findByTestId('metadata-extend-suggest');
-    expect(suggest).toHaveTextContent(m['dashboard.routing.editor.metadata_extend_suggest']({ slug: 'openai/gpt-5' }));
-    fireEvent.click(suggest);
-
-    await waitFor(() => expect(emitted).toEqual({ extend: 'openai/gpt-5' }));
-    expect(screen.queryByTestId('metadata-extend-suggest')).toBeNull();
-    expect(document.getElementById('metadata-extend')).toHaveValue('openai/gpt-5');
+    await waitFor(() => expect(document.getElementById('metadata-extend')).toHaveValue('openai/gpt-5'));
+    expect(screen.getByTestId('metadata-extend-matched')).toBeInTheDocument();
+    await waitFor(() => expect(followedValue('metadata-name')).toHaveValue('GPT-5'));
+    expect(followedValue('metadata-cost-input')).toHaveValue('2');
+    expect(emitted).toBeUndefined();
   });
 
-  test('an extend value replaces inherit placeholders with the catalog fields', async () => {
+  test('a field that is not overridden shows the reference value, and overriding starts from it', async () => {
     mocks.lookup.mockResolvedValue({
       slug: 'openai/gpt-5',
       metadata: {
@@ -376,27 +438,52 @@ describe('ModelMetadataEditor', () => {
     });
     renderEditor({ extend: 'openai/gpt-5' });
 
-    await waitFor(() => expect(screen.getByLabelText(nameLabel())).toHaveAttribute('placeholder', 'GPT-5'));
-    expect(screen.getByLabelText(m['dashboard.routing.editor.metadata_field_label_description']())).toHaveAttribute(
-      'placeholder',
-      'A capable model.',
+    await waitFor(() => expect(followedValue('metadata-name')).toHaveValue('GPT-5'));
+    expect(followedValue('metadata-description')).toHaveValue('A capable model.');
+    expect(followedValue('metadata-limit-context')).toHaveValue('128K');
+    expect(followedValue('metadata-limit-input')).toHaveValue('120K');
+    expect(followedValue('metadata-cost-input')).toHaveValue('2');
+    // "Follow" is the choice in effect, and it names the value it follows.
+    expect(
+      await capabilityChoice(
+        'reasoning',
+        m['dashboard.routing.editor.metadata_capability_inherit_value']({
+          value: m['dashboard.routing.editor.metadata_capability_supported'](),
+        }),
+      ),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(
+      await capabilityChoice(
+        'temperature',
+        m['dashboard.routing.editor.metadata_capability_inherit_value']({
+          value: m['dashboard.routing.editor.metadata_capability_unsupported'](),
+        }),
+      ),
+    ).toHaveAttribute('aria-pressed', 'true');
+
+    // Overriding seeds the reference value, so the user edits what the model reports instead of a blank.
+    fireEvent.click(await overrideSwitch(limitContextLabel()));
+    await waitFor(() => expect(emitted).toEqual({ extend: 'openai/gpt-5', limit: { context: 128_000 } }));
+    expect(screen.getByLabelText(limitContextLabel())).toHaveValue(128_000);
+  });
+
+  test('overriding tier prices starts from a copy of the reference tiers', async () => {
+    // Tiers replace wholesale when the server merges `extend`, so an override that started empty
+    // would silently drop every reference tier the user did not retype.
+    const tiers = [{ tier: { type: 'context', size: 200_000 }, input: 6, output: 22.5 }];
+    mocks.lookup.mockResolvedValue({ slug: 'openai/gpt-5', metadata: { cost: { input: 3, tiers } } });
+    renderEditor({ extend: 'openai/gpt-5' });
+    await waitFor(() => expect(followedValue('metadata-cost-input')).toHaveValue('3'));
+
+    fireEvent.click(await overrideSwitch(m['dashboard.routing.profile.tiers']()));
+
+    await waitFor(() => expect(emitted).toEqual({ extend: 'openai/gpt-5', cost: { tiers } }));
+    fireEvent.change(screen.getByLabelText(costInputLabel(), { selector: '#metadata-cost-tier-0-input' }), {
+      target: { value: '7' },
+    });
+    await waitFor(() =>
+      expect(emitted).toEqual({ extend: 'openai/gpt-5', cost: { tiers: [{ ...tiers[0], input: 7 }] } }),
     );
-    expect(screen.getByLabelText(limitContextLabel())).toHaveAttribute('placeholder', '128000');
-    expect(screen.getByLabelText(limitInputLabel())).toHaveAttribute('placeholder', '120000');
-    expect(screen.getByLabelText(costInputLabel())).toHaveAttribute('placeholder', '2');
-    expect(screen.getByTestId('metadata-capability-reasoning')).toHaveAttribute('data-placeholder');
-    expect(screen.getByTestId('metadata-capability-reasoning')).toHaveTextContent(
-      m['dashboard.routing.editor.metadata_capability_inherit_value']({
-        value: m['dashboard.routing.editor.metadata_capability_supported'](),
-      }),
-    );
-    expect(screen.getByTestId('metadata-capability-temperature')).toHaveAttribute('data-placeholder');
-    expect(screen.getByTestId('metadata-capability-temperature')).toHaveTextContent(
-      m['dashboard.routing.editor.metadata_capability_inherit_value']({
-        value: m['dashboard.routing.editor.metadata_capability_unsupported'](),
-      }),
-    );
-    expect(screen.queryByTestId('metadata-extend-suggest')).toBeNull();
   });
 
   test('registers the models.dev Model schema so JSON extend values can autocomplete', async () => {
@@ -415,4 +502,51 @@ describe('ModelMetadataEditor', () => {
       );
     });
   });
+});
+
+test('an invalid draft is reported to the owner and restored on the next mount', async () => {
+  // The drawer unmounts the editor on close; the owner keeps the text so it is still there on reopen.
+  const onInvalidDraftChange = rs.fn();
+  const { unmount } = render(
+    <ModelMetadataEditor
+      model="model-a"
+      value={{ name: 'A' }}
+      onChange={rs.fn()}
+      onInvalidDraftChange={onInvalidDraftChange}
+    />,
+    { wrapper },
+  );
+  fireEvent.click(await screen.findByTestId('metadata-tab-json'));
+  fireEvent.change(await jsonDraftField(), { target: { value: '{"name":' } });
+  await waitFor(() => expect(onInvalidDraftChange).toHaveBeenLastCalledWith('{"name":'));
+  unmount();
+
+  render(<ModelMetadataEditor model="model-a" value={{ name: 'A' }} onChange={rs.fn()} invalidDraft={'{"name":'} />, {
+    wrapper,
+  });
+
+  // Unparseable text cannot be shown as a form, so the editor opens on it in JSON.
+  expect((await jsonDraftField()).value).toBe('{"name":');
+});
+
+test('locks the form and the JSON editor when the owner says the config cannot be written', async () => {
+  // A disabled fieldset reaches the visual inputs but never CodeMirror, so the JSON pane needs the
+  // prop of its own — otherwise a read-only user can still type a draft nothing can save.
+  renderEditor({ limit: { context: 1000 } }, { readOnly: true });
+
+  expect(screen.getByLabelText(limitContextLabel())).toBeDisabled();
+
+  fireEvent.click(screen.getByTestId('metadata-tab-json'));
+
+  expect(await jsonDraftField()).toHaveAttribute('readonly');
+});
+
+test('leaves the form and the JSON editor editable when the config is writable', async () => {
+  renderEditor({ limit: { context: 1000 } });
+
+  expect(screen.getByLabelText(limitContextLabel())).toBeEnabled();
+
+  fireEvent.click(screen.getByTestId('metadata-tab-json'));
+
+  expect(await jsonDraftField()).not.toHaveAttribute('readonly');
 });

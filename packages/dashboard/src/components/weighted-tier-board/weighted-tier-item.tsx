@@ -1,5 +1,4 @@
 import { Button } from '@aio-proxy/ui/components/button';
-import { Slider } from '@aio-proxy/ui/components/slider';
 import { cn } from '@aio-proxy/ui/lib/utils';
 import { SortableKeyboardPlugin } from '@dnd-kit/dom/sortable';
 import { useSortable } from '@dnd-kit/react/sortable';
@@ -16,8 +15,9 @@ interface WeightedTierItemProps<TItem> {
   readonly index: number;
   readonly item: WeightedTierBoardItemModel<TItem>;
   readonly listId: string;
-  readonly preview?: boolean;
   readonly renderItem: (value: TItem) => React.ReactNode;
+  /** The list holds a drag handle column even when this item has no handle. */
+  readonly handleColumn?: boolean;
   readonly writable: boolean;
 }
 
@@ -25,8 +25,8 @@ export const WeightedTierItem = <TItem,>({
   index,
   item,
   listId,
-  preview = false,
   renderItem,
+  handleColumn = false,
   writable,
 }: WeightedTierItemProps<TItem>): React.ReactElement => {
   const { ref, handleRef, isDragging } = useSortable({
@@ -39,16 +39,14 @@ export const WeightedTierItem = <TItem,>({
     disabled: !writable || !item.draggable,
     plugins: SORTABLE_PLUGINS,
   });
-  const control = preview || !writable ? undefined : item.control;
-
   return (
     <div
       ref={ref}
-      className={cn('space-y-2 rounded-lg bg-background px-3 py-2', isDragging && 'opacity-70')}
+      className={cn('border-t px-2.5 py-2', isDragging && 'opacity-70')}
       data-testid={item.testId}
       data-dragging={isDragging || undefined}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
         {writable && item.draggable ? (
           <Button
             ref={handleRef}
@@ -60,29 +58,11 @@ export const WeightedTierItem = <TItem,>({
           >
             <GripVertical />
           </Button>
+        ) : handleColumn ? (
+          <span aria-hidden="true" className="size-7 shrink-0" />
         ) : null}
         <div className="min-w-0 flex-1">{renderItem(item.value)}</div>
-        {preview || item.shareLabel === undefined ? null : (
-          <span className="shrink-0 text-sm text-muted-foreground" data-testid={item.shareTestId}>
-            {item.shareLabel}
-          </span>
-        )}
       </div>
-      {control === undefined ? null : (
-        <Slider
-          aria-label={control.ariaLabel}
-          data-testid={control.testId}
-          min={control.min}
-          max={control.max}
-          step={control.step}
-          thumbAlignment="center"
-          value={[control.value]}
-          onValueChange={(value) => {
-            const next = Array.isArray(value) ? value[0] : value;
-            if (typeof next === 'number') control.onChange(next);
-          }}
-        />
-      )}
     </div>
   );
 };

@@ -31,6 +31,13 @@ export type ResolvedModelsDevEntry = {
   readonly model: Model;
 };
 
+/**
+ * `provider.models` is optional-chained on purpose. The type says it is always there, but
+ * readCachedProviderMap parses the cache file without a schema, so a hand-edited or truncated cache
+ * really can hold a provider with no `models` — and indexing `undefined` throws. Callers reach this
+ * from the routing inventory, whose contract is to omit catalog facts rather than fail, so a throw
+ * here would take the whole routing page down over a malformed cache entry.
+ */
 export function resolveModelEntry(providerMap: ProviderMap, modelId: string): ResolvedModelsDevEntry | undefined {
   // Explicit provider/model id wins. Split on the first slash only, so a
   // multi-segment id like `openrouter/vendor/mistral-large` keeps its full
@@ -39,13 +46,13 @@ export function resolveModelEntry(providerMap: ProviderMap, modelId: string): Re
   if (slash > 0) {
     const providerId = modelId.slice(0, slash);
     const providerModelId = modelId.slice(slash + 1);
-    const hit = providerMap[providerId]?.models[providerModelId];
+    const hit = providerMap[providerId]?.models?.[providerModelId];
     if (hit) return { slug: `${providerId}/${providerModelId}`, model: hit };
   }
   // A model id matching a known provider pattern pins that provider.
   for (const [providerId, glob] of PROVIDER_GLOBS) {
     if (glob.match(modelId)) {
-      const hit = providerMap[providerId]?.models[modelId];
+      const hit = providerMap[providerId]?.models?.[modelId];
       if (hit) return { slug: `${providerId}/${modelId}`, model: hit };
       break;
     }

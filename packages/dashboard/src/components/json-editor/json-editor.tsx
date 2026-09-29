@@ -27,6 +27,13 @@ export type JsonEditorProps = {
   readonly onDraftChange?: (draft: string) => void;
   readonly onValidationChange?: (validation: JsonEditorValidation, draft: string) => void;
   readonly externalInvalid?: boolean;
+  /** Renders the draft without letting it be edited. Still selectable and scrollable. */
+  readonly readOnly?: boolean;
+  /**
+   * Text to open with instead of the formatted `value`, read on mount only: a draft the owner kept
+   * across an unmount, which may not parse and so cannot be carried by `value`.
+   */
+  readonly initialDraft?: string;
   readonly id?: string;
   readonly className?: string;
 };
@@ -87,12 +94,16 @@ const controlledJsonDraftReducer = (
   return { ...state, externalValuePending: action.pending };
 };
 
-const useControlledJsonDraft = (value: JsonValue | undefined, schema: JsonSchema | undefined) => {
+const useControlledJsonDraft = (
+  value: JsonValue | undefined,
+  schema: JsonSchema | undefined,
+  initialDraft: string | undefined,
+) => {
   const [state, dispatch] = useReducer(
     controlledJsonDraftReducer,
-    { value, schema },
-    ({ value: initialValue, schema }) => {
-      const draft = formatJsonValue(initialValue);
+    { value, schema, initialDraft },
+    ({ value: initialValue, schema, initialDraft: keptDraft }) => {
+      const draft = keptDraft ?? formatJsonValue(initialValue);
       return {
         draft,
         validationState: createJsonValidationState(draft, schema),
@@ -145,6 +156,8 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   onDraftChange,
   onValidationChange,
   externalInvalid,
+  readOnly = false,
+  initialDraft,
   id,
   className,
 }) => {
@@ -157,7 +170,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
     dispatch,
     expectValueAcknowledgement,
     markExternalValuePending,
-  } = useControlledJsonDraft(value, schema);
+  } = useControlledJsonDraft(value, schema, initialDraft);
   const handleLanguageValidation = useCallback(
     (validatedDraft: string, markers: JsonEditorValidation['markers']) => {
       dispatch({ type: 'complete-validation', draft: validatedDraft, schema: validationState.schema, markers });
@@ -223,6 +236,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       {...(id === undefined ? {} : { id })}
       invalid={externalInvalid || !validation.valid}
       extensions={languageExtensions}
+      readOnly={readOnly}
       onChange={handleChange}
       value={draft}
     />

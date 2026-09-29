@@ -2,20 +2,28 @@ import { m } from '@aio-proxy/i18n';
 import { Card } from '@aio-proxy/ui/components/card';
 import type React from 'react';
 
+import { RoutingTierLabel } from '@/components/routing-tier-label';
+
 export interface ProviderCardRoutingProps {
   readonly tier: number;
+  readonly priority: number;
   readonly share: number;
   readonly parked: boolean;
 }
 
-export const ProviderCardRouting: React.FC<ProviderCardRoutingProps> = ({ tier, share, parked }) => (
+export const ProviderCardRouting: React.FC<ProviderCardRoutingProps> = ({ tier, priority, share, parked }) => (
   <Card size="sm" className="mx-2 -mt-4 gap-0 bg-muted/80 pt-4 pb-0 shadow-xs" data-testid="provider-card-routing">
     <div className="flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-xs">
       <span className="shrink-0 text-muted-foreground">{m['dashboard.providers.card.default_route']()}</span>
       <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
-        <span className="font-medium whitespace-nowrap" data-testid="provider-card-route-tier">
-          {m['dashboard.providers.routing.tier']({ tier })}
-        </span>
+        <RoutingTierLabel
+          tier={tier}
+          priority={priority}
+          // `relative z-10`, like the model count: the identity link's overlay spans this layer too,
+          // and would otherwise sit over the marker and swallow the hover that shows its priority.
+          className="relative z-10 font-medium whitespace-nowrap"
+          data-testid="provider-card-route-tier"
+        />
         <span aria-hidden="true" className="text-muted-foreground">
           ·
         </span>

@@ -8,6 +8,7 @@ import {
   type ModelMetadataInput,
   type RouterProviderOverride,
 } from '@aio-proxy/types';
+import { isEqual, isPlainObject } from 'es-toolkit/predicate';
 import type { ZodType } from 'zod';
 
 /**
@@ -47,22 +48,62 @@ export const routingMetadataFormValues = (model: DashboardRoutingModel): Routing
   ),
 });
 
-/** After a stale-revision reload: untouched drafts re-seed from the fresh model; edits are kept. */
+/**
+ * Three-way merge of one draft value against the baseline it was edited from. A key the user left at
+ * its baseline value takes the server's fresh one, so another operator's change survives a reload; a
+ * key the user changed keeps the user's value, which is what the next save is meant to write. Arrays
+ * (price tiers) are single values, since the config replaces them wholesale.
+ */
+const mergeDraftValue = (base: unknown, draft: unknown, fresh: unknown): unknown => {
+  if (isEqual(draft, base)) return fresh;
+  if (isEqual(fresh, base)) return draft;
+  if (!isPlainObject(draft) || !isPlainObject(fresh)) return draft;
+  // A group both sides created from nothing merges from an empty ancestor, so keys each side added
+  // independently all survive rather than the user's object replacing the other operator's.
+  const ancestor = base === undefined ? {} : base;
+  if (!isPlainObject(ancestor)) return draft;
+  const merged: Record<string, unknown> = {};
+  for (const key of new Set([...Object.keys(ancestor), ...Object.keys(draft), ...Object.keys(fresh)])) {
+    const value = mergeDraftValue(ancestor[key], draft[key], fresh[key]);
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged;
+};
+
+const mergeDraft = <T extends object>(
+  draft: RoutingMetadataDraft<T> | undefined,
+  base: RoutingMetadataDraft<T> | undefined,
+  fresh: RoutingMetadataDraft<T>,
+): RoutingMetadataDraft<T> => {
+  if (!draft?.touched) return fresh;
+  const value = mergeDraftValue(base?.value, draft.value, fresh.value) as T | undefined;
+  // When the server already holds what the user drafted, nothing is left to save: keeping the draft
+  // touched would hold the save bar and the navigation guard up over an identical value.
+  return isEqual(value, fresh.value) ? fresh : { touched: true, value };
+};
+
+/**
+ * After a stale-revision reload: untouched drafts re-seed from the fresh model, and touched ones are
+ * merged field by field against `base`, the values the drafts were edited from. Replaying a touched
+ * group whole would write the stale copy of every field in it back over the server's newer values.
+ */
 export const reconcileRoutingMetadataValues = (
   values: RoutingMetadataFormValues,
   model: DashboardRoutingModel,
+  base: RoutingMetadataFormValues,
 ): RoutingMetadataFormValues => {
   const fresh = routingMetadataFormValues(model);
   return {
-    metadata: values.metadata.touched ? values.metadata : fresh.metadata,
+    metadata: mergeDraft(values.metadata, base.metadata, fresh.metadata),
     overrides: Object.fromEntries(
       Object.entries(fresh.overrides).map(([providerId, freshDraft]) => {
         const current = values.overrides[providerId];
+        const previous = base.overrides[providerId];
         return [
           providerId,
           {
-            cost: current?.cost.touched ? current.cost : freshDraft.cost,
-            limit: current?.limit.touched ? current.limit : freshDraft.limit,
+            cost: mergeDraft(current?.cost, previous?.cost, freshDraft.cost),
+            limit: mergeDraft(current?.limit, previous?.limit, freshDraft.limit),
           },
         ];
       }),
@@ -83,6 +124,28 @@ export const routingOverrideDraftsValid = (overrides: RoutingMetadataFormValues[
   Object.values(overrides).every(
     (draft) => touchedGroupValid(draft.cost, ModelCostSchema) && touchedGroupValid(draft.limit, ModelLimitSchema),
   );
+
+/** Which editor tab holds unsaved work. Drives both the per-tab markers and the navigation guard. */
+export type RoutingDirtyTab = 'topology' | 'metadata' | 'cost';
+
+/** True when any cost or limit override group has been touched. */
+export const routingOverrideDraftsTouched = (overrides: RoutingMetadataFormValues['overrides']): boolean =>
+  Object.values(overrides).some((override) => override.cost.touched || override.limit.touched);
+
+/** True when either half of the metadata form holds unsaved work. */
+export const routingMetadataTouched = (values: RoutingMetadataFormValues): boolean =>
+  values.metadata.touched || routingOverrideDraftsTouched(values.overrides);
+
+export const routingDirtyTabs = (
+  topologyDirty: boolean,
+  metadata: RoutingMetadataFormValues,
+  /** Metadata text that does not parse: unsaved work the form itself cannot hold. */
+  metadataInvalid = false,
+): readonly RoutingDirtyTab[] => [
+  ...(topologyDirty ? (['topology'] as const) : []),
+  ...(metadata.metadata.touched || metadataInvalid ? (['metadata'] as const) : []),
+  ...(routingOverrideDraftsTouched(metadata.overrides) ? (['cost'] as const) : []),
+];
 
 const patchOf = <T extends object>(draft: RoutingMetadataDraft<T> | undefined): T | null | undefined => {
   if (draft === undefined || !draft.touched) return undefined;

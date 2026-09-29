@@ -5,10 +5,11 @@ import {
   ModelMetadataSchema,
   type ModelMetadataInput,
 } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
 import { Label } from '@aio-proxy/ui/components/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 import { useQuery } from '@tanstack/react-query';
 import { isEqual, isPlainObject } from 'es-toolkit/predicate';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useEffect, useId, useMemo, useState } from 'react';
 
 import {
@@ -34,6 +35,18 @@ export interface ModelMetadataEditorProps {
    * what the user sees.
    */
   readonly onValidityChange?: (valid: boolean) => void;
+  /**
+   * Text that did not parse or pass the schema, handed back while it is the visible draft and
+   * `undefined` otherwise. An invalid draft never reaches `onChange`, so without this the owner could
+   * not tell it apart from no edit at all: it would neither block leaving nor survive a remount.
+   */
+  readonly onInvalidDraftChange?: (text: string | undefined) => void;
+  /** An invalid draft the owner kept from an earlier mount, restored in place of `value`. */
+  readonly invalidDraft?: string | undefined;
+  /** Shows the metadata without letting it be edited, for a config the dashboard cannot write. */
+  readonly readOnly?: boolean;
+  /** Shown below the form, above the JSON link; hidden while the JSON editor replaces the form. */
+  readonly children?: React.ReactNode;
 }
 
 const serialize = (value: ModelMetadataInput | undefined) => JSON.stringify(value ?? {}, null, 2);
@@ -42,11 +55,18 @@ const serialize = (value: ModelMetadataInput | undefined) => JSON.stringify(valu
 const normalize = (value: ModelMetadataInput): ModelMetadataInput | undefined =>
   Object.keys(value).length === 0 ? undefined : value;
 
+// `extend` is the base layer every other field goes on top of, so the JSON reads it first, whatever
+// order the schema emits keys in.
+const referenceFirst = (value: ModelMetadataInput): ModelMetadataInput => {
+  const { extend, ...fields } = value;
+  return extend === undefined ? value : { extend, ...fields };
+};
+
 const editorValue = (draft: string, value: ModelMetadataInput | undefined): JsonValue | undefined =>
-  draft.trim() === '' ? undefined : ((value ?? {}) as JsonValue);
+  draft.trim() === '' ? undefined : (referenceFirst(value ?? {}) as JsonValue);
 
 /**
- * Inline metadata editor with Visual/JSON tabs. Controlled: every schema-valid draft change is
+ * Inline metadata editor: a form, with JSON as the way out for every key the form does not reach. Controlled: every schema-valid draft change is
  * pushed out through `onChange` (an emptied draft as `undefined`); invalid JSON stays local until
  * repaired, so the owner never receives a value no saved record could hold.
  */
@@ -55,6 +75,10 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
   value,
   onChange,
   onValidityChange,
+  readOnly = false,
+  invalidDraft,
+  onInvalidDraftChange,
+  children,
 }) => {
   const editorId = useId();
   const slugs = useQuery(modelsDevSlugsQueryOptions());
@@ -67,7 +91,7 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
       }),
     [slugs.data?.slugs],
   );
-  const [draft, setDraft] = useState(() => serialize(value));
+  const [draft, setDraft] = useState(() => invalidDraft ?? serialize(value));
   const [mode, setMode] = useState<'visual' | 'json'>('visual');
   // Re-sync from outside (owner reseeded after a reload) but never from our own echo: when the
   // incoming value is what the current draft already parses to, the draft is the better display.
@@ -81,7 +105,9 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
   }, [draft]);
   if (value !== lastValue) {
     setLastValue(value);
-    const echoed = parsed.success && isEqual(normalize(parsed.data), value);
+    // Only a change of content re-syncs. A rebase can hand over an equal value as a new object, and
+    // taking that as an edit from outside would replace an invalid draft the user is still fixing.
+    const echoed = isEqual(value, lastValue) || (parsed.success && isEqual(normalize(parsed.data), value));
     if (!echoed) setDraft(serialize(value));
   }
 
@@ -90,6 +116,9 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
   useEffect(() => {
     onValidityChange?.(valid);
   }, [valid, onValidityChange]);
+  useEffect(() => {
+    onInvalidDraftChange?.(valid ? undefined : draft);
+  }, [valid, draft, onInvalidDraftChange]);
 
   const updateDraft = (next: string) => {
     setDraft(next);
@@ -142,45 +171,50 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
   const activeMode = rawValue === undefined ? 'json' : mode;
 
   return (
-    <div data-testid="model-metadata-editor">
-      {/* Visual is the default: this is a form, not a code editor. JSON takes over only while the
-          draft cannot be rendered as one, and stays available for the keys the form does not reach. */}
-      <Tabs
-        value={activeMode}
-        onValueChange={(next: unknown) => {
-          if (next === 'json') setMode('json');
-          else if (next === 'visual' && rawValue !== undefined) setMode('visual');
-        }}
-      >
-        <TabsList>
-          {/*
-            Disabled while the draft is not a JSON object: the visual tab merges over the parsed
-            draft and writes the whole result back, so entering it on unparseable text would
-            silently drop every key it cannot render (`name` among them). A visual edit always
-            emits `JSON.stringify` output, so this can never disable the tab a user is already on.
-          */}
-          <TabsTrigger
-            value="visual"
-            data-testid="metadata-tab-visual"
-            disabled={rawValue === undefined}
-            aria-describedby={rawValue === undefined ? 'metadata-visual-blocked' : undefined}
-          >
-            {m['dashboard.routing.editor.metadata_tab_visual']()}
-          </TabsTrigger>
-          <TabsTrigger value="json" data-testid="metadata-tab-json">
-            {m['dashboard.routing.editor.metadata_tab_json']()}
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="visual" className="pt-4">
-          {rawValue === undefined ? null : (
+    <div data-testid="model-metadata-editor" className="space-y-6">
+      {activeMode === 'visual' && rawValue !== undefined ? (
+        <>
+          <fieldset disabled={readOnly}>
             <ModelMetadataVisualTab
               model={model}
               value={rawValue}
               onChange={(next) => updateDraft(JSON.stringify(next, null, 2))}
             />
-          )}
-        </TabsContent>
-        <TabsContent value="json" className="pt-4">
+          </fieldset>
+          {children}
+          <Button
+            type="button"
+            size="sm"
+            variant="link"
+            className="h-auto px-0"
+            data-testid="metadata-tab-json"
+            onClick={() => setMode('json')}
+          >
+            {m['dashboard.routing.editor.metadata_tab_json']()}
+            <ArrowRight data-icon="inline-end" />
+          </Button>
+        </>
+      ) : (
+        <div className="space-y-3">
+          {/*
+            Disabled while the draft is not a JSON object: the form merges over the parsed draft and
+            writes the whole result back, so entering it on unparseable text would silently drop every
+            key it cannot render (`name` among them). A form edit always emits `JSON.stringify` output,
+            so this can never strand a user on the form.
+          */}
+          <Button
+            type="button"
+            size="sm"
+            variant="link"
+            className="h-auto px-0"
+            data-testid="metadata-tab-visual"
+            disabled={rawValue === undefined}
+            aria-describedby={rawValue === undefined ? 'metadata-visual-blocked' : undefined}
+            onClick={() => setMode('visual')}
+          >
+            <ArrowLeft data-icon="inline-start" />
+            {m['dashboard.routing.editor.metadata_tab_visual']()}
+          </Button>
           <Label htmlFor={editorId} className="sr-only">
             {m['dashboard.routing.editor.metadata_json_label']({ model })}
           </Label>
@@ -191,27 +225,29 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
               value={editorValue(draft, value)}
               schema={ModelMetadataJsonSchema}
               externalInvalid={!valid}
+              readOnly={readOnly}
+              initialDraft={invalidDraft}
               onDraftChange={updateDraft}
               onValueChange={handleJsonValueChange}
             />
           </div>
           {rawValue === undefined ? (
-            <p role="alert" id="metadata-visual-blocked" className="mt-2 text-sm text-destructive">
+            <p role="alert" id="metadata-visual-blocked" className="text-sm text-destructive">
               {m['dashboard.routing.editor.metadata_json_error']()}
             </p>
           ) : !parsed.success && 'error' in parsed && parsed.error.issues[0] !== undefined ? (
-            <p role="alert" className="mt-2 text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {m['dashboard.routing.editor.metadata_schema_error']({
                 path: parsed.error.issues[0].path.join('.') || '.',
               })}
             </p>
           ) : !parsed.success ? (
-            <p role="alert" className="mt-2 text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {m['dashboard.routing.editor.metadata_json_error']()}
             </p>
           ) : null}
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
     </div>
   );
 };

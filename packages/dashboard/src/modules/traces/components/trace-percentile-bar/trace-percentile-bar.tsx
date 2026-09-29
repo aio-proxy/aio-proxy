@@ -16,8 +16,8 @@ export const TracePercentileBar: React.FC<TracePercentileBarProps> = ({ comparis
   // 全窗口一样快时分布没有宽度，所有标记压到左端，而不是除出 NaN。
   const offset = (value: number) => (span <= 0 ? 0 : Math.min(1, Math.max(0, (value - minMs) / span)) * 100);
   const ticks = [
-    ['p50', comparison.p50Ms],
-    ['p95', comparison.p95Ms],
+    ['P50', comparison.p50Ms],
+    ['P95', comparison.p95Ms],
   ] as const;
 
   return (

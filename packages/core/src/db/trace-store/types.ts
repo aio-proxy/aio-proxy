@@ -4,6 +4,8 @@ import type {
   DashboardOverviewDiagnosticsResponse,
   DashboardOverviewRange,
   DashboardOverviewResponse,
+  DashboardRoutingTrafficBucketsResponse,
+  DashboardRoutingTrafficResponse,
   DashboardTraceDetail,
   DashboardTracePageSize,
   DashboardTracePercentileResponse,
@@ -154,6 +156,15 @@ export type ProviderWindowCostQuery = {
   readonly end: Date;
 };
 
+export type RoutingTrafficQuery = {
+  readonly range: UsageOverviewRange;
+  readonly now?: Date;
+};
+
+export type RoutingTrafficBucketsQuery = RoutingTrafficQuery & {
+  readonly modelId: string;
+};
+
 export type TraceStore = {
   readonly startRoot: (input: TraceRootStart) => void;
   readonly complete: (input: TraceCompletion) => boolean;
@@ -173,6 +184,8 @@ export type TraceStore = {
     now: Date,
   ) => SessionAffinityObservation | undefined;
   readonly providerWindowCost: (query: ProviderWindowCostQuery) => string | undefined;
+  readonly routingTraffic: (query: RoutingTrafficQuery) => DashboardRoutingTrafficResponse;
+  readonly routingTrafficBuckets: (query: RoutingTrafficBucketsQuery) => DashboardRoutingTrafficBucketsResponse;
   readonly recover: (now: Date) => number;
   readonly prune: (traceCutoff: Date, sessionCutoff: Date) => void;
 };

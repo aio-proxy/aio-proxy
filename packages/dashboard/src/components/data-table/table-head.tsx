@@ -47,7 +47,7 @@ export const TableHead: React.FC<TableHeadProps> = ({ className, column, label, 
           {directionIcon()}
         </Button>
       ) : (
-        label
+        <span className={cn('block', className?.includes('text-right') && 'text-right')}>{label}</span>
       )}
     </TableHeadRoot>
   );

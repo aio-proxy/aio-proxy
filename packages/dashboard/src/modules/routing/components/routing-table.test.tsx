@@ -1,7 +1,19 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
-import { expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { expect, test } from '@rstest/core';
+import {
+  RouterProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from '@tanstack/react-router';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
+
+import { ProviderCatalogProvider } from '@/hooks/use-provider-catalog';
+import { providerStub } from '@/lib/provider-fixtures';
 
 import { RoutingTable } from './routing-table';
 
@@ -28,6 +40,8 @@ const provider = (
   },
   ...values,
 });
+
+const modelFixture = (modelId: string, catalog?: { lab: string; releaseDate?: string }) => model({ modelId, catalog });
 
 const model = (
   values: Partial<DashboardRoutingModel> & Pick<DashboardRoutingModel, 'modelId'>,
@@ -58,11 +72,30 @@ const model = (
   };
 };
 
-test('renders every known model including zero-eligible and single-Provider routes', () => {
-  const onEdit = rs.fn();
-  render(
+const renderTable = async (table: ReactElement) => {
+  const rootRoute = createRootRoute();
+  const listRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/routing/',
+    component: () => table,
+  });
+  const detailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/routing/$',
+    component: () => null,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([listRoute, detailRoute]),
+    history: createMemoryHistory({ initialEntries: ['/routing/'] }),
+  });
+  await router.load();
+  return { ...render(<RouterProvider router={router} />), router };
+};
+
+test('renders every known model including zero-eligible and single-Provider routes', async () => {
+  await renderTable(
     <RoutingTable
-      onEdit={onEdit}
+      traffic={undefined}
       models={[
         model({
           modelId: 'openai/gpt-5',
@@ -136,36 +169,122 @@ test('renders every known model including zero-eligible and single-Provider rout
   expect(screen.getByTestId('routing-row-openai/gpt-5')).toBeInTheDocument();
   expect(screen.getByTestId('routing-row-solo-model')).toBeInTheDocument();
   expect(screen.getByTestId('routing-row-disabled-model')).toBeInTheDocument();
-  expect(
-    within(screen.getByTestId('routing-row-openai/gpt-5')).getByText(/Tier 1|ティア 1|단계 1|梯队 1|梯隊 1/u),
-  ).toBeInTheDocument();
+  expect(within(screen.getByTestId('routing-row-openai/gpt-5')).getByText('60%')).toBeInTheDocument();
   expect(within(screen.getByTestId('routing-row-disabled-model')).getByText(/0\s*\/\s*1/u)).toBeInTheDocument();
+  // Overrides are marked on the rows that have them, not in a column that is empty for most rows.
+  expect(
+    within(screen.getByTestId('routing-row-openai/gpt-5')).getByText(m['dashboard.routing.table.overrides_yes']()),
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId('routing-row-solo-model')).queryByText(m['dashboard.routing.table.overrides_yes']()),
+  ).toBeNull();
 });
 
-test('filters models through the shared DataTable controls and opens Edit from a row', () => {
-  const onEdit = rs.fn();
-  const solo = model({ modelId: 'solo-model' });
-  render(
+test('renders an OAuth Provider service and account from the shared catalog', async () => {
+  await renderTable(
+    <ProviderCatalogProvider
+      value={{
+        providers: [
+          providerStub({
+            id: 'oauth-provider',
+            kind: ProviderKind.OAuth,
+            plugin: '@aio-proxy/plugin-openai-chatgpt',
+            accountLabel: 'wang.baran@gmail.com',
+          }),
+        ],
+        plugins: [
+          {
+            packageName: '@aio-proxy/plugin-openai-chatgpt',
+            displayName: 'ChatGPT',
+            builtin: true,
+            enabled: true,
+            hasOptions: false,
+            state: { status: 'ready' },
+          },
+        ],
+        status: 'ready',
+      }}
+    >
+      <RoutingTable
+        traffic={undefined}
+        models={[
+          model({ modelId: 'gpt-5', providers: [provider({ id: 'oauth-provider', kind: ProviderKind.OAuth })] }),
+        ]}
+      />
+    </ProviderCatalogProvider>,
+  );
+
+  const routeProvider = within(screen.getByTestId('routing-row-gpt-5')).getByTestId(
+    'routing-route-provider-oauth-provider',
+  );
+  expect(routeProvider).toHaveTextContent(/ChatGPT.*wang\.baran@gmail\.com/u);
+  expect(routeProvider).not.toHaveTextContent('OAuth');
+});
+
+test('does not render the column visibility control for the routing table', async () => {
+  await renderTable(<RoutingTable models={[modelFixture('gpt-5')]} traffic={undefined} />);
+
+  expect(screen.queryByRole('button', { name: /Columns|列/u })).not.toBeInTheDocument();
+});
+
+test('filters models through the shared DataTable controls', async () => {
+  await renderTable(
     <RoutingTable
-      onEdit={onEdit}
-      models={[model({ modelId: 'openai/gpt-5' }), solo, model({ modelId: 'other-model' })]}
+      traffic={undefined}
+      models={[model({ modelId: 'openai/gpt-5' }), model({ modelId: 'solo-model' }), model({ modelId: 'other-model' })]}
     />,
   );
 
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'solo-model' } });
   expect(screen.getByTestId('routing-row-solo-model')).toBeInTheDocument();
   expect(screen.queryByTestId('routing-row-openai/gpt-5')).toBeNull();
-
-  fireEvent.click(
-    within(screen.getByTestId('routing-row-solo-model')).getByRole('button', { name: /Edit|編集|편집|编辑|編輯/u }),
-  );
-  expect(onEdit).toHaveBeenCalledWith(solo);
 });
 
-test('paginates long model catalogs with the shared table pagination controls', () => {
-  render(
+test('a lab heading counts only the models the filter left', async () => {
+  await renderTable(
     <RoutingTable
-      onEdit={rs.fn()}
+      traffic={undefined}
+      models={[
+        modelFixture('gpt-5', { lab: 'openai' }),
+        modelFixture('gpt-4', { lab: 'openai' }),
+        modelFixture('claude', { lab: 'anthropic' }),
+      ]}
+    />,
+  );
+  expect(screen.getByTestId('routing-lab-group-openai')).toHaveTextContent(
+    m['dashboard.routing.lab.model_count']({ count: 2 }),
+  );
+
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'gpt-5' } });
+
+  expect(screen.getByTestId('routing-lab-group-openai')).toHaveTextContent(
+    m['dashboard.routing.lab.model_count']({ count: 1 }),
+  );
+});
+
+test('the vendor selector keeps offering other vendors while one is selected', async () => {
+  const openai = modelFixture('gpt-5', { lab: 'openai' });
+  const anthropic = modelFixture('claude', { lab: 'anthropic' });
+  await renderTable(
+    <RoutingTable
+      traffic={undefined}
+      models={[openai]}
+      vendorModels={[openai, anthropic]}
+      lab="openai"
+      onLabChange={() => undefined}
+    />,
+  );
+
+  fireEvent.click(screen.getByRole('combobox', { name: m['dashboard.routing.lab.filter_label']() }));
+
+  // "All", OpenAI, Anthropic: selecting OpenAI must not hide the vendor the user may switch to next.
+  expect(await screen.findAllByRole('option')).toHaveLength(3);
+});
+
+test('paginates long model catalogs with the shared table pagination controls', async () => {
+  await renderTable(
+    <RoutingTable
+      traffic={undefined}
       models={Array.from({ length: 12 }, (_, index) =>
         model({ modelId: `model-${String(index + 1).padStart(2, '0')}` }),
       )}
@@ -176,4 +295,93 @@ test('paginates long model catalogs with the shared table pagination controls', 
   expect(screen.queryByTestId('routing-row-model-12')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Next|次|다음|下一|下一/u }));
   expect(screen.getByTestId('routing-row-model-12')).toBeInTheDocument();
+});
+
+test('groups rows by lab and repeats the header on each page', async () => {
+  await renderTable(
+    <RoutingTable
+      models={[modelFixture('gpt-5', { lab: 'openai' }), modelFixture('claude', { lab: 'anthropic' })]}
+      traffic={undefined}
+    />,
+  );
+
+  expect(screen.getByTestId('routing-lab-group-anthropic')).toBeInTheDocument();
+  expect(screen.getByTestId('routing-lab-group-openai')).toBeInTheDocument();
+});
+
+test('drops the lab group headers once the user sorts a column', async () => {
+  await renderTable(<RoutingTable models={[modelFixture('gpt-5', { lab: 'openai' })]} traffic={undefined} />);
+
+  fireEvent.click(screen.getByRole('button', { name: /Model ID/u }));
+
+  expect(screen.getByRole('columnheader', { name: /Model ID/u })).toHaveAttribute('aria-sort', 'ascending');
+  expect(screen.queryByTestId('routing-lab-group-openai')).not.toBeInTheDocument();
+});
+
+test('withholds a traffic value while the query has produced no index', async () => {
+  // This test used to assert "No traffic" here, which encoded the bug: an in-flight or failed query
+  // is unknown, and labelling it "no traffic" claims the model served nothing — permanently, once
+  // the request has failed.
+  await renderTable(<RoutingTable models={[modelFixture('gpt-5', { lab: 'openai' })]} traffic={undefined} />);
+
+  expect(screen.queryByText(/No traffic|无流量/u)).not.toBeInTheDocument();
+  expect(within(screen.getByTestId('routing-row-gpt-5')).getByText('—')).toBeInTheDocument();
+});
+
+test('shows no-traffic rather than zeros for a model the measured window has no rows for', async () => {
+  // The query landed and this model simply served nothing in the window — a measured result, so the
+  // label is the honest one here.
+  await renderTable(<RoutingTable models={[modelFixture('gpt-5', { lab: 'openai' })]} traffic={new Map()} />);
+
+  expect(screen.getByText(/No traffic|无流量/u)).toBeInTheDocument();
+});
+
+test('links each row to its detail page instead of opening a drawer', async () => {
+  const { router } = await renderTable(
+    <RoutingTable models={[modelFixture('anthropic/claude-sonnet-4.5')]} traffic={undefined} />,
+  );
+
+  const row = screen.getByTestId('routing-row-anthropic/claude-sonnet-4.5');
+  expect(row).toHaveAttribute('role', 'link');
+  expect(row).toHaveAttribute('tabindex', '0');
+  fireEvent.keyDown(row, { key: 'Enter' });
+  await waitFor(() => expect(router.state.location.pathname).toBe('/routing/anthropic/claude-sonnet-4.5'));
+});
+
+test('orders the traffic column numerically, across the whole BigInt range', async () => {
+  // The accessor is a decimal string. Sorted as text, "10" lands before "9", and no numeric
+  // coercion could separate neighbours past MAX_SAFE_INTEGER anyway — which is why these counts are
+  // decoded as BigInt. The last fixture sits above that boundary.
+  const totals = (providerId: string, finalCount: bigint) => ({
+    providerId,
+    finalCount,
+    attemptCount: finalCount,
+    successCount: finalCount,
+    p95LatencyMs: 10,
+  });
+
+  await renderTable(
+    <RoutingTable
+      models={[modelFixture('huge'), modelFixture('nine'), modelFixture('ten')]}
+      traffic={
+        new Map([
+          ['huge', [totals('huge-provider', 10_000_000_000_000_000n)]],
+          ['nine', [totals('nine-provider', 9n)]],
+          ['ten', [totals('ten-provider', 10n)]],
+        ])
+      }
+    />,
+  );
+
+  const idsInOrder = () =>
+    screen
+      .getAllByTestId(/^routing-row-/u)
+      .map((row) => row.getAttribute('data-testid'))
+      .filter((id): id is string => id !== null);
+
+  fireEvent.click(screen.getByRole('button', { name: /Traffic|流量/u }));
+  expect(idsInOrder()).toStrictEqual(['routing-row-nine', 'routing-row-ten', 'routing-row-huge']);
+
+  fireEvent.click(screen.getByRole('button', { name: /Traffic|流量/u }));
+  expect(idsInOrder()).toStrictEqual(['routing-row-huge', 'routing-row-ten', 'routing-row-nine']);
 });

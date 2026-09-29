@@ -11,6 +11,12 @@ import type {
   DashboardRoutingNumber,
   DashboardRoutingProvider,
 } from './routing';
+import type {
+  DashboardRoutingTrafficBucketsResponse,
+  DashboardRoutingTrafficModel,
+  DashboardRoutingTrafficProvider,
+  DashboardRoutingTrafficResponse,
+} from './traffic';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 
@@ -56,6 +62,7 @@ const readyProvider = {
 const model = {
   modelId: 'openai/gpt-5',
   metadata: { name: 'GPT-5', cost: { input: 2 } },
+  catalog: { lab: 'openai', releaseDate: '2026-06' },
   revision: 'rev-1',
   baselineProviderIds: ['primary'],
   providerCount: 1,
@@ -116,6 +123,23 @@ describe('dashboard routing contracts', () => {
     expect(mutation.safeParse({ ...base, providers: { primary: { weight: '2' } } }).success).toBe(false);
   });
 
+  test('treats catalog as optional and requires a lab when present', () => {
+    const response = schema('DashboardRoutingModelsResponseSchema');
+    const { catalog: _catalog, ...withoutCatalog } = model;
+
+    expect(response.parse({ writable: true, models: [withoutCatalog] })).toEqual({
+      writable: true,
+      models: [withoutCatalog],
+    });
+    expect(
+      response.safeParse({ writable: true, models: [{ ...model, catalog: { releaseDate: '2026-06' } }] }).success,
+    ).toBe(false);
+    expect(response.parse({ writable: true, models: [{ ...model, catalog: { lab: 'openai' } }] })).toEqual({
+      writable: true,
+      models: [{ ...model, catalog: { lab: 'openai' } }],
+    });
+  });
+
   test('enumerates routing mutation error codes', () => {
     const errorCode = schema('DashboardRoutingMutationErrorCodeSchema');
 
@@ -136,10 +160,15 @@ describe('dashboard routing contracts', () => {
     const providerEffectiveIsReadonly: AllKeysReadonly<DashboardRoutingProvider['effective']> = true;
     const providerOverrideIsReadonly: AllKeysReadonly<NonNullable<DashboardRoutingProvider['override']>> = true;
     const modelIsReadonly: AllKeysReadonly<DashboardRoutingModel> = true;
+    const catalogIsReadonly: AllKeysReadonly<NonNullable<DashboardRoutingModel['catalog']>> = true;
     const tierIsReadonly: AllKeysReadonly<DashboardRoutingModel['tiers'][number]> = true;
     const tierProviderIsReadonly: AllKeysReadonly<DashboardRoutingModel['tiers'][number]['providers'][number]> = true;
     const responseIsReadonly: AllKeysReadonly<DashboardRoutingModelsResponse> = true;
     const mutationIsReadonly: AllKeysReadonly<DashboardRoutingModelMutation> = true;
+    const trafficProviderIsReadonly: AllKeysReadonly<DashboardRoutingTrafficProvider> = true;
+    const trafficModelIsReadonly: AllKeysReadonly<DashboardRoutingTrafficModel> = true;
+    const trafficTotalsIsReadonly: AllKeysReadonly<DashboardRoutingTrafficResponse> = true;
+    const trafficBucketsIsReadonly: AllKeysReadonly<DashboardRoutingTrafficBucketsResponse> = true;
 
     expect([
       providersAreReadonlyRecord,
@@ -149,10 +178,15 @@ describe('dashboard routing contracts', () => {
       providerEffectiveIsReadonly,
       providerOverrideIsReadonly,
       modelIsReadonly,
+      catalogIsReadonly,
       tierIsReadonly,
       tierProviderIsReadonly,
       responseIsReadonly,
       mutationIsReadonly,
-    ]).toEqual([true, true, true, true, true, true, true, true, true, true, true]);
+      trafficProviderIsReadonly,
+      trafficModelIsReadonly,
+      trafficTotalsIsReadonly,
+      trafficBucketsIsReadonly,
+    ]).toEqual([true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true]);
   });
 });

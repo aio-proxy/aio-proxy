@@ -4,7 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { digestProviderEntry, parseRuntimeConfig, Router } from '@aio-proxy/core';
-import { DashboardRoutingModelsResponseSchema, DashboardRoutingMutationErrorCodeSchema } from '@aio-proxy/types';
+import {
+  ConfigSchema,
+  DashboardRoutingModelsResponseSchema,
+  DashboardRoutingMutationErrorCodeSchema,
+} from '@aio-proxy/types';
 
 import { createServerState } from '#server-test-lifecycle';
 
@@ -291,4 +295,43 @@ test('GET /providers/:id/edit-view returns authored and effective routing number
       weight: { authored: 1.6, effective: 2, wasNormalized: true },
     });
   });
+});
+
+test('GET /routing/traffic validates range and rejects ranges beyond span retention', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-dashboard-routing-traffic-'));
+  const state = await createServerState({ config: ConfigSchema.parse({ providers: {} }), dbHome: dir });
+
+  try {
+    const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
+
+    const ok = await routes.request('/routing/traffic?range=24h');
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ range: '24h', models: [] });
+
+    // trace_span is pruned to a 45-day retention window, so 90d cannot be answered.
+    expect((await routes.request('/routing/traffic?range=90d')).status).toBe(400);
+    expect((await routes.request('/routing/traffic')).status).toBe(400);
+  } finally {
+    state.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('GET /routing/traffic/buckets takes the model id as a query parameter so slashes survive', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-dashboard-routing-buckets-'));
+  const state = await createServerState({ config: ConfigSchema.parse({ providers: {} }), dbHome: dir });
+
+  try {
+    const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
+    const modelId = 'anthropic/claude-sonnet-4.5';
+
+    const response = await routes.request(`/routing/traffic/buckets?range=24h&model=${encodeURIComponent(modelId)}`);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ modelId, bucketUnit: 'hour', providerIds: [] });
+    expect((await routes.request('/routing/traffic/buckets?range=24h')).status).toBe(400);
+  } finally {
+    state.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

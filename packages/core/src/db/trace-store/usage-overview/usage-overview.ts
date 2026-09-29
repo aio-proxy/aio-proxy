@@ -1,6 +1,6 @@
 import type { Database, SQLQueryBindings } from 'bun:sqlite';
 
-import type { DashboardUsageOverviewResponse, UsageOverviewGroupBy, UsageOverviewRange } from '@aio-proxy/types';
+import type { DashboardUsageOverviewResponse, UsageOverviewGroupBy } from '@aio-proxy/types';
 import { and, gte, isNull, lte, sql } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
@@ -8,7 +8,8 @@ import { parseSqliteInteger } from '../../../usage-numbers';
 import { traceSpan } from '../../schema';
 import type { UsageOverviewQuery } from '../types';
 import { usageColumns } from '../usage-fields';
-import { aggregateRows, type ChartBucket, type OverviewRow } from './aggregation';
+import { resolveUsageRange, usageBucketKeys } from '../usage-range';
+import { aggregateRows, type OverviewRow } from './aggregation';
 
 type RawOverviewRow = Omit<OverviewRow, 'estimatedCostNanoUsd' | 'inputTokens' | 'outputTokens' | 'totalTokens'> & {
   readonly estimatedCostNanoUsd: string;
@@ -31,12 +32,12 @@ const anyUsageColumn = sql.join(
 
 export function overview(db: BunSQLiteDatabase, query: UsageOverviewQuery): DashboardUsageOverviewResponse {
   const now = query.now ?? new Date();
-  const { start, end, bucketUnit } = resolveRange(query.range, now);
+  const { start, end, bucketUnit } = resolveUsageRange(query.range, now);
   const rangeFilter = and(gte(traceSpan.endedAt, start), lte(traceSpan.endedAt, end));
   const { summary, series, buckets } = aggregateRows(
     overviewRows(db, query.groupBy, bucketUnit, start, rangeFilter),
     query.metric,
-    bucketKeys(query.range, start, end),
+    usageBucketKeys(query.range, start, end),
     query.maxResults,
     query.metric === 'requests' && query.groupBy === 'provider' && query.maxResults === undefined,
   );
@@ -71,19 +72,6 @@ export function overview(db: BunSQLiteDatabase, query: UsageOverviewQuery): Dash
     series,
     buckets,
   };
-}
-
-function resolveRange(range: UsageOverviewRange, now: Date) {
-  if (range === '24h') {
-    return { start: new Date(now.getTime() - 24 * 60 * 60 * 1000), end: now, bucketUnit: 'hour' as const };
-  }
-  let days = 30;
-  if (range === '7d') days = 7;
-  else if (range === '14d') days = 14;
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - (days - 1));
-  return { start, end: now, bucketUnit: 'day' as const };
 }
 
 function* overviewRows(
@@ -130,30 +118,6 @@ function* overviewRows(
       totalTokens: parseSqliteInteger(row.totalTokens),
     };
   }
-}
-
-function bucketKeys(range: UsageOverviewRange, start: Date, end: Date): readonly ChartBucket[] {
-  if (range === '24h') {
-    return Array.from({ length: 24 }, (_, index) => ({
-      identity: index,
-      key: new Date(start.getTime() + index * 60 * 60 * 1000).toISOString(),
-    }));
-  }
-  const keys: ChartBucket[] = [];
-  const day = new Date(start);
-  while (day <= end) {
-    keys.push({ identity: localDate(day), key: day.toISOString() });
-    day.setDate(day.getDate() + 1);
-  }
-  return keys;
-}
-
-function localDate(value: Date): string {
-  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
-}
-
-function pad(value: number): string {
-  return String(value).padStart(2, '0');
 }
 
 const ratio = (numerator: bigint, denominator: bigint) =>

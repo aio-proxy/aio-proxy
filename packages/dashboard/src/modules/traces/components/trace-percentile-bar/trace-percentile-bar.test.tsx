@@ -26,8 +26,8 @@ test('places the trace between the window ticks in proportion to its latency', (
   expect(bar.textContent).toContain('73');
   // (800 - 200) / (1000 - 200)
   expect(leftOf(screen.getByTestId('trace-percentile-marker'))).toBe('75%');
-  expect(leftOf(screen.getByText('p50'))).toBe('25%');
-  expect(leftOf(screen.getByText('p95'))).toBe('87.5%');
+  expect(leftOf(screen.getByText('P50'))).toBe('25%');
+  expect(leftOf(screen.getByText('P95'))).toBe('87.5%');
 });
 
 test('pins every marker to the left edge when the window has no spread', () => {
@@ -42,7 +42,7 @@ test('pins every marker to the left edge when the window has no spread', () => {
   render(<TracePercentileBar comparison={flat} />);
 
   expect(leftOf(screen.getByTestId('trace-percentile-marker'))).toBe('0%');
-  expect(leftOf(screen.getByText('p95'))).toBe('0%');
+  expect(leftOf(screen.getByText('P95'))).toBe('0%');
 });
 
 test('renders nothing while the sample is short or the comparison has not arrived', () => {
