@@ -53,6 +53,62 @@ function launchdPlistPath(): string {
   return join(homedir(), 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist`);
 }
 
+export const launchdDomain = (uid: number = process.getuid?.() ?? 0): string => `gui/${uid}`;
+
+export const launchdJobTarget = (uid?: number): string => `${launchdDomain(uid)}/${LAUNCHD_LABEL}`;
+
+// `launchctl print` exits 0 only while launchd holds the job: the one reliable "is it loaded" check.
+const printLaunchdJob = async (): Promise<number> =>
+  Bun.spawn(['launchctl', 'print', launchdJobTarget()], { stdout: 'ignore', stderr: 'ignore' }).exited;
+
+// Legacy `load`/`unload` exit 0 even on "Load failed: 5", so success is read back from launchd, not
+// taken from an exit status. `bootstrap` and `kickstart` do report failures, but the read-back also
+// catches a job that launchd accepted and dropped.
+async function startLaunchdJob(
+  plist: string,
+  run: (cmd: readonly string[], allowFailure?: boolean) => Promise<number>,
+  printJob: () => Promise<number>,
+): Promise<void> {
+  const target = launchdJobTarget();
+  // `service stop` (`unload -w`) leaves a disabled override; launchd's bootstrap refuses a disabled job
+  // (known launchd behaviour, confirmed by the sandboxed check in the task report). `load -w` used to clear it.
+  await run(['launchctl', 'enable', target]);
+  // A loaded job whose process exited (a clean SIGTERM, the wrapper's missing-executable exit) is only
+  // restarted by kickstart; an unloaded one is bootstrapped, and RunAtLoad starts it.
+  if ((await printJob()) === 0) await run(['launchctl', 'kickstart', target]);
+  else await run(['launchctl', 'bootstrap', launchdDomain(), plist]);
+  const code = await printJob();
+  if (code !== 0) {
+    throw new CliExit(EXIT.transient, m['cli.service.command_failed']({ command: `launchctl print ${target}`, code }));
+  }
+}
+
+const BOOTOUT_TIMEOUT_MS = 10_000;
+
+// `bootout` can return while launchd is still tearing the job down ("36: Operation now in progress",
+// swallowed by allowFailure). startLaunchdJob would then see the dying job as loaded and kickstart
+// the old definition, or bootstrap would fail with "5: Input/output error". Wait until print stops
+// finding the job; one still there after the deadline is an error, not something to start over.
+async function bootoutLaunchdJob(
+  run: (cmd: readonly string[], allowFailure?: boolean) => Promise<number>,
+  printJob: () => Promise<number>,
+  timeoutMs: number,
+): Promise<void> {
+  const target = launchdJobTarget();
+  // bootout of a job that is not loaded fails harmlessly.
+  const code = await run(['launchctl', 'bootout', target], true);
+  const deadline = Date.now() + timeoutMs;
+  while ((await printJob()) === 0) {
+    if (Date.now() >= deadline) {
+      throw new CliExit(
+        EXIT.transient,
+        m['cli.service.command_failed']({ command: `launchctl bootout ${target}`, code }),
+      );
+    }
+    await Bun.sleep(100);
+  }
+}
+
 function systemdUnitPath(): string {
   const xdg = process.env['XDG_CONFIG_HOME'];
   const base = xdg === undefined || xdg === '' ? join(homedir(), '.config') : xdg;
@@ -180,7 +236,10 @@ export async function serviceUninstall(print: Printer = console.log): Promise<vo
   print(m['cli.service.uninstalled']({ path: target }));
 }
 
-type ServiceStartIo = Pick<ServiceRestartIo, 'platform' | 'unitInstalled' | 'unitPath' | 'runManager' | 'install'>;
+type ServiceStartIo = Pick<
+  ServiceRestartIo,
+  'platform' | 'unitInstalled' | 'unitPath' | 'runManager' | 'install' | 'printJob'
+>;
 
 export async function serviceStart(io: ServiceStartIo = {}): Promise<void> {
   const os = io.platform ?? requirePlatform();
@@ -192,8 +251,7 @@ export async function serviceStart(io: ServiceStartIo = {}): Promise<void> {
   try {
     if (!installed) await (io.install ?? serviceInstall)({});
     if (os === 'darwin') {
-      // RunAtLoad=true means `load -w` also starts the job.
-      await run(['launchctl', 'load', '-w', io.unitPath ?? launchdPlistPath()]);
+      await startLaunchdJob(io.unitPath ?? launchdPlistPath(), run, io.printJob ?? printLaunchdJob);
       return;
     }
     await run(['systemctl', '--user', 'start', SYSTEMD_UNIT_NAME]);
@@ -226,6 +284,10 @@ export type ServiceRestartIo = {
   readonly writeManagedUnit?: typeof writeManagedUnit;
   readonly spawn?: typeof Bun.spawn;
   readonly runManager?: (cmd: readonly string[], allowFailure?: boolean) => Promise<number>;
+  /** Exit code of `launchctl print <job>`; 0 while launchd holds the job. Injected by tests. */
+  readonly printJob?: () => Promise<number>;
+  /** How long `service restart` waits for `bootout` to remove the job. Injected by tests. */
+  readonly bootoutTimeoutMs?: number;
 };
 
 const isDarwinLaunchdJob = (env: NodeJS.ProcessEnv, isTTY: boolean): boolean =>
@@ -270,8 +332,10 @@ export async function serviceRestart(io: ServiceRestartIo = {}): Promise<void> {
       spawnDarwinRestartHelper(plist, io.spawn ?? Bun.spawn);
       return;
     }
-    await run(['launchctl', 'unload', '-w', plist]);
-    await run(['launchctl', 'load', '-w', plist]);
+    // bootout + bootstrap re-reads the plist just rewritten; kickstart -k would restart the old definition.
+    const printJob = io.printJob ?? printLaunchdJob;
+    await bootoutLaunchdJob(run, printJob, io.bootoutTimeoutMs ?? BOOTOUT_TIMEOUT_MS);
+    await startLaunchdJob(plist, run, printJob);
     return;
   }
   await run(['systemctl', '--user', 'restart', SYSTEMD_UNIT_NAME]);

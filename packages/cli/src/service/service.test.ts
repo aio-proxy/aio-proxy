@@ -8,6 +8,8 @@ import { resolveStableManagedExec } from '../upgrade/detect';
 import {
   renderLaunchdPlist,
   renderSystemdUnit,
+  launchdDomain,
+  launchdJobTarget,
   resolveExec,
   serviceRestart,
   serviceStart,
@@ -15,29 +17,65 @@ import {
 } from './service';
 import { LAUNCHD_EXEC_WRAPPER } from './unit-templates';
 
+// A stand-in for launchd: `print` reports the job loaded after bootstrap or kickstart and unloaded
+// after bootout. `bootstrapLoads: false` models launchctl exiting 0 while launchd never took the job.
+// `teardownPolls` models bootout returning early ("36: Operation now in progress"): print keeps
+// finding the job for that many more calls (Infinity: it never goes away).
+const fakeLaunchd = (
+  loaded: boolean,
+  options: { readonly bootstrapLoads?: boolean; readonly teardownPolls?: number } = {},
+) => {
+  const calls: string[] = [];
+  let held = loaded;
+  let teardown = 0;
+  return {
+    calls,
+    runManager: async (cmd: readonly string[]) => {
+      calls.push(cmd.join(' '));
+      if (cmd[1] === 'bootout') {
+        teardown = options.teardownPolls ?? 0;
+        if (teardown === 0) held = false;
+      }
+      if (cmd[1] === 'bootstrap' && options.bootstrapLoads !== false) held = true;
+      return 0;
+    },
+    printJob: async () => {
+      if (held && teardown > 0) {
+        teardown -= 1;
+        if (teardown === 0) held = false;
+        return 0;
+      }
+      return held ? 0 : 113;
+    },
+  };
+};
+
 for (const platform of ['linux', 'darwin'] as const) {
   for (const command of [serviceStart, serviceRestart]) {
     test(`${command.name} on ${platform} installs a missing user service before starting it`, async () => {
-      const calls: string[] = [];
+      const launchd = fakeLaunchd(false);
       const writeManagedUnit = mock(async () => '/tmp/unused');
       await command({
         platform,
         unitInstalled: () => false,
         install: async (options) => {
           expect(options?.system).not.toBe(true);
-          calls.push('install');
+          launchd.calls.push('install');
         },
-        runManager: async (cmd) => {
-          calls.push(cmd.join(' '));
-          return 0;
-        },
+        runManager: launchd.runManager,
+        printJob: launchd.printJob,
         unitPath: '/tmp/service.plist',
         writeManagedUnit,
       });
-      expect(calls).toEqual([
-        'install',
-        platform === 'linux' ? 'systemctl --user start aio-proxy.service' : 'launchctl load -w /tmp/service.plist',
-      ]);
+      expect(launchd.calls).toEqual(
+        platform === 'linux'
+          ? ['install', 'systemctl --user start aio-proxy.service']
+          : [
+              'install',
+              `launchctl enable ${launchdJobTarget()}`,
+              `launchctl bootstrap ${launchdDomain()} /tmp/service.plist`,
+            ],
+      );
       expect(writeManagedUnit).not.toHaveBeenCalled();
     });
 
@@ -64,19 +102,45 @@ for (const platform of ['linux', 'darwin'] as const) {
       });
     }
   }
-
-  test(`serviceStart on ${platform} starts an installed service through its manager`, async () => {
-    const runManager = mock(async () => 0);
-    const install = mock(async () => {});
-    await serviceStart({ platform, unitInstalled: () => true, unitPath: '/tmp/service.plist', runManager, install });
-    expect(install).not.toHaveBeenCalled();
-    expect(runManager).toHaveBeenCalledWith(
-      platform === 'linux'
-        ? ['systemctl', '--user', 'start', 'aio-proxy.service']
-        : ['launchctl', 'load', '-w', '/tmp/service.plist'],
-    );
-  });
 }
+
+test('serviceStart on linux starts an installed service through its manager', async () => {
+  const runManager = mock(async () => 0);
+  const install = mock(async () => {});
+  await serviceStart({ platform: 'linux', unitInstalled: () => true, runManager, install });
+  expect(install).not.toHaveBeenCalled();
+  expect(runManager).toHaveBeenCalledWith(['systemctl', '--user', 'start', 'aio-proxy.service']);
+});
+
+test('serviceStart bootstraps an unloaded launchd job after clearing the override a stop leaves', async () => {
+  const launchd = fakeLaunchd(false);
+  await serviceStart({ platform: 'darwin', unitInstalled: () => true, unitPath: '/tmp/service.plist', ...launchd });
+  expect(launchd.calls).toEqual([
+    `launchctl enable ${launchdJobTarget()}`,
+    `launchctl bootstrap ${launchdDomain()} /tmp/service.plist`,
+  ]);
+});
+
+test('serviceStart kickstarts a loaded launchd job instead of re-loading it', async () => {
+  const launchd = fakeLaunchd(true);
+  await serviceStart({ platform: 'darwin', unitInstalled: () => true, unitPath: '/tmp/service.plist', ...launchd });
+  expect(launchd.calls).toEqual([
+    `launchctl enable ${launchdJobTarget()}`,
+    `launchctl kickstart ${launchdJobTarget()}`,
+  ]);
+});
+
+test('serviceStart fails when launchd does not hold the job although every launchctl call exited 0', async () => {
+  const launchd = fakeLaunchd(false, { bootstrapLoads: false });
+  const error = await serviceStart({
+    platform: 'darwin',
+    unitInstalled: () => true,
+    unitPath: '/tmp/service.plist',
+    ...launchd,
+  }).catch((caught: unknown) => caught);
+  expect(error).toBeInstanceOf(CliExit);
+  expect((error as CliExit).message).toContain(`launchctl print ${launchdJobTarget()}`);
+});
 
 test('systemd unit runs `run`, restarts on failure, skips exit 1', () => {
   const unit = renderSystemdUnit({ exec: '/usr/local/bin/aio-proxy', configPath: '/home/u/.aio-proxy/config.jsonc' });
@@ -563,9 +627,9 @@ test('Darwin in-job serviceRestart spawns a detached helper that unloads without
   expect(manager).toEqual([]);
 });
 
-test('Darwin TTY serviceRestart unloads in-process and does not spawn a detached helper', async () => {
+test('Darwin TTY serviceRestart boots the job out and bootstraps the rewritten plist in-process', async () => {
   const spawned: string[][] = [];
-  const manager: string[][] = [];
+  const launchd = fakeLaunchd(true);
   await serviceRestart({
     platform: 'darwin',
     env: { XPC_SERVICE_NAME: 'com.aio-proxy.agent', AIO_PROXY_MANAGED: '1' },
@@ -577,14 +641,45 @@ test('Darwin TTY serviceRestart unloads in-process and does not spawn a detached
       spawned.push(cmd);
       return { unref() {} };
     }) as typeof Bun.spawn,
-    runManager: async (cmd) => {
-      manager.push([...cmd]);
-      return 0;
-    },
+    ...launchd,
   });
   expect(spawned).toEqual([]);
-  expect(manager.some((cmd) => cmd.includes('unload'))).toBe(true);
-  expect(manager.some((cmd) => cmd.includes('load'))).toBe(true);
+  // kickstart -k would restart the old definition; bootout + bootstrap re-reads the rewritten plist.
+  expect(launchd.calls).toEqual([
+    `launchctl bootout ${launchdJobTarget()}`,
+    `launchctl enable ${launchdJobTarget()}`,
+    `launchctl bootstrap ${launchdDomain()} /tmp/com.aio-proxy.agent.plist`,
+  ]);
+});
+
+const restartInProcess = (launchd: ReturnType<typeof fakeLaunchd>, bootoutTimeoutMs?: number) =>
+  serviceRestart({
+    platform: 'darwin',
+    env: {},
+    isTTY: true,
+    unitInstalled: () => true,
+    unitPath: '/tmp/com.aio-proxy.agent.plist',
+    writeManagedUnit: async () => '/tmp/com.aio-proxy.agent.plist',
+    ...(bootoutTimeoutMs === undefined ? {} : { bootoutTimeoutMs }),
+    ...launchd,
+  });
+
+test('serviceRestart waits for a slow bootout before bootstrapping, instead of kickstarting the dying job', async () => {
+  const launchd = fakeLaunchd(true, { teardownPolls: 3 });
+  await restartInProcess(launchd);
+  expect(launchd.calls).toEqual([
+    `launchctl bootout ${launchdJobTarget()}`,
+    `launchctl enable ${launchdJobTarget()}`,
+    `launchctl bootstrap ${launchdDomain()} /tmp/com.aio-proxy.agent.plist`,
+  ]);
+});
+
+test('serviceRestart fails when bootout never removes the job, and starts nothing', async () => {
+  const launchd = fakeLaunchd(true, { teardownPolls: Number.POSITIVE_INFINITY });
+  const error = await restartInProcess(launchd, 300).catch((caught: unknown) => caught);
+  expect(error).toBeInstanceOf(CliExit);
+  expect((error as CliExit).message).toContain(`launchctl bootout ${launchdJobTarget()}`);
+  expect(launchd.calls).toEqual([`launchctl bootout ${launchdJobTarget()}`]);
 });
 
 const runWrapper = (exec: string) =>

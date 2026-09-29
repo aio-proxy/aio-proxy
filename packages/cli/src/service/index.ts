@@ -1,5 +1,8 @@
 export {
   isManagedServiceInstalled,
+  launchdDomain,
+  launchdJobTarget,
+  managedUnitPath,
   serviceInstall,
   serviceRestart,
   serviceStart,
