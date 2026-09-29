@@ -10,6 +10,7 @@ import {
   renderSystemdUnit,
   launchdDomain,
   launchdJobTarget,
+  readDesktopOwnedUnit,
   resolveExec,
   serviceRestart,
   serviceStart,
@@ -715,5 +716,20 @@ test.skipIf(process.platform !== 'darwin')(
     expect(plist.ProgramArguments[3]).toBe(link);
     expect(plist.EnvironmentVariables['AIO_PROXY_DESKTOP_EXEC']).toBe(link);
     expect(plist.EnvironmentVariables['AIO_PROXY_UPGRADE_METHOD']).toBe('desktop');
+  },
+);
+
+test.skipIf(process.platform !== 'darwin')(
+  'readDesktopOwnedUnit tells a desktop-written unit from a CLI-written one',
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aio-desktop-owned-'));
+    const link = join(dir, 'Application Support', 'aio-proxy-desktop', 'bin', 'aio-proxy');
+    const desktop = join(dir, 'desktop.plist');
+    const cli = join(dir, 'cli.plist');
+    await writeManagedUnit('darwin', link, desktop, { AIO_PROXY_DESKTOP_EXEC: link, PATH: '/usr/bin:/bin' });
+    await writeManagedUnit('darwin', join(dir, 'brew', 'aio-proxy'), cli, { PATH: '/usr/bin:/bin' });
+    expect(readDesktopOwnedUnit(desktop)).toBe(true);
+    expect(readDesktopOwnedUnit(cli)).toBe(false);
+    expect(readDesktopOwnedUnit(join(dir, 'missing.plist'))).toBe(false);
   },
 );

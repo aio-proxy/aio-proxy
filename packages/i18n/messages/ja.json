@@ -285,6 +285,8 @@
       "via": "{method} 経由でアップグレードしています…",
       "success": "v{version} にアップグレードしました",
       "detect_failed": "aio-proxy のインストール方法を特定できません: {reason}",
+      "desktop_managed": "この aio-proxy は aio-proxy デスクトップアプリで管理されています。デスクトップアプリから更新してください。",
+      "desktop_service_skipped": "バックグラウンドサービスは aio-proxy デスクトップアプリのもので、アプリ同梱のコピーで動作しているため、再起動しませんでした。",
       "install_failed": "アップグレードに失敗しました: {reason}",
       "manual_restart_hint": "デーモンは手動で起動されており、再起動するマネージドサービスがありません。アップグレードを適用するには自分で再起動してください",
       "restarting": "デーモンを再起動しています…"

@@ -285,6 +285,8 @@
       "via": "Upgrading via {method}...",
       "success": "Upgraded to v{version}",
       "detect_failed": "Cannot determine how aio-proxy was installed: {reason}",
+      "desktop_managed": "This aio-proxy is managed by the aio-proxy desktop app. Update it from the desktop app.",
+      "desktop_service_skipped": "The background service belongs to the aio-proxy desktop app and runs the app's own copy, so it was not restarted.",
       "install_failed": "Upgrade failed: {reason}",
       "manual_restart_hint": "The daemon was started manually; there is no managed service to restart. Restart it yourself to apply the upgrade",
       "restarting": "Restarting the daemon..."

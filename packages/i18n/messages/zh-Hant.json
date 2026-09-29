@@ -285,6 +285,8 @@
       "via": "正在透過 {method} 升級……",
       "success": "已升級到 v{version}",
       "detect_failed": "無法確定 aio-proxy 的安裝方式：{reason}",
+      "desktop_managed": "此 aio-proxy 由 aio-proxy 桌面端管理，請透過桌面端更新。",
+      "desktop_service_skipped": "背景服務屬於 aio-proxy 桌面端，執行的是桌面端內建的副本，因此未重新啟動。",
       "install_failed": "升級失敗：{reason}",
       "manual_restart_hint": "守護行程是手動啟動的，沒有可重新啟動的受管服務。請自行重新啟動以套用升級",
       "restarting": "正在重新啟動守護行程……"

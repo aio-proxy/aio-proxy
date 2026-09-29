@@ -3,6 +3,7 @@ export {
   launchdDomain,
   launchdJobTarget,
   managedUnitPath,
+  readDesktopOwnedUnit,
   serviceInstall,
   serviceRestart,
   serviceStart,

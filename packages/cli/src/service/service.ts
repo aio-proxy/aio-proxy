@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 
 import { configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { resolveAgentExecutable } from '../executable';
 import { CliExit, EXIT } from '../exit';
@@ -119,6 +120,30 @@ export function managedUnitPath(os: NodeJS.Platform = platform()): string | unde
   if (os === 'darwin') return launchdPlistPath();
   if (os === 'linux') return systemdUnitPath();
   return undefined;
+}
+
+/**
+ * Whether the installed plist belongs to the desktop app: its wrapper target is the symlink the app
+ * recorded as `AIO_PROXY_DESKTOP_EXEC` (writeManagedUnit writes both only for a desktop-owned unit,
+ * and a CLI rewrite replaces both). Any read or parse failure answers false, which keeps today's behavior.
+ */
+export function readDesktopOwnedUnit(path: string = launchdPlistPath()): boolean {
+  if (process.platform !== 'darwin' || !existsSync(path)) return false;
+  const converted = Bun.spawnSync(['plutil', '-convert', 'json', '-o', '-', path], {
+    stdout: 'pipe',
+    stderr: 'ignore',
+  });
+  if (converted.exitCode !== 0) return false;
+  try {
+    const plist: unknown = JSON.parse(converted.stdout.toString());
+    if (!isPlainObject(plist)) return false;
+    const env = plist['EnvironmentVariables'];
+    const args = plist['ProgramArguments'];
+    const marker = isPlainObject(env) ? env['AIO_PROXY_DESKTOP_EXEC'] : undefined;
+    return typeof marker === 'string' && marker !== '' && Array.isArray(args) && args[3] === marker;
+  } catch {
+    return false;
+  }
 }
 
 // Whether a managed unit file exists for the current platform. Callers that only

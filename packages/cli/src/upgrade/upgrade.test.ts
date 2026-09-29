@@ -167,10 +167,12 @@ test('fetchLatestVersion throws on non-ok', async () => {
   await expect(fetchLatestVersion(NPM_REGISTRY, fake)).rejects.toThrow();
 });
 
+import { m } from '@aio-proxy/i18n';
+
 import { CliExit, EXIT } from '../exit';
 import { resolveNewAgentBinary } from './agent-post-upgrade-process';
 import type { AgentPostUpgradePayload } from './post-upgrade-agents';
-import { runUpgradeCommand, type UpgradeDeps } from './upgrade';
+import { isDesktopManagedInstall, runUpgradeCommand, type UpgradeDeps } from './upgrade';
 
 const PAYLOAD = {
   format: 1,
@@ -199,6 +201,8 @@ const makeDeps = (overrides: Partial<UpgradeDeps> = {}): UpgradeDeps => ({
   invokeAgentPostUpgrade: async () => [],
   isDaemonRunning: async () => false,
   isServiceManaged: () => true,
+  isDesktopManaged: () => false,
+  isDesktopOwnedUnit: () => false,
   restartService: async () => {},
   readInstalledVersion: async () => '2.0.0',
   ...overrides,
@@ -1354,4 +1358,49 @@ process.exit(9);
   await expect(
     resolveNewAgentBinary({ method: 'brew', command: '/opt/homebrew/bin/brew', bin: binary }, '2.0.0'),
   ).resolves.toBe(binary);
+});
+
+test('a desktop-managed process refuses to upgrade before touching any installer', async () => {
+  const install = mock(async () => {});
+  const resolveTarget = mock(async () => bunTarget);
+  const error = await runUpgradeCommand({}, () => {}, { isDesktopManaged: () => true, install, resolveTarget }).catch(
+    (e: unknown) => e,
+  );
+  expect(error).toBeInstanceOf(CliExit);
+  expect((error as CliExit).message).toBe(m['cli.upgrade.desktop_managed']());
+  expect(resolveTarget).not.toHaveBeenCalled();
+  expect(install).not.toHaveBeenCalled();
+});
+
+test('isDesktopManagedInstall recognizes the desktop markers and an app-bundle binary', () => {
+  expect(isDesktopManagedInstall({ AIO_PROXY_UPGRADE_METHOD: 'desktop' }, '/usr/local/bin/aio-proxy', (p) => p)).toBe(
+    true,
+  );
+  expect(
+    isDesktopManagedInstall({ AIO_PROXY_DESKTOP_EXEC: '/x/bin/aio-proxy' }, '/usr/local/bin/aio-proxy', (p) => p),
+  ).toBe(true);
+  expect(
+    isDesktopManagedInstall(
+      {},
+      '/Users/u/Library/Application Support/aio-proxy-desktop/bin/aio-proxy',
+      () => '/Applications/AIO Proxy.app/Contents/MacOS/aio-proxy',
+    ),
+  ).toBe(true);
+  expect(isDesktopManagedInstall({}, '/opt/homebrew/bin/aio-proxy', (p) => p)).toBe(false);
+});
+
+test('a CLI upgrade installs but never restarts a service the desktop app owns', async () => {
+  let restarted = false;
+  const { lines, done } = upgradeRun({
+    isDaemonRunning: async () => true,
+    isServiceManaged: () => true,
+    isDesktopOwnedUnit: () => true,
+    restartService: async () => {
+      restarted = true;
+    },
+  });
+  expect(await done).toBe('installed');
+  // A restart would rewrite the app's plist to this binary and hand its service to this install.
+  expect(restarted).toBe(false);
+  expect(lines).toContain(m['cli.upgrade.desktop_service_skipped']());
 });
