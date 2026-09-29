@@ -18,7 +18,7 @@ Spike code: branch `spike/desktop`, commits `d3c12c105` through `85b85767d`. The
 
 | Check | Result | Still pending |
 | --- | --- | --- |
-| 1. Release sidecar, signing, launchd, update, recovery | **GO, conditional**: ad-hoc bundle verified; entitlements minimized; launchd, recovery and Sparkle N→N+1 proven in a sandbox | Developer ID signing and host launch without entitlements; Developer ID entitlement re-run; OAuth workload step; notarization of `.app` and `.dmg`; clean-Mac browser install; Developer ID Sparkle update from a DMG through "Install and Relaunch" with no signature-mismatch line |
+| 1. Release sidecar, signing, launchd, update, recovery | **PENDING (sandboxed mechanics pass)**: ad-hoc bundle verified; entitlements minimized; launchd, recovery and Sparkle N→N+1 proven in a sandbox. A Developer ID signing or notarization failure still blocks the plan (spec: "If it fails: Blocks the plan as specified") | Developer ID signing and host launch without entitlements; Developer ID entitlement re-run; OAuth workload step; notarization of `.app` and `.dmg`; clean-Mac browser install; Developer ID Sparkle update from a DMG through "Install and Relaunch" with no signature-mismatch line |
 | 2. Panel, tray, HTTP stack, Sparkle in the GPUI loop | **PENDING (not passed)**: anchoring, clamping, Dock/Cmd+Tab policy, HTTP stack and Sparkle startup pass | Click elsewhere closes; click icon again closes; second display with another scale factor; full-screen Space; sleep/wake. A click-away failure reopens the UI stack decision, since no fallback exists (see Panel) |
 | 3. Window lifecycle, resources, summary cost | **GO, conditional**: summary ≤ 50 ms passes; closed budget passes by physical footprint [locked]; lifecycle hybrid, PROVISIONAL | Visible flash and on-screen reopen latency; unlocked re-measure; powermetrics wakeup cross-check |
 
@@ -135,13 +135,14 @@ Not run: no Developer ID identity or notary profile on the machine. `notarize.sh
 - **Missing app, then kill:** exactly one extra run hits `[ -x "$0" ] || exit 0`; `runs` stayed at 7 for 10 minutes, and the unified log held 2 launchd lines. Restoring the app does not revive the job.
 - **`launchctl load -w` does not start an already-loaded job**, and on "Load failed: 5: Input/output error" it **exits 0**. `launchctl kickstart` revives the job.
 - **Stop and restart signals.** `kickstart -k`, `bootout` and `unload -w` all deliver a graceful SIGTERM to the sidecar. launchd signals the wrapper, which dies at once, then SIGTERMs the rest of the process group. Evidence: the DB ownership lock was released, and a stand-in logged TERM even after `kill -9` of the wrapper.
-- **launchd never escalates to SIGKILL.** A stand-in ignoring SIGTERM survived 60 s as an orphan (ppid 1) holding its port while `kickstart -k` started a new instance. Inferred consequence for the real binary: the new sidecar fails to bind, exits 1, is remapped to 0, and the service silently stays on the old binary. `kickstart -k` blocks about 7 s.
+- **launchd never escalates to SIGKILL.** Observed only with a shell stand-in that ignores SIGTERM: it survived 60 s as an orphan (ppid 1) while `kickstart -k` started a new instance. The real sidecar was never seen hanging: on every graceful path it released its DB lock, and `shutdownProxyServer` stops the listener synchronously once the handler runs. The stale-binary chain (new sidecar fails to bind, exits 1, is remapped to 0, service stays on the old binary) is an **inference**. It could only happen to the real binary if its JS thread were blocked before the handler ran, and then no in-process deadline would fire either. `kickstart -k` blocks about 7 s.
 - A trap-forwarding wrapper variant changes nothing but the recorded exit code (143), so it was **not adopted**.
 - **Sparkle N→N+1** (ad-hoc, zip archive, file-based EdDSA key, background check with `SUAutomaticallyUpdate`):
   - The feed and archive were fetched over `http://127.0.0.1` with no ATS change, and `Autoupdate` logged "EdDSA signature is correct".
   - It then logged "Code signature of the new version doesn't match the old version" (an ad-hoc designated requirement is the cdhash) and **installed anyway**: with a valid EdDSA signature Sparkle 2 does not refuse.
   - Install-on-quit does **not relaunch** the app.
   - The old sidecar kept serving from the old inode until `kickstart -k` moved it to the new binary.
+- Sparkle warned that a background (`LSUIElement`) app has no "gentle reminders" for scheduled update checks. Since every update goes through the UI dialog, Phase 2 must implement `SPUStandardUserDriverDelegate` gentle-reminder support (e.g. surface the pending update in the menu-bar icon or panel).
 - `generate_appcast --account <name>` blocked for 5 minutes on a Keychain ACL prompt (`SecurityAgent`); `--ed-key-file` works non-interactively.
 
 ## Resources and window lifecycle (Task 6)
@@ -160,7 +161,7 @@ Measured on the bundled ad-hoc app, default std HTTP. Wakeups come from `proc_pi
 
 100 open/close cycles:
 
-| | destroy | destroy, animation None | hide | hybrid |
+| | destroy | destroy, animation None [locked] | hide [locked] | hybrid |
 | --- | --- | --- | --- | --- |
 | Footprint growth | +10.5 MB [locked] | +0.6 MB | −5.9 MB | +10.4 MB [locked] |
 | Closed footprint | 32-43 MB | 32.6 MB | 42.2 MB (over budget) | 32-43 MB |
@@ -198,7 +199,7 @@ Seeded with `spike/desktop-host/bench/seed-trace-db.ts` (`openDb` + `createTrace
 | C5 | Sparkle's background install-on-quit does not relaunch the app, deferring the proxy restart to the next launch | No silent auto-install: `SUAutomaticallyUpdate` is never set and `SUAllowsAutomaticUpdates=false`; updates go through "Install and Relaunch", and the relaunched app restarts the desktop-owned proxy |
 | C6 | Sparkle installs on EdDSA alone when the code signature mismatches | The EdDSA private key is the update root of trust (CI secret only). The Developer ID update run must show no signature-mismatch line |
 | C7 | `generate_appcast --account` blocks on a Keychain ACL prompt | The release pipeline uses `--ed-key-file` from the CI secret, never `--account` |
-| C8 | launchd never SIGKILLs a sidecar that ignores or outlives SIGTERM; it survives as an orphan holding the port | `aio-proxy run` force-exits 3 s after SIGTERM/SIGINT. The desktop Restart action verifies the old sidecar pid is gone and `/health` reports the expected version |
+| C8 | launchd never SIGKILLs a sidecar that ignores or outlives SIGTERM; a stand-in ignoring TERM survived as an orphan (the port-holding, stale-binary chain for the real binary is inferred) | `aio-proxy run` force-exits 3 s after SIGTERM/SIGINT, which bounds how long an orphan and its background work outlive a stop. The stale-binary guard is the desktop Restart check: the old sidecar pid is gone and `/health` reports the expected version |
 
 Other spec corrections: host entitlements (none under Developer ID), `allow-jit`-only sidecar, native-addon plugins unsupported, Sparkle archive format and signing list, extra `Info.plist` keys, the `arm64` check tolerating Sparkle's universal binaries, the HTTP stack, the PopUp description, the no-fallback note for check 2, the footprint budget, and the provisional lifecycle. The Phase 1 plan (`docs/superpowers/plans/2026-09-29-desktop-server-cli.md`) implements C1, C4 and C8.
 
@@ -268,7 +269,10 @@ Setup for all items: `git switch spike/desktop` (or `git worktree add ../aio-spi
 14. **powermetrics wakeups.**
     - After `bench/measure.sh m-std` has opened and closed the panel once: `sudo powermetrics --samplers tasks --show-process-wakeups -i 10000 -n 3 | grep -A2 aio-proxy-desktop`
     - Pass: ≤ 1 interrupt wakeup/s (expect about 0.4). Report whether the 0.10 → 0.37/s rise after the first open reproduces.
-15. Optional: cold-cache summary timing. Re-seed with `LAYOUT=ascending`, run `sudo purge`, then `seed-trace-db.ts time`, and delete the DB.
+15. Optional: cold-cache summary timing.
+    - `H=$(mktemp -d); AIO_PROXY_BENCH_HOME=$H LAYOUT=ascending bun spike/desktop-host/bench/seed-trace-db.ts seed` (the script refuses an unset home or one containing `.aio-proxy`)
+    - `sudo purge; AIO_PROXY_BENCH_HOME=$H bun spike/desktop-host/bench/seed-trace-db.ts time`
+    - `rm -rf "$H"`
 
 ## Residue
 

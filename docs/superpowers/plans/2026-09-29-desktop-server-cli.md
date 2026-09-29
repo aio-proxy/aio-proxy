@@ -33,7 +33,7 @@
 - A Provider whose quota capability is permanently unavailable must report `unsupported`, not `loading` forever — pinned in Task 4.
 - A token file written by hand with a trailing newline must still be accepted — pinned in Task 1.
 - A healthy desktop-owned service must report `matchesJob: true` although `job.pid` is the wrapper — pinned in Task 11.
-- `service stop` leaves a disabled override that `launchctl bootstrap` refuses; `service start` must `enable` first — pinned in Task 8.
+- `service stop` (`unload -w`) leaves a disabled override, and launchd's `bootstrap` refuses a disabled job (known launchd behaviour, not a spike finding; confirmed by the Task 8 Step 5 manual check). `service start` must `enable` first — pinned in Task 8.
 - The shutdown deadline timer must not keep a cleanly stopped process alive for 3 s (every `kickstart -k` would wait) — pinned in Task 12.
 
 ---
@@ -1587,7 +1587,8 @@ async function startLaunchdJob(
   printJob: () => Promise<number>,
 ): Promise<void> {
   const target = launchdJobTarget();
-  // `service stop` (`unload -w`) leaves a disabled override that bootstrap refuses; `load -w` used to clear it.
+  // `service stop` (`unload -w`) leaves a disabled override; launchd's bootstrap refuses a disabled job
+  // (known launchd behaviour, confirmed by Step 5's manual check). `load -w` used to clear it.
   await run(['launchctl', 'enable', target]);
   // A loaded job whose process exited (a clean SIGTERM, the wrapper's missing-executable exit) is only
   // restarted by kickstart; an unloaded one is bootstrapped, and RunAtLoad starts it.
@@ -2372,7 +2373,9 @@ git commit -m "feat(cli): add hidden desktop discovery command"
 
 ### Task 12: Bounded shutdown for `aio-proxy run`
 
-The spike found that launchd sends one SIGTERM to the job's process group and never escalates to SIGKILL. A stand-in sidecar that ignored SIGTERM survived 60 s as an orphan holding its port while `kickstart -k` started a new instance. A real sidecar whose shutdown hangs does the same; the spike saw SIGTERM hang on slow outbound connections. The new instance then fails to bind and exits 1, the wrapper remaps that to 0, and the service silently stays on the old binary. The sidecar therefore bounds its own shutdown.
+The spike found that launchd sends one SIGTERM to the job's process group and never escalates to SIGKILL: a shell stand-in that ignored SIGTERM survived 60 s as an orphan while `kickstart -k` started a new instance. The real sidecar was not observed hanging. Its handler releases the listener synchronously (`server.stop(true)` in `shutdownProxyServer`), and every graceful path released the DB lock. The stale-binary chain (new instance fails to bind, exits 1, is remapped to 0) is **inferred**, and it could only occur with a blocked JS thread, where this deadline would not arm either. The desktop's Restart check (old pid gone, `/health` version) is what guards against it.
+
+What the deadline buys: an orphaned process and its background work (outbound upstream connections, timers) outlive a stop signal by at most 3 s. The spike saw one SIGTERM wait on slow outbound connections in Task 4.
 
 **Files:**
 - Modify: `packages/cli/src/run/run.ts:258-270` (the signal handling at the end of `run`)
@@ -2428,9 +2431,9 @@ In `run.ts`, after `shutdownProxyServer`:
 
 ```ts
 /** launchd sends one SIGTERM and never escalates, and `shutdownProxyServer` returning does not end the
- *  process: an outbound upstream connection or a timer can keep Bun's event loop alive. An orphan
- *  would then keep the port while a restarted instance fails to bind, so the process bounds its own
- *  exit. Exit 0 makes a forced stop look like a clean one to KeepAlive (SuccessfulExit=false). */
+ *  process: an outbound upstream connection or a timer can keep Bun's event loop alive. The listener is
+ *  already closed by then, but the orphan and its background work would linger, so the process bounds
+ *  its own exit. Exit 0 makes a forced stop look like a clean one to KeepAlive (SuccessfulExit=false). */
 export const SHUTDOWN_DEADLINE_MS = 3_000;
 
 export const onShutdownSignal = (shutdown: () => void, deadlineMs: number = SHUTDOWN_DEADLINE_MS): void => {
@@ -2483,7 +2486,7 @@ git commit -m "fix(cli): bound aio-proxy run shutdown after a stop signal"
 Run: `bun changeset` and select `aio-proxy`, `@aio-proxy/core`, `@aio-proxy/server`, `@aio-proxy/cli`, `@aio-proxy/types`, `@aio-proxy/i18n`, all `minor`. Body:
 
 ```md
-`aio-proxy service start` now restarts a launchd service that is loaded but not running, and it reports an error when launchd did not actually load the service instead of claiming success. A service whose binary was removed no longer respawns in a loop, and a stopping proxy now exits within 3 seconds, so a restart can no longer leave the old process holding the port. The proxy also exposes a token-protected local summary endpoint and a discovery command for the upcoming macOS desktop app, and refuses to self-upgrade a binary that the desktop app manages.
+`aio-proxy service start` now restarts a launchd service that is loaded but not running, and it reports an error when launchd did not actually load the service instead of claiming success. A service whose binary was removed no longer respawns in a loop, and a stopping proxy now exits within 3 seconds of a stop signal even when connections are still open. The proxy also exposes a token-protected local summary endpoint and a discovery command for the upcoming macOS desktop app, and refuses to self-upgrade a binary that the desktop app manages.
 ```
 
 - [ ] **Step 2: Run the full gate**

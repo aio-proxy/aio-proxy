@@ -107,7 +107,7 @@ Automatic mutation requires **`owner: desktop` and either `matchesJob: true` or 
 
 The version-triggered restart interrupts in-flight requests: `shutdownProxyServer` is not a drain (`app.close()` then `server.stop(true)`), and `aio-proxy run` force-exits 3 s after SIGTERM (CLI changes). This is an accepted product decision for phase 1. The restart runs when the app relaunches after Sparkle's "Install and Relaunch", which the user has already consented to.
 
-Every mutating command re-runs `__desktop-connect` first and aborts if ownership or `matchesJob` changed since the panel rendered.
+Every mutating command re-runs `__desktop-connect` first and aborts if ownership, `matchesJob` or `job.disabled` changed since the panel rendered. An automatic `service start` therefore never undoes a user stop that landed between discovery and the start (`service start` runs `launchctl enable`).
 
 ### User actions
 
@@ -118,7 +118,7 @@ Every mutating command re-runs `__desktop-connect` first and aborts if ownership
 | Stop | `service stop` | `service stop` | Not offered |
 | Reload config | `POST /admin/reload` (loopback, no auth) | same | same |
 
-Completion conditions differ per action: Restart waits for the pre-restart `instance.pid` to be gone and `/health` with the expected version (a new instance can start beside an old one that outlived SIGTERM, fail to bind, and exit, leaving the old binary serving); Stop waits for `job.pid == null` and the instance unreachable; Reload reports the response (`409` carries `error` and `stage`). Then the panel refetches.
+Completion conditions differ per action: Restart waits for the pre-restart `instance.pid` to be gone and `/health` with the expected version (this is the guard against the inferred case where an old sidecar outlives SIGTERM, the new instance fails to bind and exits, and the old binary keeps serving); Stop waits for `job.pid == null` and the instance unreachable; Reload reports the response (`409` carries `error` and `stage`). Then the panel refetches.
 
 `service restart` is never used on an external service: `writeManagedUnit` rewrites the plist with the invoking binary.
 
@@ -131,7 +131,7 @@ The launchd plist uses a conditional `KeepAlive` (`SuccessfulExit = false`); the
 ### Stop and restart signals
 
 - `launchctl kickstart -k`, `bootout` and `unload` signal the job's main pid (the wrapper, which dies at once), then SIGTERM the rest of its process group. The sidecar therefore gets a graceful SIGTERM on every stop and restart path. The wrapper stays as it is; a trap-forwarding variant would only change the recorded exit code.
-- launchd never escalates to SIGKILL for the orphaned group. A sidecar whose shutdown hangs would keep the port as an orphan, so `aio-proxy run` bounds its own shutdown (CLI changes).
+- launchd never escalates to SIGKILL for the orphaned group (observed with a stand-in that ignores SIGTERM). `shutdownProxyServer` stops the listener synchronously once the handler runs, but outbound connections or timers can keep the process alive afterwards. `aio-proxy run` therefore bounds how long an orphan outlives SIGTERM (CLI changes). The stale-binary guard is the Restart completion condition above, not this deadline.
 - A graceful SIGTERM exits 0, which `SuccessfulExit = false` does not relaunch. A SIGTERM launchd did not send (the user, `pkill`) therefore leaves the service down until the automatic table, or the user, starts it.
 
 ### Health check
@@ -168,7 +168,7 @@ This is a same-user local credential, not proof that the caller is the official 
 
 - `__desktop-connect` as specified above.
 - `serviceStart` on macOS: `launchctl enable gui/<uid>/com.aio-proxy.agent` (clearing the override `service stop` leaves, as `load -w` did). Then `launchctl kickstart gui/<uid>/com.aio-proxy.agent` when the job is already loaded (`load -w` does not start a loaded job), or `launchctl bootstrap gui/<uid> <plist>` when it is not. Success is then verified with `launchctl print gui/<uid>/com.aio-proxy.agent`, never taken from an exit status: legacy `launchctl load` exits 0 on "Load failed: 5". `serviceRestart` outside the job does `launchctl bootout` followed by the same sequence, so the rewritten plist is re-read. Benefits CLI users too.
-- `aio-proxy run` force-exits with code 0 3 s after SIGTERM or SIGINT if the event loop has not drained, because launchd never escalates. Exit 0 keeps a forced stop identical to a clean one for `KeepAlive`.
+- `aio-proxy run` force-exits with code 0 3 s after SIGTERM or SIGINT if the event loop has not drained, because launchd never escalates. This bounds orphan lifetime and background work after a stop. Exit 0 keeps a forced stop identical to a clean one for `KeepAlive`.
 - `resolveAgentExecutable` checks `AIO_PROXY_DESKTOP_EXEC` first, before PATH and realpath resolution, and returns it verbatim (not passed through `resolveStableManagedExec`, so the symlink is never resolved into the bundle).
 - When `AIO_PROXY_DESKTOP_EXEC` is set, `writeManagedUnit` writes the plist environment with `AIO_PROXY_DESKTOP_EXEC=<symlink>` and `AIO_PROXY_UPGRADE_METHOD=desktop`, skipping upgrade-method detection. Because the running daemon then inherits `AIO_PROXY_DESKTOP_EXEC`, every later rewrite from inside it (including `migratePreMarkerManagedUnit` at `run` startup) keeps the symlink and the marker. `UnitOptions.upgradeMethod` gains `'desktop'`.
 - **No self-upgrade of desktop binaries.** `runUpgradeCommand` is the shared write path for `aio-proxy upgrade`, Dashboard "apply update" (`/dashboard/api/release/apply` → auto-update hooks), and background auto-update. It refuses when `AIO_PROXY_UPGRADE_METHOD=desktop` or the executable resolves inside a `.app` bundle, returning a result that tells the user to update through the desktop app.
@@ -290,7 +290,7 @@ One Cargo binary crate at `desktop/`, outside the Bun workspace.
 | `client.rs` | Local HTTP transport and the refresh policy |
 | `summary.rs` | `DesktopSummaryV1` types; version-first parsing |
 | `login_item.rs` | `SMAppService.mainApp` register/unregister/status |
-| `updater.rs` | Sparkle controller on the main thread |
+| `updater.rs` | Sparkle controller on the main thread. Implements `SPUStandardUserDriverDelegate` gentle-reminder support: Sparkle warns that a background (`LSUIElement`) app gets no gentle reminders, and every update goes through the UI dialog |
 
 Panel details:
 
@@ -425,7 +425,7 @@ Memory is judged by physical footprint (Activity Monitor's "Memory"), not `ps` R
 **Spike result: CONDITIONAL GO** (`2026-09-29-desktop-spike-findings.md`). Automatable checks passed:
 
 - Check 1 was proven with ad-hoc signatures in a launchd sandbox.
-- Check 3: summary 31 ms at 36k requests/24 h, closed footprint 32.4 MB, 0.37 wakeups/s, hybrid chosen.
+- Check 3: summary 31 ms at 36k requests/24 h, closed footprint 32.4 MB, 0.37 wakeups/s, hybrid chosen (PROVISIONAL, [locked] measurements).
 
 Human confirmations remain for every check. Check 2 is not passed until its interactive rows (click-away, click-again, second display, full-screen Space, sleep/wake) are run.
 
@@ -458,5 +458,5 @@ Each automated test guards one concrete failure.
   - Transport: the token is not attached to a hostname, a non-loopback IP, or a redirect target; proxy environment variables are ignored. A server that drips bytes slower than the read timeout is still cut off at the 5s total deadline. Chunked responses decode, and an oversized response is refused. Dropping the request shuts its socket.
   - Install policy and symlink: outside `/Applications` nothing persistent happens; a newer installed copy is never re-pointed to an older one; a second instance exits.
   - The token type's `Debug` output is redacted.
-- **Release** (the bundle script fails the job): arm64 and `minos` for every Mach-O; the signed sidecar shows a `JS JIT` region in `vmmap` while serving (a missing `allow-jit` does not fail any functional check); `codesign --verify --strict`; post-notarization `syspolicy_check`/`spctl` for the `.app` and `.dmg`; `stapler validate` for both; the Sparkle signature verifies against `SUPublicEDKey`; the versioned `.dmg` URL answers 200 before the feed is replaced.
+- **Release** (the bundle script fails the job): arm64 and `minos` for every Mach-O; the signed sidecar shows a `JS JIT` region in `vmmap` while serving (a missing `allow-jit` does not fail any functional check; conditional on the human Developer ID item showing vmmap can read a Developer ID hardened sidecar, with `sudo vmmap` as the CI fallback); `codesign --verify --strict`; post-notarization `syspolicy_check`/`spctl` for the `.app` and `.dmg`; `stapler validate` for both; the Sparkle signature verifies against `SUPublicEDKey`; the versioned `.dmg` URL answers 200 before the feed is replaced.
 - **Manual acceptance (UI and lifecycle):** toggle via icon; click outside hides; not in Dock or Cmd+Tab; second display with a different scale factor; full-screen app in another Space; sleep/wake with panel open and closed; each user action per ownership with its completion condition; an external service is never changed without a click and never has its plist rewritten; a user-stopped desktop service stays stopped across app relaunch; quit leaves the proxy running; a Sparkle update restarts a desktop-owned proxy onto the new version; opening an older app copy does not downgrade; app deleted leaves launchd quiet and restoring it recovers.
