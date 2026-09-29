@@ -44,6 +44,8 @@ export const PluginsGrid: React.FC<PluginsGridProps> = ({ plugins }) => {
   const optionsRef = useRef<PluginOptionsDrawerRef>(null);
   const uninstallRef = useRef<PluginUninstallDialogRef>(null);
   const [status, setStatus] = useState<PluginStatusFilterValue>('all');
+  // The search input keeps its own draft, so remounting it is how the grid clears the text it shows.
+  const [searchKey, setSearchKey] = useState(0);
   const failedCount = plugins.filter(isFailed).length;
   const visible = useMemo(() => plugins.filter(STATUS_PREDICATES[status]), [plugins, status]);
   const { table } = useDataTable(visible, searchColumns, { getRowId: (plugin) => plugin.packageName });
@@ -55,9 +57,17 @@ export const PluginsGrid: React.FC<PluginsGridProps> = ({ plugins }) => {
   return (
     <div className="flex flex-col gap-4">
       {failedCount > 0 && status !== 'failed' ? (
-        <PluginFailedAlert count={failedCount} onView={() => setStatus('failed')} />
+        <PluginFailedAlert
+          count={failedCount}
+          onView={() => {
+            setStatus('failed');
+            table.setGlobalFilter('');
+            setSearchKey((key) => key + 1);
+          }}
+        />
       ) : null}
       <DataTableControls
+        key={searchKey}
         table={table}
         filterLabel={m['dashboard.plugins.filter_label']()}
         filterPlaceholder={m['dashboard.plugins.filter_placeholder']()}

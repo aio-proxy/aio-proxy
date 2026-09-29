@@ -45,3 +45,13 @@ test('the failure summary jumps to only the failed Plugins', () => {
   expect(screen.getByText('entry missing')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /View|查看|檢視/u })).toBeNull();
 });
+
+test('the failure summary clears a search that would hide the failed Plugins', () => {
+  renderGrid();
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'openai' } });
+
+  fireEvent.click(screen.getByRole('button', { name: /View|查看|檢視/u }));
+
+  expect(screen.getByRole('textbox')).toHaveValue('');
+  expect(screen.getByText('entry missing')).toBeInTheDocument();
+});

@@ -111,7 +111,11 @@ export const PluginInstallDialog = forwardRef<PluginInstallDialogRef>((_, ref) =
         else workflow.close();
       }}
     >
-      <DialogContent data-testid="plugin-install-dialog" closeLabel={m['common.close']()}>
+      <DialogContent
+        className="max-h-[85dvh] overflow-y-auto"
+        data-testid="plugin-install-dialog"
+        closeLabel={m['common.close']()}
+      >
         <DialogHeader>
           <DialogTitle>{m['dashboard.plugins.install_title']()}</DialogTitle>
           <DialogDescription>{m['dashboard.plugins.install_description']()}</DialogDescription>
