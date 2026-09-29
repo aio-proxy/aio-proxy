@@ -245,10 +245,6 @@
 - [#344](https://github.com/aio-proxy/aio-proxy/pull/344) [`2d05095`](https://github.com/aio-proxy/aio-proxy/commit/2d0509557bbb35a14046ab0a5dcc0cc5e9563b4f) Thanks @baranwang - Add Grok Build integration with native AIO Proxy login, automatic credential refresh, installation revocation, and safe configuration removal.
 
 - [#339](https://github.com/aio-proxy/aio-proxy/pull/339) [`834f9b3`](https://github.com/aio-proxy/aio-proxy/commit/834f9b359f29b229e3930a0b435200d805361789) Thanks @baranwang - Add official OpenAI Videos ports: create, retrieve, content, delete, remix, edits, and extensions.
-  Omitted `model` defaults to `sora-2`; convert is not implemented. Follow-ups stay on the creating
-  provider (`404` after restart); omitted `model` keeps the source job; unpinned edit/extension 404s fail over.
-  Edits/extensions are JSON only; list and character ports are `501`; generations is not registered.
-  Videos raw does not forward caller credentials. The API table lists Codex Live/Realtime ports (no media relay).
 
 ### Patch Changes
 
@@ -330,14 +326,7 @@
 
 ### Minor Changes
 
-- [#298](https://github.com/aio-proxy/aio-proxy/pull/298) [`13a6c91`](https://github.com/aio-proxy/aio-proxy/commit/13a6c9153739049dab5443dd3ac7d570f7e80690) Thanks @baranwang - Serve the Codex Live / Realtime endpoint family as signaling passthrough. `POST /v1/live`,
-  `POST /v1/realtime` and `POST /v1/realtime/calls` forward an SDP offer to the ChatGPT Codex realtime
-  upstream and answer with its SDP; `GET /v1/live/:call_id`, `GET /v1/realtime/calls/:call_id` and
-  `GET /v1/realtime` relay the sideband WebSocket, with provider selection, per-model overrides and
-  failover matching ordinary routing. Plugins can serve realtime through a new optional `realtime`
-  runtime capability (`models`, `fetch`, `dial`). WebRTC media stays a direct client-to-upstream
-  connection, and endpoints the ChatGPT upstream has no equivalent for answer `501`. An embedder that
-  builds its own `Bun.serve` must now pass `@aio-proxy/server`'s exported `websocket` handler.
+- [#298](https://github.com/aio-proxy/aio-proxy/pull/298) [`13a6c91`](https://github.com/aio-proxy/aio-proxy/commit/13a6c9153739049dab5443dd3ac7d570f7e80690) Thanks @baranwang - Serve the Codex Live / Realtime endpoint family as signaling passthrough.
 
 - [#300](https://github.com/aio-proxy/aio-proxy/pull/300) [`692795c`](https://github.com/aio-proxy/aio-proxy/commit/692795c49f26e93e93af79cb611043a1e82c307a) Thanks @baranwang - A running process checks npm `latest` on start, every 24 hours, and when the Dashboard mounts. It persists the result, prompts once per new version (Dashboard sidebar, CLI stderr banner, OS notification), and installs only after Update now or `aio-proxy upgrade`. Leftover `server.autoUpdate` in an existing config is ignored.
 
@@ -345,7 +334,7 @@
 
 - [#303](https://github.com/aio-proxy/aio-proxy/pull/303) [`84b206c`](https://github.com/aio-proxy/aio-proxy/commit/84b206c1d2f296748d2b86cedf0ef97c2b65d8e2) Thanks @baranwang - Add a built-in OpenRouter OAuth plugin that signs in with PKCE, mints a durable user-controlled API key, discovers models, and reads remaining key credits. Loopback parse now requires callback `state` only when the opened authorize URL sent `state`, so OpenRouter (no state echo) can finish without weakening ChatGPT or Antigravity CSRF.
 
-- [#301](https://github.com/aio-proxy/aio-proxy/pull/301) [`681b039`](https://github.com/aio-proxy/aio-proxy/commit/681b039164281d7ab28c09ce1a61aae064caa6a0) Thanks @baranwang - Add the OpenAI Audio inbound protocol. `POST /v1/audio/speech`, `POST /v1/audio/transcriptions`, and `POST /v1/audio/translations` now route through aio-proxy with the same candidate ordering, failover, and usage recording as every other inbound protocol. Providers whose protocol is `openai-audio` serve these ports by raw passthrough, preserving the client's multipart body and `response_format` — the one exception is a form whose `model` field is not spelled exactly once as plain `model` — a repeat, or the bracketed `model[]` the parser treats as equivalent — which is rebuilt with a single resolved `model` so an upstream parser that keeps the first repeat, or ignores the bracketed name entirely, cannot run a different model than the one aio-proxy selected and billed. Other providers are reached by converting the request into a speech or transcription model call. Conversion is granted per direction from the `ai-sdk` package: `@ai-sdk/openai` and `@ai-sdk/xai` serve both directions, `@ai-sdk/google` speech only, `@ai-sdk/groq` transcription only, and the remaining bundled packages implement neither, so they serve audio through same-protocol raw passthrough alone. An `api` Provider whose endpoint protocol is `openai-response` also gains both directions through the same OpenAI bridge that already backs its language traffic, so it converts instead of answering `501`. Omitted `model` defaults to `tts-1` for speech and `whisper-1` for transcriptions and translations, so a non-catalog Audio Provider must make those ids routable for the default to resolve. `/v1/audio/translations` is raw passthrough only and returns `501 unsupported_feature` on the convert path, because the AI SDK's transcription interface has no translation mode; convert also refuses `stream_format`, `chunking_strategy`, `include`, `stream`, and any `response_format` other than `json`, `text`, or `verbose_json` the same way — raw passthrough still forwards `srt`, `vtt`, and an unrecognized format to upstream, but the convert path cannot render one and says so instead of answering a plain `{ text }` body. `srt` and `vtt` are refused on the convert path specifically because they render from segment timings alone and the AI SDK's `transcribe()` cannot demand a segment-bearing upstream format, so a provider answering its default JSON would come back as an empty subtitle file. `verbose_json` is served when the upstream result actually arrived in the verbose shape — its measured `duration` is the signal, so silent audio that legitimately transcribes to an empty text with no segments still renders as a normal verbose body — and returns the same `501 unsupported_feature` when the transport answered in the plain shape instead, rather than dressing a plain transcript up as a verbose envelope with `segments: []`. On the convert path a transcription's `language`, `prompt`, and `temperature` are forwarded to the upstream provider rather than dropped; `timestamp_granularities` returns `501 unsupported_feature` there unless it asks for `segment` alone together with `response_format=verbose_json`, the only combination this path can actually render — `word` granularity is never renderable because the AI SDK's transcription result carries segment timings only, and any granularity asked for alongside `json` or `text` would be billed upstream and then discarded by a body that carries the transcript text alone. Raw passthrough still forwards every granularity for upstream to answer or reject. On the convert path a speech response whose bytes the AI SDK could not sniff is named by the requested `response_format` rather than by the SDK's `audio/mp3` fallback, so `pcm` answers `audio/pcm` and `aac` answers `audio/aac` instead of advertising headerless bytes as MP3; a format the SDK did recognize still wins, and an unrecognized one still normalizes to `audio/mpeg`. On the convert path an upload whose declared type names a format OpenAI accepts — including aliases such as `audio/x-mp3`, `audio/mpga`, `audio/wave`, and `audio/m4a`, plus `video/mp4` and `video/webm`, the dual-purpose containers — is normalized to the canonical media type and sent as declared instead of being re-sniffed from its bytes; any other type, including a generic `application/octet-stream`, is ignored so the bytes decide, and when even the filename is the only signal left, an `.m4a`, `.mp4`, or `.webm` extension names the container. Without this an m4a upload reaches upstream labelled `audio.wav`, because the AI SDK's sniffer cannot see MP4's `ftyp` box and derives the upload filename from the media type. An `openai-audio` Provider is probed with a capability-agnostic `GET /v1/models`, since a speech-only or transcription-only model rejects the other direction's request — a green probe means the endpoint is reachable and the key was accepted (a `401` is FAIL), not that the configured model supports the direction you will call, and an Audio gateway with no `/v1/models` route probes FAIL even when it works. `RawResolver` input for audio carries `capability` (`'speech'` or `'transcription'`) and the inbound `requestPath`, so a plugin's raw resolver can tell speech from transcription and `/v1/audio/translations` from `/v1/audio/transcriptions`. Multipart field coercion is now shared between the Images and Audio ingress paths, so both read scalar form fields the same way. Audio usage is recorded only when upstream reports it — token counts are never estimated from audio duration.
+- [#301](https://github.com/aio-proxy/aio-proxy/pull/301) [`681b039`](https://github.com/aio-proxy/aio-proxy/commit/681b039164281d7ab28c09ce1a61aae064caa6a0) Thanks @baranwang - Add the OpenAI Audio inbound protocol.
 
 - [#308](https://github.com/aio-proxy/aio-proxy/pull/308) [`8b02edd`](https://github.com/aio-proxy/aio-proxy/commit/8b02edd711a54102661c41199a60f10396f7dce3) Thanks @baranwang - Subscription quota bars now mark where an even burn would have left the allowance by now, turning
   red when the window is being spent faster than that and drawing nothing while it tracks even. The
@@ -367,11 +356,7 @@
 
 - [#296](https://github.com/aio-proxy/aio-proxy/pull/296) [`ad353c0`](https://github.com/aio-proxy/aio-proxy/commit/ad353c005a6458aa30861fb2ed2e183231a20b6f) Thanks @baranwang - docs: publish the curl installer at https://aioproxy.dev/install.sh; it installs the prebuilt binary from the published `@aio-proxy/cli-<os>-<arch>` npm package — the same artifact `aio-proxy upgrade` and the Homebrew tap use — and refuses musl-based Linux, which has no published build, instead of installing a glibc binary that cannot start
 
-- [#287](https://github.com/aio-proxy/aio-proxy/pull/287) [`83c67f1`](https://github.com/aio-proxy/aio-proxy/commit/83c67f1cf670752e14ebf66bc95ab0799923b48e) Thanks @baranwang - Hide non-text models from the Codex model picker
-
-  The Codex client catalog (`/v1/models?client_version=...`) listed every routable model, including image and video generators such as `gpt-image-2` and the `grok-imagine-*` family. Codex calls whatever it lists as a text chat model, so those rows were unselectable in practice.
-
-  The catalog now only lists models whose resolved `capabilities.modalities.output` includes `text`. Models whose output modality no metadata layer declares are hidden too — declare it under `router.models.<slug>.metadata.capabilities.modalities.output` (or `metadata.extend`) to bring one back.
+- [#287](https://github.com/aio-proxy/aio-proxy/pull/287) [`83c67f1`](https://github.com/aio-proxy/aio-proxy/commit/83c67f1cf670752e14ebf66bc95ab0799923b48e) Thanks @baranwang - Hide non-text models from the Codex model picker The Codex client catalog (`/v1/models?client_version=...`) listed every routable model, including image and video generators such as `gpt-image-2` and the `grok-imagine-*` family.
 
 - [#296](https://github.com/aio-proxy/aio-proxy/pull/296) [`46087fb`](https://github.com/aio-proxy/aio-proxy/commit/46087fb5ab1d28295e9912d8873e2ef574963c2a) Thanks @baranwang - dashboard: point the Settings documentation link at https://aioproxy.dev
 
@@ -383,83 +368,15 @@
 
 - [#292](https://github.com/aio-proxy/aio-proxy/pull/292) [`4f4e324`](https://github.com/aio-proxy/aio-proxy/commit/4f4e324c4625a1d4582d4292b7b9e3e96cbdabb6) Thanks @baranwang - On the OAuth provider editor, put Connection above Identity and fill a blank display name from the account label after a successful login.
 
-- [#291](https://github.com/aio-proxy/aio-proxy/pull/291) [`f71a576`](https://github.com/aio-proxy/aio-proxy/commit/f71a5760db5852f2c340e089c3858ae81da7053c) Thanks @baranwang - Accept OpenAI Responses requests whose tool calls and outputs lost their pairing
+- [#291](https://github.com/aio-proxy/aio-proxy/pull/291) [`f71a576`](https://github.com/aio-proxy/aio-proxy/commit/f71a5760db5852f2c340e089c3858ae81da7053c) Thanks @baranwang - Accept OpenAI Responses requests whose tool calls and outputs lost their pairing Context compaction can truncate a conversation between a `function_call` and its `function_call_output`, leaving one side without the other.
 
-  Context compaction can truncate a conversation between a `function_call` and its
-  `function_call_output`, leaving one side without the other. Codex produces this
-  legitimately, but the model path rejected an unmatched output with a terminal 400
-  that also skipped every remaining provider candidate, and emitted an unmatched
-  call in a shape upstreams refuse.
-
-  Both sides are now carried through instead of failing. An output with no call
-  becomes a user note that preserves its text and images; a call with no output
-  becomes an assistant note naming the tool and its arguments verbatim. Neither
-  fabricates a tool result the caller did not send, and the notes are byte-stable
-  across turns so upstream prefix caching still hits. A `request.feature_downgraded`
-  entry records each conversion.
-
-- [#291](https://github.com/aio-proxy/aio-proxy/pull/291) [`4f3154e`](https://github.com/aio-proxy/aio-proxy/commit/4f3154e79a3f2bf1d5d23081e8dd099cc7841ecd) Thanks @baranwang - Recover from tool-pairing 400s on the raw passthrough path
-
-  When the inbound protocol matches the provider's, an OpenAI Responses request is
-  forwarded byte-for-byte and the model path's conversion never runs. A transcript
-  whose `function_call` lost its output — or whose output lost its call — was
-  therefore still rejected upstream with a terminal 400, with no fallback to any
-  remaining candidate.
-
-  Such a rejection is now recovered the same way `invalid_encrypted_content`
-  already was: the request is sent unchanged, and only after the upstream names
-  the pairing failure is it replayed once with the unpaired items narrated as
-  plain messages — an assistant note for a call nobody answered, a user note for
-  an output with no call, never a fabricated tool result. Well-formed requests are
-  byte-identical to before, so upstream prefix caching is untouched.
-
-  The replay is limited to the two rejections a pairing repair can actually fix.
-  `No tool output found for tool call …`, which a strict gateway emits when an
-  assistant message sits inside a call/output batch, is forwarded unretried.
-
-  A narration note is never inserted into a tool batch that is still open — on
-  either path. Substituting one between a paired call and its output would create
-  exactly that interleaving, so the note waits until the batch's last result
-  lands. On the model path the same rule keeps an orphan note from splitting an
-  assistant tool-call turn from its tool results, which OpenAI-compatible and
-  Anthropic providers reject. Items the caller sent keep their positions; only the
-  synthesized notes move.
-
-  Adapters that implement `rawRetry` now receive the frame that classified as
-  `retry` as a fourth argument to `rewrite`, so a hook handling several rejections
-  repairs only what the upstream objected to.
+- [#291](https://github.com/aio-proxy/aio-proxy/pull/291) [`4f3154e`](https://github.com/aio-proxy/aio-proxy/commit/4f3154e79a3f2bf1d5d23081e8dd099cc7841ecd) Thanks @baranwang - Recover from tool-pairing 400s on the raw passthrough path When the inbound protocol matches the provider's, an OpenAI Responses request is forwarded byte-for-byte and the model path's conversion never runs.
 
 - [#289](https://github.com/aio-proxy/aio-proxy/pull/289) [`dd0e007`](https://github.com/aio-proxy/aio-proxy/commit/dd0e007bcf4832ebeb1b54862fb0cbfc1dfda76a) Thanks @baranwang - Serve the config JSON Schema from `@aio-proxy/types` instead of duplicating it in the launcher package.
 
-  `@aio-proxy/types` is a published package and already exports the generated schema, so the `aio-proxy` launcher no longer copies it in at pack time. A bootstrapped `config.jsonc` now gets `"$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json"` — unpinned, because nothing rewrites that line after bootstrap and a pinned version would go stale as the schema grows.
-
-  Existing configs keep working: they point at a released version whose tarball still carries the old copy. Update the line to the new URL to keep editor completion and validation current on future releases.
-
-- [#293](https://github.com/aio-proxy/aio-proxy/pull/293) [`cf45f02`](https://github.com/aio-proxy/aio-proxy/commit/cf45f0222aa85754e64f19dee184228769c97ddd) Thanks @baranwang - Render the AIO Proxy wordmark from vector geometry instead of a webfont
-
-  The dashboard logo drew "Proxy" with an SVG `<text>` element styled
-  `font-heading font-semibold`. If that webfont had not loaded when the logo
-  painted, the word fell back to whatever the system resolved, so the wordmark's
-  right half rendered in a different typeface from its left. It is now a single
-  path converted from the same letterforms, so the logo looks identical on first
-  paint and needs no font loading at all. The wordmark is slightly wider as a
-  result (viewBox `0 0 1800 480` to `0 0 1920 480`); it is set in `em` units and
-  still scales to its surrounding text.
-
-  The favicon shipped with both surfaces keeps its shape. Its dark-mode ink moves
-  from pure white to the theme's off-white (`#fbfbf9`), matching the foreground
-  color the rest of the UI already uses; its light-mode ink is unchanged.
+- [#293](https://github.com/aio-proxy/aio-proxy/pull/293) [`cf45f02`](https://github.com/aio-proxy/aio-proxy/commit/cf45f0222aa85754e64f19dee184228769c97ddd) Thanks @baranwang - Render the AIO Proxy wordmark from vector geometry instead of a webfont The dashboard logo drew "Proxy" with an SVG `<text>` element styled `font-heading font-semibold`.
 
 - [#286](https://github.com/aio-proxy/aio-proxy/pull/286) [`981e765`](https://github.com/aio-proxy/aio-proxy/commit/981e765965a881af845aff413db711f779ff2ffb) Thanks @baranwang - Drop reasoning item ids the ChatGPT Codex backend never persisted.
-
-  A turn served through the AI SDK model path leaves the proxy's own synthetic
-  "rs_..." id on the reasoning item, and the client replays that id in the next
-  turn's input. This runtime forces store: false, so the upstream never persisted
-  it and the lookup failed with "Item with id 'rs_...' not found. Items are not
-  persisted when store is set to false." Reasoning items that carry no
-  encrypted_content now forward without the id and are re-sent as new content;
-  the summary is kept. The invalid_encrypted_content retry replays through the
-  same rewrite, so an item that just lost its unusable blob also loses the id.
 
 ## 0.19.1
 
@@ -477,11 +394,7 @@
 
 - [#279](https://github.com/aio-proxy/aio-proxy/pull/279) [`e3f6ff2`](https://github.com/aio-proxy/aio-proxy/commit/e3f6ff2c5365b0ae2921a17b3f6b187c6a766c8f) Thanks @baranwang - Build and ship on Bun 1.4.2, which fixes a musl/Alpine GC crash affecting the Docker image.
 
-- [#276](https://github.com/aio-proxy/aio-proxy/pull/276) [`2e76766`](https://github.com/aio-proxy/aio-proxy/commit/2e7676669a60d42af8d545e8d1614a295fabfae6) Thanks @baranwang - Make a quota reset redemption legible while it happens. The redeem button lives inside the quota popup, so its confirmation is now inline — next to the count being spent, instead of behind a second stacked frame that covered the reading the decision is made from. While the redemption is in flight the button is replaced in place by a spinner, so the wait is visible rather than looking like a dead click, and the confirmation cannot be re-offered against a count that is already being spent. Redeeming the last available credit keeps that spinner until the request settles, instead of removing it the moment the refreshed count reaches zero mid-request. The prompt no longer names the Provider the popup header already identifies, and it is announced to whichever button is focused. Focus follows the redemption instead of dropping to the page: onto the spinner for the wait, and back onto the redeem button — or onto the popup, when the last credit leaves no button to return to — whether the redemption completes or is cancelled.
-
-  A redemption can no longer be spent twice. Closing the quota popup and reopening it before the request settled used to present the confirmation again over the stale count, and confirming spent a second credit; the wait is now read from the pending redemption itself, which outlives the popup. An open confirmation is also retracted when a refresh finds the inventory emptied elsewhere, rather than offering a credit that no longer exists.
-
-  Toasts now render above dialogs and sheets instead of being dimmed and blurred by their backdrop, so the confirmation a modal action gives is actually legible. A successful redemption also sets off a burst of confetti from the button that was pressed, because a corner toast behind a modal was too easy to miss for the one irreversible action in the popup. It is skipped for anyone whose system asks for reduced motion.
+- [#276](https://github.com/aio-proxy/aio-proxy/pull/276) [`2e76766`](https://github.com/aio-proxy/aio-proxy/commit/2e7676669a60d42af8d545e8d1614a295fabfae6) Thanks @baranwang - Make a quota reset redemption legible while it happens.
 
 ## 0.18.1
 
@@ -493,31 +406,23 @@
 
 ### Minor Changes
 
-- [#274](https://github.com/aio-proxy/aio-proxy/pull/274) [`1cf2838`](https://github.com/aio-proxy/aio-proxy/commit/1cf2838bb8cec1ed8e3354646b1b39d2695d3664) Thanks @baranwang - Redeem ChatGPT rate-limit reset credits from the Dashboard. The OpenAI ChatGPT plugin now implements the OAuth quota `reset` capability, the quota popup turns an available credit count into a confirmed redeem button, and the reading is invalidated afterwards so the spent credit disappears immediately — including when the redemption is refused because the credit was already spent elsewhere, so the button cannot be re-offered for the rest of the cooldown. The button stays disabled until that post-reset reading lands, so a second redemption cannot be confirmed against the stale count. Only credits the upstream reports as available Codex rate-limit grants are counted.
+- [#274](https://github.com/aio-proxy/aio-proxy/pull/274) [`1cf2838`](https://github.com/aio-proxy/aio-proxy/commit/1cf2838bb8cec1ed8e3354646b1b39d2695d3664) Thanks @baranwang - Redeem ChatGPT rate-limit reset credits from the Dashboard.
 
 ### Patch Changes
 
 - [#273](https://github.com/aio-proxy/aio-proxy/pull/273) [`9608e07`](https://github.com/aio-proxy/aio-proxy/commit/9608e070b5faf585cf591fa007e190e7493362c3) Thanks @baranwang - Keep dragged tier headers visible while Provider and model routing tier contents smoothly collapse and expand.
 
-- [#273](https://github.com/aio-proxy/aio-proxy/pull/273) [`9608e07`](https://github.com/aio-proxy/aio-proxy/commit/9608e070b5faf585cf591fa007e190e7493362c3) Thanks @baranwang - Show default routing tiers and same-tier weight percentages in an inset layer beneath each Provider card, including the tier number when there is only one tier. Keep the last 24 hours of requests, throughput (total input plus output tokens), success rate, and P95 latency together in the main card, with throughput immediately after requests. Share localized compact duration formatting across Provider cards, overview health, and traces, automatically switching between milliseconds, seconds, minutes, hours, and days, including when rounding reaches the next unit.
+- [#273](https://github.com/aio-proxy/aio-proxy/pull/273) [`9608e07`](https://github.com/aio-proxy/aio-proxy/commit/9608e070b5faf585cf591fa007e190e7493362c3) Thanks @baranwang - Show default routing tiers and same-tier weight percentages in an inset layer beneath each Provider card, including the tier number when there is only one tier.
 
-  Count input plus output tokens over the last 24 hours with exact integer arithmetic, independently of request duration or upstream-reported total token accounting. Show zero tokens for Providers without traffic after diagnostics load successfully, while leaving unavailable success rate and latency metrics blank.
-
-  Index root spans by completion time so polled token totals only scan the selected time window, and decode Provider token totals as bigint in overview diagnostics to preserve exact values.
-
-- [#274](https://github.com/aio-proxy/aio-proxy/pull/274) [`1cf2838`](https://github.com/aio-proxy/aio-proxy/commit/1cf2838bb8cec1ed8e3354646b1b39d2695d3664) Thanks @baranwang - plugin-sdk: document and enforce the OAuth quota reset contract — report `resetCredits` only alongside a `reset` implementation, and treat every `reset` call as a new intentional redemption rather than a retry of the last one. A snapshot from an adapter with no `reset` now has its inventory dropped, so a plugin written against the older read-only contract cannot advertise a redemption it would refuse. Absence and zero are also distinct answers now: `{ availableCount: 0 }` reports an inventory read as empty, while omitting the field reports one that could not be read, and a redemption against the latter fails as retryable instead of telling the user their credit is spent.
+- [#274](https://github.com/aio-proxy/aio-proxy/pull/274) [`1cf2838`](https://github.com/aio-proxy/aio-proxy/commit/1cf2838bb8cec1ed8e3354646b1b39d2695d3664) Thanks @baranwang - plugin-sdk: document and enforce the OAuth quota reset contract — report `resetCredits` only alongside a `reset` implementation, and treat every `reset` call as a new intentional redemption rather than a retry of the last one.
 
 ## 0.17.0
 
 ### Minor Changes
 
-- [#259](https://github.com/aio-proxy/aio-proxy/pull/259) [`44a978e`](https://github.com/aio-proxy/aio-proxy/commit/44a978eb2a58a1e36c9c5cd3fd933f082995580b) Thanks @baranwang - ChatGPT OAuth providers now discover models from the signed-in account's own Codex endpoint instead of a published `models.json` snapshot, so the exposed list matches what the account can actually call. Models the account cannot use no longer appear, and `gpt-5.3-codex-spark` — previously hidden by a `supported_in_api` filter that does not apply to ChatGPT accounts — is now available. Because the list is fetched with the account's own credential and there is no bundled fallback, a ChatGPT provider whose login is missing or can no longer be refreshed now exposes no models until you sign in again, where before it listed the published snapshot regardless of login state. An expired access token alone is unaffected — it is refreshed as usual.
+- [#259](https://github.com/aio-proxy/aio-proxy/pull/259) [`44a978e`](https://github.com/aio-proxy/aio-proxy/commit/44a978eb2a58a1e36c9c5cd3fd933f082995580b) Thanks @baranwang - ChatGPT OAuth providers now discover models from the signed-in account's own Codex endpoint instead of a published `models.json` snapshot, so the exposed list matches what the account can actually call.
 
-  `gpt-image-2` is also exposed, and `/v1/images/generations` and `/v1/images/edits` now pass through to the ChatGPT image endpoints. JSON image requests are supported; `multipart/form-data` requests to `/v1/images/edits` are not, because the ChatGPT backend rejects that content type.
-
-- [#263](https://github.com/aio-proxy/aio-proxy/pull/263) [`1d688b5`](https://github.com/aio-proxy/aio-proxy/commit/1d688b5090fdbb004435f7e41042464e24885936) Thanks @baranwang - cursor: report Cursor OAuth quota in the dashboard
-
-  The Cursor OAuth adapter now reads `cursor.com/api/usage-summary`, so its Provider card shows the quota ring: plan usage, the Auto and named-model lanes, the on-demand budget when the account has a cap, and the Cursor subscription tier, all resetting at the billing-cycle end. Accounts with a Grok Bot allowance also get its weekly lane; that read is best-effort and never fails the monthly bars. No re-login is needed — the session is derived from the access token already on file.
+- [#263](https://github.com/aio-proxy/aio-proxy/pull/263) [`1d688b5`](https://github.com/aio-proxy/aio-proxy/commit/1d688b5090fdbb004435f7e41042464e24885936) Thanks @baranwang - cursor: report Cursor OAuth quota in the dashboard The Cursor OAuth adapter now reads `cursor.com/api/usage-summary`, so its Provider card shows the quota ring: plan usage, the Auto and named-model lanes, the on-demand budget when the account has a cap, and the Cursor subscription tier, all resetting at the billing-cycle end.
 
 - [#262](https://github.com/aio-proxy/aio-proxy/pull/262) [`d4b7388`](https://github.com/aio-proxy/aio-proxy/commit/d4b738816eaa2ad2f32f125cc7238db2e84b85da) Thanks @baranwang - github-copilot: report Copilot OAuth quota in the dashboard
 
@@ -526,22 +431,6 @@
 - [#265](https://github.com/aio-proxy/aio-proxy/pull/265) [`d371ddc`](https://github.com/aio-proxy/aio-proxy/commit/d371ddcdeaaeb93931739f68f26432f2408ad1cd) Thanks @baranwang - google-antigravity: report account quota on the Provider card. The plugin now reads Antigravity's grouped five-hour and weekly limits, along with the subscription tier, so the dashboard renders a quota ring for Antigravity accounts.
 
 - [#260](https://github.com/aio-proxy/aio-proxy/pull/260) [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f) Thanks @baranwang - Refresh an OAuth Provider's credential on demand from the dashboard Provider card menu.
-
-  OAuth Providers whose plugin supports it gain a "Refresh Credential" entry in the card's ⋯ menu that
-  forces an upstream token exchange even when the current credential has not expired, clears a stale
-  `CREDENTIAL_REFRESH_FAILED` diagnostic on success, and reloads the Provider list so the account label
-  and expiry reflect the new credential. A refresh the plugin reports as permanently failed — a revoked
-  refresh token, for example — records the same reauthentication diagnostic the automatic refresh path
-  does, so the card tells you to re-login instead of continuing to report the Provider as ready. A
-  transient failure leaves the Provider untouched. The entry is hidden — not
-  disabled — for plugins without the capability, which Provider summaries now report as
-  `canRefreshCredential`. All six bundled OAuth plugins support it.
-
-  `OAuthAdapter` gains an optional `refreshCredential`, exported alongside the new
-  `OAuthCredentialRefreshContext` and `OAuthCredentialRefreshResult` types. It is a pure exchange: the
-  framework owns the lease, single-flight dedupe, revision compare-and-swap, and persistence, and calls
-  the adapter unconditionally rather than only past expiry. Adapter registration previously dropped
-  fields outside its closed list, so an adapter declaring `refreshCredential` would have lost it.
 
 - [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`fd1c284`](https://github.com/aio-proxy/aio-proxy/commit/fd1c28430f0678bc22a558677feeff3146f7eba6) Thanks @baranwang - Add an About section to the Settings page with the running version, the source repository, and the documentation site, plus a button that checks npm for a newer published release. Move the appearance and language card to the top of the page, and mark the API key label field as optional.
 
@@ -555,7 +444,7 @@
 
 ### Patch Changes
 
-- [#269](https://github.com/aio-proxy/aio-proxy/pull/269) [`0934b54`](https://github.com/aio-proxy/aio-proxy/commit/0934b54a8e8dfb1c9c03ceff1f521b7c82ff600f) Thanks @baranwang - Accept OpenAI Responses tool outputs that carry no `call_id`. Codex Desktop's cross-thread delegation injects a synthetic `function_call_output` identified by `name`/`namespace` instead of a `call_id`, which previously failed inbound validation with a 400 even when the request was routed to a same-protocol provider that would have received the body verbatim. Same-protocol raw passthrough now forwards these items untouched and lets the upstream decide; a provider that needs model conversion is skipped as unsupported so the request falls back to the next candidate.
+- [#269](https://github.com/aio-proxy/aio-proxy/pull/269) [`0934b54`](https://github.com/aio-proxy/aio-proxy/commit/0934b54a8e8dfb1c9c03ceff1f521b7c82ff600f) Thanks @baranwang - Accept OpenAI Responses tool outputs that carry no `call_id`.
 
 - [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`d3eb521`](https://github.com/aio-proxy/aio-proxy/commit/d3eb5215724009b43705a515ca17666097d578f8) Thanks @baranwang - Raise a `SyntaxError` when a config file parses to a non-object root, so a Settings write against `[]` or `null` answers `config_rejected` instead of failing with an unhandled server error.
 
@@ -617,20 +506,6 @@
 
 - [#239](https://github.com/aio-proxy/aio-proxy/pull/239) [`b1f5bff`](https://github.com/aio-proxy/aio-proxy/commit/b1f5bff2f2e92abfd54b90fb32b29b4b145e8c1d) Thanks @baranwang - Redesign the dashboard Provider list as a card grid and surface OAuth remaining quota.
 
-  Each Provider — including each OAuth account — is now one card showing its name, kind, protocols,
-  plan, routing priority and weight, 24-hour success rate and p95 latency, model count, and request
-  count, with search and availability/enablement/kind filters replacing the old table's pagination and
-  grouping. OAuth Providers whose plugin exposes a quota capability show a remaining-quota ring that
-  opens a detail dialog with one bar per quota window that reports a remaining amount.
-
-  The quota read is cached in memory behind a per-provider five-minute cooldown, refreshed
-  asynchronously once a Provider has finished answering a model request, and exposed at
-  `QUERY /dashboard/api/providers/:id/quota`; the dialog's refresh button bypasses the cooldown, and the
-  Providers page polls the reading the way it already polls health. `OAuthQuotaSnapshot` gains an
-  optional `plan`, which `kimi-code` and `xai-grok` now populate, and `xai-grok` also reports per-product
-  usage. Dashboard Provider summaries gain `protocols` and `hasQuota` in place of the single `protocol`
-  field.
-
 ### Patch Changes
 
 - [#239](https://github.com/aio-proxy/aio-proxy/pull/239) [`07413a1`](https://github.com/aio-proxy/aio-proxy/commit/07413a116385e94e20e2c722ecdb32c0b97d52b6) Thanks @baranwang - Restore the accessible names on the combobox clear and chip remove buttons
@@ -679,9 +554,7 @@
 
 ### Minor Changes
 
-- [#226](https://github.com/aio-proxy/aio-proxy/pull/226) [`9c16d0b`](https://github.com/aio-proxy/aio-proxy/commit/9c16d0b56a954563a296e5363869d5bae12ffda2) Thanks @baranwang - Configure model metadata once per exposed model at `router.models.<slug>.metadata`, including `extend`, with per-Provider `cost` and `limit` overrides under `router.models.<slug>.providers.<id>`. The removed `providers.<id>.metadata` field is silently ignored, and metadata keys no longer create routes; expose models through `providers.<id>.models` or `alias`. Metadata editing now lives in the Dashboard routing drawer instead of the Provider editor.
-
-  Rename the plugin SDK's free-form `ModelDescriptor.metadata`, `ModelCatalog.metadata`, and raw-resolver `metadata` input to `extra`, and add typed `ModelDescriptor.modelMetadata` for host-consumed model metadata. Publish `@aio-proxy/types` as the SDK metadata type source.
+- [#226](https://github.com/aio-proxy/aio-proxy/pull/226) [`9c16d0b`](https://github.com/aio-proxy/aio-proxy/commit/9c16d0b56a954563a296e5363869d5bae12ffda2) Thanks @baranwang - Configure model metadata once per exposed model at `router.models.<slug>.metadata`, including `extend`, with per-Provider `cost` and `limit` overrides under `router.models.<slug>.providers.<id>`.
 
 ### Patch Changes
 
@@ -705,11 +578,9 @@
 
 - [#215](https://github.com/aio-proxy/aio-proxy/pull/215) [`4ce6cee`](https://github.com/aio-proxy/aio-proxy/commit/4ce6cee2412a13cc18d250af52335f456ad1db13) Thanks @baranwang - Add Gemini Interactions as an inbound protocol at `POST /v1beta/interactions`.
 
-- [#212](https://github.com/aio-proxy/aio-proxy/pull/212) [`64718ae`](https://github.com/aio-proxy/aio-proxy/commit/64718aea31a3a26ef691443246163713278b5e2b) Thanks @baranwang - openai: add Completions and Responses compact ports
+- [#212](https://github.com/aio-proxy/aio-proxy/pull/212) [`64718ae`](https://github.com/aio-proxy/aio-proxy/commit/64718aea31a3a26ef691443246163713278b5e2b) Thanks @baranwang - openai: add Completions and Responses compact ports `POST /v1/completions` and `POST /v1/responses/compact` now use the existing language-generation pipeline.
 
-  `POST /v1/completions` and `POST /v1/responses/compact` now use the existing language-generation pipeline. Remaining official Responses resource operations return a protocol-shaped 501 instead of a generic 404. ChatGPT OAuth providers forward compact to the Codex compaction endpoint. GitHub Copilot and Kimi Code providers decline endpoints they do not serve so the same candidate can convert through its language model, or a later provider can take the request. Legacy Completions streams omit usage unless the client can opt in.
-
-- [#213](https://github.com/aio-proxy/aio-proxy/pull/213) [`b6e65cd`](https://github.com/aio-proxy/aio-proxy/commit/b6e65cddeaab8ce356f1d5f7c0f0f7e98a401608) Thanks @baranwang - Add OpenAI Images inbound (`POST /v1/images/generations` and `POST /v1/images/edits`) with same-protocol raw passthrough and `imageModel` convert. Blank JSON `model` and multipart missing/empty/whitespace `model` look up `gpt-image-2` (CPA-compatible); multipart literal `null` is the explicit id `"null"`. Raw/convert use the resolved candidate id. Alias-only API providers seed every alias target so language/image inbound can route. Image-capable API and ai-sdk providers attach convert (`provider.image`) when a V4 `imageModel` can be built; primary `openai-image` stays raw+image with no language transport. Edits accept official-max JSON (`357_564_416`) and multipart (`851_048_559`) envelopes — `Bun.serve` `maxRequestBodySize` matches the multipart encoded limit so those bodies reach the adapter. Convert egress `usage` is official Images snake_case (`input_tokens`, `output_tokens`, `total_tokens`, `input_tokens_details`). Convert copies present image options onto both `openai` and `openaiCompatible` providerOptions so `@ai-sdk/openai-compatible` transports receive `quality`, `output_format`, and `output_compression`. Multipart edits parse is abort-aware and idle-bounded per body read so stalled or compressed uploads cannot pin the process-wide parse slots. Same-id JSON returns a byte-preserving clone. Explicit unchanged multipart raw replays from a size-capped disk spool (`0600`) so parse does not tee an official-max body in memory; compressed edits decode as a bounded stream (decoder output is drained with a 64 KiB pending cap so a highly compressible chunk cannot stall a parse slot or materialize the full expansion before the parser reads); the pipeline unlinks the spool after fallback attempts finish. Fallback candidates still see the original body, boundary, and integrity headers. Defaulted or aliased multipart still rebuilds FormData. Image-primary providers with a language extra endpoint keep finite ids chat-capable and materialize `provider.model` from that endpoint so inbound Responses/chat convert instead of 501. Catalog embedding-only ids stay out of language dispatch. Image raw resolve passes the inbound path so generation-versus-edit resolvers see `/v1/images/generations` or `/v1/images/edits`. Multipart body search only ends a part when `\r\n--<boundary>` is followed by `--` or CRLF, so in-file boundary text is not a delimiter. The initial boundary scan skips preamble text that contains `--<boundary>` without a line start and `--`/CRLF suffix, and keeps enough prefix bytes across chunk splits — including partial-boundary overlap — to validate that line position. Multipart parse counts through EOF so a MIME epilogue cannot bypass the official-max encoded limit or the 1 MiB non-file budget. Rewritten Images raw (defaulted/aliased JSON or any multipart rebuild) drops `Content-MD5`, `Digest`, and `Content-Digest` so upstreams do not verify the client's original body. Convert returns `501 unsupported_feature` for `image_url` or `file_id`, and enforces official mask size/format/alpha on uploaded bytes.
+- [#213](https://github.com/aio-proxy/aio-proxy/pull/213) [`b6e65cd`](https://github.com/aio-proxy/aio-proxy/commit/b6e65cddeaab8ce356f1d5f7c0f0f7e98a401608) Thanks @baranwang - Add OpenAI Images inbound (`POST /v1/images/generations` and `POST /v1/images/edits`) with same-protocol raw passthrough and `imageModel` convert.
 
 - [#214](https://github.com/aio-proxy/aio-proxy/pull/214) [`84901fd`](https://github.com/aio-proxy/aio-proxy/commit/84901fd5fd54ad95418ef74bb578f5b210e30612) Thanks @baranwang - Add inbound OpenAI Embeddings and Gemini embed/batch embed through same-protocol raw, embedding convert, and fallback.
 
@@ -751,56 +622,21 @@
 
 - [#189](https://github.com/aio-proxy/aio-proxy/pull/189) [`87126aa`](https://github.com/aio-proxy/aio-proxy/commit/87126aadb95151258c8d1a4e52e0f3e854ee0e54) Thanks @baranwang - Generate Antigravity default aliases from live model discovery and insert newly seen logical ids on refresh.
 
-  Skip same-wire aliases that only restate one model at every effort. When a family also has a colliding `-tiered` wire, default the alias there and send `xhigh` to it instead of hiding that id. Merge leftover `-thinking` siblings onto `when.thinking` even if the picker omitted them.
-
-  Accept object-form `alias.variants` on read, then store only `{ when, model, preserve }` rows. Unpreserved variant targets stay hidden from the client model list.
-
 - [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`b1d9481`](https://github.com/aio-proxy/aio-proxy/commit/b1d948127f8f289a588aa3c9fe4ae7329b8d06b9) Thanks @baranwang - The dashboard API connection editor can now select multiple protocols and give each one its own address. Saving writes the existing `endpoints` config instead of dropping it.
 
-- [#187](https://github.com/aio-proxy/aio-proxy/pull/187) [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b) Thanks @baranwang - Add managed OpenCode, Pi, and oh-my-pi Agent integrations. Configure them with `aio-proxy agent configure` (floors: OpenCode 1.17.10, Pi 0.84.2, oh-my-pi 17.3.7; login with `opencode auth login --provider aio-proxy` or `/login aio-proxy`). `aio-proxy upgrade` refreshes managed adapters; reload or restart the Agent after configure or upgrade. Exact string KPI values no longer lose visible precision. The plugin SDK descriptor contract, brand, and host accepted version are restored to v1; v2 descriptors are rejected. The xAI artifact smoke gate now follows plugin API v1.
+- [#187](https://github.com/aio-proxy/aio-proxy/pull/187) [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b) Thanks @baranwang - Add managed OpenCode, Pi, and oh-my-pi Agent integrations.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`c5b04c1`](https://github.com/aio-proxy/aio-proxy/commit/c5b04c183b0a9669f518bcb18f38019e96d3a8ca) Thanks @baranwang - Redesign the provider editor into a single page shared by api, ai-sdk, and oauth providers: five fixed sections, a persistent exposure/validation rail, an in-place two-stage OAuth authorization flow, inline alias editing, a routing weight slider, and a visual model-metadata tab. OAuth providers gain a `models` whitelist that filters the discovered catalog (empty or absent exposes everything); ai-sdk providers with an OpenAI-shaped `options.baseURL` can list their catalog; oauth providers can run draft model tests; `models: []` no longer invalidates alias-only providers. The provider edit endpoint now returns the stored credentials so the editor can prefill them, replacing the previous redaction sentinels; `GET /dashboard/api/config` and `aio-proxy config` still mask secrets.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`c5b04c1`](https://github.com/aio-proxy/aio-proxy/commit/c5b04c183b0a9669f518bcb18f38019e96d3a8ca) Thanks @baranwang - Redesign the provider editor into a single page shared by api, ai-sdk, and oauth providers: five fixed sections, a persistent exposure/validation rail, an in-place two-stage OAuth authorization flow, inline alias editing, a routing weight slider, and a visual model-metadata tab.
 
 - [#190](https://github.com/aio-proxy/aio-proxy/pull/190) [`f2d1122`](https://github.com/aio-proxy/aio-proxy/commit/f2d1122b6a946a302902070b288c9093d091808b) Thanks @baranwang - Add model-level Provider priority and weighted routing, stable-session candidate ordering, routing-v2 diagnostics, and a Dashboard Routing workspace. Provider weight now controls same-priority traffic instead of fixed global order; existing configurations should follow the documented migration table.
 
 ### Patch Changes
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`f8947e7`](https://github.com/aio-proxy/aio-proxy/commit/f8947e78bc3ec3c7ccfa04e6c82606d7fa7989d9) Thanks @baranwang - Author provider aliases as inline rows in the Models section instead of through a staged drawer. Each
-  alias is one row — client model ID, upstream model, delete — edited in place: the name is written as it
-  is typed, and the target, the conditional targets, and the "also keep the upstream model's original ID"
-  switch all read and write the stored config, so nothing is staged and nothing can go stale against it.
-  A name is written on every keystroke even when it collides with another row; every colliding row is
-  marked, the list shows one duplicate-name alert, and Save stays blocked until the collision is resolved.
-  Adding an alias appends a row that reports its own missing name rather than opening a drawer, adding a
-  conditional target starts it on the alias's own upstream model instead of the first model in the list,
-  and deleting an alias no longer asks for confirmation of a change that Save has not applied yet.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`f8947e7`](https://github.com/aio-proxy/aio-proxy/commit/f8947e78bc3ec3c7ccfa04e6c82606d7fa7989d9) Thanks @baranwang - Author provider aliases as inline rows in the Models section instead of through a staged drawer.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`3f0e371`](https://github.com/aio-proxy/aio-proxy/commit/3f0e3719028e1a506b2dffd81982c2def32d1db8) Thanks @baranwang - Fix the provider editor silently corrupting alias variants that match on thinking or speed, and let the
-  Dashboard author those conditions instead of only effort names. Config supports two variant shapes — the
-  compact `{ low: { model } }` record and the `[{ when: { thinking: true }, model }]` row list — but the
-  editor read and wrote both through `Object.entries`, which turns a row list into `{ "0": row }`. Saving
-  an unrelated field on such an alias rewrote `when: { thinking: true }` into `when: { effort: "0" }`, a
-  condition no request can ever match, so the variant stopped routing with no error shown. Variants are now
-  edited as condition rows: each row picks any combination of `effort` (presets plus free text), `thinking`
-  and `speed`, and rows are listed in the order they are stored, so a row never moves while its own condition
-  is being edited. Saves now persist variants as `{ when, model, preserve }` rows. Compact record input is still accepted on read and rewritten to rows. The editor also reports the conditions the server would refuse or
-  could never match — a row with no condition at all, a blank effort, and two rows matching the same
-  condition — before the save instead of after it.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`3f0e371`](https://github.com/aio-proxy/aio-proxy/commit/3f0e3719028e1a506b2dffd81982c2def32d1db8) Thanks @baranwang - Fix the provider editor silently corrupting alias variants that match on thinking or speed, and let the Dashboard author those conditions instead of only effort names.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`6560946`](https://github.com/aio-proxy/aio-proxy/commit/65609463e6ede5798787c54614d716f2120e8148) Thanks @baranwang - Align the provider editor's conditional variant rows with the prototype. Rows
-  stay in the order they are stored instead of being reordered by condition
-  specificity, so a row no longer jumps up the list the moment its condition is
-  made more specific. Rows keep their identity across a removal, so DOM focus and
-  an open condition dropdown stay with the row they belong to rather than moving to
-  whichever row shifted into that position. A blank `effort` now reports the same
-  "needs at least one condition" issue as an empty condition, replacing a third
-  message that told the user to leave a value unset when it already was. The
-  variant target dropdown drops a stray group wrapper, and the variant copy matches
-  the prototype: the preserve switch names the variant, both condition errors are
-  reworded, the variant target select now says which select it is instead of
-  carrying the same label as the alias-level target select next to it, and the three
-  condition controls name the alias they belong to instead of repeating one generic
-  label per row.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`6560946`](https://github.com/aio-proxy/aio-proxy/commit/65609463e6ede5798787c54614d716f2120e8148) Thanks @baranwang - Align the provider editor's conditional variant rows with the prototype.
 
 - [#182](https://github.com/aio-proxy/aio-proxy/pull/182) [`bf6e779`](https://github.com/aio-proxy/aio-proxy/commit/bf6e779aad3d64f0edb4cdb4662f1063f1c6b279) Thanks @baranwang - Replace the dashboard JSON editor's Monaco runtime with CodeMirror 6 while keeping schema validation, completion, and hover on vscode-json-languageservice.
 
@@ -829,14 +665,7 @@
   whitelist. Direct ids now come first and aliases follow, in configuration order. Which models a provider
   exposes is unchanged — only the order of the listing.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`21883d3`](https://github.com/aio-proxy/aio-proxy/commit/21883d33ab3ceb0081e123aaa985f42b4622f33d) Thanks @baranwang - Clear up the wording around testing a provider in the Dashboard's provider editor. Testing a model now
-  reports which model succeeded, so trying two models in a row no longer leaves an unlabelled green line that
-  could refer to either, and the panel now calls what it sends a model request throughout — both the button
-  and the line reporting a failure, which previously described it as a connection test even though the
-  connection settings above have already been checked by that point. A failed test still says the provider can
-  be saved anyway. When you sign in to a provider, the control that picks which product you are signing in to
-  now asks for a sign-in method instead of an "OAuth provider", which read as if it were asking again about
-  the provider you were editing.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`21883d3`](https://github.com/aio-proxy/aio-proxy/commit/21883d33ab3ceb0081e123aaa985f42b4622f33d) Thanks @baranwang - Clear up the wording around testing a provider in the Dashboard's provider editor.
 
 - [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`ebaeb73`](https://github.com/aio-proxy/aio-proxy/commit/ebaeb73a04968dcb97a435a4037394a08e831a00) Thanks @baranwang - Give Dashboard OAuth loopback a styled completion page with a close button, and lock the plugin account form as soon as authorization starts.
 
@@ -844,14 +673,7 @@
   whole discovered catalog at runtime, but the editor rendered every model unchecked — and the first
   click then saved a one-model whitelist, silently disabling everything else.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`237d9cd`](https://github.com/aio-proxy/aio-proxy/commit/237d9cd4f6810b6695a0624b61d7805991507e1e) Thanks @baranwang - An OAuth provider's `models` whitelist is now read and validated from the config file, where it was
-  previously ignored. If you had hand-written a `models` key on an OAuth provider it now takes effect and
-  restricts which models that provider exposes. A malformed value — an empty model id, or a bare string
-  instead of a list — is reported instead of being silently dropped: that one provider is marked invalid
-  and unavailable in the Dashboard while the proxy and every other provider start normally. A re-login is
-  now validated the same way before its config is written: a staged `models` whitelist that is malformed is
-  rejected rather than persisted, so a re-login can no longer leave a working provider with a whitelist the
-  next start refuses to read.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`237d9cd`](https://github.com/aio-proxy/aio-proxy/commit/237d9cd4f6810b6695a0624b61d7805991507e1e) Thanks @baranwang - An OAuth provider's `models` whitelist is now read and validated from the config file, where it was previously ignored.
 
 - [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`30113ac`](https://github.com/aio-proxy/aio-proxy/commit/30113ac44315a690a30360121fe196f1104a69be) Thanks @baranwang - Stop OAuth reauthorize from writing the provider while alias names still collide. The editor already blocked Save; reauthorize went through `save()` without that check, so last-wins serialization could drop a colliding row from the config.
 
@@ -860,15 +682,7 @@
   login path rebuilt the provider entry from a patch that had no metadata field, so the metadata half
   of the save was silently discarded.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`237d9cd`](https://github.com/aio-proxy/aio-proxy/commit/237d9cd4f6810b6695a0624b61d7805991507e1e) Thanks @baranwang - Harden the OAuth provider update contract so a partial patch cannot delete a provider's display name,
-  aliases, or model whitelist. Every field of a provider patch is optional on the wire, but rebuilding the
-  entry treated an omitted field as "clear it", so a caller that sent only the fields it owned dropped
-  config the user had authored elsewhere. The surfaces that ship today do send those fields — and a CLI
-  re-login sends no patch at all, so these three fields were already safe there — so this fixes the contract
-  rather than a flow you can hit. The rule it now follows is the one already fixed for per-model metadata: a
-  field a save does not mention keeps its stored value. `weight` is the deliberate exception, because an
-  omitted key is the only way to say "no weight", and clearing the display name now removes it instead of
-  storing an empty name.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`237d9cd`](https://github.com/aio-proxy/aio-proxy/commit/237d9cd4f6810b6695a0624b61d7805991507e1e) Thanks @baranwang - Harden the OAuth provider update contract so a partial patch cannot delete a provider's display name, aliases, or model whitelist.
 
 - [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`cd6c5a3`](https://github.com/aio-proxy/aio-proxy/commit/cd6c5a3dd352ea22198d99345a6da3272510caca) Thanks @baranwang - Keep per-model metadata when an OAuth provider is re-authorized. Every re-login rebuilt the provider
   entry from a fixed field list that omitted `metadata`, so re-authorizing from the Dashboard or running
@@ -877,54 +691,9 @@
 
 - [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`798e1e2`](https://github.com/aio-proxy/aio-proxy/commit/798e1e2c230dd925f6a2df1741b52ee75c955852) Thanks @baranwang - Fold the provider editor's advanced fields into collapsed accordions. The closed bars show the current proxy mode, header count, and rewrite-rule count, and the copy now says "request rewrites" throughout.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`cff1a38`](https://github.com/aio-proxy/aio-proxy/commit/cff1a38dda0e9c6e3c0be008580f8144f62ea725) Thanks @baranwang - Fix what the provider editor tells you about its own identity and connection. The Provider ID field no
-  longer disappears while creating an OAuth provider: it stays in place, empty and disabled, saying the
-  authorization flow fills it in, so the fields beside it stop sliding across the card when the kind
-  changes. The identity section states up front that the ID cannot change after saving, instead of hiding
-  that under the field and repeating it twice, and the kind tiles head with the bare product names.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`cff1a38`](https://github.com/aio-proxy/aio-proxy/commit/cff1a38dda0e9c6e3c0be008580f8144f62ea725) Thanks @baranwang - Fix what the provider editor tells you about its own identity and connection.
 
-  The API Key field described itself by edit mode, so editing a provider that has no stored key still
-  promised to "keep the stored key", and a create seeded from an existing entry claimed the field was
-  empty when it was not. It now describes whether a key is actually stored, and says so with the copy the
-  rest of the form uses: a key is optional for most upstreams, required for Anthropic's Bearer
-  authentication.
-
-  The protocol dropdown opens on OpenAI Compatible, which is what most third-party gateways speak, rather
-  than on whichever protocol happened to be declared first. The AI SDK package field's placeholder is an
-  example again — it used to be the bundled package name verbatim, so a cleared field looked like it was
-  already filled with it, and saving that emptiness failed validation instead.
-
-  Editing an OAuth provider now confirms the account it is connected to, announced to screen readers, in
-  place of a read-only table that printed the account name a second time and said nothing about being
-  connected. Its reauthorize button sits beside the copy that explains it, at the same size as the
-  authorize button on the create screen.
-
-  The Connection section no longer reports a blank API Key as a missing one. A provider that needs no key
-  is a legitimate configuration, so the section's summary shows its address in every mode rather than
-  "Missing API Key" while creating. Saving was never gated on the key.
-
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`35dacf3`](https://github.com/aio-proxy/aio-proxy/commit/35dacf3cfbd006598e0f1f7a4082f1f2399971c6) Thanks @baranwang - Stop the provider editor offering a save it will reject, and rebuild its footer and section strip to
-  match the rest of the page. Only sections in a `todo` state gated the save, so a provider whose OAuth
-  account was never authorized — or whose weight tied with another provider — showed a green summary, an
-  enabled Save, and then failed. Every section that is not `ok` now gates it, and the three conditions
-  that are advisory rather than blocking (a create-time blank API key, a stale model catalog, a weight
-  tie) report as `ok` with their explanation intact instead of borrowing a warning state they do not
-  need.
-
-  The footer's status line is one live region again: the sentence and the section links it points at are
-  a single announcement, so "still missing" arrives with the names of what is missing rather than reading
-  the lead-in alone on every keystroke. Its lead-in also describes what it actually lists — a form held
-  up only by an account waiting to be authorized reads as pending, not as missing a field. The links are
-  real anchors to their sections now, so they can be copied and opened like any other link, and jumping
-  from either the footer or the nav strip writes the section into the address bar.
-
-  Delete leaves the editor: an irreversible action does not belong one tab stop from Save, and the
-  providers table already offers it. Section anchors drop their `editor-` prefix, so a bookmarked
-  `#models` is the same link the nav strip and footer produce. The nav strip's pinned background moves to
-  a wrapper so it stops sliding out from under the pills when the strip is narrow enough to scroll, and
-  its active pill is marked as the current item of a list rather than claiming to link to the current
-  page. The editor is finally one `<form>` element, so labels, autofill and Enter behave the way the
-  platform expects.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`35dacf3`](https://github.com/aio-proxy/aio-proxy/commit/35dacf3cfbd006598e0f1f7a4082f1f2399971c6) Thanks @baranwang - Stop the provider editor offering a save it will reject, and rebuild its footer and section strip to match the rest of the page.
 
 - [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`3cb3b81`](https://github.com/aio-proxy/aio-proxy/commit/3cb3b8135f109c0eb6ee9fab138e83ee32136ae0) Thanks @baranwang - Tighten the provider editor's extra request headers into a single compact row and put the proxy address on its own field. Copy now says "additional request headers" and "use a specific proxy".
 
@@ -934,21 +703,9 @@
   strip or from Cancel/Save rather than from the section the user asked for. The nav strip is announced as
   the form's section list instead of claiming to be "Edit Provider" even while creating one.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`e3ff7aa`](https://github.com/aio-proxy/aio-proxy/commit/e3ff7aa430a1a0d4429aa93e34f7e77836063c83) Thanks @baranwang - Align the provider editor's models section with the prototype. Manual add is a
-  plain input plus an Add button that prepends new ids, every row has a checkbox
-  and a remove control, alias targets are only the enabled models, and removing a
-  whitelisted model silently drops aliases (and variants) that pointed at it. A row
-  that exists only in the fetched upstream catalog is not on the whitelist, so its
-  remove control is disabled and its aliases are left alone. OAuth providers get the same
-  catalog button; it refreshes the saved edit-view catalog instead of calling the
-  unsupported draft-catalog endpoint.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`e3ff7aa`](https://github.com/aio-proxy/aio-proxy/commit/e3ff7aa430a1a0d4429aa93e34f7e77836063c83) Thanks @baranwang - Align the provider editor's models section with the prototype.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`d50d78d`](https://github.com/aio-proxy/aio-proxy/commit/d50d78d7dcdac086fb529dfbafca425ce2281e62) Thanks @baranwang - Fix three provider-editor model regressions. Per-model metadata is now reconciled against what was
-  actually persisted, so creating a provider no longer writes an empty `{}` record for a model whose
-  cost fields were cleared, while an edit that clears them still sends the explicit empty object the
-  API needs to overwrite the stored one. A cost or context number whose text cannot round-trip is
-  refused rather than displayed. And the manual-add box splits a comma- or newline-separated list into
-  one id per row instead of committing the whole string as a single model id.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`d50d78d`](https://github.com/aio-proxy/aio-proxy/commit/d50d78d7dcdac086fb529dfbafca425ce2281e62) Thanks @baranwang - Fix three provider-editor model regressions.
 
 - [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`c73de2d`](https://github.com/aio-proxy/aio-proxy/commit/c73de2d1bd7c849a239d8e6a3fe139f7b6be4da6) Thanks @baranwang - Align the provider editor's right rail with the prototype. The model-test controls
   disappear when nothing is testable instead of leaving a disabled full-width button,
@@ -957,38 +714,11 @@
   string. The exposure panel title is "Model list", its empty state says which names
   will appear, and a disabled provider folds that reason into the same sentence.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`02c0a8b`](https://github.com/aio-proxy/aio-proxy/commit/02c0a8bc9b53175e72e2cc432275a04f8fb934dc) Thanks @baranwang - Four provider-editor follow-ups. The save footer's lead-in now describes the list it introduces: it
-  promises a missing field only when every listed section is empty, and reads "Pending" when one of them
-  merely needs authorizing. The providers list prints a dash for a provider that has no configured
-  weight rather than `0`, so a deliberate `0`, which is a real lowest-priority weight, is no longer
-  indistinguishable from an unset one. Clearing a provider's display name and saving now removes the key
-  instead of writing an empty `name` into the config file, matching what an OAuth provider already did. And
-  a stored weight outside the old slider range can still be typed and saved as-is.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`02c0a8b`](https://github.com/aio-proxy/aio-proxy/commit/02c0a8bc9b53175e72e2cc432275a04f8fb934dc) Thanks @baranwang - Four provider-editor follow-ups.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`a3cf9b5`](https://github.com/aio-proxy/aio-proxy/commit/a3cf9b55e0377cd8df102acf3fd9463ff5899207) Thanks @baranwang - A display name that is only whitespace now clears the key on an OAuth provider instead of being written
-  into the config file. The empty string was already dropped, but `"   "` survived on both the ordinary
-  save path and reauthorization; the editor already treats a blank-after-trim name as absent, so the
-  config kept a `name` nothing would ever render. Rejecting a staged OAuth write now throws a real
-  `Error`, so the structured logs that record an error's name during config recovery and session-store
-  writes report `ZodError` rather than `Error` or `object`; the rejection message and its
-  `providers.<id>.<field>` issue paths are unchanged.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`a3cf9b5`](https://github.com/aio-proxy/aio-proxy/commit/a3cf9b55e0377cd8df102acf3fd9463ff5899207) Thanks @baranwang - A display name that is only whitespace now clears the key on an OAuth provider instead of being written into the config file.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`6fb3a79`](https://github.com/aio-proxy/aio-proxy/commit/6fb3a799f2abd3ee6f4fd11b01a7040be226257f) Thanks @baranwang - Fix four provider editor defects found by a re-survey against the design prototype. A malformed Base URL such
-  as `api.example.com` no longer passes the Connection gate: the editor form has no validators of its own, so a
-  string the mutation body's `z.url()` rejects used to show a green dot and an enabled Save, then bounce back as
-  an error toast — it now marks Connection as to do, exactly as an empty Base URL does. That gate is http(s)-only,
-  deliberately stricter than the mutation body's `z.url()`, which accepts any scheme: the proxy reaches an
-  upstream over http(s), so a Base URL that parses as something else now blocks Save where it previously did not —
-  `ftp://x.example`, and also `api.example.com:8080`, which `new URL` reads as a scheme rather than a host and
-  port. The Connection badge names that case specifically, "Needs a valid http(s) address", rather than reporting
-  a missing address for one that was typed. A disabled provider's
-  Routing badge reads "Disabled" even when its weight ties with another provider's, instead of reporting a tie
-  inside an attempt queue a disabled provider never joins. The permanent "Saved" line is gone; it never cleared
-  itself, so it sat above a footer that had already gone back to listing sections to complete, duplicating the
-  transient success toast the save already shows. And the OAuth authorization panel now renders above the sticky
-  Save/Cancel bar rather than beneath it, so the device code, the authorization link and the manual callback
-  field are no longer covered by the footer — previously, scrolling to the bottom of an OAuth authorization also
-  left the footer stranded in the middle of the page.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`6fb3a79`](https://github.com/aio-proxy/aio-proxy/commit/6fb3a799f2abd3ee6f4fd11b01a7040be226257f) Thanks @baranwang - Fix four provider editor defects found by a re-survey against the design prototype.
 
 - [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`ef90e90`](https://github.com/aio-proxy/aio-proxy/commit/ef90e90173a91816649d5c76053caf776b30e5dc) Thanks @baranwang - Make the provider editor's section dots agree with its Save button, and fix the section hints. A section
   missing a required field is red, one waiting on an authorization round trip is amber, a finished one stays
@@ -1000,58 +730,15 @@
   router treats as weight `1` and priority `0`. The editor shows an empty box for an absent value so it
   is distinguishable from an authored `0`.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`b1bcb8d`](https://github.com/aio-proxy/aio-proxy/commit/b1bcb8dc140edff15f9534a8058dd038a2ee5717) Thanks @baranwang - Stop the Dashboard provider editor from deleting a hand-written `endpoints` list. Saving a provider from the editor used to drop its multi-protocol `endpoints` — the mutation body schema strips the field, so every save read as "the author deleted it" — and still answer 200. The list is now retained across a save, like `headers`, `metadata`, `proxy`, and `transforms` already were.
-
-  Also in the editor: provider sections render as cards, and the identity section says up front that the ID is fixed once saved.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`b1bcb8d`](https://github.com/aio-proxy/aio-proxy/commit/b1bcb8dc140edff15f9534a8058dd038a2ee5717) Thanks @baranwang - Stop the Dashboard provider editor from deleting a hand-written `endpoints` list.
 
 - [#191](https://github.com/aio-proxy/aio-proxy/pull/191) [`5be2d7c`](https://github.com/aio-proxy/aio-proxy/commit/5be2d7c0c1f2e9d844b33ce17b3fcefc78afd62e) Thanks @baranwang - Raw provider `422` responses now fall through to the next live candidate. Other `4xx` statuses still return immediately.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`4c33182`](https://github.com/aio-proxy/aio-proxy/commit/4c33182e52533af7b613df3e67c82a3cba09cdb0) Thanks @baranwang - Fit each request transform action on one line and stop leaving a blank space where a remove action would
-  show a value.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`4c33182`](https://github.com/aio-proxy/aio-proxy/commit/4c33182e52533af7b613df3e67c82a3cba09cdb0) Thanks @baranwang - Fit each request transform action on one line and stop leaving a blank space where a remove action would show a value.
 
-  An action used to be a bordered sub-card holding an "Action N" heading and three separately labelled
-  controls, stacked. A rule with four actions therefore repeated four headings and four borders, and no two
-  actions lined up. The action select and a single dotted path input now share one row per action,
-  with the rule's "Then" connective on the first row and the value editor full-width beneath, so actions read
-  down a column. Reorder and delete are icon buttons at the end of the row, and they are hidden entirely for a
-  rule with one action, where reordering and deleting are both impossible — previously they were rendered
-  disabled.
-
-  The path input is monospace and takes the full dotted path, `request.body.temperature` or
-  `request.headers.x-header-name`; the prefix picks the target and the remainder is what the field stores.
-
-  A remove action left the value slot empty, which read as a control that had not loaded. It now says that a
-  remove action needs no value.
-
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`ea6b1c9`](https://github.com/aio-proxy/aio-proxy/commit/ea6b1c98ca4c9a9ba35b39de91df4b1b25165135) Thanks @baranwang - Make request transform rules shorter to scan and stop showing the condition builder to rules that do not
-  have a condition.
-
-  Each rule now opens with a single row: the name is edited in place — a new rule is created named "Rule N",
-  and clearing the box removes the name again, leaving "Rule N" as a hint — and reorder and delete sit beside
-  it as icon buttons instead of three full-text buttons in a footer, so a rule list no longer spends a third
-  of its height on chrome.
-
-  A rule without a condition previously still rendered the full condition builder, which read as an unfinished
-  condition nobody wrote. A rule now states that it runs on every request, and a switch turns the condition
-  on: switching it on opens the builder with one editable condition ready to fill in, and switching it off
-  removes the condition from the rule.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`ea6b1c9`](https://github.com/aio-proxy/aio-proxy/commit/ea6b1c98ca4c9a9ba35b39de91df4b1b25165135) Thanks @baranwang - Make request transform rules shorter to scan and stop showing the condition builder to rules that do not have a condition.
 
 - [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`0a93cfd`](https://github.com/aio-proxy/aio-proxy/commit/0a93cfd509c919280fcfea53528e1a706edd36d5) Thanks @baranwang - Make the request-transform value editor easier to read and fill in.
-
-  Object and array values are no longer typed into a cramped inline box: the rule shows the value as compact
-  JSON and an Edit JSON button opens a full-height editor, where Apply stays disabled until what you typed is
-  really a JSON object or array of the type you picked, and Cancel throws the draft away. Because a broken
-  draft now stays inside that editor, it can no longer put the whole rule list into an invalid state or lock
-  you out of the JSON tab while you fix it.
-
-  Boolean values are chosen from a true/false select instead of a checkbox labelled "True", so setting a field
-  to false is a direct choice rather than an unticked box.
-
-  The value type and the value itself now sit side by side on one row instead of stacking as two labelled rows,
-  which makes rules with several actions much shorter.
-
-  The controls are also named for what they do rather than how they work: the mode reads Fixed value, its input
-  reads Value to set, and the type select reads Value type.
 
 - [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`e86cff1`](https://github.com/aio-proxy/aio-proxy/commit/e86cff1401ae66805faee73f5fa990a5249d52fb) Thanks @baranwang - Reduce the provider editor's Routing section to priority and weight number inputs. The attempt-order
   preview is gone, as is the provider-level enabled switch; a provider is enabled or disabled from the
@@ -1064,29 +751,9 @@
   ("Argument 1 → Field", "Argument 2 → Argument 1 → Field"), following the path the expression editor already
   tracks internally.
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`bf7a1cc`](https://github.com/aio-proxy/aio-proxy/commit/bf7a1cce861313f8294822bb78e2d573c658c250) Thanks @baranwang - The provider editor's Model aliases block now offers a Sync plugin aliases button for OAuth providers
-  whose plugin ships default aliases. Clicking it merges the plugin's suggestions into the alias list you
-  are editing: a suggestion overwrites the alias that already carries its name, every other alias you wrote
-  is kept, and names the draft does not have yet are appended. Nothing is written until you save, so the
-  merge can be reviewed and undone like any other edit in the form.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`bf7a1cc`](https://github.com/aio-proxy/aio-proxy/commit/bf7a1cce861313f8294822bb78e2d573c658c250) Thanks @baranwang - The provider editor's Model aliases block now offers a Sync plugin aliases button for OAuth providers whose plugin ships default aliases.
 
-  Only suggestions this provider can actually route are offered: a suggestion pointing at a model outside
-  the provider's enabled models is dropped, together with any of its variants, because an alias aimed at a
-  model the provider does not expose is what blocks Save. The button is absent when the provider's plugin
-  has no suggestions or none survive that filter, and disabled while no upstream model is enabled. A plugin
-  that returns a malformed suggestion, or throws while producing them, now costs only the suggestions — the
-  editor page still opens.
-
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`f75367e`](https://github.com/aio-proxy/aio-proxy/commit/f75367ebf14dfd6a47c86c19f0851f27065c6876) Thanks @baranwang - Align the request-transform condition builder and value editor with the demo:
-  computed values show a live expression preview, the expression tree gets its
-  indent, argument markers and connector lines, and condition groups and rows
-  get their own cards instead of a fixed 768px block.
-
-  Function names now read from one source (`+`, `CONCAT`, `IF NULL`) instead of
-  a separate set of translations, condition rows drop the move buttons,
-  `provider.*` is offered only inside computed values, and every value control
-  announces the rule it belongs to. The expression tree's argument markers are
-  localized too, so they no longer read as Chinese in the other four locales.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`f75367e`](https://github.com/aio-proxy/aio-proxy/commit/f75367ebf14dfd6a47c86c19f0851f27065c6876) Thanks @baranwang - Align the request-transform condition builder and value editor with the demo: computed values show a live expression preview, the expression tree gets its indent, argument markers and connector lines, and condition groups and rows get their own cards instead of a fixed 768px block.
 
 - [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`476b0a8`](https://github.com/aio-proxy/aio-proxy/commit/476b0a8133f3c2a46e710e682006bf8074170bb5) Thanks @baranwang - Align the request-transform editor shell with the demo: one dotted path
   input, usable structure buttons on an invalid rule, and JSON-mode copy
@@ -1144,7 +811,7 @@
 
 ### Patch Changes
 
-- [#155](https://github.com/aio-proxy/aio-proxy/pull/155) [`04ed2df`](https://github.com/aio-proxy/aio-proxy/commit/04ed2dff458272169af2bf04c36cfc09372f6557) Thanks @baranwang - Fix empty Codex model picker for gpt-5.6 aliases. The `/v1/models` Case A passthrough now guarantees the Codex client reads a non-empty prompt: it resolves one non-empty instruction text (existing `model_messages.instructions_template`, else `base_instructions`, else the bundled template) and writes it back to `base_instructions`, also replacing a present-but-empty `instructions_template` (which the client prefers verbatim). Codex client 0.146.0 treats `base_instructions` as required and prefers `instructions_template` whenever present, so upstream rows that omit `base_instructions` (gpt-5.6-sol/terra/luna) previously failed catalog deserialization and emptied the picker.
+- [#155](https://github.com/aio-proxy/aio-proxy/pull/155) [`04ed2df`](https://github.com/aio-proxy/aio-proxy/commit/04ed2dff458272169af2bf04c36cfc09372f6557) Thanks @baranwang - Fix empty Codex model picker for gpt-5.6 aliases.
 
 - [#150](https://github.com/aio-proxy/aio-proxy/pull/150) [`52cb5ce`](https://github.com/aio-proxy/aio-proxy/commit/52cb5cef04cd1532dac2a773ee61b4fefd72d54d) Thanks @baranwang - Allow OpenAI Responses requests with image detail hints to fall back across provider protocols.
 
@@ -1162,74 +829,27 @@
 
 - [#135](https://github.com/aio-proxy/aio-proxy/pull/135) [`963e395`](https://github.com/aio-proxy/aio-proxy/commit/963e3951a64644441a36b0ae4c9b93d644444d18) Thanks @baranwang - extend: resolve per-model `metadata.extend` into effective merged metadata — inherit a models.dev catalog entry as a base layer, deep-merged under your explicit fields, so cost accounting and model resolution both see the inherited values.
 
-- [#135](https://github.com/aio-proxy/aio-proxy/pull/135) [`f15d8d3`](https://github.com/aio-proxy/aio-proxy/commit/f15d8d301a2172eff687bd414cc9a05b7cab4085) Thanks @baranwang - feat: per-provider model metadata & cost overrides
+- [#135](https://github.com/aio-proxy/aio-proxy/pull/135) [`f15d8d3`](https://github.com/aio-proxy/aio-proxy/commit/f15d8d301a2172eff687bd414cc9a05b7cab4085) Thanks @baranwang - feat: per-provider model metadata & cost overrides Providers can now declare a `metadata` map keyed by upstream model id to override client-facing model metadata (name, description, token limits, capabilities) and cost accounting.
 
-  Providers can now declare a `metadata` map keyed by upstream model id to override client-facing model metadata (name, description, token limits, capabilities) and cost accounting. User config wins over models.dev auto-discovery. Billing uses the actual hit channel's configured `cost`, and each usage row records its `priceSource` (`config`/`models-dev`/`default`). A new `router.modelContextAggregation` (`min` default / `max`) reconciles the context window when multiple providers expose the same public model.
+- [#136](https://github.com/aio-proxy/aio-proxy/pull/136) [`465fa49`](https://github.com/aio-proxy/aio-proxy/commit/465fa494bc0446e11b68b0922b29ba2c15880c37) Thanks @baranwang - Make `count_tokens` traces distinguish upstream counts from the local estimate Previously a `count_tokens` request answered by the local estimator was only signalled by an `x-aio-proxy-token-count-estimated: true` response header, and candidates that were passed over before their count capability ran (no token count capability, unsupported image input, or a missing provider tool) left no span at all.
 
-- [#136](https://github.com/aio-proxy/aio-proxy/pull/136) [`465fa49`](https://github.com/aio-proxy/aio-proxy/commit/465fa494bc0446e11b68b0922b29ba2c15880c37) Thanks @baranwang - Make `count_tokens` traces distinguish upstream counts from the local estimate
-
-  Previously a `count_tokens` request answered by the local estimator was only
-  signalled by an `x-aio-proxy-token-count-estimated: true` response header, and
-  candidates that were passed over before their count capability ran (no token
-  count capability, unsupported image input, or a missing provider tool) left no
-  span at all. A trace answered without any upstream count was therefore
-  indistinguishable from an upstream success.
-
-  The response header is removed. The local-estimate fallback now records an
-  `aio_proxy.token_count` span tagged `aio_proxy.token_count.source=local_estimate`,
-  and each passed-over candidate records an `aio_proxy.token_count.candidate_skipped`
-  span carrying the provider id and a skip reason (`no_capability`,
-  `image_unsupported`, or `missing_tool`). The observability signal moves from the
-  client response into the trace, where the whole candidate loop is now visible.
-
-- [#135](https://github.com/aio-proxy/aio-proxy/pull/135) [`6963859`](https://github.com/aio-proxy/aio-proxy/commit/6963859bed52fbb6e56060015bf37c97a9f0abfd) Thanks @baranwang - feat: meter image, web-search, and audio usage for per-event and audio fees
-
-  The proxy now counts generated images and web-search invocations from served
-  responses (OpenAI Responses output items and streamed AI SDK file/tool-call
-  parts) and reads audio token counts from OpenAI-compatible usage. These flow
-  into the configured `cost` fields (`image`, `webSearch`, `inputAudio`,
-  `outputAudio`), which previously had no effect because nothing produced the
-  counts. Audio tokens are treated as a subset of their input/output totals (as
-  the upstream reports them) and peeled out before the text rate applies, so each
-  audio token is billed once at the audio rate rather than at both rates.
-  Requests without such events are unaffected.
+- [#135](https://github.com/aio-proxy/aio-proxy/pull/135) [`6963859`](https://github.com/aio-proxy/aio-proxy/commit/6963859bed52fbb6e56060015bf37c97a9f0abfd) Thanks @baranwang - feat: meter image, web-search, and audio usage for per-event and audio fees The proxy now counts generated images and web-search invocations from served responses (OpenAI Responses output items and streamed AI SDK file/tool-call parts) and reads audio token counts from OpenAI-compatible usage.
 
 ### Patch Changes
 
-- [#135](https://github.com/aio-proxy/aio-proxy/pull/135) [`abf31a4`](https://github.com/aio-proxy/aio-proxy/commit/abf31a4c2eaa5c6fedf7dd9831f00e54d2fef8ee) Thanks @baranwang - Fix model-metadata projection and billing gaps:
-
-  - `/v1/models` now reflects per-provider config metadata overrides — capabilities,
-    `limit.output` (max tokens), and modalities — not just the display name and
-    context window. Metadata inherited via `extend` surfaces the same way.
-  - `max_input_tokens` now reports the model's maximum input tokens
-    (`limit.input`) rather than the total context window, so a model whose context
-    window exceeds its input limit no longer over-advertises its input capacity.
-  - A flat per-request fee (`cost.request`) is now billed on a successful response
-    that carries no token usage, instead of being silently dropped.
-  - The generated config JSON Schema references the models.dev model-id enum for
-    `metadata.extend`, so editors can autocomplete and validate the slug.
+- [#135](https://github.com/aio-proxy/aio-proxy/pull/135) [`abf31a4`](https://github.com/aio-proxy/aio-proxy/commit/abf31a4c2eaa5c6fedf7dd9831f00e54d2fef8ee) Thanks @baranwang - Fix model-metadata projection and billing gaps: - `/v1/models` now reflects per-provider config metadata overrides — capabilities, `limit.output` (max tokens), and modalities — not just the display name and context window.
 
 ## 0.5.2
 
 ### Patch Changes
 
-- [#133](https://github.com/aio-proxy/aio-proxy/pull/133) [`39d1b19`](https://github.com/aio-proxy/aio-proxy/commit/39d1b1927055fa483c9d09d82b6e5e76100eee95) Thanks @baranwang - Fix Docker release build failure by building `@aio-proxy/i18n` with rslib
-
-  The `@aio-proxy/i18n` package built its declarations with `tsc -b`, unlike every other referenced workspace package (which use rslib). Because `paraglide-js compile` regenerates `src/paraglide/**` on every build, fresh/concurrent builds (such as the multi-arch Docker release) could see i18n's emitted `dist` as stale relative to its regenerated sources, so `@aio-proxy/core`'s declaration generation failed the composite project-reference check with `TS6305: Output file '.../i18n/dist/index.d.ts' has not been built from source file '.../i18n/src/index.ts'`.
-
-  i18n now compiles messages and then builds with rslib like the other packages, emitting its declarations through the same pipeline and eliminating the fragile cross-package staleness check.
+- [#133](https://github.com/aio-proxy/aio-proxy/pull/133) [`39d1b19`](https://github.com/aio-proxy/aio-proxy/commit/39d1b1927055fa483c9d09d82b6e5e76100eee95) Thanks @baranwang - Fix Docker release build failure by building `@aio-proxy/i18n` with rslib The `@aio-proxy/i18n` package built its declarations with `tsc -b`, unlike every other referenced workspace package (which use rslib).
 
 ## 0.5.1
 
 ### Patch Changes
 
-- [#131](https://github.com/aio-proxy/aio-proxy/pull/131) [`1a525e8`](https://github.com/aio-proxy/aio-proxy/commit/1a525e861a0ef77668c3321f75171bb9e2880e9f) Thanks @baranwang - core: fix proxied streaming passthrough dropping the request body. Bun 1.3.x
-  silently discards a `ReadableStream` request body when `fetch` uses a proxy, so
-  `api` providers with a `proxy` configured hung until timeout on streaming
-  requests (e.g. `openai-response` passthrough). `createProxyFetch` now buffers a
-  streamed request body to bytes before sending it through the proxy, so the body
-  survives without changing the streaming response. This lets the build toolchain
-  stay on the reproducible Bun 1.3.14 release.
+- [#131](https://github.com/aio-proxy/aio-proxy/pull/131) [`1a525e8`](https://github.com/aio-proxy/aio-proxy/commit/1a525e861a0ef77668c3321f75171bb9e2880e9f) Thanks @baranwang - core: fix proxied streaming passthrough dropping the request body.
 
 ## 0.5.0
 
@@ -1237,16 +857,7 @@
 
 - [#125](https://github.com/aio-proxy/aio-proxy/pull/125) [`7856451`](https://github.com/aio-proxy/aio-proxy/commit/7856451f2434912a619e1c72aca44a1ccd1aaf43) Thanks @baranwang - server: return real upstream token counts for `/v1/messages/count_tokens` when a same-protocol raw provider is configured, and replace the `bytes/64` fallback with a character-class-weighted estimator
 
-- [#129](https://github.com/aio-proxy/aio-proxy/pull/129) [`c6ecfc0`](https://github.com/aio-proxy/aio-proxy/commit/c6ecfc0dc81e6cb0f0c5cd7b27b79f32cfb0955c) Thanks @baranwang - normalize and downgrade reasoning effort per upstream model capability
-
-  Inbound reasoning-effort values are now accepted leniently and clamped to what
-  each candidate upstream model actually advertises, on both the raw-passthrough
-  and AI SDK model-invocation paths. This fixes a `400 ... at output_config.effort`
-  error when Claude Code's ultracode mode sent effort `xhigh` to an upstream that
-  only supports `low`/`medium`/`high` — the request now downgrades to the highest
-  supported level instead of being rejected. Capability resolution is cache-only,
-  so a cold or slow models.dev never blocks the request (it falls back to
-  forwarding the client's value unchanged).
+- [#129](https://github.com/aio-proxy/aio-proxy/pull/129) [`c6ecfc0`](https://github.com/aio-proxy/aio-proxy/commit/c6ecfc0dc81e6cb0f0c5cd7b27b79f32cfb0955c) Thanks @baranwang - normalize and downgrade reasoning effort per upstream model capability Inbound reasoning-effort values are now accepted leniently and clamped to what each candidate upstream model actually advertises, on both the raw-passthrough and AI SDK model-invocation paths.
 
 ### Patch Changes
 
@@ -1256,18 +867,13 @@
 
 ### Minor Changes
 
-- [#124](https://github.com/aio-proxy/aio-proxy/pull/124) [`2d1d035`](https://github.com/aio-proxy/aio-proxy/commit/2d1d03580db04a8ff957df3b3dd17d0879599282) Thanks @baranwang - i18n: restructure message keys into nested namespaces and add Traditional Chinese (zh-Hant), Japanese (ja), and Korean (ko) locales
-
-  - Flat `cli_*`/`common_*`/`error_*`/`wizard_*` keys are now nested, dot-layered namespaces (e.g. `cli.provider.login.unknown_vendor`); dashboard/oauth/brand keys are regrouped under the same scheme.
-  - Added `zh-Hant`, `ja`, and `ko` locales; `resolveLocale` now maps `zh-hant`/`zh-tw`/`zh-hk`/`zh-mo`, `ja`/`ja-*`, and `ko`/`ko-*` tags to them.
-  - Removed keys that did not need translation (protocol acronyms, `N/A`, `API Key`, and similar) and inlined them at their call sites.
-  - Stripped trailing sentence periods from all message values across every locale.
+- [#124](https://github.com/aio-proxy/aio-proxy/pull/124) [`2d1d035`](https://github.com/aio-proxy/aio-proxy/commit/2d1d03580db04a8ff957df3b3dd17d0879599282) Thanks @baranwang - i18n: restructure message keys into nested namespaces and add Traditional Chinese (zh-Hant), Japanese (ja), and Korean (ko) locales - Flat `cli_*`/`common_*`/`error_*`/`wizard_*` keys are now nested, dot-layered namespaces (e.g.
 
 ### Patch Changes
 
 - [#121](https://github.com/aio-proxy/aio-proxy/pull/121) [`8c1e690`](https://github.com/aio-proxy/aio-proxy/commit/8c1e69073e52a2921101c767b6d020484b59f857) Thanks @baranwang - ci: fix Docker image publish reading the renamed `published-packages` output from changesets/action, so the GHCR image is tagged and pushed again on release
 
-- [#123](https://github.com/aio-proxy/aio-proxy/pull/123) [`d460128`](https://github.com/aio-proxy/aio-proxy/commit/d4601280f29a5322a30b4baa516bc1906d0ea324) Thanks @baranwang - cli: fix the managed service becoming unreachable after `brew upgrade`. The service unit now records the stable PATH launcher instead of the version-pinned Cellar binary, `service restart` regenerates an already-installed unit with a freshly resolved executable (recovering units that still point at a deleted old binary), and `resolveExec` falls back to the PATH launcher when the running executable was deleted mid-upgrade. `aio-proxy upgrade` now always restarts a managed daemon after upgrading (the `--restart` flag is removed); a manually started daemon still gets a self-restart hint.
+- [#123](https://github.com/aio-proxy/aio-proxy/pull/123) [`d460128`](https://github.com/aio-proxy/aio-proxy/commit/d4601280f29a5322a30b4baa516bc1906d0ea324) Thanks @baranwang - cli: fix the managed service becoming unreachable after `brew upgrade`.
 
 ## 0.3.0
 
@@ -1279,7 +885,7 @@
 
 - [#120](https://github.com/aio-proxy/aio-proxy/pull/120) [`38960fd`](https://github.com/aio-proxy/aio-proxy/commit/38960fd9fca94d3e38cb5277a5eb928a3962d96a) Thanks @baranwang - core: accept `role: "system"` messages on the Anthropic Messages endpoint (matching the official SDK's `MessageParam` union) and surface Zod validation path detail in 400 responses without leaking request values
 
-- [#116](https://github.com/aio-proxy/aio-proxy/pull/116) [`5a6deb7`](https://github.com/aio-proxy/aio-proxy/commit/5a6deb759ed7c748369db2dee814d2686dcd2e8d) Thanks @baranwang - server: end streamed request traces at the upstream terminal frame instead of socket EOF, so traces no longer stay "running" after the model finished. Raw passthrough resolves completion at the terminal frame across all four protocols and the AI SDK path at the finish part, without ending the client stream. Adds a configurable upstream idle timeout (300s default) that cancels a stalled upstream and errors the client stream rather than closing it cleanly. OpenAI-compatible passthrough treats [DONE] (not finish_reason) as terminal so trailing include_usage accounting is still captured; session commit stays gated on true stream EOF.
+- [#116](https://github.com/aio-proxy/aio-proxy/pull/116) [`5a6deb7`](https://github.com/aio-proxy/aio-proxy/commit/5a6deb759ed7c748369db2dee814d2686dcd2e8d) Thanks @baranwang - server: end streamed request traces at the upstream terminal frame instead of socket EOF, so traces no longer stay "running" after the model finished.
 
 ## 0.2.1
 

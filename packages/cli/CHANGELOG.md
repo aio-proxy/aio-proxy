@@ -511,14 +511,7 @@
 
 ### Minor Changes
 
-- [#298](https://github.com/aio-proxy/aio-proxy/pull/298) [`13a6c91`](https://github.com/aio-proxy/aio-proxy/commit/13a6c9153739049dab5443dd3ac7d570f7e80690) Thanks @baranwang - Serve the Codex Live / Realtime endpoint family as signaling passthrough. `POST /v1/live`,
-  `POST /v1/realtime` and `POST /v1/realtime/calls` forward an SDP offer to the ChatGPT Codex realtime
-  upstream and answer with its SDP; `GET /v1/live/:call_id`, `GET /v1/realtime/calls/:call_id` and
-  `GET /v1/realtime` relay the sideband WebSocket, with provider selection, per-model overrides and
-  failover matching ordinary routing. Plugins can serve realtime through a new optional `realtime`
-  runtime capability (`models`, `fetch`, `dial`). WebRTC media stays a direct client-to-upstream
-  connection, and endpoints the ChatGPT upstream has no equivalent for answer `501`. An embedder that
-  builds its own `Bun.serve` must now pass `@aio-proxy/server`'s exported `websocket` handler.
+- [#298](https://github.com/aio-proxy/aio-proxy/pull/298) [`13a6c91`](https://github.com/aio-proxy/aio-proxy/commit/13a6c9153739049dab5443dd3ac7d570f7e80690) Thanks @baranwang - Serve the Codex Live / Realtime endpoint family as signaling passthrough.
 
 - [#300](https://github.com/aio-proxy/aio-proxy/pull/300) [`692795c`](https://github.com/aio-proxy/aio-proxy/commit/692795c49f26e93e93af79cb611043a1e82c307a) Thanks @baranwang - A running process checks npm `latest` on start, every 24 hours, and when the Dashboard mounts. It persists the result, prompts once per new version (Dashboard sidebar, CLI stderr banner, OS notification), and installs only after Update now or `aio-proxy upgrade`. Leftover `server.autoUpdate` in an existing config is ignored.
 
@@ -545,10 +538,6 @@
 - [#297](https://github.com/aio-proxy/aio-proxy/pull/297) [`ec132d7`](https://github.com/aio-proxy/aio-proxy/commit/ec132d7347491f28ea21445f76bc697a4535b76c) Thanks @baranwang - cli: accept `aio-proxy update` as an alias of `aio-proxy upgrade`, including the same flags and shell completion.
 
 - [#289](https://github.com/aio-proxy/aio-proxy/pull/289) [`dd0e007`](https://github.com/aio-proxy/aio-proxy/commit/dd0e007bcf4832ebeb1b54862fb0cbfc1dfda76a) Thanks @baranwang - Serve the config JSON Schema from `@aio-proxy/types` instead of duplicating it in the launcher package.
-
-  `@aio-proxy/types` is a published package and already exports the generated schema, so the `aio-proxy` launcher no longer copies it in at pack time. A bootstrapped `config.jsonc` now gets `"$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json"` — unpinned, because nothing rewrites that line after bootstrap and a pinned version would go stale as the schema grows.
-
-  Existing configs keep working: they point at a released version whose tarball still carries the old copy. Update the line to the new URL to keep editor completion and validation current on future releases.
 
 - Updated dependencies [[`83c67f1`](https://github.com/aio-proxy/aio-proxy/commit/83c67f1cf670752e14ebf66bc95ab0799923b48e), [`46087fb`](https://github.com/aio-proxy/aio-proxy/commit/46087fb5ab1d28295e9912d8873e2ef574963c2a), [`4f4e324`](https://github.com/aio-proxy/aio-proxy/commit/4f4e324c4625a1d4582d4292b7b9e3e96cbdabb6), [`f71a576`](https://github.com/aio-proxy/aio-proxy/commit/f71a5760db5852f2c340e089c3858ae81da7053c), [`4f3154e`](https://github.com/aio-proxy/aio-proxy/commit/4f3154e79a3f2bf1d5d23081e8dd099cc7841ecd), [`cf45f02`](https://github.com/aio-proxy/aio-proxy/commit/cf45f0222aa85754e64f19dee184228769c97ddd)]:
   - @aio-proxy/server@0.19.2
@@ -702,20 +691,6 @@
 ### Minor Changes
 
 - [#239](https://github.com/aio-proxy/aio-proxy/pull/239) [`b1f5bff`](https://github.com/aio-proxy/aio-proxy/commit/b1f5bff2f2e92abfd54b90fb32b29b4b145e8c1d) Thanks @baranwang - Redesign the dashboard Provider list as a card grid and surface OAuth remaining quota.
-
-  Each Provider — including each OAuth account — is now one card showing its name, kind, protocols,
-  plan, routing priority and weight, 24-hour success rate and p95 latency, model count, and request
-  count, with search and availability/enablement/kind filters replacing the old table's pagination and
-  grouping. OAuth Providers whose plugin exposes a quota capability show a remaining-quota ring that
-  opens a detail dialog with one bar per quota window that reports a remaining amount.
-
-  The quota read is cached in memory behind a per-provider five-minute cooldown, refreshed
-  asynchronously once a Provider has finished answering a model request, and exposed at
-  `QUERY /dashboard/api/providers/:id/quota`; the dialog's refresh button bypasses the cooldown, and the
-  Providers page polls the reading the way it already polls health. `OAuthQuotaSnapshot` gains an
-  optional `plan`, which `kimi-code` and `xai-grok` now populate, and `xai-grok` also reports per-product
-  usage. Dashboard Provider summaries gain `protocols` and `hasQuota` in place of the single `protocol`
-  field.
 
 ### Patch Changes
 
@@ -879,7 +854,7 @@
 
 ### Minor Changes
 
-- [#187](https://github.com/aio-proxy/aio-proxy/pull/187) [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b) Thanks @baranwang - Add managed OpenCode, Pi, and oh-my-pi Agent integrations. Configure them with `aio-proxy agent configure` (floors: OpenCode 1.17.10, Pi 0.84.2, oh-my-pi 17.3.7; login with `opencode auth login --provider aio-proxy` or `/login aio-proxy`). `aio-proxy upgrade` refreshes managed adapters; reload or restart the Agent after configure or upgrade. Exact string KPI values no longer lose visible precision. The plugin SDK descriptor contract, brand, and host accepted version are restored to v1; v2 descriptors are rejected. The xAI artifact smoke gate now follows plugin API v1.
+- [#187](https://github.com/aio-proxy/aio-proxy/pull/187) [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b) Thanks @baranwang - Add managed OpenCode, Pi, and oh-my-pi Agent integrations.
 
 ### Patch Changes
 
@@ -1033,7 +1008,7 @@
 
 ### Patch Changes
 
-- [#123](https://github.com/aio-proxy/aio-proxy/pull/123) [`d460128`](https://github.com/aio-proxy/aio-proxy/commit/d4601280f29a5322a30b4baa516bc1906d0ea324) Thanks @baranwang - cli: fix the managed service becoming unreachable after `brew upgrade`. The service unit now records the stable PATH launcher instead of the version-pinned Cellar binary, `service restart` regenerates an already-installed unit with a freshly resolved executable (recovering units that still point at a deleted old binary), and `resolveExec` falls back to the PATH launcher when the running executable was deleted mid-upgrade. `aio-proxy upgrade` now always restarts a managed daemon after upgrading (the `--restart` flag is removed); a manually started daemon still gets a self-restart hint.
+- [#123](https://github.com/aio-proxy/aio-proxy/pull/123) [`d460128`](https://github.com/aio-proxy/aio-proxy/commit/d4601280f29a5322a30b4baa516bc1906d0ea324) Thanks @baranwang - cli: fix the managed service becoming unreachable after `brew upgrade`.
 - Updated dependencies [[`2d1d035`](https://github.com/aio-proxy/aio-proxy/commit/2d1d03580db04a8ff957df3b3dd17d0879599282)]:
   - @aio-proxy/i18n@0.4.0
   - @aio-proxy/core@0.4.0

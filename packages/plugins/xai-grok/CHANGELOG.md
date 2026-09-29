@@ -268,22 +268,6 @@
 
 - [#260](https://github.com/aio-proxy/aio-proxy/pull/260) [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f) Thanks @baranwang - Refresh an OAuth Provider's credential on demand from the dashboard Provider card menu.
 
-  OAuth Providers whose plugin supports it gain a "Refresh Credential" entry in the card's ⋯ menu that
-  forces an upstream token exchange even when the current credential has not expired, clears a stale
-  `CREDENTIAL_REFRESH_FAILED` diagnostic on success, and reloads the Provider list so the account label
-  and expiry reflect the new credential. A refresh the plugin reports as permanently failed — a revoked
-  refresh token, for example — records the same reauthentication diagnostic the automatic refresh path
-  does, so the card tells you to re-login instead of continuing to report the Provider as ready. A
-  transient failure leaves the Provider untouched. The entry is hidden — not
-  disabled — for plugins without the capability, which Provider summaries now report as
-  `canRefreshCredential`. All six bundled OAuth plugins support it.
-
-  `OAuthAdapter` gains an optional `refreshCredential`, exported alongside the new
-  `OAuthCredentialRefreshContext` and `OAuthCredentialRefreshResult` types. It is a pure exchange: the
-  framework owns the lease, single-flight dedupe, revision compare-and-swap, and persistence, and calls
-  the adapter unconditionally rather than only past expiry. Adapter registration previously dropped
-  fields outside its closed list, so an adapter declaring `refreshCredential` would have lost it.
-
 ### Patch Changes
 
 - Updated dependencies [[`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f)]:
@@ -316,20 +300,6 @@
 
 - [#239](https://github.com/aio-proxy/aio-proxy/pull/239) [`b1f5bff`](https://github.com/aio-proxy/aio-proxy/commit/b1f5bff2f2e92abfd54b90fb32b29b4b145e8c1d) Thanks @baranwang - Redesign the dashboard Provider list as a card grid and surface OAuth remaining quota.
 
-  Each Provider — including each OAuth account — is now one card showing its name, kind, protocols,
-  plan, routing priority and weight, 24-hour success rate and p95 latency, model count, and request
-  count, with search and availability/enablement/kind filters replacing the old table's pagination and
-  grouping. OAuth Providers whose plugin exposes a quota capability show a remaining-quota ring that
-  opens a detail dialog with one bar per quota window that reports a remaining amount.
-
-  The quota read is cached in memory behind a per-provider five-minute cooldown, refreshed
-  asynchronously once a Provider has finished answering a model request, and exposed at
-  `QUERY /dashboard/api/providers/:id/quota`; the dialog's refresh button bypasses the cooldown, and the
-  Providers page polls the reading the way it already polls health. `OAuthQuotaSnapshot` gains an
-  optional `plan`, which `kimi-code` and `xai-grok` now populate, and `xai-grok` also reports per-product
-  usage. Dashboard Provider summaries gain `protocols` and `hasQuota` in place of the single `protocol`
-  field.
-
 ### Patch Changes
 
 - Updated dependencies [[`99755b5`](https://github.com/aio-proxy/aio-proxy/commit/99755b58b7492f9da4161ac429325dd319ba48f8), [`b1f5bff`](https://github.com/aio-proxy/aio-proxy/commit/b1f5bff2f2e92abfd54b90fb32b29b4b145e8c1d)]:
@@ -361,9 +331,7 @@
 
 ### Minor Changes
 
-- [#226](https://github.com/aio-proxy/aio-proxy/pull/226) [`9c16d0b`](https://github.com/aio-proxy/aio-proxy/commit/9c16d0b56a954563a296e5363869d5bae12ffda2) Thanks @baranwang - Configure model metadata once per exposed model at `router.models.<slug>.metadata`, including `extend`, with per-Provider `cost` and `limit` overrides under `router.models.<slug>.providers.<id>`. The removed `providers.<id>.metadata` field is silently ignored, and metadata keys no longer create routes; expose models through `providers.<id>.models` or `alias`. Metadata editing now lives in the Dashboard routing drawer instead of the Provider editor.
-
-  Rename the plugin SDK's free-form `ModelDescriptor.metadata`, `ModelCatalog.metadata`, and raw-resolver `metadata` input to `extra`, and add typed `ModelDescriptor.modelMetadata` for host-consumed model metadata. Publish `@aio-proxy/types` as the SDK metadata type source.
+- [#226](https://github.com/aio-proxy/aio-proxy/pull/226) [`9c16d0b`](https://github.com/aio-proxy/aio-proxy/commit/9c16d0b56a954563a296e5363869d5bae12ffda2) Thanks @baranwang - Configure model metadata once per exposed model at `router.models.<slug>.metadata`, including `extend`, with per-Provider `cost` and `limit` overrides under `router.models.<slug>.providers.<id>`.
 
 ### Patch Changes
 
@@ -417,7 +385,7 @@
 
 ### Minor Changes
 
-- [#187](https://github.com/aio-proxy/aio-proxy/pull/187) [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b) Thanks @baranwang - Add managed OpenCode, Pi, and oh-my-pi Agent integrations. Configure them with `aio-proxy agent configure` (floors: OpenCode 1.17.10, Pi 0.84.2, oh-my-pi 17.3.7; login with `opencode auth login --provider aio-proxy` or `/login aio-proxy`). `aio-proxy upgrade` refreshes managed adapters; reload or restart the Agent after configure or upgrade. Exact string KPI values no longer lose visible precision. The plugin SDK descriptor contract, brand, and host accepted version are restored to v1; v2 descriptors are rejected. The xAI artifact smoke gate now follows plugin API v1.
+- [#187](https://github.com/aio-proxy/aio-proxy/pull/187) [`e770d49`](https://github.com/aio-proxy/aio-proxy/commit/e770d49dc76fb2036a07fc948cba243f49edcd2b) Thanks @baranwang - Add managed OpenCode, Pi, and oh-my-pi Agent integrations.
 
 ### Patch Changes
 

@@ -126,20 +126,7 @@ No changes in this release.
 
 ### Patch Changes
 
-- [#293](https://github.com/aio-proxy/aio-proxy/pull/293) [`cf45f02`](https://github.com/aio-proxy/aio-proxy/commit/cf45f0222aa85754e64f19dee184228769c97ddd) Thanks @baranwang - Render the AIO Proxy wordmark from vector geometry instead of a webfont
-
-  The dashboard logo drew "Proxy" with an SVG `<text>` element styled
-  `font-heading font-semibold`. If that webfont had not loaded when the logo
-  painted, the word fell back to whatever the system resolved, so the wordmark's
-  right half rendered in a different typeface from its left. It is now a single
-  path converted from the same letterforms, so the logo looks identical on first
-  paint and needs no font loading at all. The wordmark is slightly wider as a
-  result (viewBox `0 0 1800 480` to `0 0 1920 480`); it is set in `em` units and
-  still scales to its surrounding text.
-
-  The favicon shipped with both surfaces keeps its shape. Its dark-mode ink moves
-  from pure white to the theme's off-white (`#fbfbf9`), matching the foreground
-  color the rest of the UI already uses; its light-mode ink is unchanged.
+- [#293](https://github.com/aio-proxy/aio-proxy/pull/293) [`cf45f02`](https://github.com/aio-proxy/aio-proxy/commit/cf45f0222aa85754e64f19dee184228769c97ddd) Thanks @baranwang - Render the AIO Proxy wordmark from vector geometry instead of a webfont The dashboard logo drew "Proxy" with an SVG `<text>` element styled `font-heading font-semibold`.
 
 ## 0.19.1
 
@@ -149,11 +136,7 @@ No changes in this release.
 
 ### Patch Changes
 
-- [#276](https://github.com/aio-proxy/aio-proxy/pull/276) [`2e76766`](https://github.com/aio-proxy/aio-proxy/commit/2e7676669a60d42af8d545e8d1614a295fabfae6) Thanks @baranwang - Make a quota reset redemption legible while it happens. The redeem button lives inside the quota popup, so its confirmation is now inline — next to the count being spent, instead of behind a second stacked frame that covered the reading the decision is made from. While the redemption is in flight the button is replaced in place by a spinner, so the wait is visible rather than looking like a dead click, and the confirmation cannot be re-offered against a count that is already being spent. Redeeming the last available credit keeps that spinner until the request settles, instead of removing it the moment the refreshed count reaches zero mid-request. The prompt no longer names the Provider the popup header already identifies, and it is announced to whichever button is focused. Focus follows the redemption instead of dropping to the page: onto the spinner for the wait, and back onto the redeem button — or onto the popup, when the last credit leaves no button to return to — whether the redemption completes or is cancelled.
-
-  A redemption can no longer be spent twice. Closing the quota popup and reopening it before the request settled used to present the confirmation again over the stale count, and confirming spent a second credit; the wait is now read from the pending redemption itself, which outlives the popup. An open confirmation is also retracted when a refresh finds the inventory emptied elsewhere, rather than offering a credit that no longer exists.
-
-  Toasts now render above dialogs and sheets instead of being dimmed and blurred by their backdrop, so the confirmation a modal action gives is actually legible. A successful redemption also sets off a burst of confetti from the button that was pressed, because a corner toast behind a modal was too easy to miss for the one irreversible action in the popup. It is skipped for anyone whose system asks for reduced motion.
+- [#276](https://github.com/aio-proxy/aio-proxy/pull/276) [`2e76766`](https://github.com/aio-proxy/aio-proxy/commit/2e7676669a60d42af8d545e8d1614a295fabfae6) Thanks @baranwang - Make a quota reset redemption legible while it happens.
 
 ## 0.18.1
 
@@ -178,20 +161,6 @@ No changes in this release.
 ### Minor Changes
 
 - [#239](https://github.com/aio-proxy/aio-proxy/pull/239) [`b1f5bff`](https://github.com/aio-proxy/aio-proxy/commit/b1f5bff2f2e92abfd54b90fb32b29b4b145e8c1d) Thanks @baranwang - Redesign the dashboard Provider list as a card grid and surface OAuth remaining quota.
-
-  Each Provider — including each OAuth account — is now one card showing its name, kind, protocols,
-  plan, routing priority and weight, 24-hour success rate and p95 latency, model count, and request
-  count, with search and availability/enablement/kind filters replacing the old table's pagination and
-  grouping. OAuth Providers whose plugin exposes a quota capability show a remaining-quota ring that
-  opens a detail dialog with one bar per quota window that reports a remaining amount.
-
-  The quota read is cached in memory behind a per-provider five-minute cooldown, refreshed
-  asynchronously once a Provider has finished answering a model request, and exposed at
-  `QUERY /dashboard/api/providers/:id/quota`; the dialog's refresh button bypasses the cooldown, and the
-  Providers page polls the reading the way it already polls health. `OAuthQuotaSnapshot` gains an
-  optional `plan`, which `kimi-code` and `xai-grok` now populate, and `xai-grok` also reports per-product
-  usage. Dashboard Provider summaries gain `protocols` and `hasQuota` in place of the single `protocol`
-  field.
 
 ### Patch Changes
 
@@ -226,7 +195,7 @@ No changes in this release.
 
 ### Minor Changes
 
-- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`c5b04c1`](https://github.com/aio-proxy/aio-proxy/commit/c5b04c183b0a9669f518bcb18f38019e96d3a8ca) Thanks @baranwang - Redesign the provider editor into a single page shared by api, ai-sdk, and oauth providers: five fixed sections, a persistent exposure/validation rail, an in-place two-stage OAuth authorization flow, inline alias editing, a routing weight slider, and a visual model-metadata tab. OAuth providers gain a `models` whitelist that filters the discovered catalog (empty or absent exposes everything); ai-sdk providers with an OpenAI-shaped `options.baseURL` can list their catalog; oauth providers can run draft model tests; `models: []` no longer invalidates alias-only providers. The provider edit endpoint now returns the stored credentials so the editor can prefill them, replacing the previous redaction sentinels; `GET /dashboard/api/config` and `aio-proxy config` still mask secrets.
+- [#181](https://github.com/aio-proxy/aio-proxy/pull/181) [`c5b04c1`](https://github.com/aio-proxy/aio-proxy/commit/c5b04c183b0a9669f518bcb18f38019e96d3a8ca) Thanks @baranwang - Redesign the provider editor into a single page shared by api, ai-sdk, and oauth providers: five fixed sections, a persistent exposure/validation rail, an in-place two-stage OAuth authorization flow, inline alias editing, a routing weight slider, and a visual model-metadata tab.
 
 ## 0.8.0
 

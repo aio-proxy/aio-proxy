@@ -290,27 +290,9 @@
 
 ### Minor Changes
 
-- [#263](https://github.com/aio-proxy/aio-proxy/pull/263) [`1d688b5`](https://github.com/aio-proxy/aio-proxy/commit/1d688b5090fdbb004435f7e41042464e24885936) Thanks @baranwang - cursor: report Cursor OAuth quota in the dashboard
-
-  The Cursor OAuth adapter now reads `cursor.com/api/usage-summary`, so its Provider card shows the quota ring: plan usage, the Auto and named-model lanes, the on-demand budget when the account has a cap, and the Cursor subscription tier, all resetting at the billing-cycle end. Accounts with a Grok Bot allowance also get its weekly lane; that read is best-effort and never fails the monthly bars. No re-login is needed — the session is derived from the access token already on file.
+- [#263](https://github.com/aio-proxy/aio-proxy/pull/263) [`1d688b5`](https://github.com/aio-proxy/aio-proxy/commit/1d688b5090fdbb004435f7e41042464e24885936) Thanks @baranwang - cursor: report Cursor OAuth quota in the dashboard The Cursor OAuth adapter now reads `cursor.com/api/usage-summary`, so its Provider card shows the quota ring: plan usage, the Auto and named-model lanes, the on-demand budget when the account has a cap, and the Cursor subscription tier, all resetting at the billing-cycle end.
 
 - [#260](https://github.com/aio-proxy/aio-proxy/pull/260) [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f) Thanks @baranwang - Refresh an OAuth Provider's credential on demand from the dashboard Provider card menu.
-
-  OAuth Providers whose plugin supports it gain a "Refresh Credential" entry in the card's ⋯ menu that
-  forces an upstream token exchange even when the current credential has not expired, clears a stale
-  `CREDENTIAL_REFRESH_FAILED` diagnostic on success, and reloads the Provider list so the account label
-  and expiry reflect the new credential. A refresh the plugin reports as permanently failed — a revoked
-  refresh token, for example — records the same reauthentication diagnostic the automatic refresh path
-  does, so the card tells you to re-login instead of continuing to report the Provider as ready. A
-  transient failure leaves the Provider untouched. The entry is hidden — not
-  disabled — for plugins without the capability, which Provider summaries now report as
-  `canRefreshCredential`. All six bundled OAuth plugins support it.
-
-  `OAuthAdapter` gains an optional `refreshCredential`, exported alongside the new
-  `OAuthCredentialRefreshContext` and `OAuthCredentialRefreshResult` types. It is a pure exchange: the
-  framework owns the lease, single-flight dedupe, revision compare-and-swap, and persistence, and calls
-  the adapter unconditionally rather than only past expiry. Adapter registration previously dropped
-  fields outside its closed list, so an adapter declaring `refreshCredential` would have lost it.
 
 ### Patch Changes
 
@@ -379,9 +361,7 @@
 
 ### Minor Changes
 
-- [#226](https://github.com/aio-proxy/aio-proxy/pull/226) [`9c16d0b`](https://github.com/aio-proxy/aio-proxy/commit/9c16d0b56a954563a296e5363869d5bae12ffda2) Thanks @baranwang - Configure model metadata once per exposed model at `router.models.<slug>.metadata`, including `extend`, with per-Provider `cost` and `limit` overrides under `router.models.<slug>.providers.<id>`. The removed `providers.<id>.metadata` field is silently ignored, and metadata keys no longer create routes; expose models through `providers.<id>.models` or `alias`. Metadata editing now lives in the Dashboard routing drawer instead of the Provider editor.
-
-  Rename the plugin SDK's free-form `ModelDescriptor.metadata`, `ModelCatalog.metadata`, and raw-resolver `metadata` input to `extra`, and add typed `ModelDescriptor.modelMetadata` for host-consumed model metadata. Publish `@aio-proxy/types` as the SDK metadata type source.
+- [#226](https://github.com/aio-proxy/aio-proxy/pull/226) [`9c16d0b`](https://github.com/aio-proxy/aio-proxy/commit/9c16d0b56a954563a296e5363869d5bae12ffda2) Thanks @baranwang - Configure model metadata once per exposed model at `router.models.<slug>.metadata`, including `extend`, with per-Provider `cost` and `limit` overrides under `router.models.<slug>.providers.<id>`.
 
 ### Patch Changes
 
