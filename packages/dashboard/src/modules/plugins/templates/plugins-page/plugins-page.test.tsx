@@ -181,7 +181,7 @@ test('does not offer uninstall for a built-in Plugin', () => {
     </QueryClientProvider>,
   );
 
-  const row = within(screen.getByTestId('plugin-row-@aio-proxy/plugin-openai'));
+  const row = within(screen.getByTestId('plugin-card-@aio-proxy/plugin-openai'));
   expect(row.getByText(/Built-in|内置|內建/u)).toBeInTheDocument();
   expect(row.queryByRole('button', { name: /Uninstall|卸载|解除安裝/u })).toBeNull();
 });
