@@ -1,5 +1,30 @@
 # @aio-proxy/core
 
+## 0.35.0
+
+### Minor Changes
+
+- [#440](https://github.com/aio-proxy/aio-proxy/pull/440) [`76e2bc6`](https://github.com/aio-proxy/aio-proxy/commit/76e2bc6a2405ab48dca41ffcfbcc22189602d349) Thanks [@baranwang](https://github.com/baranwang)! - Routing groups models by vendor and shows each model's failover tiers (T1, T2, …) with every Provider's share, drift, and why one is left out. A model's page shows its route, traffic, and model info and pricing, which follow an automatically matched reference model unless overridden. Providers' default routing uses the same tiers with typed weights: 0 parks a Provider, and moving it between tiers keeps its weight, bringing a parked one back at 1.
+
+### Patch Changes
+
+- Updated dependencies [[`76e2bc6`](https://github.com/aio-proxy/aio-proxy/commit/76e2bc6a2405ab48dca41ffcfbcc22189602d349)]:
+  - @aio-proxy/types@0.35.0
+  - @aio-proxy/plugin-sdk@0.35.0
+  - @aio-proxy/plugin-cursor@0.35.0
+  - @aio-proxy/plugin-openai-chatgpt@0.35.0
+  - @aio-proxy/logger@0.35.0
+  - @aio-proxy/plugin-claude-code@0.35.0
+  - @aio-proxy/plugin-github-copilot@0.35.0
+  - @aio-proxy/plugin-google-antigravity@0.35.0
+  - @aio-proxy/plugin-kimi-code@0.35.0
+  - @aio-proxy/plugin-muse-code@0.35.0
+  - @aio-proxy/plugin-opencode-go@0.35.0
+  - @aio-proxy/plugin-openrouter@0.35.0
+  - @aio-proxy/plugin-xai-grok@0.35.0
+  - @aio-proxy/i18n@0.35.0
+  - @aio-proxy/shared@0.35.0
+
 ## 0.34.0
 
 ### Patch Changes

@@ -1,5 +1,24 @@
 # @aio-proxy/dashboard
 
+## 0.35.0
+
+### Minor Changes
+
+- [#440](https://github.com/aio-proxy/aio-proxy/pull/440) [`76e2bc6`](https://github.com/aio-proxy/aio-proxy/commit/76e2bc6a2405ab48dca41ffcfbcc22189602d349) Thanks [@baranwang](https://github.com/baranwang)! - Routing groups models by vendor and shows each model's failover tiers (T1, T2, …) with every Provider's share, drift, and why one is left out. A model's page shows its route, traffic, and model info and pricing, which follow an automatically matched reference model unless overridden. Providers' default routing uses the same tiers with typed weights: 0 parks a Provider, and moving it between tiers keeps its weight, bringing a parked one back at 1.
+
+### Patch Changes
+
+- [#440](https://github.com/aio-proxy/aio-proxy/pull/440) [`5a02aa1`](https://github.com/aio-proxy/aio-proxy/commit/5a02aa1360cc391ed99421e461bed5a558b40840) Thanks [@baranwang](https://github.com/baranwang)! - The Agents installations table no longer has a Columns menu for hiding columns; every column is always shown.
+
+- [#440](https://github.com/aio-proxy/aio-proxy/pull/440) [`0250a99`](https://github.com/aio-proxy/aio-proxy/commit/0250a99f2f5b98d40ec54a76560b21268eaa3008) Thanks [@baranwang](https://github.com/baranwang)! - API and AI SDK Providers now show a plain API or package icon across the dashboard. API Providers no longer show protocol logos that looked like the upstream vendor, and AI SDK Providers no longer show the first letter of their name. Protocols and packages are still listed next to the name.
+- Updated dependencies [[`c867d58`](https://github.com/aio-proxy/aio-proxy/commit/c867d58f4c660b4f9882447faba42bb38501b533), [`76e2bc6`](https://github.com/aio-proxy/aio-proxy/commit/76e2bc6a2405ab48dca41ffcfbcc22189602d349)]:
+  - @aio-proxy/server@0.35.0
+  - @aio-proxy/types@0.35.0
+  - @aio-proxy/plugin-sdk@0.35.0
+  - @aio-proxy/brand@0.35.0
+  - @aio-proxy/i18n@0.35.0
+  - @aio-proxy/ui@0.35.0
+
 ## 0.34.0
 
 ### Minor Changes
