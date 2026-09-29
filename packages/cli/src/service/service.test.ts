@@ -680,6 +680,7 @@ test('serviceRestart fails when bootout never removes the job, and starts nothin
   const error = await restartInProcess(launchd, 300).catch((caught: unknown) => caught);
   expect(error).toBeInstanceOf(CliExit);
   expect((error as CliExit).message).toContain(`launchctl bootout ${launchdJobTarget()}`);
+  expect((error as CliExit).message).not.toContain('exit');
   expect(launchd.calls).toEqual([`launchctl bootout ${launchdJobTarget()}`]);
 });
 

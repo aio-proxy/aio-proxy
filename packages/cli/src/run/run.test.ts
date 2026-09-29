@@ -166,11 +166,11 @@ test('the websocket handler carries its own 255s idle window without mutating Ho
  *  Run in a child process because the behavior under test is the process exiting. `releases` says
  *  whether the shutdown callback frees the only handle keeping the event loop alive, standing in for
  *  a clean shutdown (true) versus one stuck on an outbound connection (false). */
-const stopWithSigterm = async (releases: boolean) => {
+const stopWithSigterm = async (releases: boolean, deadlineMs = 1_000) => {
   const script = `
     import { onShutdownSignal } from ${JSON.stringify(join(import.meta.dir, 'run.ts'))};
     const busy = setInterval(() => {}, 1_000);
-    onShutdownSignal(() => { ${releases ? 'clearInterval(busy);' : ''} }, 1_000);
+    onShutdownSignal(() => { ${releases ? 'clearInterval(busy);' : ''} }, ${deadlineMs});
     console.log('ready');
   `;
   const child = Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'inherit' });
@@ -189,7 +189,8 @@ test('a shutdown that leaves the event loop busy still exits cleanly at the dead
 });
 
 test('a clean shutdown exits at once instead of waiting for the deadline', async () => {
-  const { code, elapsedMs } = await stopWithSigterm(true);
+  // A deadline far above the assertion: a slow CI child start cannot fake a pass or a failure.
+  const { code, elapsedMs } = await stopWithSigterm(true, 10_000);
   expect(code).toBe(0);
-  expect(elapsedMs).toBeLessThan(800);
+  expect(elapsedMs).toBeLessThan(3_000);
 });

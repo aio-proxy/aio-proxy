@@ -72,10 +72,11 @@ async function startLaunchdJob(
 ): Promise<void> {
   const target = launchdJobTarget();
   // `service stop` (`unload -w`) leaves a disabled override; launchd's bootstrap refuses a disabled job
-  // (known launchd behaviour, confirmed by the sandboxed check in the task report). `load -w` used to clear it.
+  // (known launchd behaviour). `load -w` used to clear it.
   await run(['launchctl', 'enable', target]);
   // A loaded job whose process exited (a clean SIGTERM, the wrapper's missing-executable exit) is only
-  // restarted by kickstart; an unloaded one is bootstrapped, and RunAtLoad starts it.
+  // restarted by kickstart; an unloaded one is bootstrapped, and RunAtLoad starts it. Without -k,
+  // kickstart of an already-running job exits 0 and leaves it untouched (verified on a sandboxed job).
   if ((await printJob()) === 0) await run(['launchctl', 'kickstart', target]);
   else await run(['launchctl', 'bootstrap', launchdDomain(), plist]);
   const code = await printJob();
@@ -97,13 +98,13 @@ async function bootoutLaunchdJob(
 ): Promise<void> {
   const target = launchdJobTarget();
   // bootout of a job that is not loaded fails harmlessly.
-  const code = await run(['launchctl', 'bootout', target], true);
+  await run(['launchctl', 'bootout', target], true);
   const deadline = Date.now() + timeoutMs;
   while ((await printJob()) === 0) {
     if (Date.now() >= deadline) {
       throw new CliExit(
         EXIT.transient,
-        m['cli.service.command_failed']({ command: `launchctl bootout ${target}`, code }),
+        m['cli.service.bootout_timeout']({ target, seconds: Math.round(timeoutMs / 1000) }),
       );
     }
     await Bun.sleep(100);
