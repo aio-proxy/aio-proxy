@@ -243,6 +243,13 @@ export { type InstalledNpmPackage, listInstalledNpmPackages } from './npm-list';
 export { canonicalizeLoopbackHost } from './network/index';
 export { aioHome, configPath, dbPath, packagesDir, updateCheckPath } from './paths/index';
 export {
+  DESKTOP_TOKEN_FILE,
+  DesktopTokenRejectedError,
+  type DesktopTokenRejection,
+  ensureDesktopToken,
+  readDesktopToken,
+} from './desktop-token/index';
+export {
   mergeUpdateCheckState,
   readUpdateCheckState,
   withUpdateCheckLock,
