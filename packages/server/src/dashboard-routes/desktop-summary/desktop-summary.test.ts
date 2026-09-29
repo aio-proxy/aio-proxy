@@ -291,6 +291,7 @@ test('maps provider state and turns diagnostics into alerts', async () => {
         provider({ id: 'down', state: { status: 'unavailable', diagnostic } }),
         provider({ id: 'warn', name: 'Warn', state: { status: 'ready', diagnostic } }),
         provider({ id: 'fine' }),
+        provider({ id: 'blank', name: '' }),
       ],
       async () => ({ items: [] }),
     ),
@@ -301,6 +302,7 @@ test('maps provider state and turns diagnostics into alerts', async () => {
     { id: 'down', name: 'down', state: 'unavailable' },
     { id: 'warn', name: 'Warn', state: 'degraded' },
     { id: 'fine', name: 'fine', state: 'ok' },
+    { id: 'blank', name: 'blank', state: 'ok' },
   ]);
   expect(summary.alerts.filter((alert) => alert.kind === 'diagnostic').map((alert) => alert.providerId)).toEqual([
     'down',

@@ -87,7 +87,8 @@ function toDesktopProvider(summary: DashboardProviderSummary, quota: DesktopQuot
   const diagnostic = summary.state.diagnostic;
   return {
     id: summary.id,
-    name: summary.name ?? summary.id,
+    // `name: ""` is valid config but the DTO requires a non-empty name.
+    name: summary.name === undefined || summary.name === '' ? summary.id : summary.name,
     enabled: summary.enabled,
     state: providerState(summary),
     diagnostic: diagnostic === undefined ? null : { code: diagnostic.code, summary: diagnostic.summary },
