@@ -2,14 +2,13 @@ import { m } from '@aio-proxy/i18n';
 import { PluginPackageNameSchema } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from '@aio-proxy/ui/components/drawer';
-import { useIsMobile } from '@aio-proxy/ui/hooks/use-mobile';
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@aio-proxy/ui/components/dialog';
 import { useForm } from '@tanstack/react-form';
 import { forwardRef, useImperativeHandle, useState } from 'react';
 import { z } from 'zod';
@@ -34,7 +33,7 @@ type PluginInstallRequest = {
 const isSameInstallRequest = (left: PluginInstallRequest, right: PluginInstallRequest) =>
   left.packageName === right.packageName && left.registry === right.registry;
 
-export interface PluginInstallDrawerRef {
+export interface PluginInstallDialogRef {
   readonly open: () => void;
 }
 
@@ -70,7 +69,7 @@ const usePluginInstallWorkflow = () => {
             form.setFieldValue('trustConfirmed', false);
           }
         },
-        onSuccess: closeDrawer,
+        onSuccess: close,
       });
     },
   });
@@ -81,7 +80,7 @@ const usePluginInstallWorkflow = () => {
     mutation.reset();
   }
 
-  function closeDrawer() {
+  function close() {
     form.reset();
     mutation.reset();
     setChallengedRequest(null);
@@ -91,43 +90,41 @@ const usePluginInstallWorkflow = () => {
   return {
     challengedRequest,
     clearChallenge,
-    closeDrawer,
+    close,
     error: installErrorMessage(mutation.error),
     form,
     isPending: mutation.isPending,
     open,
-    openDrawer: () => setOpen(true),
+    openDialog: () => setOpen(true),
   };
 };
 
-export const PluginInstallDrawer = forwardRef<PluginInstallDrawerRef>((_, ref) => {
+export const PluginInstallDialog = forwardRef<PluginInstallDialogRef>((_, ref) => {
   const workflow = usePluginInstallWorkflow();
-  const isMobile = useIsMobile();
-  useImperativeHandle(ref, () => ({ open: workflow.openDrawer }), [workflow.openDrawer]);
+  useImperativeHandle(ref, () => ({ open: workflow.openDialog }), [workflow.openDialog]);
 
   return (
-    <Drawer
+    <Dialog
       open={workflow.open}
       onOpenChange={(nextOpen) => {
-        if (nextOpen) workflow.openDrawer();
-        else workflow.closeDrawer();
+        if (nextOpen) workflow.openDialog();
+        else workflow.close();
       }}
-      swipeDirection={isMobile ? 'down' : 'right'}
     >
-      <DrawerContent className="p-0 sm:w-full sm:max-w-lg" data-testid="plugin-install-drawer">
-        <DrawerHeader>
-          <DrawerTitle>{m['dashboard.plugins.install_title']()}</DrawerTitle>
-          <DrawerDescription>{m['dashboard.plugins.install_description']()}</DrawerDescription>
-        </DrawerHeader>
+      <DialogContent data-testid="plugin-install-dialog" closeLabel={m['common.close']()}>
+        <DialogHeader>
+          <DialogTitle>{m['dashboard.plugins.install_title']()}</DialogTitle>
+          <DialogDescription>{m['dashboard.plugins.install_description']()}</DialogDescription>
+        </DialogHeader>
         <form
-          className="flex min-h-0 flex-1 flex-col"
+          className="grid gap-6"
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void workflow.form.handleSubmit();
           }}
         >
-          <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+          <div className="space-y-4">
             <workflow.form.Field name="packageName">
               {(field) => (
                 <PluginInstallInputField
@@ -171,8 +168,8 @@ export const PluginInstallDrawer = forwardRef<PluginInstallDrawerRef>((_, ref) =
               </p>
             )}
           </div>
-          <DrawerFooter className="flex-row justify-end border-t pt-4">
-            <Button type="button" variant="outline" onClick={workflow.closeDrawer}>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={workflow.close}>
               {m['dashboard.plugins.cancel']()}
             </Button>
             <workflow.form.Subscribe
@@ -192,9 +189,9 @@ export const PluginInstallDrawer = forwardRef<PluginInstallDrawerRef>((_, ref) =
                 />
               )}
             </workflow.form.Subscribe>
-          </DrawerFooter>
+          </DialogFooter>
         </form>
-      </DrawerContent>
-    </Drawer>
+      </DialogContent>
+    </Dialog>
   );
 });

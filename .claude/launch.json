@@ -18,6 +18,12 @@
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "docs/superpowers/demos/traces-redesign/serve.ts"],
       "port": 4311
+    },
+    {
+      "name": "PluginsDemo",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "docs/superpowers/demos/plugins-redesign/serve.ts"],
+      "port": 4312
     }
   ]
 }

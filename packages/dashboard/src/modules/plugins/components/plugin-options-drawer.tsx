@@ -171,7 +171,7 @@ export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) =
               </p>
             )}
           </div>
-          <DrawerFooter className="flex-row justify-end border-t pt-4">
+          <DrawerFooter className="flex-row justify-end">
             <Button type="button" variant="outline" onClick={closeDrawer}>
               {m['dashboard.plugins.cancel']()}
             </Button>
