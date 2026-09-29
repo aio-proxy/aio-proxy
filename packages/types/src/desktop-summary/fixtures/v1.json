@@ -1,0 +1,54 @@
+{
+  "protocolVersion": 1,
+  "generatedAt": "2026-09-29T08:00:00.000Z",
+  "server": { "version": "0.36.0", "pid": 4312, "ppid": 4310 },
+  "usage24h": {
+    "requests": "257",
+    "failedRequests": "53",
+    "inputTokens": "14815402",
+    "outputTokens": "44305",
+    "estimatedCostNanoUsd": "20521353840",
+    "pricingCoverage": 1
+  },
+  "trend7d": [
+    {
+      "start": "2026-09-28T16:00:00.000Z",
+      "requests": "257",
+      "totalTokens": "14859707",
+      "estimatedCostNanoUsd": "20521353840"
+    }
+  ],
+  "activity": [{ "date": "2026-09-29", "totalTokens": "14859707" }],
+  "providers": [
+    {
+      "id": "codex",
+      "name": "Codex",
+      "enabled": true,
+      "state": "ok",
+      "diagnostic": null,
+      "quota": {
+        "status": "ready",
+        "sampledAt": "2026-09-29T07:58:00.000Z",
+        "refreshFailed": false,
+        "windows": [
+          {
+            "id": "primary",
+            "label": { "default": "5 hours", "zh-Hans": "5 小时" },
+            "remainingRatio": 0.4,
+            "resetsAt": "2026-09-29T10:00:00.000Z",
+            "windowMinutes": 300
+          }
+        ]
+      }
+    },
+    {
+      "id": "cursor",
+      "name": "cursor",
+      "enabled": true,
+      "state": "degraded",
+      "diagnostic": { "code": "CREDENTIAL_REFRESH_FAILED", "summary": "Refresh token expired" },
+      "quota": { "status": "loading" }
+    }
+  ],
+  "alerts": [{ "providerId": "cursor", "kind": "diagnostic", "message": "Refresh token expired" }]
+}
