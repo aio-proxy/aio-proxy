@@ -4,7 +4,9 @@ export type UnitOptions = {
   readonly exec: string;
   readonly configPath: string;
   readonly path?: string;
-  readonly upgradeMethod?: 'brew' | 'bun' | 'npm' | 'pnpm';
+  readonly upgradeMethod?: 'brew' | 'bun' | 'npm' | 'pnpm' | 'desktop';
+  /** Set only for a desktop-owned unit; the daemon inherits it so any later rewrite keeps the symlink. */
+  readonly desktopExec?: string;
 };
 
 export const LAUNCHD_LABEL = 'com.aio-proxy.agent';
@@ -66,7 +68,7 @@ const launchdText = (name: string, value: string): Bun.XML.NodeInput => ({ name,
 const launchdEmpty = (name: string): Bun.XML.NodeInput => ({ name, children: [] });
 const launchdDict = (children: Bun.XML.NodeInput[]): Bun.XML.NodeInput => ({ name: 'dict', children });
 
-export function renderLaunchdPlist({ exec, configPath, path, upgradeMethod }: UnitOptions): string {
+export function renderLaunchdPlist({ exec, configPath, path, upgradeMethod, desktopExec }: UnitOptions): string {
   const environmentVariables = [
     launchdText('key', 'AIO_PROXY_HOME'),
     launchdText('string', dirname(configPath)),
@@ -76,6 +78,9 @@ export function renderLaunchdPlist({ exec, configPath, path, upgradeMethod }: Un
     ...(upgradeMethod === undefined
       ? []
       : [launchdText('key', 'AIO_PROXY_UPGRADE_METHOD'), launchdText('string', upgradeMethod)]),
+    ...(desktopExec === undefined
+      ? []
+      : [launchdText('key', 'AIO_PROXY_DESKTOP_EXEC'), launchdText('string', desktopExec)]),
   ];
   const plist: Bun.XML.NodeInput = {
     name: 'plist',

@@ -9,7 +9,13 @@ import { resolveAgentExecutable } from '../executable';
 import { CliExit, EXIT } from '../exit';
 import { serviceEnvFile } from '../service-env';
 import { isPlatformCliBinary, resolveUpgradeTargetFrom } from '../upgrade/detect';
-import { LAUNCHD_LABEL, renderLaunchdPlist, renderSystemdUnit, SYSTEMD_UNIT_NAME } from './unit-templates';
+import {
+  LAUNCHD_LABEL,
+  renderLaunchdPlist,
+  renderSystemdUnit,
+  SYSTEMD_UNIT_NAME,
+  type UnitOptions,
+} from './unit-templates';
 
 export { renderLaunchdPlist, renderSystemdUnit } from './unit-templates';
 export { resolveAgentExecutable as resolveExec };
@@ -100,38 +106,47 @@ export async function writeManagedUnit(
   os: SupportedPlatform,
   exec: string = resolveAgentExecutable(),
   target: string = os === 'darwin' ? launchdPlistPath() : systemdUnitPath(),
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<string> {
   const cfg = configPath();
-  let upgradeMethod: 'brew' | 'bun' | 'npm' | 'pnpm' | undefined;
-  try {
-    const detected = await resolveUpgradeTargetFrom(exec);
-    if (detected.method !== 'binary') upgradeMethod = detected.method;
-  } catch {}
-  if (upgradeMethod === undefined && isPlatformCliBinary(exec)) {
+  const desktopExec = env['AIO_PROXY_DESKTOP_EXEC'];
+  const desktopOwned = desktopExec !== undefined && desktopExec !== '' && exec === desktopExec;
+  let upgradeMethod: UnitOptions['upgradeMethod'];
+  if (desktopOwned) {
+    // Sparkle updates the bundle behind the symlink; no package manager or binary self-update may touch it.
+    upgradeMethod = 'desktop';
+  } else {
     try {
-      // Install-time PATH still has the JS shim in the manager bin dir even when
-      // ExecStart is the native optional-dep binary the shim spawned. Scan PATH
-      // directly: Bun.which can miss a launcher added after process start.
-      const pathVar = process.env['PATH'];
-      if (pathVar !== undefined && pathVar !== '') {
-        for (const dir of pathVar.split(':')) {
-          if (dir === '') continue;
-          const onPath = join(dir, 'aio-proxy');
-          if (onPath === exec || !existsSync(onPath)) continue;
-          const fromPath = await resolveUpgradeTargetFrom(onPath);
-          if (fromPath.method !== 'binary') {
-            upgradeMethod = fromPath.method;
-            break;
+      const detected = await resolveUpgradeTargetFrom(exec);
+      if (detected.method !== 'binary') upgradeMethod = detected.method;
+    } catch {}
+    if (upgradeMethod === undefined && isPlatformCliBinary(exec)) {
+      try {
+        // Install-time PATH still has the JS shim in the manager bin dir even when
+        // ExecStart is the native optional-dep binary the shim spawned. Scan PATH
+        // directly: Bun.which can miss a launcher added after process start.
+        const pathVar = env['PATH'];
+        if (pathVar !== undefined && pathVar !== '') {
+          for (const dir of pathVar.split(':')) {
+            if (dir === '') continue;
+            const onPath = join(dir, 'aio-proxy');
+            if (onPath === exec || !existsSync(onPath)) continue;
+            const fromPath = await resolveUpgradeTargetFrom(onPath);
+            if (fromPath.method !== 'binary') {
+              upgradeMethod = fromPath.method;
+              break;
+            }
           }
         }
-      }
-    } catch {}
+      } catch {}
+    }
   }
   const unit = {
     exec,
     configPath: cfg,
-    path: managedServicePath(homedir(), process.env['PATH']),
+    path: managedServicePath(homedir(), env['PATH']),
     ...(upgradeMethod === undefined ? {} : { upgradeMethod }),
+    ...(desktopOwned ? { desktopExec } : {}),
   };
   const body = os === 'darwin' ? renderLaunchdPlist(unit) : renderSystemdUnit(unit);
   mkdirSync(dirname(target), { recursive: true });

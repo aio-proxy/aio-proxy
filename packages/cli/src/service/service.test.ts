@@ -605,3 +605,20 @@ test('the launchd wrapper still reports real failures and remaps only exit 1', (
   expect(runWrapper(exitsWith(3))).toBe(3);
   expect(runWrapper(exitsWith(1))).toBe(0);
 });
+
+test.skipIf(process.platform !== 'darwin')(
+  'a desktop-owned unit keeps the symlink path and carries both desktop markers',
+  async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aio-desktop-unit-'));
+    const link = join(dir, 'Application Support', 'aio-proxy-desktop', 'bin', 'aio-proxy');
+    const target = join(dir, 'com.aio-proxy.agent.plist');
+    await writeManagedUnit('darwin', link, target, { AIO_PROXY_DESKTOP_EXEC: link, PATH: '/usr/bin:/bin' });
+    const plist = JSON.parse(Bun.spawnSync(['plutil', '-convert', 'json', '-o', '-', target]).stdout.toString()) as {
+      ProgramArguments: string[];
+      EnvironmentVariables: Record<string, string>;
+    };
+    expect(plist.ProgramArguments[3]).toBe(link);
+    expect(plist.EnvironmentVariables['AIO_PROXY_DESKTOP_EXEC']).toBe(link);
+    expect(plist.EnvironmentVariables['AIO_PROXY_UPGRADE_METHOD']).toBe('desktop');
+  },
+);

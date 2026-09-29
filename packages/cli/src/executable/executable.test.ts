@@ -148,3 +148,36 @@ test('the upgrade public surface exports the launcher without the upgrade comman
   expect(Object.hasOwn(surface, 'runUpgradeCommand')).toBe(false);
   expect(`${grok}\n${executable}`).not.toMatch(/upgrade\/detect|package-ownership/);
 });
+
+test('AIO_PROXY_DESKTOP_EXEC wins and is returned verbatim, never resolved through the symlink', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-desktop-exec-'));
+  const real = join(dir, 'App.app', 'Contents', 'MacOS', 'aio-proxy');
+  writeExecutable(real);
+  const link = join(dir, 'bin', 'aio-proxy');
+  mkdirSync(dirname(link), { recursive: true });
+  symlinkSync(real, link);
+  expect(
+    resolveAgentExecutable(
+      () => '/opt/homebrew/bin/aio-proxy',
+      real,
+      realpathSync,
+      () => true,
+      {
+        AIO_PROXY_DESKTOP_EXEC: link,
+      },
+    ),
+  ).toBe(link);
+});
+
+test('a relative AIO_PROXY_DESKTOP_EXEC is ignored', () => {
+  const launcher = '/opt/homebrew/bin/aio-proxy';
+  expect(
+    resolveAgentExecutable(
+      () => launcher,
+      launcher,
+      (path) => path,
+      () => true,
+      { AIO_PROXY_DESKTOP_EXEC: 'bin/aio-proxy' },
+    ),
+  ).toBe(launcher);
+});

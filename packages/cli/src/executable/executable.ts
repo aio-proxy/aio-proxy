@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, isAbsolute } from 'node:path';
 
 import { m } from '@aio-proxy/i18n';
 
@@ -37,7 +37,12 @@ export function resolveAgentExecutable(
   execPath: string = process.execPath,
   realpath: (path: string) => string = realpathSync,
   exists: (path: string) => boolean = existsSync,
+  env: NodeJS.ProcessEnv = process.env,
 ): string {
+  // The desktop app points launchd at a stable symlink it owns. Returned verbatim: resolving it (or
+  // passing it through resolveStableManagedExec) would pin the plist inside one app bundle version.
+  const desktopExec = env['AIO_PROXY_DESKTOP_EXEC'];
+  if (desktopExec !== undefined && isAbsolute(desktopExec)) return desktopExec;
   const sameBinary = (a: string, b: string): boolean => {
     try {
       return realpath(a) === realpath(b);
