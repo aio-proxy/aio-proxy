@@ -71,9 +71,9 @@ export const createCliAutoUpdateHooks = (deps?: {
   readonly print?: (line: string) => void;
 }): CliAutoUpdateHooks => {
   const isManagedService = deps?.isManagedService ?? isManagedAutoUpdateProcess;
-  // Sparkle updates a desktop sidecar. Without applyUpdate the Dashboard reports `unavailable`
-  // instead of offering an apply that runUpgradeCommand would refuse, and no notification tells the
-  // user to upgrade through a CLI they may not have.
+  // Sparkle updates a desktop sidecar. Without applyUpdate the release view reports
+  // `applyAvailable: false`, so the Dashboard hides its update card and button (POST apply would
+  // answer `unavailable`), and no notification tells the user to upgrade through a CLI they may not have.
   if ((deps?.isDesktopManaged ?? isDesktopManagedInstall)()) return { isManagedService };
   return {
     isManagedService,

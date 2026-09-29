@@ -214,6 +214,8 @@ export const DashboardReleaseViewSchema = z.strictObject({
   latest: z.string().min(1).optional(),
   outdated: z.boolean(),
   managedService: z.boolean(),
+  // False when this process has no way to install an update (a desktop sidecar, updated by its app).
+  applyAvailable: z.boolean(),
   update: z.strictObject({ status: z.enum(['idle', 'in_progress', 'failed', 'restart_required']) }),
 });
 

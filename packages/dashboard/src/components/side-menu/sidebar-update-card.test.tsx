@@ -49,6 +49,7 @@ const view = (extra: Partial<DashboardReleaseView> = {}): DashboardReleaseView =
   latest: '1.10.0',
   outdated: true,
   managedService: false,
+  applyAvailable: true,
   update: { status: 'idle' },
   ...extra,
 });
@@ -93,6 +94,14 @@ test('shows the available update and posts apply', async () => {
 
 test('hides the card when the build is current', async () => {
   prepare(view({ latest: '1.4.2', outdated: false }));
+  await renderCard();
+
+  expect(screen.queryByText(availableName)).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: updateNowName })).not.toBeInTheDocument();
+});
+
+test('hides the card and its collapsed control when the server cannot apply updates', async () => {
+  prepare(view({ applyAvailable: false }));
   await renderCard();
 
   expect(screen.queryByText(availableName)).not.toBeInTheDocument();

@@ -1387,6 +1387,8 @@ test('isDesktopManagedInstall recognizes the desktop markers and an app-bundle b
     ),
   ).toBe(true);
   expect(isDesktopManagedInstall({}, '/opt/homebrew/bin/aio-proxy', (p) => p)).toBe(false);
+  // An empty marker (an unset variable exported as '') is not ownership.
+  expect(isDesktopManagedInstall({ AIO_PROXY_DESKTOP_EXEC: '' }, '/opt/homebrew/bin/aio-proxy', (p) => p)).toBe(false);
 });
 
 test('a CLI upgrade installs but never restarts a service the desktop app owns', async () => {

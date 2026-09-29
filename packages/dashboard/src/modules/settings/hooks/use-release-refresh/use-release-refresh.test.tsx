@@ -36,6 +36,7 @@ test('loads GET /release and refreshes after a successful mount-time latest chec
     latest: '1.10.0',
     outdated: true,
     managedService: false,
+    applyAvailable: true,
     update: { status: 'idle' },
   });
   const { invalidateQueries } = renderRefresh();
@@ -50,6 +51,7 @@ test('keeps the last good GET /release when the mount-time latest check fails', 
     current: '1.4.2',
     outdated: false,
     managedService: false,
+    applyAvailable: true,
     update: { status: 'idle' },
   });
   const { invalidateQueries } = renderRefresh();

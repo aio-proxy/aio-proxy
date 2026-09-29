@@ -14,7 +14,13 @@ const mocks = rs.hoisted(() => ({
 
 rs.mock('@/modules/settings/hooks/use-release-query', () => ({
   useReleaseQuery: () => ({
-    data: { current: '1.4.2', outdated: false, managedService: false, update: { status: 'idle' } },
+    data: {
+      current: '1.4.2',
+      outdated: false,
+      managedService: false,
+      applyAvailable: true,
+      update: { status: 'idle' },
+    },
   }),
 }));
 
@@ -27,6 +33,7 @@ rs.mock('@/modules/settings/services/release-service', () => ({
       current: '1.4.2',
       outdated: false,
       managedService: false,
+      applyAvailable: true,
       update: { status: 'idle' },
     }),
   }),

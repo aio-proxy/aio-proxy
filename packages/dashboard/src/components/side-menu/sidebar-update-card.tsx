@@ -15,7 +15,8 @@ export const SidebarUpdateCard: React.FC = () => {
   const { apply, failed, inProgress, restartRequired, unavailable } = useApplyRelease({ outdated });
   const visible = outdated || inProgress || restartRequired || failed || unavailable || status === 'failed';
 
-  if (!visible) return null;
+  // A process that cannot install (a desktop sidecar) has nothing to offer, whatever `outdated` says.
+  if (!visible || release.data?.applyAvailable !== true) return null;
 
   if (state === 'collapsed') {
     return (

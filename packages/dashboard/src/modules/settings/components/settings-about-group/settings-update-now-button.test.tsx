@@ -46,6 +46,7 @@ const idleRelease: DashboardReleaseView = {
   current: '1.4.2',
   outdated: false,
   managedService: false,
+  applyAvailable: true,
   update: { status: 'idle' },
 };
 
@@ -56,6 +57,7 @@ const withRelease = (
   current: '1.4.2',
   outdated: false,
   managedService: false,
+  applyAvailable: true,
   update: { status: update },
   ...extra,
 });

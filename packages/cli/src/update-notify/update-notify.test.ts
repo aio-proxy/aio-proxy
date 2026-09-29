@@ -15,18 +15,27 @@ afterEach(() => {
 });
 
 test('skips the banner for upgrade, update, and version flags', () => {
-  expect(shouldPrintUpdateBanner(['status', 'aio-proxy'], ['aio-proxy', 'status'])).toBe(true);
+  expect(shouldPrintUpdateBanner(['status', 'aio-proxy'], ['aio-proxy', 'status'], () => false)).toBe(true);
   expect(shouldPrintUpdateBanner(['upgrade', 'aio-proxy'], ['aio-proxy', 'upgrade'])).toBe(false);
   expect(shouldPrintUpdateBanner(['update', 'aio-proxy'], ['aio-proxy', 'update'])).toBe(false);
   expect(shouldPrintUpdateBanner(['status', 'aio-proxy'], ['aio-proxy', '--version'])).toBe(false);
   expect(shouldPrintUpdateBanner(['run', 'aio-proxy'], ['aio-proxy', '-v'])).toBe(false);
 });
 
+test('skips the banner for a desktop-managed binary, which Sparkle updates', () => {
+  expect(shouldPrintUpdateBanner(['status', 'aio-proxy'], ['aio-proxy', 'status'], () => true)).toBe(false);
+  expect(shouldPrintUpdateBanner(['status', 'aio-proxy'], ['aio-proxy', 'status'], () => false)).toBe(true);
+});
+
 test('skips the banner for agent auth via the Commander parent chain, not argv containing auth', () => {
   expect(shouldPrintUpdateBanner(['auth', 'agent', 'aio-proxy'], ['aio-proxy', 'agent', 'auth', 'grok'])).toBe(false);
   expect(shouldPrintUpdateBanner(['auth', 'agent', 'aio-proxy'], ['aio-proxy', 'agent', 'auth', 'codex'])).toBe(false);
-  expect(shouldPrintUpdateBanner(['list', 'agent', 'aio-proxy'], ['aio-proxy', 'agent', 'list'])).toBe(true);
-  expect(shouldPrintUpdateBanner(['status', 'aio-proxy'], ['aio-proxy', 'status', '/tmp/auth/config'])).toBe(true);
+  expect(shouldPrintUpdateBanner(['list', 'agent', 'aio-proxy'], ['aio-proxy', 'agent', 'list'], () => false)).toBe(
+    true,
+  );
+  expect(
+    shouldPrintUpdateBanner(['status', 'aio-proxy'], ['aio-proxy', 'status', '/tmp/auth/config'], () => false),
+  ).toBe(true);
 });
 
 test('prints a banner only when the persisted latest is newer', async () => {

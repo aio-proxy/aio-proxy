@@ -44,6 +44,7 @@ export const createDashboardReleaseRoute = (
         current: version,
         outdated: snap?.outdated ?? false,
         managedService: controller?.isManagedService() ?? false,
+        applyAvailable: controller?.applyAvailable ?? false,
         update: { status: snap?.status ?? 'idle' },
         ...(snap?.latest === undefined ? {} : { latest: snap.latest }),
       });
