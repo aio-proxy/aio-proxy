@@ -57,6 +57,16 @@ fn an_uninstalled_service_left_disabled_is_not_reinstalled_automatically_but_can
 }
 
 #[test]
+fn a_failed_automatic_install_can_be_retried_by_an_explicit_click() {
+    let d = discovery(no_plist);
+    let mut attempts = none();
+    assert_eq!(automatic_action(&d, true, &attempts), Some(AutoAction::InstallAndStart));
+    attempts.mark(AutoAction::InstallAndStart);
+    assert_eq!(automatic_action(&d, true, &attempts), None);
+    assert_eq!(offered_actions(&d, true), Offered { install: true, ..Offered::default() });
+}
+
+#[test]
 fn a_plist_deleted_while_loaded_or_running_is_not_installed_over() {
     for patch in
         [(|v: &mut Value| v["job"]["loaded"] = json!(true)) as fn(&mut Value), |v| v["job"]["pid"] = json!(4310)]
@@ -72,6 +82,7 @@ fn a_plist_deleted_while_loaded_or_running_is_not_installed_over() {
             patch(v);
             v["job"]["disabled"] = json!(true);
         });
+        assert_eq!(automatic_action(&d, true, &none()), None);
         assert!(!offered_actions(&d, true).install);
     }
 }
@@ -84,6 +95,12 @@ fn nothing_is_installed_when_the_control_address_was_not_probed() {
     };
     assert_eq!(auto(patch), None);
     assert!(!offered_actions(&discovery(patch), true).install);
+    let disabled = |v: &mut Value| {
+        patch(v);
+        v["job"]["disabled"] = json!(true);
+    };
+    assert_eq!(auto(disabled), None);
+    assert!(!offered_actions(&discovery(disabled), true).install);
 }
 
 #[test]

@@ -83,8 +83,9 @@ pub fn automatic_action(d: &Discovery, persistent: bool, attempts: &AutoAttempts
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserAction {
-    /// Install the plist and start: offered when only a leftover `job.disabled` blocks the
-    /// automatic install, so the user's explicit choice re-enables the service.
+    /// Install the plist and start. An explicit click, so it is offered whenever a fresh install
+    /// is possible, even when the automatic row is blocked by a leftover `job.disabled` (the
+    /// user's own `service uninstall`) or an already-spent attempt.
     InstallAndStart,
     Start,
     Restart,
@@ -102,13 +103,13 @@ pub struct Offered {
 }
 
 /// Which buttons the panel shows. Service actions need a persistent install and a desktop or
-/// external owner; Install needs a persistent install, a fresh-install candidate and a disabled
-/// override; Reload only needs a reachable instance.
+/// external owner; Install needs a persistent install and a fresh-install candidate; Reload only
+/// needs a reachable instance.
 pub fn offered_actions(d: &Discovery, persistent: bool) -> Offered {
     let service = persistent && matches!(d.unit.owner, Owner::Desktop | Owner::External);
     let running = d.job.loaded && d.job.pid.is_some();
     Offered {
-        install: persistent && fresh_install_possible(d) && d.job.disabled,
+        install: persistent && fresh_install_possible(d),
         start: service && !running,
         restart: service && running,
         stop: service && running,
