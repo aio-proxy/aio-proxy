@@ -29,8 +29,11 @@ use crate::summary::{DegradedReason, SummaryV1};
 pub enum AppEvent {
     TogglePanel,
     OpenDashboard,
+    CheckForUpdates,
     Quit,
     Wake,
+    UpdateAvailable(String),
+    UpdateAttended,
 }
 
 pub enum SummaryState {
@@ -68,6 +71,7 @@ pub struct AppModel {
     /// Set when a fetch fails while the last good summary stays on screen.
     pub summary_error: Option<String>,
     pub action: ActionState,
+    pub update_pending: Option<String>,
     pub login_item: LoginItemStatus,
     /// Last register/unregister failure, shown under the switch; kept out of `action`, which is
     /// the service-action state machine.
@@ -100,6 +104,7 @@ impl AppModel {
             summary: SummaryState::Waiting,
             summary_error: None,
             action: ActionState::Idle,
+            update_pending: None,
             login_item: LoginItemStatus::Unavailable,
             login_item_error: None,
             attempts: AutoAttempts::default(),
@@ -123,6 +128,7 @@ impl AppModel {
     pub fn needs_attention(&self) -> bool {
         let alerts = matches!(&self.summary, SummaryState::Ready(summary) if !summary.alerts.is_empty());
         alerts
+            || self.update_pending.is_some()
             || matches!(self.action, ActionState::Failed(_))
             || matches!(self.summary, SummaryState::AuthFailed | SummaryState::Degraded(_))
     }

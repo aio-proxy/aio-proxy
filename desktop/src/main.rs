@@ -3,11 +3,11 @@
 use std::path::PathBuf;
 use std::ptr::NonNull;
 
-use aio_proxy_desktop::app::{self, AppEvent, AppModel};
+use aio_proxy_desktop::app::{self, AppEvent, AppModel, changed};
 use aio_proxy_desktop::install::{self, Paths};
 use aio_proxy_desktop::panel::{self, PanelWindow};
 use aio_proxy_desktop::version::APP_VERSION;
-use aio_proxy_desktop::{log, tray};
+use aio_proxy_desktop::{log, tray, updater};
 use block2::RcBlock;
 use futures::StreamExt;
 use futures::channel::mpsc::{self, UnboundedSender};
@@ -53,6 +53,7 @@ fn main() {
         cx.set_global(AppModel::new(paths, bundle));
         cx.set_global(PanelWindow::default());
         cx.set_global(tray::build(events.clone()).expect("create the menu-bar icon"));
+        updater::start(events.clone());
         observe_wake(events);
         app::start(cx);
         app::start_health_timer(cx);
@@ -69,9 +70,18 @@ fn handle(cx: &mut App, event: AppEvent) {
     match event {
         AppEvent::TogglePanel => panel::toggle(cx),
         AppEvent::OpenDashboard => app::open_dashboard(cx),
+        AppEvent::CheckForUpdates => updater::check_now(),
         // Quitting leaves the proxy running: launchd owns it.
         AppEvent::Quit => cx.quit(),
         AppEvent::Wake => app::check_health(cx),
+        AppEvent::UpdateAvailable(version) => {
+            cx.global_mut::<AppModel>().update_pending = Some(version);
+            changed(cx);
+        }
+        AppEvent::UpdateAttended => {
+            cx.global_mut::<AppModel>().update_pending = None;
+            changed(cx);
+        }
     }
 }
 

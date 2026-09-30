@@ -12,4 +12,5 @@ pub mod process;
 pub mod summary;
 pub mod token;
 pub mod tray;
+pub mod updater;
 pub mod version;

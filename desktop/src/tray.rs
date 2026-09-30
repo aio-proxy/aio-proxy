@@ -59,12 +59,14 @@ pub struct Tray {
 impl Global for Tray {}
 
 const OPEN_DASHBOARD: &str = "open-dashboard";
+const CHECK_UPDATES: &str = "check-updates";
 const QUIT: &str = "quit";
 
 /// Must run on the main thread inside the GPUI `run` callback.
 pub fn build(events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
     let menu = Menu::with_items(&[
         &MenuItem::with_id(OPEN_DASHBOARD, "Open Dashboard", true, None),
+        &MenuItem::with_id(CHECK_UPDATES, "Check for Updates…", true, None),
         &PredefinedMenuItem::separator(),
         &MenuItem::with_id(QUIT, "Quit AIO Proxy", true, None),
     ])
@@ -86,6 +88,7 @@ pub fn build(events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
     MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
         let message = match event.id.0.as_str() {
             OPEN_DASHBOARD => AppEvent::OpenDashboard,
+            CHECK_UPDATES => AppEvent::CheckForUpdates,
             QUIT => AppEvent::Quit,
             _ => return,
         };
