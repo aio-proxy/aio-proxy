@@ -20,21 +20,39 @@ pub enum AutoAction {
     RestartForVersion,
 }
 
+impl AutoAction {
+    /// The panel's words for this action.
+    pub fn label(self) -> &'static str {
+        match self {
+            AutoAction::InstallAndStart => "Automatic install and start",
+            AutoAction::StartNotLoaded => "Automatic start",
+            AutoAction::StartNoProcess => "Automatic recovery start",
+            AutoAction::RestartForVersion => "Automatic restart for new version",
+        }
+    }
+}
+
 /// At most ONE automatic mutation runs per app launch, across all rows: a failed start would
 /// otherwise be retried through the next row (not loaded -> loaded without a process), and a
 /// failure shows an error and never loops (a broken config's exit 1 is remapped to 0 and looks
 /// identical to a clean stop).
 #[derive(Debug, Default, Clone)]
-pub struct AutoAttempts(Option<AutoAction>);
+pub struct AutoAttempts(bool);
 
 impl AutoAttempts {
     /// True once any automatic action has run; the argument is kept so callers read per row.
     pub fn used(&self, _action: AutoAction) -> bool {
-        self.0.is_some()
+        self.0
     }
 
-    pub fn mark(&mut self, action: AutoAction) {
-        self.0.get_or_insert(action);
+    pub fn mark(&mut self, _action: AutoAction) {
+        self.spend();
+    }
+
+    /// A failed user service action spends the slot too, so the rediscovery after it never
+    /// turns into an unclicked retry (e.g. an automatic start after a failed Start click).
+    pub fn spend(&mut self) {
+        self.0 = true;
     }
 }
 
@@ -91,6 +109,19 @@ pub enum UserAction {
     Restart,
     Stop,
     Reload,
+}
+
+impl UserAction {
+    /// The panel's words for this action.
+    pub fn label(self) -> &'static str {
+        match self {
+            UserAction::InstallAndStart => "Install and start",
+            UserAction::Start => "Start",
+            UserAction::Restart => "Restart",
+            UserAction::Stop => "Stop",
+            UserAction::Reload => "Reload",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

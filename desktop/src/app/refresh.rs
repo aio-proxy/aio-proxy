@@ -28,6 +28,8 @@ pub fn panel_closed(cx: &mut App) {
     // Dropping the fetch task drops its `Pending`, which shuts the socket down.
     model.fetch_task = None;
     model.timer_task = None;
+    model.action.clear_outcome();
+    changed(cx);
 }
 
 pub fn manual_refresh(cx: &mut App) {

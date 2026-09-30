@@ -50,3 +50,12 @@ fn the_headline_tells_stopped_from_running() {
         "Stopped"
     );
 }
+
+#[test]
+fn actions_in_flight_read_as_words() {
+    let mut m = model(|_| {});
+    m.action = ActionState::Automatic(crate::connect::policy::AutoAction::RestartForVersion);
+    assert_eq!(notice(&m).as_deref(), Some("Automatic restart for new version…"));
+    m.action = ActionState::Running(crate::connect::policy::UserAction::InstallAndStart);
+    assert_eq!(notice(&m).as_deref(), Some("Install and start…"));
+}

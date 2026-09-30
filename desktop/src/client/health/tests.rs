@@ -28,3 +28,13 @@ fn only_the_aio_proxy_marker_counts_as_healthy() {
     assert_eq!(parse_health(200, b"OK"), None);
     assert_eq!(parse_health(503, br#"{"status":"ok"}"#), None);
 }
+
+#[test]
+fn a_completed_stop_is_down_at_once_and_a_later_success_brings_it_back() {
+    let mut h = HealthTracker::default();
+    h.record(true);
+    h.mark_down();
+    assert_eq!(h.state(), HealthState::Down);
+    assert_eq!(h.record(false), None, "the next failed probe is no new transition");
+    assert_eq!(h.record(true), Some(HealthState::Up));
+}

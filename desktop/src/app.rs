@@ -20,6 +20,7 @@ use crate::client::health::HealthTracker;
 use crate::client::refresh::Scheduler;
 use crate::connect::discovery::Discovery;
 use crate::connect::policy::{AutoAction, AutoAttempts, UserAction};
+use crate::connect::run::RunError;
 use crate::install::{InstallState, Paths};
 use crate::login_item::LoginItemStatus;
 use crate::summary::{DegradedReason, SummaryV1};
@@ -56,6 +57,21 @@ pub enum ActionState {
 impl ActionState {
     pub fn is_busy(&self) -> bool {
         matches!(self, ActionState::Running(_) | ActionState::Automatic(_))
+    }
+
+    /// An automatic action that found the service changed did nothing, so it is only logged.
+    pub fn after_automatic_failure(action: AutoAction, error: &RunError) -> Self {
+        match error {
+            RunError::Changed => ActionState::Idle,
+            error => ActionState::Failed(format!("{} failed: {error}", action.label())),
+        }
+    }
+
+    /// Done and Failed are read once: closing the panel clears them.
+    pub fn clear_outcome(&mut self) {
+        if matches!(self, ActionState::Done(_) | ActionState::Failed(_)) {
+            *self = ActionState::Idle;
+        }
     }
 }
 
@@ -144,3 +160,6 @@ pub fn changed(cx: &mut App) {
     crate::tray::sync(cx);
     cx.refresh_windows();
 }
+
+#[cfg(test)]
+mod tests;

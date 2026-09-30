@@ -150,11 +150,12 @@ fn maybe_automatic(cx: &mut App) {
                 }
                 Err(error) => {
                     log::info(format!("automatic action {action:?} failed: {error}"));
-                    model.action = ActionState::Failed(format!("Automatic {action:?} failed: {error}"));
+                    model.action = ActionState::after_automatic_failure(action, &error);
                     changed(cx);
                     rediscover(cx);
                 }
             }
+            super::check_health(cx);
         });
     })
     .detach();
@@ -182,6 +183,10 @@ pub fn run_user_action(cx: &mut App, action: UserAction) {
             let model = cx.global_mut::<AppModel>();
             match result {
                 Ok((note, after)) => {
+                    if action == UserAction::Stop {
+                        // The completion wait already proved it unreachable.
+                        model.health.mark_down();
+                    }
                     model.action = ActionState::Done(note);
                     if let Some(after) = after {
                         apply_after(cx, after);
@@ -191,11 +196,16 @@ pub fn run_user_action(cx: &mut App, action: UserAction) {
                 }
                 Err(error) => {
                     log::info(format!("{action:?} failed: {error}"));
+                    if action != UserAction::Reload {
+                        // Otherwise the rediscovery below could run an automatic row as an unclicked retry.
+                        model.attempts.spend();
+                    }
                     model.action = ActionState::Failed(error);
                     changed(cx);
                     rediscover(cx);
                 }
             }
+            super::check_health(cx);
         });
     })
     .detach();
@@ -213,7 +223,7 @@ fn execute(host: &impl Host, rendered: &Discovery, action: UserAction) -> Result
     }
     // Every other action (Start, Restart, Stop, InstallAndStart) is a service mutation.
     let after = run_user(host, rendered, action).map_err(|error| error.to_string())?;
-    Ok((format!("{action:?} finished."), Some(after)))
+    Ok((format!("{} finished.", action.label()), Some(after)))
 }
 
 pub fn open_dashboard(cx: &mut App) {

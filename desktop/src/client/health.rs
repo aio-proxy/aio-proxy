@@ -44,6 +44,12 @@ impl HealthTracker {
             next
         })
     }
+
+    /// A completed Stop already proved the proxy unreachable; no need to wait for two probes.
+    pub fn mark_down(&mut self) {
+        self.failures = self.failures.max(2);
+        self.state = HealthState::Down;
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

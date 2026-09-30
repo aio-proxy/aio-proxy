@@ -57,8 +57,8 @@ pub fn notice(model: &AppModel) -> Option<String> {
         Owner::Desktop if d.job.disabled => Some("Stopped by you. Click Start to run it again.".into()),
         _ => match &model.action {
             ActionState::Done(note) => Some(note.clone()),
-            ActionState::Running(action) => Some(format!("{action:?}…")),
-            ActionState::Automatic(action) => Some(format!("Automatic {action:?}…")),
+            ActionState::Running(action) => Some(format!("{}…", action.label())),
+            ActionState::Automatic(action) => Some(format!("{}…", action.label())),
             _ => model.summary_error.clone(),
         },
     }

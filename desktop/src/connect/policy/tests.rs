@@ -248,3 +248,16 @@ fn reload_reports_the_409_error_and_stage() {
     );
     assert!(matches!(parse_reload(403, b"Forbidden"), ReloadOutcome::Failed(_)));
 }
+
+#[test]
+fn a_spent_slot_blocks_every_automatic_row() {
+    let mut attempts = none();
+    attempts.spend();
+    let not_loaded = discovery(|v| {
+        stopped_process(v);
+        v["job"]["loaded"] = json!(false);
+    });
+    assert_eq!(automatic_action(&not_loaded, true, &none()), Some(AutoAction::StartNotLoaded));
+    assert_eq!(automatic_action(&not_loaded, true, &attempts), None, "a failed Start click is not retried");
+    assert_eq!(automatic_action(&discovery(no_plist), true, &attempts), None);
+}
