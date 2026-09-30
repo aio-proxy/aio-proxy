@@ -1,10 +1,10 @@
-//! The menu-bar icon: right click opens a native menu, and the icon shows one of three states.
-//! Task 11 adds the left-click panel toggle.
+//! The menu-bar icon: left click toggles the panel, right click opens a native menu, and the icon
+//! shows one of three states.
 
 use futures::channel::mpsc::UnboundedSender;
 use gpui_kit::{App, Global};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
-use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
+use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 use crate::app::{AppEvent, AppModel};
 use crate::client::health::HealthState;
@@ -77,6 +77,12 @@ pub fn build(events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
         .with_menu_on_left_click(false)
         .build()
         .map_err(|error| error.to_string())?;
+    let clicks = events.clone();
+    TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
+        if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+            let _ = clicks.unbounded_send(AppEvent::TogglePanel);
+        }
+    }));
     MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
         let message = match event.id.0.as_str() {
             OPEN_DASHBOARD => AppEvent::OpenDashboard,

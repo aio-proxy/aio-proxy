@@ -26,6 +26,7 @@ use crate::summary::{DegradedReason, SummaryV1};
 /// Everything that reaches the GPUI loop from AppKit callbacks, delivered over one channel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppEvent {
+    TogglePanel,
     OpenDashboard,
     Quit,
     Wake,

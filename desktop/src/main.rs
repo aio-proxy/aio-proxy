@@ -5,6 +5,7 @@ use std::ptr::NonNull;
 
 use aio_proxy_desktop::app::{self, AppEvent, AppModel};
 use aio_proxy_desktop::install::{self, Paths};
+use aio_proxy_desktop::panel::{self, PanelWindow};
 use aio_proxy_desktop::version::APP_VERSION;
 use aio_proxy_desktop::{log, tray};
 use block2::RcBlock;
@@ -50,6 +51,7 @@ fn main() {
 
         let (events, mut inbox) = mpsc::unbounded::<AppEvent>();
         cx.set_global(AppModel::new(paths, bundle));
+        cx.set_global(PanelWindow::default());
         cx.set_global(tray::build(events.clone()).expect("create the menu-bar icon"));
         observe_wake(events);
         app::start(cx);
@@ -65,6 +67,7 @@ fn main() {
 
 fn handle(cx: &mut App, event: AppEvent) {
     match event {
+        AppEvent::TogglePanel => panel::toggle(cx),
         AppEvent::OpenDashboard => app::open_dashboard(cx),
         // Quitting leaves the proxy running: launchd owns it.
         AppEvent::Quit => cx.quit(),
