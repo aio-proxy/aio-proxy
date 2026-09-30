@@ -6,6 +6,7 @@ pub mod client;
 pub mod connect;
 pub mod install;
 pub mod log;
+pub mod login_item;
 pub mod panel;
 pub mod process;
 pub mod summary;

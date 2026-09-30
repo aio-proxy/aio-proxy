@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use gpui_kit::{App, Global, Task};
 
 pub use health::{check_now as check_health, start_timer as start_health_timer};
-pub use lifecycle::{open_dashboard, open_logs, rediscover, run_user_action, start};
+pub use lifecycle::{open_dashboard, open_logs, rediscover, run_user_action, set_login_item, start};
 pub use refresh::{manual_refresh, panel_closed, panel_opened};
 
 use order::DiscoveryOrder;
@@ -21,6 +21,7 @@ use crate::client::refresh::Scheduler;
 use crate::connect::discovery::Discovery;
 use crate::connect::policy::{AutoAction, AutoAttempts, UserAction};
 use crate::install::{InstallState, Paths};
+use crate::login_item::LoginItemStatus;
 use crate::summary::{DegradedReason, SummaryV1};
 
 /// Everything that reaches the GPUI loop from AppKit callbacks, delivered over one channel.
@@ -67,6 +68,7 @@ pub struct AppModel {
     /// Set when a fetch fails while the last good summary stays on screen.
     pub summary_error: Option<String>,
     pub action: ActionState,
+    pub login_item: LoginItemStatus,
     attempts: AutoAttempts,
     /// True from spawn to landing of the one in-flight discovery; only that task clears it.
     discovering: bool,
@@ -95,6 +97,7 @@ impl AppModel {
             summary: SummaryState::Waiting,
             summary_error: None,
             action: ActionState::Idle,
+            login_item: LoginItemStatus::Unavailable,
             attempts: AutoAttempts::default(),
             discovering: false,
             discovery_order: DiscoveryOrder::default(),

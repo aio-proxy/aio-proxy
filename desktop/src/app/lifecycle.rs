@@ -234,3 +234,16 @@ pub fn open_logs(cx: &mut App) {
         .unwrap_or_else(|| model.paths.home.join(".aio-proxy"));
     cx.reveal_path(&home.join("logs"));
 }
+
+/// "App starts at login" is a persistent operation, so it follows the install-location policy.
+pub fn set_login_item(cx: &mut App, enabled: bool) {
+    let model = cx.global_mut::<AppModel>();
+    if !model.persistent() {
+        return;
+    }
+    if let Err(error) = crate::login_item::set_enabled(enabled) {
+        model.action = ActionState::Failed(format!("Launch at login: {error}"));
+    }
+    model.login_item = crate::login_item::status();
+    changed(cx);
+}

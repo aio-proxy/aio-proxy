@@ -3,6 +3,7 @@
 mod actions;
 mod charts;
 mod degraded;
+mod footer;
 mod format;
 mod placement;
 mod providers;

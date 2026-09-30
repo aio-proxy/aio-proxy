@@ -13,7 +13,9 @@ use crate::summary::{FetchOutcome, classify};
 const SUMMARY_PATH: &str = "/dashboard/api/desktop-summary";
 
 pub fn panel_opened(cx: &mut App) {
-    let order = cx.global_mut::<AppModel>().scheduler.open(Instant::now());
+    let model = cx.global_mut::<AppModel>();
+    model.login_item = crate::login_item::status();
+    let order = model.scheduler.open(Instant::now());
     dispatch(cx, order);
     super::check_health(cx);
     super::rediscover(cx);
