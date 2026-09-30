@@ -184,3 +184,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: bun run scripts/homebrew-notify.ts "$VERSION"
+
+  # The macOS app for the version just published. It never gates npm, Docker or Homebrew, and a
+  # failure is resumed by dispatching desktop-release.yml with the tag. Canary dispatches never set
+  # `published`, so they skip it.
+  desktop:
+    needs: release
+    if: ${{ !cancelled() && needs.release.outputs.published == 'true' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/desktop-release.yml
+    with:
+      version: ${{ fromJSON(needs.release.outputs['published-packages'])[0].version }}
+    secrets: inherit
