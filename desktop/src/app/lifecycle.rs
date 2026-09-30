@@ -56,19 +56,40 @@ pub fn rediscover(cx: &mut App) {
         return;
     };
     model.discovering = true;
+    let seq = model.discovery_order.issue();
     let task = cx.background_executor().spawn(async move { host.discover() });
     cx.spawn(async move |cx| {
         let result = task.await;
-        cx.update(|cx| apply_discovery(cx, result));
+        cx.update(|cx| {
+            let again = {
+                let model = cx.global_mut::<AppModel>();
+                model.discovering = false;
+                std::mem::take(&mut model.rediscover_again)
+            };
+            apply_discovery(cx, seq, result);
+            if again {
+                rediscover(cx);
+            }
+        });
     })
     .detach();
 }
 
-fn apply_discovery(cx: &mut App, result: Result<Discovery, String>) {
-    let (again, first) = {
+/// An action's own post-mutation discovery: newer than any discovery still running.
+fn apply_after(cx: &mut App, after: Discovery) {
+    let seq = cx.global_mut::<AppModel>().discovery_order.issue();
+    apply_discovery(cx, seq, Ok(after));
+}
+
+/// Drops a result older than one already applied; `discovering` belongs to `rediscover` alone.
+fn apply_discovery(cx: &mut App, seq: u64, result: Result<Discovery, String>) {
+    let (first, ok) = {
         let model = cx.global_mut::<AppModel>();
-        model.discovering = false;
+        if !model.discovery_order.accept(seq) {
+            return;
+        }
         let first = model.discovery.is_none();
+        let ok = result.is_ok();
         match result {
             Ok(discovery) => {
                 model.discovery_error = None;
@@ -79,19 +100,19 @@ fn apply_discovery(cx: &mut App, result: Result<Discovery, String>) {
                 model.discovery_error = Some(error);
             }
         }
-        (std::mem::take(&mut model.rediscover_again), first && model.discovery.is_some())
+        (first && model.discovery.is_some(), ok)
     };
     refresh::instance_maybe_changed(cx);
-    maybe_automatic(cx);
+    // After an error the stored discovery predates it; never spend the automatic slot on that.
+    if ok {
+        maybe_automatic(cx);
+    }
     changed(cx);
     if first {
         // The timer's startup tick found no discovery to probe; without this the icon would read
         // "down" until the next 60 s tick. Bounded: a transition rediscovers once, and that
         // discovery is no longer the first.
         super::check_health(cx);
-    }
-    if again {
-        rediscover(cx);
     }
 }
 
@@ -124,7 +145,7 @@ fn maybe_automatic(cx: &mut App) {
                 Ok(after) => {
                     log::info(format!("automatic action {action:?} finished"));
                     model.action = ActionState::Idle;
-                    apply_discovery(cx, Ok(after));
+                    apply_after(cx, after);
                     refresh::after_action(cx);
                 }
                 Err(error) => {
@@ -144,6 +165,11 @@ pub fn run_user_action(cx: &mut App, action: UserAction) {
     if model.action.is_busy() {
         return;
     }
+    // Service mutations write the plist and `AIO_PROXY_DESKTOP_EXEC`; only a persistent install may.
+    if action != UserAction::Reload && !model.persistent() {
+        log::info(format!("{action:?} refused: this copy is not in a persistent location"));
+        return;
+    }
     let (Some(rendered), Some(host)) = (model.discovery.clone(), host(model)) else {
         return;
     };
@@ -158,7 +184,7 @@ pub fn run_user_action(cx: &mut App, action: UserAction) {
                 Ok((note, after)) => {
                     model.action = ActionState::Done(note);
                     if let Some(after) = after {
-                        apply_discovery(cx, Ok(after));
+                        apply_after(cx, after);
                     }
                     refresh::after_action(cx);
                     changed(cx);

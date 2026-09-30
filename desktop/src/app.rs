@@ -3,6 +3,7 @@
 
 mod health;
 mod lifecycle;
+mod order;
 mod refresh;
 
 use std::path::PathBuf;
@@ -12,6 +13,8 @@ use gpui_kit::{App, Global, Task};
 pub use health::{check_now as check_health, start_timer as start_health_timer};
 pub use lifecycle::{open_dashboard, open_logs, rediscover, run_user_action, start};
 pub use refresh::{manual_refresh, panel_closed, panel_opened};
+
+use order::DiscoveryOrder;
 
 use crate::client::health::HealthTracker;
 use crate::client::refresh::Scheduler;
@@ -64,7 +67,9 @@ pub struct AppModel {
     pub summary_error: Option<String>,
     pub action: ActionState,
     attempts: AutoAttempts,
+    /// True from spawn to landing of the one in-flight discovery; only that task clears it.
     discovering: bool,
+    discovery_order: DiscoveryOrder,
     rediscover_again: bool,
     auth_retry_used: bool,
     refetch_after_discovery: bool,
@@ -91,6 +96,7 @@ impl AppModel {
             action: ActionState::Idle,
             attempts: AutoAttempts::default(),
             discovering: false,
+            discovery_order: DiscoveryOrder::default(),
             rediscover_again: false,
             auth_retry_used: false,
             refetch_after_discovery: false,
