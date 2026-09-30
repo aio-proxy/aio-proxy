@@ -125,10 +125,13 @@ pub fn plan_symlink(
     if target == own_sidecar {
         return SymlinkPlan::Keep;
     }
-    if !target.exists() {
-        return SymlinkPlan::Repoint;
-    }
     let app = app_of_sidecar(target);
+    // Only a definite ENOENT means "missing"; EACCES, ELOOP and friends are a copy we cannot rank.
+    match target.try_exists() {
+        Ok(true) => {}
+        Ok(false) => return SymlinkPlan::Repoint,
+        Err(_) => return SymlinkPlan::Refuse(ReadOnlyReason::UnreadableCopy { app }),
+    }
     match target_version(target) {
         Some(found) => match version::compare(&found, own_version) {
             Some(Ordering::Greater) => SymlinkPlan::Refuse(ReadOnlyReason::NewerCopy { app, version: found }),
@@ -146,7 +149,9 @@ pub fn repoint(symlink: &Path, target: &Path) -> io::Result<()> {
     let temp = dir.join(format!(".aio-proxy.{}.tmp", std::process::id()));
     let _ = fs::remove_file(&temp);
     std::os::unix::fs::symlink(target, &temp)?;
-    fs::rename(&temp, symlink)
+    fs::rename(&temp, symlink).inspect_err(|_| {
+        let _ = fs::remove_file(&temp);
+    })
 }
 
 /// Startup install step. Outside an Applications folder nothing on disk changes.
@@ -161,7 +166,19 @@ pub fn prepare(
         return InstallState::ReadOnly(ReadOnlyReason::Location);
     }
     let sidecar = sidecar_of(bundle);
-    let current = fs::read_link(&paths.symlink).ok();
+    // Anything but "no link there" (a regular file or directory, EACCES, EIO) is something we cannot
+    // rank, so it is never renamed over.
+    let current = match fs::read_link(&paths.symlink) {
+        Ok(target) => Some(target),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) if error.kind() == io::ErrorKind::InvalidInput => {
+            return InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(format!(
+                "{} exists and is not a symlink",
+                paths.symlink.display()
+            )));
+        }
+        Err(error) => return InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(error.to_string())),
+    };
     match plan_symlink(current.as_deref(), &sidecar, own_version, target_version) {
         SymlinkPlan::Keep => InstallState::Persistent,
         SymlinkPlan::Repoint => match repoint(&paths.symlink, &sidecar) {
@@ -182,6 +199,7 @@ pub fn probe_version(exec: &Path) -> Option<String> {
 
 /// Held for the life of the process; the kernel drops the flock when it exits.
 #[derive(Debug)]
+#[must_use = "dropping releases the single-instance lock"]
 pub struct InstanceLock {
     _file: File,
 }

@@ -128,3 +128,38 @@ fn probes_a_copy_version_with_its_cli() {
     assert_eq!(probe_version(&exec).as_deref(), Some("0.38.0"));
     assert_eq!(probe_version(&dir.path().join("missing")), None);
 }
+
+#[test]
+fn something_that_is_not_a_symlink_is_never_renamed_over() {
+    let f = fixture();
+    fs::create_dir_all(f.paths.symlink.parent().unwrap()).unwrap();
+    fs::write(&f.paths.symlink, b"user data").unwrap();
+    let state = prepare(&f.paths, &f.bundle, true, "0.37.0", |_| panic!("must not probe"));
+    assert!(matches!(state, InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(_))), "{state:?}");
+    assert_eq!(fs::read(&f.paths.symlink).unwrap(), b"user data");
+    assert!(!fs::symlink_metadata(&f.paths.symlink).unwrap().is_symlink());
+}
+
+#[test]
+fn a_target_that_cannot_be_stat_ed_is_not_treated_as_missing() {
+    let f = fixture();
+    let (a, b) = (f.paths.home.join("loop-a"), f.paths.home.join("loop-b"));
+    repoint(&a, &b).unwrap();
+    repoint(&b, &a).unwrap();
+    repoint(&f.paths.symlink, &a).unwrap();
+    let state = prepare(&f.paths, &f.bundle, true, "0.37.0", |_| panic!("must not probe"));
+    assert_eq!(state, InstallState::ReadOnly(ReadOnlyReason::UnreadableCopy { app: a.clone() }));
+    assert_eq!(fs::read_link(&f.paths.symlink).unwrap(), a);
+}
+
+#[test]
+fn a_failed_repoint_leaves_the_original_and_no_temp_file() {
+    let f = fixture();
+    // A non-empty directory at the link path makes the final rename fail.
+    fs::create_dir_all(f.paths.symlink.join("keep")).unwrap();
+    assert!(repoint(&f.paths.symlink, &sidecar_of(&f.bundle)).is_err());
+    assert!(f.paths.symlink.join("keep").is_dir());
+    let leftovers: Vec<_> =
+        fs::read_dir(f.paths.symlink.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert_eq!(leftovers, ["aio-proxy"], "temp symlink must be removed");
+}
