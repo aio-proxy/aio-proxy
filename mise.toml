@@ -1,0 +1,4 @@
+# Local toolchain. Each tool keeps one version source, and CI reads the same files:
+# Bun from .bun-version, Rust from desktop/rust-toolchain.toml (active under desktop/).
+[settings]
+idiomatic_version_file_enable_tools = ["bun", "rust"]

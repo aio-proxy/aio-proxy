@@ -49,3 +49,52 @@ jobs:
       - run: bun run lint:types
       - run: bun run test:unit -- --concurrency=2
       - run: bun run test:e2e:api
+
+  desktop-changes:
+    if: github.event_name == 'push' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.diff.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          paths="desktop npm/aio-proxy/package.json packages/types/src/desktop-summary/fixtures"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE...HEAD" -- $paths; then
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  rust:
+    needs: desktop-changes
+    if: needs.desktop-changes.outputs.rust == 'true'
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the pinned Rust toolchain
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            desktop/target
+          key: ${{ runner.os }}-desktop-${{ hashFiles('desktop/rust-toolchain.toml', 'desktop/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-desktop-
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked

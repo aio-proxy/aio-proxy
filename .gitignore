@@ -28,3 +28,7 @@ docs/superpowers/demos/
 
 # subagent-driven-development scratch
 .superpowers/
+
+# desktop app build outputs and the downloaded Sparkle archive
+desktop/target/
+desktop/vendor/
