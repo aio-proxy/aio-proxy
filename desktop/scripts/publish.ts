@@ -44,6 +44,8 @@ if (checkout !== version) throw new Error(`this checkout is ${checkout}, not ${v
 // lifecycle scripts); the key only ever goes to generate_appcast's stdin.
 const edKey = process.env['SPARKLE_ED_PRIVATE_KEY'] ?? '';
 if (edKey === '') throw new Error('SPARKLE_ED_PRIVATE_KEY is required');
+// Default-env `$` calls (gh, hdiutil, codesign, tar) read the live process.env; keep the key out of them.
+delete process.env['SPARKLE_ED_PRIVATE_KEY'];
 const buildEnv: Record<string, string | undefined> = { ...process.env };
 for (const secret of ['SPARKLE_ED_PRIVATE_KEY', 'GH_TOKEN', 'GITHUB_TOKEN']) delete buildEnv[secret];
 
@@ -85,12 +87,19 @@ const feedDir = mkdtempSync(join(tmpdir(), 'aio-proxy-feed-'));
 try {
   const view = await $`gh release view ${FEED_TAG} --repo ${REPO} --json assets`.nothrow().quiet();
   const state = feedState(view.exitCode, view.stdout.toString(), view.stderr.toString());
+  // `empty` (Release without appcast.xml) can follow a failed --clobber upload; starting fresh would
+  // drop every published version, so only a missing Release may begin a new feed.
+  if (state === 'empty') {
+    throw new Error(
+      `${FEED_TAG} has no appcast.xml; refusing to start a fresh feed that would drop published versions. Restore appcast.xml, or delete the ${FEED_TAG} Release to deliberately start over.`,
+    );
+  }
   if (state === 'missing-release') {
     await $`gh release create ${FEED_TAG} --repo ${REPO} --prerelease --latest=false --title ${'Desktop update feed'} --notes ${'Holds only appcast.xml, the macOS app update feed. Not a product release.'}`;
-  }
-  if (state === 'present')
+  } else {
     await $`gh release download ${FEED_TAG} --repo ${REPO} --pattern appcast.xml --dir ${feedDir}`;
-  const previous = state === 'present' ? parseAppcast(await Bun.file(join(feedDir, 'appcast.xml')).text()) : [];
+  }
+  const previous = state === 'missing-release' ? [] : parseAppcast(await Bun.file(join(feedDir, 'appcast.xml')).text());
   // A captive page or format change would parse to nothing and regenerate a feed that drops every
   // published version.
   if (state === 'present' && previous.length === 0) {
