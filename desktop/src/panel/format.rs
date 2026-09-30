@@ -24,8 +24,9 @@ pub fn usd(nano: u128) -> String {
     format!("${}.{:02}", cents / 100, cents % 100)
 }
 
+/// Floors (99.6% remaining is not 100%); the epsilon absorbs binary artifacts like 0.29 * 100 = 28.99….
 pub fn percent(ratio: f64) -> String {
-    format!("{:.0}%", (ratio.clamp(0.0, 1.0) * 100.0).floor())
+    format!("{:.0}%", (ratio.clamp(0.0, 1.0) * 100.0 + 1e-9).floor())
 }
 
 /// Days since 1970-01-01 for a proleptic Gregorian date (Howard Hinnant's algorithm).

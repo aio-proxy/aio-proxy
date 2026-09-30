@@ -49,3 +49,10 @@ fn labels_a_bucket_by_its_local_day() {
     assert_eq!(month_day(start, 8 * 3_600), "9/29");
     assert_eq!(month_day(start, 0), "9/28");
 }
+
+#[test]
+fn percents_floor_without_float_artifacts() {
+    assert_eq!(percent(0.29), "29%");
+    assert_eq!(percent(0.996), "99%");
+    assert_eq!(percent(1.5), "100%");
+}

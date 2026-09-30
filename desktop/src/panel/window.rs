@@ -23,8 +23,6 @@ const REOPEN_GUARD: Duration = Duration::from_millis(300);
 #[derive(Default)]
 pub struct PanelWindow {
     handle: Option<AnyWindowHandle>,
-    /// Held only while the window exists; keeping it would keep the NSWindow alive.
-    native: Option<Retained<NSWindow>>,
     closed_at: Option<Instant>,
 }
 
@@ -36,8 +34,11 @@ pub fn toggle(cx: &mut App) {
         (state.handle, state.closed_at)
     };
     if let Some(handle) = handle {
-        let _ = handle.update(cx, |_, window, cx| close(window, cx));
-        return;
+        if handle.update(cx, |_, window, cx| close(window, cx)).is_ok() {
+            return;
+        }
+        // The window is already gone: drop the stale handle and open a new one.
+        cx.global_mut::<PanelWindow>().handle = None;
     }
     if closed_at.is_some_and(|at| at.elapsed() < REOPEN_GUARD) {
         return;
@@ -72,9 +73,7 @@ pub fn toggle(cx: &mut App) {
                 native.setAnimationBehavior(NSWindowAnimationBehavior::None);
                 native.makeKeyAndOrderFront(None);
             }
-            let state = cx.global_mut::<PanelWindow>();
-            state.handle = Some(handle);
-            state.native = native;
+            cx.global_mut::<PanelWindow>().handle = Some(handle);
             crate::app::panel_opened(cx);
         }
         Err(error) => log::info(format!("panel: open_window failed: {error:#}")),
@@ -85,7 +84,6 @@ pub fn toggle(cx: &mut App) {
 pub fn close(window: &mut Window, cx: &mut App) {
     let state = cx.global_mut::<PanelWindow>();
     state.handle = None;
-    state.native = None;
     state.closed_at = Some(Instant::now());
     window.remove_window();
     crate::app::panel_closed(cx);

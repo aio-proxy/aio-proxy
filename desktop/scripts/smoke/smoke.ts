@@ -30,6 +30,9 @@ const expectStatus = async (label: string, response: Response, status: number): 
  * what the app depends on, then SIGTERMs it. It never installs a launchd job.
  */
 export async function runtimeSmoke(app: string, version: string): Promise<void> {
+  // Bun's fetch honours HTTP_PROXY; the loopback checks below must never go through a proxy.
+  process.env.NO_PROXY = '*';
+  process.env.no_proxy = '*';
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-smoke-'));
   const port = freePort();
   const base = `http://127.0.0.1:${port}`;
