@@ -1,19 +1,24 @@
-// The only entry point that assembles the macOS app: `bun run desktop:bundle --unsigned`.
-// Phase 2 implements the unsigned path (steps 1-8 of the spec's Bundle command, ending in an ad-hoc
-// signature). Release signing and notarization extend this file in Phase 3.
+// The only entry point that assembles the macOS app (spec "Bundle command").
 //
-//   --unsigned           required for now; stops after the ad-hoc signature
+//   --unsigned           CI smoke: stops after an ad-hoc hardened signature
+//   --release            Developer ID signature, then a notarized, stapled .app and .dmg
 //   --sidecar <path>     reuse an already-built `aio-proxy` (with THIRD_PARTY_NOTICES beside it)
 //                        instead of `bun run build` + build-binary.ts
-// Env: SPARKLE_PUBLIC_ED_KEY enables the updater; SPARKLE_FEED_URL overrides the release feed.
+// Env (--unsigned): SPARKLE_PUBLIC_ED_KEY enables the updater; SPARKLE_FEED_URL overrides the feed.
+// Env (--release): DEVELOPER_ID_IDENTITY, SPARKLE_PUBLIC_ED_KEY, and APPLE_API_KEY_PATH +
+// APPLE_API_KEY_ID + APPLE_API_ISSUER_ID or NOTARY_PROFILE; SPARKLE_FEED_URL only for local update
+// rehearsals (desktop:publish refuses such a build).
 import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { $ } from 'bun';
 
+import { APP_NAME, buildDmg, dmgName } from './dmg';
 import { DEFAULT_FEED_URL, renderInfoPlist } from './info-plist';
 import { MINIMUM_MACOS, machOProblems } from './macho';
+import { notarize } from './notary';
+import { releaseEnv } from './release-env';
 import { signApp } from './signing';
 import { runtimeSmoke } from './smoke';
 import { fetchSparkle } from './sparkle';
@@ -21,22 +26,40 @@ import { fetchSparkle } from './sparkle';
 const root = join(import.meta.dir, '..', '..');
 const desktop = join(root, 'desktop');
 const out = join(desktop, 'target', 'bundle');
-const app = join(out, 'AIO Proxy.app');
+const app = join(out, APP_NAME);
+const entitlements = join(desktop, 'entitlements');
 
 const { values } = parseArgs({
   args: Bun.argv.slice(2),
-  options: { unsigned: { type: 'boolean', default: false }, sidecar: { type: 'string' } },
+  options: {
+    unsigned: { type: 'boolean', default: false },
+    release: { type: 'boolean', default: false },
+    sidecar: { type: 'string' },
+  },
 });
-if (!values.unsigned) {
-  console.error('Only `--unsigned` is implemented; release signing lands with the release pipeline.');
+if (values.unsigned === values.release) {
+  console.error('Pass exactly one of --unsigned or --release.');
   process.exit(2);
+}
+// A missing release credential fails here, not after a ten-minute build.
+const release = values.release ? releaseEnv(process.env) : undefined;
+if (release !== undefined && release.feedUrl !== DEFAULT_FEED_URL) {
+  console.error(`WARNING: feed override ${release.feedUrl}; desktop:publish will refuse this build.`);
 }
 
 const step = (name: string): void => console.error(`\n==> ${name}`);
 
 step('1. verify tools');
-for (const tool of ['cargo', 'codesign', 'vtool', 'lipo', 'ditto', 'tar']) {
+const tools = ['cargo', 'codesign', 'vtool', 'lipo', 'ditto', 'tar', 'plutil'];
+if (release !== undefined) tools.push('hdiutil', 'spctl', 'syspolicy_check', 'xcrun');
+for (const tool of tools) {
   if (Bun.which(tool) === null) throw new Error(`missing tool: ${tool}`);
+}
+if (release !== undefined) {
+  for (const tool of ['notarytool', 'stapler']) {
+    if ((await $`xcrun --find ${tool}`.nothrow().quiet()).exitCode !== 0)
+      throw new Error(`missing tool: xcrun ${tool}`);
+  }
 }
 const sparkle = await fetchSparkle(join(desktop, 'vendor'));
 const version = ((await Bun.file(join(root, 'npm/aio-proxy/package.json')).json()) as { version: string }).version;
@@ -73,15 +96,16 @@ await Bun.write(
   join(app, 'Contents/Resources/THIRD_PARTY_NOTICES'),
   `${await Bun.file(notices).text()}\n\n--- Sparkle ---\n\n${await Bun.file(join(sparkle, 'LICENSE')).text()}`,
 );
-const publicEdKey = process.env['SPARKLE_PUBLIC_ED_KEY'];
+const devPublicEdKey = process.env['SPARKLE_PUBLIC_ED_KEY'];
+const sparkleKeys =
+  release !== undefined
+    ? { feedUrl: release.feedUrl, publicEdKey: release.publicEdKey }
+    : devPublicEdKey === undefined || devPublicEdKey === ''
+      ? undefined
+      : { feedUrl: process.env['SPARKLE_FEED_URL'] ?? DEFAULT_FEED_URL, publicEdKey: devPublicEdKey };
 await Bun.write(
   join(app, 'Contents/Info.plist'),
-  renderInfoPlist({
-    version,
-    ...(publicEdKey === undefined || publicEdKey === ''
-      ? {}
-      : { sparkle: { feedUrl: process.env['SPARKLE_FEED_URL'] ?? DEFAULT_FEED_URL, publicEdKey } }),
-  }),
+  renderInfoPlist({ version, ...(sparkleKeys === undefined ? {} : { sparkle: sparkleKeys }) }),
 );
 await $`plutil -lint ${join(app, 'Contents/Info.plist')}`.quiet();
 
@@ -123,11 +147,40 @@ await hostRuns('before signing');
 step('7. runtime smoke');
 await runtimeSmoke(app, version);
 
-step('8. ad-hoc hardened signature (inside-out, Sparkle 2.10.0 order)');
-await signApp(app, { kind: 'adhoc' }, join(desktop, 'entitlements'));
-await $`codesign --verify --deep --strict --verbose=2 ${app}`;
-await hostRuns('after signing');
-// The hardened sidecar must still serve, and still JIT.
-await runtimeSmoke(app, version, { jit: true });
+const verifySigned = async (): Promise<void> => {
+  await $`codesign --verify --deep --strict --verbose=2 ${app}`;
+  await hostRuns('after signing');
+  // The hardened sidecar must still serve, and still JIT.
+  await runtimeSmoke(app, version, { jit: true });
+};
 
-console.error(`\n${app}`);
+if (release === undefined) {
+  step('8. ad-hoc hardened signature (inside-out, Sparkle 2.10.0 order)');
+  await signApp(app, { kind: 'adhoc' }, entitlements);
+  await verifySigned();
+  console.error(`\n${app}`);
+} else {
+  step('8. Developer ID signature (inside-out, Sparkle 2.10.0 order)');
+  await signApp(app, { kind: 'developer-id', identity: release.identity }, entitlements);
+  await verifySigned();
+
+  step('9. notarize and staple the .app');
+  const zip = join(out, 'notarize.zip');
+  await $`ditto -c -k --keepParent ${app} ${zip}`;
+  await notarize(zip, release.notaryAuth);
+  rmSync(zip);
+  await $`xcrun stapler staple ${app}`;
+  await $`syspolicy_check distribution ${app}`;
+  await $`spctl --assess --type execute --verbose=4 ${app}`;
+
+  step('10. build, sign, notarize and staple the .dmg');
+  const dmg = join(out, dmgName(version));
+  await buildDmg(app, dmg);
+  await $`codesign -s ${release.identity} --timestamp ${dmg}`;
+  await notarize(dmg, release.notaryAuth);
+  await $`xcrun stapler staple ${dmg}`;
+  await $`spctl --assess --type open --context context:primary-signature --verbose=4 ${dmg}`;
+  await $`xcrun stapler validate ${app}`;
+  await $`xcrun stapler validate ${dmg}`;
+  console.error(`\n${dmg}`);
+}
