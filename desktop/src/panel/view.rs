@@ -1,10 +1,12 @@
 //! The panel's root view. It holds no data: everything renders from the `AppModel` global.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use gpui_kit::component::*;
 use gpui_kit::*;
 
 use super::format::{compact, usd};
-use super::{actions, degraded, status};
+use super::{actions, charts, degraded, providers, status};
 use crate::app::{AppModel, SummaryState};
 use crate::summary::SummaryV1;
 
@@ -45,11 +47,18 @@ fn cards(summary: &SummaryV1, cx: &App) -> impl IntoElement {
         .child(card("Cost", usd(usage.estimated_cost_nano_usd), cx))
 }
 
-fn body(model: &AppModel, cx: &App) -> AnyElement {
+fn body(model: &AppModel, now: i64, cx: &App) -> AnyElement {
     let muted = cx.theme().muted_foreground;
     let message = |text: String| div().py_2().text_sm().text_color(muted).child(text).into_any_element();
     match &model.summary {
-        SummaryState::Ready(summary) => v_flex().flex_1().gap_2().child(cards(summary, cx)).into_any_element(),
+        SummaryState::Ready(summary) => v_flex()
+            .flex_1()
+            .gap_2()
+            .child(cards(summary, cx))
+            .child(charts::trend(&summary.trend7d, now, cx))
+            .child(charts::heatmap(&summary.activity, now, cx))
+            .child(providers::list(&summary.providers, now, cx))
+            .into_any_element(),
         SummaryState::Degraded(reason) => degraded::body(reason).into_any_element(),
         SummaryState::AuthFailed => message("Authentication failed. The desktop token was rejected.".into()),
         SummaryState::Unavailable(error) => message(error.clone()),
@@ -59,6 +68,7 @@ fn body(model: &AppModel, cx: &App) -> AnyElement {
 
 impl Render for PanelView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
         let model = cx.global::<AppModel>();
         let muted = cx.theme().muted_foreground;
         let mut header = v_flex().gap_1().child(div().text_lg().child(status::headline(model)));
@@ -74,7 +84,7 @@ impl Render for PanelView {
             .gap_2()
             .bg(cx.theme().background)
             .child(header)
-            .child(body(model, cx))
+            .child(body(model, now, cx))
             .child(actions::row(model))
     }
 }
