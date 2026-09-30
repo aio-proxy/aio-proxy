@@ -130,7 +130,12 @@ impl AppModel {
         alerts
             || self.update_pending.is_some()
             || matches!(self.action, ActionState::Failed(_))
-            || matches!(self.summary, SummaryState::AuthFailed | SummaryState::Degraded(_))
+            // No token is not a problem the user must act on: nothing was rejected.
+            || matches!(
+                self.summary,
+                SummaryState::AuthFailed
+                    | SummaryState::Degraded(DegradedReason::Missing | DegradedReason::UnsupportedVersion(_))
+            )
     }
 }
 

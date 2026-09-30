@@ -1,4 +1,5 @@
-//! The panel for an instance without a usable `desktop-summary` (404, or an unknown protocolVersion):
+//! The panel for an instance without a usable `desktop-summary` (404, an unknown protocolVersion, or
+//! no desktop token):
 //! status, endpoint, Open Dashboard, Reload.
 
 use gpui_kit::*;
@@ -12,6 +13,9 @@ pub fn body(reason: &DegradedReason) -> impl IntoElement {
         }
         DegradedReason::UnsupportedVersion(_) => {
             "This aio-proxy speaks a newer summary format. Update the desktop app to see usage."
+        }
+        DegradedReason::NoToken => {
+            "This aio-proxy has no desktop token, so usage cannot be shown. Update it to see usage."
         }
     };
     div().py_2().text_sm().child(text)

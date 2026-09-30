@@ -203,6 +203,9 @@ pub enum DegradedReason {
     /// 404: an instance older than `desktop-summary`.
     Missing,
     UnsupportedVersion(Option<u64>),
+    /// Discovery found no desktop token (an older proxy that never writes one, or a file failing
+    /// its checks), so no summary request is sent.
+    NoToken,
 }
 
 #[derive(Debug)]

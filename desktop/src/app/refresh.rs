@@ -8,7 +8,7 @@ use gpui_kit::App;
 use super::{AppModel, SummaryState, changed};
 use crate::client::refresh::{FetchOrder, Finished, Tag, Trigger};
 use crate::client::transport::{self, HttpError, Limits, LocalUrl, Method, Request, Response};
-use crate::summary::{FetchOutcome, classify};
+use crate::summary::{DegradedReason, FetchOutcome, classify};
 
 const SUMMARY_PATH: &str = "/dashboard/api/desktop-summary";
 
@@ -74,7 +74,8 @@ fn summary_request(model: &AppModel, refresh_quota: bool) -> Result<Request, Sum
         return Err(SummaryState::Unavailable("aio-proxy is not running.".into()));
     };
     let Some(token) = discovery.token.clone() else {
-        return Err(SummaryState::AuthFailed);
+        // An older proxy never writes a token: nothing was rejected, so this is the degraded panel.
+        return Err(SummaryState::Degraded(DegradedReason::NoToken));
     };
     let path = if refresh_quota { format!("{SUMMARY_PATH}?refresh=true") } else { SUMMARY_PATH.to_string() };
     let url = LocalUrl::parse(base, &path).map_err(|error| SummaryState::Unavailable(error.to_string()))?;
@@ -160,3 +161,6 @@ fn arm_timer(cx: &mut App) {
     });
     cx.global_mut::<AppModel>().timer_task = task;
 }
+
+#[cfg(test)]
+mod tests;
