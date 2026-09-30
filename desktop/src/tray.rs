@@ -1,0 +1,108 @@
+//! The menu-bar icon: right click opens a native menu, and the icon shows one of three states.
+//! Task 11 adds the left-click panel toggle.
+
+use futures::channel::mpsc::UnboundedSender;
+use gpui_kit::{App, Global};
+use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
+
+use crate::app::{AppEvent, AppModel};
+use crate::client::health::HealthState;
+
+/// 18 pt tall at 2x.
+pub const ICON_PX: u32 = 36;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayState {
+    Running,
+    Down,
+    /// Running, but something wants the user: an alert, a failed action, or a pending update.
+    Attention,
+}
+
+pub fn tray_state(health: HealthState, attention: bool) -> TrayState {
+    match (health, attention) {
+        (HealthState::Up, true) => TrayState::Attention,
+        (HealthState::Up, false) => TrayState::Running,
+        _ => TrayState::Down,
+    }
+}
+
+/// Template-image pixels: a disc (running), a ring (down), a disc with a hole (attention). AppKit
+/// tints template images for light and dark menu bars.
+pub fn icon_rgba(state: TrayState) -> Vec<u8> {
+    let centre = (ICON_PX as f32 - 1.0) / 2.0;
+    let mut rgba = Vec::with_capacity((ICON_PX * ICON_PX * 4) as usize);
+    for y in 0..ICON_PX {
+        for x in 0..ICON_PX {
+            let d = ((x as f32 - centre).powi(2) + (y as f32 - centre).powi(2)).sqrt();
+            let on = match state {
+                TrayState::Running => d <= 12.0,
+                TrayState::Down => (9.0..=12.0).contains(&d),
+                TrayState::Attention => (4.5..=12.0).contains(&d),
+            };
+            rgba.extend_from_slice(if on { &[0, 0, 0, 255] } else { &[0, 0, 0, 0] });
+        }
+    }
+    rgba
+}
+
+fn icon(state: TrayState) -> Icon {
+    Icon::from_rgba(icon_rgba(state), ICON_PX, ICON_PX).expect("icon buffer matches its size")
+}
+
+pub struct Tray {
+    pub icon: TrayIcon,
+    shown: Option<TrayState>,
+}
+
+impl Global for Tray {}
+
+const OPEN_DASHBOARD: &str = "open-dashboard";
+const QUIT: &str = "quit";
+
+/// Must run on the main thread inside the GPUI `run` callback.
+pub fn build(events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
+    let menu = Menu::with_items(&[
+        &MenuItem::with_id(OPEN_DASHBOARD, "Open Dashboard", true, None),
+        &PredefinedMenuItem::separator(),
+        &MenuItem::with_id(QUIT, "Quit AIO Proxy", true, None),
+    ])
+    .map_err(|error| error.to_string())?;
+    let icon = TrayIconBuilder::new()
+        .with_icon(icon(TrayState::Down))
+        .with_icon_as_template(true)
+        .with_tooltip("AIO Proxy")
+        .with_menu(Box::new(menu))
+        .with_menu_on_left_click(false)
+        .build()
+        .map_err(|error| error.to_string())?;
+    MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+        let message = match event.id.0.as_str() {
+            OPEN_DASHBOARD => AppEvent::OpenDashboard,
+            QUIT => AppEvent::Quit,
+            _ => return,
+        };
+        let _ = events.unbounded_send(message);
+    }));
+    Ok(Tray { icon, shown: Some(TrayState::Down) })
+}
+
+/// Re-derives the icon from the model; cheap when nothing changed.
+pub fn sync(cx: &mut App) {
+    let Some(model) = cx.try_global::<AppModel>() else {
+        return;
+    };
+    let state = tray_state(model.health.state(), model.needs_attention());
+    let Some(tray) = cx.try_global::<Tray>() else {
+        return;
+    };
+    if tray.shown == Some(state) {
+        return;
+    }
+    let _ = tray.icon.set_icon_with_as_template(Some(icon(state)), true);
+    cx.global_mut::<Tray>().shown = Some(state);
+}
+
+#[cfg(test)]
+mod tests;
