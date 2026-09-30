@@ -19,7 +19,7 @@ Spike code: branch `spike/desktop`, commits `d3c12c105` through `85b85767d`. The
 | Check | Result | Still pending |
 | --- | --- | --- |
 | 1. Release sidecar, signing, launchd, update, recovery | **PENDING (sandboxed mechanics pass)**: ad-hoc bundle verified; entitlements minimized; launchd, recovery and Sparkle N→N+1 proven in a sandbox. A Developer ID signing or notarization failure still blocks the plan (spec: "If it fails: Blocks the plan as specified") | Developer ID signing and host launch without entitlements; Developer ID entitlement re-run; OAuth workload step; notarization of `.app` and `.dmg`; clean-Mac browser install; Developer ID Sparkle update from a DMG through "Install and Relaunch" with no signature-mismatch line |
-| 2. Panel, tray, HTTP stack, Sparkle in the GPUI loop | **PENDING (not passed)**: anchoring, clamping, Dock/Cmd+Tab policy, HTTP stack and Sparkle startup pass | Click elsewhere closes; click icon again closes; second display with another scale factor; full-screen Space; sleep/wake. A click-away failure reopens the UI stack decision, since no fallback exists (see Panel) |
+| 2. Panel, tray, HTTP stack, Sparkle in the GPUI loop | **PENDING (not passed)**: anchoring, clamping, Dock/Cmd+Tab policy, HTTP stack and Sparkle startup pass; click-away closing and click-icon-again closing **passed by hand on 2026-09-30** (unlocked, bundled ad-hoc host) | Second display with another scale factor; full-screen Space; sleep/wake. The click-away risk that could have reopened the UI stack decision is retired |
 | 3. Window lifecycle, resources, summary cost | **GO, conditional**: summary ≤ 50 ms passes; closed budget passes by physical footprint [locked]; lifecycle hybrid, PROVISIONAL | Visible flash and on-screen reopen latency; unlocked re-measure; powermetrics wakeup cross-check |
 
 Fallbacks taken: none. The NSPanel-hosting fallback for check 2 was not built (no automated check failed, and GPUI cannot host in an external view anyway). The summary query needs no cache.
@@ -208,13 +208,13 @@ Other spec corrections: host entitlements (none under Developer ID), `allow-jit`
 
 Setup for all items: `git switch spike/desktop` (or `git worktree add ../aio-spike spike/desktop`), unlock the Mac, keep the display awake (`caffeinate -d &`), and work from `spike/desktop-host`. Rebuild with `mise exec -- ./bundle.sh && ./sign.sh -` (ad-hoc) unless an item says otherwise; the app is `../out/AIO Proxy Spike.app`, host `Contents/MacOS/aio-proxy-desktop`. `bundle.sh` rebuilds only the host: rebuild the sidecar into `spike/out/aio-proxy` with `bun run build && bun packages/cli/scripts/build-binary.ts darwin-arm64 spike/out/aio-proxy` when an item needs a new one. Record the stderr log for each item.
 
-1. **Click elsewhere closes the panel (non-key PopUp).** This can reopen the UI stack decision.
+1. **Click elsewhere closes the panel (non-key PopUp).** **PASSED 2026-09-30** (by hand: clicking the desktop and another app's window both close the panel). This could have reopened the UI stack decision.
    - Run the host and click "AIO" in the menu bar.
    - Click the desktop, then repeat by clicking another app's window.
    - Pass: the panel closes every time, and stderr shows `window active=true` on open, then `window active=false`.
    - If `window active=true` never appears, the panel is not becoming key. Rerun with `SPIKE_NO_ACTIVATE=1` and report both runs.
    - Fail means GPUI PopUp cannot hide on deactivation, and there is no external-panel fallback.
-2. **Click the icon again closes it.**
+2. **Click the icon again closes it.** **PASSED 2026-09-30** (closes and stays closed).
    - With the panel open, click "AIO".
    - Pass: it closes and stays closed. stderr shows `toggle: panel just closed by deactivation, not reopening` when deactivation raced the click.
    - Known flake: the 300 ms guard is measured from mouse-up.
