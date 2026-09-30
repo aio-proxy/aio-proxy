@@ -32,3 +32,8 @@ pub(crate) fn discovery_with(patch: impl FnOnce(&mut serde_json::Value)) -> Resu
     patch(&mut value);
     parse_discovery(value.to_string().as_bytes())
 }
+
+/// Same, for tests that only build valid discoveries.
+pub(crate) fn discovery(patch: impl FnOnce(&mut serde_json::Value)) -> Discovery {
+    discovery_with(patch).expect("patched fixture parses")
+}
