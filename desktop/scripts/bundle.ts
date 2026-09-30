@@ -14,6 +14,7 @@ import { $ } from 'bun';
 
 import { DEFAULT_FEED_URL, renderInfoPlist } from './info-plist';
 import { MINIMUM_MACOS, machOProblems } from './macho';
+import { signApp } from './signing';
 import { runtimeSmoke } from './smoke';
 import { fetchSparkle } from './sparkle';
 
@@ -123,20 +124,10 @@ step('7. runtime smoke');
 await runtimeSmoke(app, version);
 
 step('8. ad-hoc hardened signature (inside-out, Sparkle 2.10.0 order)');
-// An ad-hoc signature has no Team ID, so hardened-runtime library validation would reject Sparkle;
-// the host gets disable-library-validation for this build only. Developer ID signing never uses it.
-const sign = (path: string, ...extra: string[]) => $`codesign -f -s - -o runtime ${extra} ${path}`.quiet();
-await sign(join(framework, 'Versions/B/XPCServices/Installer.xpc'));
-await sign(join(framework, 'Versions/B/XPCServices/Downloader.xpc'), '--preserve-metadata=entitlements');
-await sign(join(framework, 'Versions/B/Autoupdate'));
-await sign(join(framework, 'Versions/B/Updater.app'));
-await sign(framework);
-await sign(bundledSidecar, '--entitlements', join(desktop, 'entitlements/aio-proxy.plist'));
-const hostEntitlements = ['--entitlements', join(desktop, 'entitlements/adhoc-host.plist')];
-await sign(host, ...hostEntitlements);
-// Signing the .app re-signs its main executable, so the host entitlement goes on this step too.
-await sign(app, ...hostEntitlements);
+await signApp(app, { kind: 'adhoc' }, join(desktop, 'entitlements'));
 await $`codesign --verify --deep --strict --verbose=2 ${app}`;
 await hostRuns('after signing');
+// The hardened sidecar must still serve, and still JIT.
+await runtimeSmoke(app, version, { jit: true });
 
 console.error(`\n${app}`);
