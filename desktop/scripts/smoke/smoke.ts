@@ -53,8 +53,8 @@ export async function runtimeSmoke(
   options: { readonly jit?: boolean } = {},
 ): Promise<void> {
   // Bun's fetch honours HTTP_PROXY; the loopback checks below must never go through a proxy.
-  process.env.NO_PROXY = '*';
-  process.env.no_proxy = '*';
+  process.env['NO_PROXY'] = '*';
+  process.env['no_proxy'] = '*';
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-smoke-'));
   const port = freePort();
   const base = `http://127.0.0.1:${port}`;

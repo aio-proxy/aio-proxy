@@ -72,6 +72,7 @@
     "build": "turbo run build --filter=!@aio-proxy/website",
     "build:dashboard": "turbo run build --filter=@aio-proxy/dashboard",
     "desktop:bundle": "bun desktop/scripts/bundle.ts",
+    "desktop:publish": "bun desktop/scripts/publish.ts",
     "dev:prepare": "turbo run build --filter=@aio-proxy/core",
     "dev": "bun run dev:prepare && AIO_PROXY_PORT=22078 turbo run dev serve:dev --filter=!@aio-proxy/infra --filter=!@aio-proxy/website",
     "preflight": "bun run lint:types && bun run format:check && bun run test"
