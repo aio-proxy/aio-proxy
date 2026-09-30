@@ -3,6 +3,8 @@
 
 pub mod client;
 pub mod connect;
+pub mod install;
+pub mod process;
 pub mod summary;
 pub mod token;
 pub mod version;
