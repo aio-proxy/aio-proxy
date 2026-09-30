@@ -41,6 +41,52 @@ fn no_plist_with_a_hand_started_instance_on_the_port_is_left_alone() {
 }
 
 #[test]
+fn an_uninstalled_service_left_disabled_is_not_reinstalled_automatically_but_can_be_by_the_user() {
+    let d = discovery(|v| {
+        no_plist(v);
+        v["job"]["disabled"] = json!(true);
+    });
+    assert_eq!(automatic_action(&d, true, &none()), None);
+    assert_eq!(offered_actions(&d, true), Offered { install: true, ..Offered::default() });
+    assert_eq!(offered_actions(&d, false), Offered::default());
+    assert_eq!(
+        user_mutations(UserAction::InstallAndStart, Owner::NoPlist),
+        Some(auto_mutations(AutoAction::InstallAndStart))
+    );
+    assert_eq!(user_mutations(UserAction::InstallAndStart, Owner::Desktop), None);
+}
+
+#[test]
+fn a_plist_deleted_while_loaded_or_running_is_not_installed_over() {
+    for patch in
+        [(|v: &mut Value| v["job"]["loaded"] = json!(true)) as fn(&mut Value), |v| v["job"]["pid"] = json!(4310)]
+    {
+        let d = discovery(|v| {
+            no_plist(v);
+            patch(v);
+        });
+        assert_eq!(automatic_action(&d, true, &none()), None);
+        assert!(!offered_actions(&d, true).install);
+        let d = discovery(|v| {
+            no_plist(v);
+            patch(v);
+            v["job"]["disabled"] = json!(true);
+        });
+        assert!(!offered_actions(&d, true).install);
+    }
+}
+
+#[test]
+fn nothing_is_installed_when_the_control_address_was_not_probed() {
+    let patch = |v: &mut Value| {
+        no_plist(v);
+        v["instance"]["controlUrl"] = Value::Null;
+    };
+    assert_eq!(auto(patch), None);
+    assert!(!offered_actions(&discovery(patch), true).install);
+}
+
+#[test]
 fn desktop_loaded_enabled_without_a_process_is_started() {
     assert_eq!(auto(stopped_process), Some(AutoAction::StartNoProcess));
 }
@@ -104,14 +150,29 @@ fn nothing_is_automatic_outside_a_persistent_install() {
 }
 
 #[test]
-fn each_automatic_action_runs_once_per_launch() {
-    let d = discovery(stopped_process);
-    let mut attempts = none();
-    attempts.mark(AutoAction::StartNoProcess);
-    assert_eq!(automatic_action(&d, true, &attempts), None);
-    let older = discovery(|_| {});
-    attempts.mark(AutoAction::RestartForVersion);
-    assert_eq!(automatic_action(&older, true, &attempts), None);
+fn one_automatic_mutation_per_launch_blocks_every_other_row() {
+    let rows = [
+        discovery(no_plist),
+        discovery(|v| {
+            stopped_process(v);
+            v["job"]["loaded"] = json!(false);
+        }),
+        discovery(stopped_process),
+        discovery(|_| {}),
+    ];
+    let actions = [
+        AutoAction::InstallAndStart,
+        AutoAction::StartNotLoaded,
+        AutoAction::StartNoProcess,
+        AutoAction::RestartForVersion,
+    ];
+    for (marked, _) in actions.iter().enumerate() {
+        let mut attempts = none();
+        attempts.mark(actions[marked]);
+        for row in &rows {
+            assert_eq!(automatic_action(row, true, &attempts), None, "after {:?}", actions[marked]);
+        }
+    }
 }
 
 #[test]
@@ -128,9 +189,9 @@ fn restart_uses_kickstart_for_external_and_service_restart_only_for_desktop() {
 #[test]
 fn buttons_follow_ownership_and_running_state() {
     let running = offered_actions(&discovery(|_| {}), true);
-    assert_eq!(running, Offered { start: false, restart: true, stop: true, reload: true });
+    assert_eq!(running, Offered { install: false, start: false, restart: true, stop: true, reload: true });
     let stopped = offered_actions(&discovery(stopped_process), true);
-    assert_eq!(stopped, Offered { start: true, restart: false, stop: false, reload: false });
+    assert_eq!(stopped, Offered { install: false, start: true, restart: false, stop: false, reload: false });
     let unknown = offered_actions(&discovery(|v| v["unit"]["owner"] = json!("unknown")), true);
     assert_eq!(unknown, Offered { reload: true, ..Offered::default() });
     let read_only = offered_actions(&discovery(|_| {}), false);

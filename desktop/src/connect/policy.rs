@@ -20,21 +20,33 @@ pub enum AutoAction {
     RestartForVersion,
 }
 
-/// Each automatic action runs at most once per app launch; a failure shows an error and never
-/// loops (a broken config's exit 1 is remapped to 0 and looks identical to a clean stop).
+/// At most ONE automatic mutation runs per app launch, across all rows: a failed start would
+/// otherwise be retried through the next row (not loaded -> loaded without a process), and a
+/// failure shows an error and never loops (a broken config's exit 1 is remapped to 0 and looks
+/// identical to a clean stop).
 #[derive(Debug, Default, Clone)]
-pub struct AutoAttempts(Vec<AutoAction>);
+pub struct AutoAttempts(Option<AutoAction>);
 
 impl AutoAttempts {
-    pub fn used(&self, action: AutoAction) -> bool {
-        self.0.contains(&action)
+    /// True once any automatic action has run; the argument is kept so callers read per row.
+    pub fn used(&self, _action: AutoAction) -> bool {
+        self.0.is_some()
     }
 
     pub fn mark(&mut self, action: AutoAction) {
-        if !self.used(action) {
-            self.0.push(action);
-        }
+        self.0.get_or_insert(action);
     }
+}
+
+/// A fresh install is possible: no plist, nothing answering the control address (a null
+/// `controlUrl` means nothing was probed), and no launchd trace of a job (loaded, or running).
+/// `job.disabled` is checked separately: it is the leftover of a user's `service uninstall`.
+fn fresh_install_possible(d: &Discovery) -> bool {
+    d.unit.owner == Owner::NoPlist
+        && !d.instance.reachable
+        && d.instance.control_url.is_some()
+        && !d.job.loaded
+        && d.job.pid.is_none()
 }
 
 /// `persistent` is the install-location check (and no newer copy owning the symlink).
@@ -43,8 +55,9 @@ pub fn automatic_action(d: &Discovery, persistent: bool, attempts: &AutoAttempts
         return None;
     }
     let action = match d.unit.owner {
-        // A hand-started `aio-proxy run` answering the port is not ours to replace.
-        Owner::NoPlist if !d.instance.reachable => AutoAction::InstallAndStart,
+        // A hand-started `aio-proxy run` answering the port is not ours to replace, and a disabled
+        // override means the user uninstalled the service: `service start` would re-enable it.
+        Owner::NoPlist if fresh_install_possible(d) && !d.job.disabled => AutoAction::InstallAndStart,
         Owner::Desktop => {
             let ours = d.instance.matches_job == Some(true) || !d.instance.reachable;
             if !ours || d.job.disabled {
@@ -70,6 +83,9 @@ pub fn automatic_action(d: &Discovery, persistent: bool, attempts: &AutoAttempts
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserAction {
+    /// Install the plist and start: offered when only a leftover `job.disabled` blocks the
+    /// automatic install, so the user's explicit choice re-enables the service.
+    InstallAndStart,
     Start,
     Restart,
     Stop,
@@ -78,6 +94,7 @@ pub enum UserAction {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Offered {
+    pub install: bool,
     pub start: bool,
     pub restart: bool,
     pub stop: bool,
@@ -85,11 +102,13 @@ pub struct Offered {
 }
 
 /// Which buttons the panel shows. Service actions need a persistent install and a desktop or
-/// external owner; Reload only needs a reachable instance.
+/// external owner; Install needs a persistent install, a fresh-install candidate and a disabled
+/// override; Reload only needs a reachable instance.
 pub fn offered_actions(d: &Discovery, persistent: bool) -> Offered {
     let service = persistent && matches!(d.unit.owner, Owner::Desktop | Owner::External);
     let running = d.job.loaded && d.job.pid.is_some();
     Offered {
+        install: persistent && fresh_install_possible(d) && d.job.disabled,
         start: service && !running,
         restart: service && running,
         stop: service && running,
@@ -118,6 +137,7 @@ pub fn auto_mutations(action: AutoAction) -> &'static [Mutation] {
 /// The ownership table. `None` means not offered; Reload is HTTP and has no mutation.
 pub fn user_mutations(action: UserAction, owner: Owner) -> Option<&'static [Mutation]> {
     match (action, owner) {
+        (UserAction::InstallAndStart, Owner::NoPlist) => Some(auto_mutations(AutoAction::InstallAndStart)),
         (UserAction::Start, Owner::Desktop | Owner::External) => Some(&[Mutation::Service("start")]),
         (UserAction::Restart, Owner::Desktop) => Some(&[Mutation::Service("restart")]),
         (UserAction::Restart, Owner::External) => Some(&[Mutation::Kickstart]),
