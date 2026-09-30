@@ -241,9 +241,8 @@ pub fn set_login_item(cx: &mut App, enabled: bool) {
     if !model.persistent() {
         return;
     }
-    if let Err(error) = crate::login_item::set_enabled(enabled) {
-        model.action = ActionState::Failed(format!("Launch at login: {error}"));
-    }
+    model.login_item_error =
+        crate::login_item::set_enabled(enabled).err().map(|error| format!("Launch at login: {error}"));
     model.login_item = crate::login_item::status();
     changed(cx);
 }

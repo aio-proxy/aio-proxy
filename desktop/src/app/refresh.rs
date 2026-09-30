@@ -15,6 +15,7 @@ const SUMMARY_PATH: &str = "/dashboard/api/desktop-summary";
 pub fn panel_opened(cx: &mut App) {
     let model = cx.global_mut::<AppModel>();
     model.login_item = crate::login_item::status();
+    model.login_item_error = None;
     let order = model.scheduler.open(Instant::now());
     dispatch(cx, order);
     super::check_health(cx);

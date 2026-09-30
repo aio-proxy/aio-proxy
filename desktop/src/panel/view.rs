@@ -86,6 +86,6 @@ impl Render for PanelView {
             .child(header)
             .child(body(model, now, cx))
             .child(actions::row(model))
-            .child(footer::footer(model, cx))
+            .children(footer::footer(model, cx))
     }
 }

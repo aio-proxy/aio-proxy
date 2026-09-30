@@ -69,6 +69,9 @@ pub struct AppModel {
     pub summary_error: Option<String>,
     pub action: ActionState,
     pub login_item: LoginItemStatus,
+    /// Last register/unregister failure, shown under the switch; kept out of `action`, which is
+    /// the service-action state machine.
+    pub login_item_error: Option<String>,
     attempts: AutoAttempts,
     /// True from spawn to landing of the one in-flight discovery; only that task clears it.
     discovering: bool,
@@ -98,6 +101,7 @@ impl AppModel {
             summary_error: None,
             action: ActionState::Idle,
             login_item: LoginItemStatus::Unavailable,
+            login_item_error: None,
             attempts: AutoAttempts::default(),
             discovering: false,
             discovery_order: DiscoveryOrder::default(),
