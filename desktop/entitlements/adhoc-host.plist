@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <!-- Ad-hoc (unsigned) bundles only: an ad-hoc signature has no Team ID, so the hardened runtime's
+       library validation rejects the ad-hoc Sparkle.framework. Developer ID signing never uses this
+       file, because the host and Sparkle then share a Team ID. No double hyphens in XML comments. -->
+  <key>com.apple.security.cs.disable-library-validation</key><true/>
+</dict></plist>

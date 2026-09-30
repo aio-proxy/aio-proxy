@@ -10,4 +10,13 @@ fn main() {
     let json: serde_json::Value = serde_json::from_str(&text).expect("parse npm/aio-proxy/package.json");
     let version = json["version"].as_str().expect("npm/aio-proxy/package.json has a string version");
     println!("cargo:rustc-env=AIO_PROXY_VERSION={version}");
+
+    // Sparkle links only for a bundle build (desktop/scripts/bundle.ts sets SPARKLE_DIR). `cargo test`
+    // and `cargo run` then need no framework; the updater finds no class and stays off.
+    println!("cargo:rerun-if-env-changed=SPARKLE_DIR");
+    if let Ok(dir) = env::var("SPARKLE_DIR") {
+        println!("cargo:rustc-link-search=framework={dir}");
+        println!("cargo:rustc-link-lib=framework=Sparkle");
+        println!("cargo:rustc-link-arg-bins=-Wl,-rpath,@loader_path/../Frameworks");
+    }
 }
