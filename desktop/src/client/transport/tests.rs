@@ -89,14 +89,43 @@ fn a_redirect_is_returned_not_followed() {
     assert!(target.accept().is_err(), "the redirect target was contacted");
 }
 
-#[test]
-fn proxy_environment_variables_are_ignored() {
-    // SAFETY: no other test in this crate reads these variables.
-    unsafe {
-        for name in ["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"] {
-            std::env::set_var(name, "http://127.0.0.1:1");
+/// Sets the proxy variables and restores the previous values on drop, so a panic cannot leak them
+/// into later tests that spawn children.
+struct ProxyEnv(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+impl ProxyEnv {
+    fn set() -> Self {
+        let names = ["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
+        let saved = names.iter().map(|&name| (name, std::env::var_os(name))).collect();
+        // SAFETY: mutating the environment races with any concurrent getenv in this process (the
+        // other tests' threads, the resolver); nothing in this crate reads these variables, and
+        // they are restored below.
+        unsafe {
+            for name in names {
+                std::env::set_var(name, "http://127.0.0.1:1");
+            }
+        }
+        Self(saved)
+    }
+}
+
+impl Drop for ProxyEnv {
+    fn drop(&mut self) {
+        // SAFETY: as in `set`.
+        unsafe {
+            for (name, value) in &self.0 {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
         }
     }
+}
+
+#[test]
+fn proxy_environment_variables_are_ignored() {
+    let _env = ProxyEnv::set();
     let (base, server) = serve(|s| {
         s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").unwrap();
     });
@@ -174,4 +203,61 @@ fn a_spawned_request_resolves_through_its_future() {
     let response = futures::executor::block_on(spawn(get(&base, None), Limits::default())).unwrap();
     assert_eq!(response.status, 404);
     server.join().unwrap();
+}
+
+#[test]
+fn a_cancel_mid_body_is_cancelled_not_a_truncated_success() {
+    // No Content-Length and not chunked: the body runs to EOF, which a cancel's shutdown also produces.
+    let (base, server) = serve(|s| {
+        let _ = s.write_all(b"HTTP/1.1 200 OK\r\n\r\n{\"partial\":");
+        thread::sleep(Duration::from_millis(600));
+    });
+    let cancel = Cancel::default();
+    let canceller = cancel.clone();
+    let handle = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(200));
+        canceller.cancel();
+    });
+    let started = Instant::now();
+    let result = send(&get(&base, None), Limits::default(), &cancel);
+    assert!(matches!(result, Err(HttpError::Cancelled)), "{result:?}");
+    assert!(started.elapsed() < Duration::from_secs(2));
+    handle.join().unwrap();
+    server.join().unwrap();
+}
+
+#[test]
+fn a_token_that_could_inject_a_header_is_never_sent() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    for bad in ["tok\r\nX-Evil: 1", "tok\n", "has space", "tab\t", "", "caf\u{e9}"] {
+        let result = send_default(&get(&base, Some(Token::new(bad))));
+        assert!(matches!(result, Err(HttpError::InvalidToken)), "{bad:?}: {result:?}");
+    }
+    assert!(listener.accept().is_err(), "a request went out with an invalid token");
+}
+
+#[test]
+fn an_interim_100_continue_is_skipped_but_an_upgrade_is_refused() {
+    let (base, server) = serve(|s| {
+        s.write_all(b"HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok").unwrap();
+    });
+    let response = send_default(&get(&base, None)).unwrap();
+    assert_eq!((response.status, response.body.as_slice()), (200, &b"ok"[..]));
+    server.join().unwrap();
+
+    let (base, server) = serve(|s| {
+        s.write_all(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: x\r\n\r\n").unwrap();
+    });
+    let result = send_default(&get(&base, None));
+    assert!(matches!(result, Err(HttpError::Malformed(_))), "{result:?}");
+    server.join().unwrap();
+}
+
+#[test]
+fn an_overflowing_total_deadline_is_a_timeout_not_a_panic() {
+    let limits = Limits { total: Duration::MAX, ..Limits::default() };
+    let result = send(&get("http://127.0.0.1:1", None), limits, &Cancel::default());
+    assert!(matches!(result, Err(HttpError::Timeout)), "{result:?}");
 }

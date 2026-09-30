@@ -93,6 +93,8 @@ pub enum HttpError {
     Malformed(&'static str),
     TooLarge,
     Cancelled,
+    /// The bearer holds a byte that is not visible ASCII, which could inject header lines.
+    InvalidToken,
 }
 
 impl fmt::Display for HttpError {
@@ -106,6 +108,7 @@ impl fmt::Display for HttpError {
             HttpError::Malformed(what) => write!(f, "malformed response: {what}"),
             HttpError::TooLarge => f.write_str("response too large"),
             HttpError::Cancelled => f.write_str("cancelled"),
+            HttpError::InvalidToken => f.write_str("the token is not a valid header value"),
         }
     }
 }
@@ -150,16 +153,21 @@ impl Cancel {
 
 /// Blocking exchange on the calling thread. `cancel` from another thread shuts the socket down.
 pub fn send(request: &Request, limits: Limits, cancel: &Cancel) -> Result<Response, HttpError> {
-    let deadline = Instant::now() + limits.total;
-    let result = exchange(request, limits, deadline, cancel);
+    let result = match Instant::now().checked_add(limits.total) {
+        Some(deadline) => exchange(request, limits, deadline, cancel),
+        None => Err(HttpError::Timeout),
+    };
     cancel.release();
-    match result {
-        Err(_) if cancel.is_cancelled() => Err(HttpError::Cancelled),
-        other => other,
+    // A cancel shuts the socket, which a read without a length reads as a clean EOF and would
+    // return as a truncated `Ok`; whatever the result was, a cancelled exchange is Cancelled.
+    if cancel.is_cancelled() {
+        return Err(HttpError::Cancelled);
     }
+    result
 }
 
 fn exchange(request: &Request, limits: Limits, deadline: Instant, cancel: &Cancel) -> Result<Response, HttpError> {
+    let head = head(request)?;
     let connect_for = limits.connect.min(remaining(deadline)?);
     let mut stream = TcpStream::connect_timeout(&request.url.addr, connect_for).map_err(|error| {
         if matches!(error.kind(), io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock) {
@@ -170,12 +178,12 @@ fn exchange(request: &Request, limits: Limits, deadline: Instant, cancel: &Cance
     })?;
     cancel.register(&stream)?;
     stream.set_write_timeout(Some(remaining(deadline)?)).map_err(HttpError::Io)?;
-    stream.write_all(head(request).as_bytes()).map_err(io_error)?;
+    stream.write_all(head.as_bytes()).map_err(io_error)?;
     let mut reader = Reader { stream, buf: Vec::new(), pos: 0, deadline };
     read_response(&mut reader, limits.max_body)
 }
 
-fn head(request: &Request) -> String {
+fn head(request: &Request) -> Result<String, HttpError> {
     let method = match request.method {
         Method::Get => "GET",
         Method::Post => "POST",
@@ -188,10 +196,14 @@ fn head(request: &Request) -> String {
         head.push_str("Content-Length: 0\r\n");
     }
     if let Some(token) = &request.bearer {
+        // Tokens arrive as JSON, where `\r\n` can be escaped into a value; refuse rather than send.
+        if token.expose().is_empty() || !token.expose().bytes().all(|b| b.is_ascii_graphic()) {
+            return Err(HttpError::InvalidToken);
+        }
         head.push_str(&format!("Authorization: Bearer {}\r\n", token.expose()));
     }
     head.push_str("\r\n");
-    head
+    Ok(head)
 }
 
 fn remaining(deadline: Instant) -> Result<Duration, HttpError> {
@@ -279,6 +291,32 @@ impl Reader {
 }
 
 fn read_response(reader: &mut Reader, max_body: usize) -> Result<Response, HttpError> {
+    let (status, content_length, chunked) = loop {
+        let head = read_head(reader)?;
+        match head.0 {
+            101 => return Err(HttpError::Malformed("unexpected protocol upgrade")),
+            // Interim responses precede the final one on the same connection.
+            100..=199 => continue,
+            _ => break head,
+        }
+    };
+    let body = if status == 204 || status == 304 {
+        Vec::new()
+    } else if chunked {
+        read_chunked(reader, max_body)?
+    } else if let Some(length) = content_length {
+        if length > max_body {
+            return Err(HttpError::TooLarge);
+        }
+        reader.exact(length)?
+    } else {
+        reader.rest(max_body)?
+    };
+    Ok(Response { status, body })
+}
+
+/// Status line and headers: `(status, content-length, chunked)`.
+fn read_head(reader: &mut Reader) -> Result<(u16, Option<usize>, bool), HttpError> {
     let status_line = reader.line(MAX_HEADER_BYTES)?;
     let status = std::str::from_utf8(&status_line)
         .ok()
@@ -309,19 +347,7 @@ fn read_response(reader: &mut Reader, max_body: usize) -> Result<Response, HttpE
             chunked = value.split(',').any(|coding| coding.trim().eq_ignore_ascii_case("chunked"));
         }
     }
-    let body = if status == 204 || status == 304 {
-        Vec::new()
-    } else if chunked {
-        read_chunked(reader, max_body)?
-    } else if let Some(length) = content_length {
-        if length > max_body {
-            return Err(HttpError::TooLarge);
-        }
-        reader.exact(length)?
-    } else {
-        reader.rest(max_body)?
-    };
-    Ok(Response { status, body })
+    Ok((status, content_length, chunked))
 }
 
 fn read_chunked(reader: &mut Reader, max_body: usize) -> Result<Vec<u8>, HttpError> {
