@@ -28,7 +28,8 @@ impl Fake {
         Self {
             discoveries: RefCell::new(discoveries.into()),
             alive: RefCell::new(VecDeque::from([false])),
-            health: RefCell::new(VecDeque::from([None])),
+            // Something healthy answers unless a test says otherwise, so starts complete at once.
+            health: RefCell::new(VecDeque::from([Some("0.37.0".to_string())])),
             mutations: RefCell::default(),
             clock: Cell::new(Instant::now()),
             fail_mutations: Cell::new(false),
@@ -218,4 +219,20 @@ fn an_install_click_is_refused_when_an_instance_started_meanwhile() {
     })]);
     assert_eq!(run_user(&host, &discovery(no_plist), UserAction::InstallAndStart).unwrap_err(), RunError::Changed);
     assert!(host.mutations().is_empty());
+}
+
+#[test]
+fn a_start_waits_for_health_and_fails_when_the_proxy_never_answers() {
+    let host = Fake::new(vec![discovery(stopped)]);
+    *host.health.borrow_mut() = VecDeque::from([None, None, Some("0.37.0".to_string())]);
+    let started = host.now();
+    run_user(&host, &discovery(stopped), UserAction::Start).unwrap();
+    assert_eq!(host.now() - started, POLL_EVERY * 2, "two polls before /health answered");
+
+    *host.health.borrow_mut() = VecDeque::from([None]);
+    let started = host.now();
+    let error = run_auto(&host, &discovery(stopped), AutoAction::StartNoProcess, &mut AutoAttempts::default());
+    assert_eq!(error.unwrap_err(), RunError::TimedOut("start"));
+    let waited = host.now() - started;
+    assert!(waited >= START_WAIT && waited <= START_WAIT + POLL_EVERY, "{waited:?}");
 }

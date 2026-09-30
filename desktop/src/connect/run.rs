@@ -11,6 +11,8 @@ use super::policy::{
 };
 
 pub const RESTART_WAIT: Duration = Duration::from_secs(30);
+/// `service start` returns before the sidecar listens; a start that never answers is a failure.
+pub const START_WAIT: Duration = Duration::from_secs(30);
 pub const STOP_WAIT: Duration = Duration::from_secs(30);
 pub const POLL_EVERY: Duration = Duration::from_millis(500);
 
@@ -50,6 +52,7 @@ impl fmt::Display for RunError {
 
 enum Wait {
     Nothing,
+    Start { control_url: Option<String> },
     Restart { old_pid: Option<u32>, expected: Option<String>, control_url: Option<String> },
     Stop,
 }
@@ -73,7 +76,7 @@ pub fn run_auto(
     attempts.mark(action);
     let wait = match action {
         AutoAction::RestartForVersion => restart_wait(&now, Some(now.bundled_version.clone())),
-        _ => Wait::Nothing,
+        AutoAction::InstallAndStart | AutoAction::StartNotLoaded | AutoAction::StartNoProcess => start_wait(&now),
     };
     execute(host, &now, auto_mutations(action), wait)
 }
@@ -90,7 +93,8 @@ pub fn run_user(host: &impl Host, rendered: &Discovery, action: UserAction) -> R
             restart_wait(&now, expected)
         }
         UserAction::Stop => Wait::Stop,
-        UserAction::InstallAndStart | UserAction::Start | UserAction::Reload => Wait::Nothing,
+        UserAction::InstallAndStart | UserAction::Start => start_wait(&now),
+        UserAction::Reload => Wait::Nothing,
     };
     execute(host, &now, mutations, wait)
 }
@@ -106,6 +110,10 @@ fn fresh(host: &impl Host, decided_on: &Discovery) -> Result<Discovery, RunError
     if unchanged(decided_on, &now) { Ok(now) } else { Err(RunError::Changed) }
 }
 
+fn start_wait(now: &Discovery) -> Wait {
+    Wait::Start { control_url: now.instance.control_url.clone() }
+}
+
 fn restart_wait(now: &Discovery, expected: Option<String>) -> Wait {
     Wait::Restart { old_pid: now.instance.pid, expected, control_url: now.instance.control_url.clone() }
 }
@@ -116,6 +124,10 @@ fn execute(host: &impl Host, now: &Discovery, mutations: &[Mutation], wait: Wait
     }
     match wait {
         Wait::Nothing => {}
+        // No control address means nothing can be probed, as for Restart.
+        Wait::Start { control_url } => poll(host, START_WAIT, "start", || {
+            control_url.as_deref().is_none_or(|url| host.health_version(url).is_some())
+        })?,
         Wait::Restart { old_pid, expected, control_url } => {
             poll(host, RESTART_WAIT, "restart", || {
                 let alive = old_pid.is_some_and(|pid| host.pid_alive(pid));
@@ -123,11 +135,12 @@ fn execute(host: &impl Host, now: &Discovery, mutations: &[Mutation], wait: Wait
                     (Some(url), false) => host.health_version(url),
                     _ => None,
                 };
-                Ok(restart_complete(alive, health.as_deref(), expected.as_deref()) || (control_url.is_none() && !alive))
+                restart_complete(alive, health.as_deref(), expected.as_deref()) || (control_url.is_none() && !alive)
             })?;
         }
         Wait::Stop => {
-            poll(host, STOP_WAIT, "stop", || Ok(stop_complete(&host.discover().map_err(RunError::Discovery)?)))?;
+            // A transient discovery failure mid-wait means "not done yet", not an abort.
+            poll(host, STOP_WAIT, "stop", || host.discover().is_ok_and(|d| stop_complete(&d)))?;
         }
     }
     host.discover().map_err(RunError::Discovery)
@@ -137,11 +150,11 @@ fn poll(
     host: &impl Host,
     budget: Duration,
     what: &'static str,
-    mut done: impl FnMut() -> Result<bool, RunError>,
+    mut done: impl FnMut() -> bool,
 ) -> Result<(), RunError> {
     let deadline = host.now() + budget;
     loop {
-        if done()? {
+        if done() {
             return Ok(());
         }
         if host.now() >= deadline {
