@@ -1,11 +1,11 @@
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Renders docs/public/og-image.png from og-image.html with headless Chrome.
+// Renders docs/public/og-image.png from og-image.html with Bun's built-in headless browser.
+// Pinned to the Chrome backend (Bun finds the installed Chrome, or BUN_CHROME_PATH) so the viewport can be set
+// exactly over CDP: the macOS WebKit backend captures at the display's pixel ratio, and Chrome's `width`/`height`
+// size the window rather than the page. Either would miss the 1280x640 declared in rspress.config.ts.
 // The template loads Lexend and JetBrains Mono from Google Fonts, so rendering needs network access.
-const chrome = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const output = join(import.meta.dir, '..', '..', 'docs', 'public', 'og-image.png');
 
 const readBrandSvg = (name: string) =>
@@ -14,24 +14,10 @@ const readBrandSvg = (name: string) =>
 const html = (await Bun.file(join(import.meta.dir, 'og-image.html')).text())
   .replace('{{wordmark}}', await readBrandSvg('aio-proxy-wordmark.svg'))
   .replace('{{mark}}', await readBrandSvg('aio-proxy-mark.svg'));
-const page = join(await mkdtemp(join(tmpdir(), 'og-image-')), 'og-image.html');
-await Bun.write(page, html);
 
-const proc = Bun.spawn(
-  [
-    chrome,
-    '--headless=new',
-    '--hide-scrollbars',
-    '--force-device-scale-factor=1',
-    '--window-size=1280,640',
-    // Gives the web fonts time to load before the capture.
-    '--virtual-time-budget=5000',
-    `--screenshot=${output}`,
-    `file://${page}`,
-  ],
-  { stdout: 'ignore', stderr: 'ignore' },
-);
-if ((await proc.exited) !== 0) {
-  throw new Error(`Chrome exited with ${proc.exitCode}; set CHROME_PATH if it is not installed at ${chrome}`);
-}
+await using view = new Bun.WebView({ backend: 'chrome' });
+await view.navigate(`data:text/html,${encodeURIComponent(html)}`);
+await view.cdp('Emulation.setDeviceMetricsOverride', { width: 1280, height: 640, deviceScaleFactor: 1, mobile: false });
+await view.evaluate('document.fonts.ready');
+await Bun.write(output, await view.screenshot());
 console.log(`Wrote ${output}`);
