@@ -1,5 +1,26 @@
 # @aio-proxy/core
 
+## 0.37.0
+
+### Patch Changes
+
+- Updated dependencies [[`7f408f2`](https://github.com/aio-proxy/aio-proxy/commit/7f408f2fa1c54d644c5bfe11a649c89567e502b9)]:
+  - @aio-proxy/i18n@0.37.0
+  - @aio-proxy/logger@0.37.0
+  - @aio-proxy/plugin-sdk@0.37.0
+  - @aio-proxy/plugin-claude-code@0.37.0
+  - @aio-proxy/plugin-cursor@0.37.0
+  - @aio-proxy/plugin-github-copilot@0.37.0
+  - @aio-proxy/plugin-google-antigravity@0.37.0
+  - @aio-proxy/plugin-kimi-code@0.37.0
+  - @aio-proxy/plugin-muse-code@0.37.0
+  - @aio-proxy/plugin-openai-chatgpt@0.37.0
+  - @aio-proxy/plugin-opencode-go@0.37.0
+  - @aio-proxy/plugin-openrouter@0.37.0
+  - @aio-proxy/plugin-xai-grok@0.37.0
+  - @aio-proxy/shared@0.37.0
+  - @aio-proxy/types@0.37.0
+
 ## 0.36.1
 
 ### Patch Changes
