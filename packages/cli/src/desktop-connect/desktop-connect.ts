@@ -108,24 +108,47 @@ async function summaryIdentity(
   }
 }
 
-/** The uids `lsof -F u` reports for the listeners on a port. */
-export function listenerUids(lsofOutput: string): readonly number[] {
-  return lsofOutput
-    .split('\n')
-    .filter((line) => /^u\d+$/u.test(line))
-    .map((line) => Number(line.slice(1)));
+export type Listener = { readonly uid: number; readonly family: string; readonly address: string };
+
+/** The listening sockets in `lsof -F tun` output: each file's family and address, under its process's uid. */
+export function parseListeners(lsofOutput: string): readonly Listener[] {
+  const listeners: Listener[] = [];
+  let uid = -1;
+  let family = '';
+  for (const line of lsofOutput.split('\n')) {
+    const value = line.slice(1);
+    if (line.startsWith('u')) uid = Number(value);
+    else if (line.startsWith('f')) family = '';
+    else if (line.startsWith('t')) family = value;
+    else if (line.startsWith('n')) listeners.push({ uid, family, address: value });
+  }
+  return listeners;
 }
 
 /**
- * Whether a process of this user listens on `port`. Another local account could bind the port while
- * the proxy is down and answer `/health`; the token goes only to a listener this user owns. An
- * unprivileged `lsof` does not even see other users' sockets, and a failure counts as not ours.
+ * Whether `uid` listens where the probe connects: on `host` itself or on its family's wildcard. The
+ * kernel refuses a second user the same port within one family, but not across IPv4 and IPv6, so a
+ * listener of this user on `127.0.0.1` proves nothing about `::1`.
  */
-async function listenerIsOurs(deps: DesktopConnectDeps, port: string): Promise<boolean> {
+export function listensAt(listeners: readonly Listener[], uid: number, host: string, port: string): boolean {
+  const ipv6 = host.includes(':');
+  const exact = ipv6 ? `[${host}]:${port}` : `${host}:${port}`;
+  const family = ipv6 ? 'IPv6' : 'IPv4';
+  return listeners.some(
+    (l) => l.uid === uid && l.family === family && (l.address === exact || l.address === `*:${port}`),
+  );
+}
+
+/**
+ * Whether a process of this user listens where the probe goes. Another local account could bind the
+ * port while the proxy is down and answer `/health`; the token goes only to a listener this user owns.
+ * An unprivileged `lsof` does not even see other users' sockets, and a failure counts as not ours.
+ */
+async function listenerIsOurs(deps: DesktopConnectDeps, host: string, port: string): Promise<boolean> {
   if (!/^\d+$/u.test(port)) return false;
   try {
-    const { code, stdout } = await deps.run(['/usr/sbin/lsof', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fu']);
-    return code === 0 && listenerUids(stdout).includes(deps.uid);
+    const { code, stdout } = await deps.run(['/usr/sbin/lsof', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Ftun']);
+    return code === 0 && listensAt(parseListeners(stdout), deps.uid, host, port);
   } catch {
     return false;
   }
@@ -164,7 +187,7 @@ export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopC
   const health = await probeHealth(controlUrl, deps.fetch, PROBE_TIMEOUT_MS);
   // The token is reported, and sent for the identity probe, only for a listener this user owns: the
   // app sends it only to an instance discovery reported reachable, so withholding it here covers both.
-  const ours = health !== null && (await listenerIsOurs(deps, address.port));
+  const ours = health !== null && (await listenerIsOurs(deps, host, address.port));
   const trustedToken = ours ? token : undefined;
   const identity = trustedToken === undefined ? undefined : await summaryIdentity(deps, controlUrl, trustedToken);
   const pid = identity?.pid ?? null;

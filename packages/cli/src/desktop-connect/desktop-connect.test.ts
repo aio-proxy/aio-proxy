@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { LAUNCHD_EXEC_WRAPPER } from '../service';
 import {
   desktopConnect,
-  listenerUids,
+  listensAt,
+  parseListeners,
   printDesktopConnect,
   runWithin,
   type DesktopConnectDeps,
@@ -54,7 +55,11 @@ const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | 
     if (cmd[0] === 'plutil') return { code: 0, stdout: JSON.stringify(scenario.plist) };
     if (cmd[0] === '/usr/sbin/lsof') {
       const uid = scenario.listenerUid === undefined ? 501 : scenario.listenerUid;
-      return uid === null ? { code: 1, stdout: '' } : { code: 0, stdout: `p4312\nu${uid}\nf12\n` };
+      // Listening on the probed IPv4 address, at the port in `-iTCP:<port>`.
+      const port = cmd[2]?.slice('-iTCP:'.length);
+      return uid === null
+        ? { code: 1, stdout: '' }
+        : { code: 0, stdout: `p4312\nu${uid}\nf12\ntIPv4\nn127.0.0.1:${port}\n` };
     }
     if (scenario.failLaunchctl === true) throw new Error('launchctl missing');
     if (cmd[1] === 'print') return scenario.jobPrint ?? { code: 113, stdout: '' };
@@ -309,7 +314,19 @@ test('the token goes only to a listener this user owns', async () => {
   }
 });
 
-test("lsof field output yields the listeners' uids", () => {
-  expect(listenerUids('p92556\nu501\nf12\np7\nu0\nf3\n')).toEqual([501, 0]);
-  expect(listenerUids('')).toEqual([]);
+test("the listener must be at the probed address or its family's wildcard", () => {
+  const listeners = parseListeners(
+    'p1\nu501\nf12\ntIPv4\nn127.0.0.1:9317\nf13\ntIPv6\nn*:9418\np2\nu502\nf3\ntIPv6\nn[::1]:9317\n',
+  );
+  expect(listeners).toEqual([
+    { uid: 501, family: 'IPv4', address: '127.0.0.1:9317' },
+    { uid: 501, family: 'IPv6', address: '*:9418' },
+    { uid: 502, family: 'IPv6', address: '[::1]:9317' },
+  ]);
+  expect(listensAt(listeners, 501, '127.0.0.1', '9317')).toBe(true);
+  // Our IPv4 listener says nothing about ::1, where another user listens on the same port.
+  expect(listensAt(listeners, 501, '::1', '9317')).toBe(false);
+  expect(listensAt(listeners, 501, '::1', '9418')).toBe(true);
+  // An IPv6 wildcard does not vouch for an IPv4 probe.
+  expect(listensAt(listeners, 501, '127.0.0.1', '9418')).toBe(false);
 });
