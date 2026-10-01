@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import packageJson from '../../../../package.json' with { type: 'json' };
+import packageJson from '../../../../../package.json' with { type: 'json' };
 import { fetchCodexCatalog } from './index';
 
 const input = {

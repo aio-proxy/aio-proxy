@@ -2,8 +2,8 @@ import type { CodexCatalog } from '@aio-proxy/server';
 import { CodexUpstreamModelSchema } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import packageJson from '../../../../package.json' with { type: 'json' };
-import { codexBaseUrl } from '../../control-plane';
+import packageJson from '../../../../../package.json' with { type: 'json' };
+import { codexBaseUrl } from '../../../control-plane';
 
 export type CodexCatalogFetchInput = {
   readonly endpoint: string;

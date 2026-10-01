@@ -1,20 +1,20 @@
 import type { CodexCatalog } from '@aio-proxy/server';
 
-import { editCodexDocument, readManagedField } from '../config-document';
-import type { CodexCatalogUpdateResult, CodexLocation, CodexMarker, OwnedField } from '../contracts';
-import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
+import { editCodexDocument, readManagedField } from '../../config-document';
+import type { CodexCatalogUpdateResult, CodexLocation, CodexMarker, OwnedField } from '../../contracts';
+import { withCodexInstallation, type CodexLease } from '../../storage/installation-lock';
 import {
   catalogOwnedField,
   catalogReference,
   prepareCodexCatalog,
   pruneCodexCatalogs,
   validateCatalogPath,
-} from './catalog-storage';
-import { completeOperation, recoverPending, runExclusive } from './config-operation';
-import { changedFields } from './inspect';
-import { fingerprint } from './journal';
-import { appliedProviderBaseUrl, readMarker, validateMarker } from './marker';
-import { readRegularFile } from './storage';
+} from '../catalog-storage';
+import { completeOperation, recoverPending, runExclusive } from '../config-operation';
+import { changedFields } from '../inspect';
+import { fingerprint } from '../journal';
+import { appliedProviderBaseUrl, readMarker, validateMarker } from '../marker';
+import { readRegularFile } from '../storage';
 
 // Both callers hold the installation lease; recovery must precede this inspection.
 async function eligibleCatalogTarget(location: CodexLocation, baseUrl: string) {

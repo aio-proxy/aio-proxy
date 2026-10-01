@@ -5,9 +5,9 @@ import { join } from 'node:path';
 
 import type { CodexCatalog } from '@aio-proxy/server';
 
-import { resolveCodexLocation } from '../location';
-import type { CodexLease } from '../storage/installation-lock';
-import { withCodexInstallation } from '../storage/installation-lock';
+import { resolveCodexLocation } from '../../location';
+import type { CodexLease } from '../../storage/installation-lock';
+import { withCodexInstallation } from '../../storage/installation-lock';
 import {
   configureCodexConfig,
   prepareCodexCatalog,
@@ -16,8 +16,8 @@ import {
   removeCodexConfig,
   updateManagedCodexCatalog,
   validateCodexConfig,
-} from './index';
-import { journalPath } from './journal';
+} from '../index';
+import { journalPath } from '../journal';
 
 const baseUrl = 'http://127.0.0.1:9317/v1';
 const auth = { mode: 'keep-chatgpt' as const, token: 'test-token' };

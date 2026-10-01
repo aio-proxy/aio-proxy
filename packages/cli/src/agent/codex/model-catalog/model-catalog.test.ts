@@ -14,7 +14,7 @@ import {
 } from '../managed-config';
 import { fingerprint, journalPath } from '../managed-config/journal';
 import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
-import { createLocalCodexCatalogSync } from './model-catalog';
+import { createLocalCodexCatalogSync } from './index';
 
 const endpoint = 'http://127.0.0.1:9317';
 const baseUrl = `${endpoint}/v1`;
