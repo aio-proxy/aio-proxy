@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.37.0
+
+### Minor Changes
+
+- [#423](https://github.com/aio-proxy/aio-proxy/pull/423) [`7f408f2`](https://github.com/aio-proxy/aio-proxy/commit/7f408f2fa1c54d644c5bfe11a649c89567e502b9) Thanks @baranwang - The CLI has a new look. Help groups commands by purpose, `provider list` and `plugin list` print aligned tables, `agent list` and `provider list --filter <id>` print every field as a labeled block, and `doctor` is a checklist. Status uses one set of symbols (● ▲ ✗ ○) everywhere, with Dashboard teal for headings. Output stays plain when redirected or when `NO_COLOR` is set, and `--json` output is unchanged.
+
 ## 0.36.1
 
 ### Patch Changes
