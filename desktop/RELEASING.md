@@ -7,16 +7,24 @@ The app ships from CI. After Changesets publishes a release, `release.yml` dispa
 
 ## One-time setup
 
+The signing and notarization secrets are the organization's `APPLE_*` secrets, shared with the
+rest of the organization; the repository must be in their access list. The workflow maps them to
+the names the scripts read (the same names a local release sets).
+
 1. **Developer ID certificate.** In an Apple Developer Program team, create a "Developer ID
    Application" certificate and export it with its private key as a `.p12`.
-   - Secret `DEVELOPER_ID_P12_BASE64`: the output of `base64 -i developer-id.p12`.
-   - Secret `DEVELOPER_ID_P12_PASSWORD`: the export password.
-   - Variable `DEVELOPER_ID_IDENTITY`: the certificate name, e.g. `Developer ID Application: <Team> (<TEAMID>)`.
+   - Secret `APPLE_CERTIFICATE_BASE64`: the output of `base64 -i developer-id.p12`.
+   - Secret `APPLE_CERTIFICATE_PASSWORD`: the export password.
+   - Secret `APPLE_SIGN_IDENTITY`: the certificate name, e.g. `Developer ID Application: <Team> (<TEAMID>)`.
 2. **Notarization.** In App Store Connect → Users and Access → Integrations, create an API key
    with the Developer role.
-   - Secret `APPLE_API_KEY_P8`: the downloaded `.p8` file's contents.
-   - Secret `APPLE_API_KEY_ID`: the key ID.
-   - Secret `APPLE_API_ISSUER_ID`: the issuer ID.
+   - Secret `APPLE_NOTARY_KEY_BASE64`: the output of `base64 -i AuthKey_<KEYID>.p8`.
+   - Secret `APPLE_NOTARY_KEY_ID`: the key ID.
+   - Secret `APPLE_NOTARY_ISSUER_ID`: the issuer ID.
+
+   `APPLE_TEAM_ID` and `APPLE_PROFILE_BASE64` are not used: the identity names the team, and the
+   app has no restricted entitlement that needs a provisioning profile.
+
 3. **Sparkle update key.** This key is the update root of trust: whoever holds the private key
    can ship an update to every install. Losing it means existing installs can never be updated
    again. Keep one offline backup, and never change it once a version has shipped.
@@ -27,8 +35,8 @@ The app ships from CI. After Changesets publishes a release, `release.yml` dispa
    ```
 
    (`bun run desktop:bundle --unsigned` downloads `desktop/vendor` first.)
-   - Variable `SPARKLE_PUBLIC_ED_KEY`: the printed public key.
-   - Secret `SPARKLE_ED_PRIVATE_KEY`: the contents of `sparkle-private.key`. Delete the file afterwards.
+   - Repository variable `SPARKLE_PUBLIC_ED_KEY`: the printed public key.
+   - Repository secret `SPARKLE_ED_PRIVATE_KEY`: the contents of `sparkle-private.key`. Delete the file afterwards.
 
    CI passes the key to `generate_appcast` only on stdin. Do not use `--account` in automation:
    it blocks on a Keychain prompt.
