@@ -1,6 +1,7 @@
 //! The anchored panel: placement, the PopUp window lifecycle, and its views.
 
 mod actions;
+mod activity;
 mod charts;
 mod degraded;
 mod footer;
