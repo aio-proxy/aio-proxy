@@ -63,7 +63,6 @@
       "option_host_description": "Host to bind",
       "option_port_description": "Port to bind",
       "option_open_description": "Open the dashboard in the default browser after startup",
-      "started": "AIO Proxy listening at {apiUrl}. Dashboard: {dashboardUrl}",
       "running": "AIO Proxy is running",
       "label_api": "API",
       "label_dashboard": "Dashboard"
@@ -235,7 +234,6 @@
     "status": {
       "description": "Show whether the AIO Proxy server is running",
       "option_deep_description": "Additionally probe provider health",
-      "running": "AIO Proxy is running at {url} (version {version})",
       "not_running": "AIO Proxy is not reachable at {url}",
       "deep_unavailable": "Provider health probe is unavailable (the dashboard requires a password on this build)",
       "deep_probe_failed": "Provider health probe failed ({status})",
@@ -274,10 +272,6 @@
     },
     "doctor": {
       "description": "Diagnose the AIO Proxy environment",
-      "config_path": "Config file: {path}",
-      "server_reachable": "Server reachable at {url} (version {version})",
-      "server_unreachable": "Server not reachable at {url}",
-      "plugin_count": "Installed plugins: {count}",
       "label_config": "Config file",
       "label_server": "Server",
       "label_plugins": "Plugins",
@@ -309,7 +303,6 @@
       "restarting": "Restarting the daemon..."
     },
     "update": {
-      "available": "aio-proxy {version} is available. Run aio-proxy upgrade or open the Dashboard.",
       "notify_title": "aio-proxy {version} is available",
       "notify_body": "Open the Dashboard or run aio-proxy upgrade.",
       "banner": "Update available {current} → {latest}"
@@ -319,11 +312,8 @@
       "list": {
         "option_check": "Check live control-plane status",
         "option_authorizations": "Include control-plane authorizations",
-        "unresolved": "{target}: unresolved ({reason}); host {hostVersion} (minimum {minimumVersion}, {support}); authorization {authorization}; schema {schemaCompatibility}",
-        "target": "{target}: host {hostVersion} (minimum {minimumVersion}, {support}); integration {integration}; installation {installationId}; adapter {adapterVersion}; endpoint {endpoint} ({endpointMatch}); catalog {catalog} (last success {lastSuccessfulAt}); authorization {authorization}; schema {schemaCompatibility}",
         "server": "aio-proxy: {status}",
         "capabilities": "Device authorization {deviceAuthorization}; catalog schemas {catalogSchemaVersions}",
-        "authorization": "{installationId}: {target}, {authorization}, {local}",
         "label_host": "host",
         "label_installation": "installation",
         "label_adapter": "adapter",
@@ -423,8 +413,6 @@
         "sources": "Select session history sources to migrate",
         "sources_required": "Select at least one source.",
         "migrate": "Migrate {active} active and {archived} archived sessions from {sources} to {target}?",
-        "list": "codex: config {configPath}; provider {providerId}; active {activeProviderId}; base URL {baseUrl}; status {status}; connection {connection}; changed paths {changedPaths}",
-        "list_auth": "Codex auth: mode {mode}; installation {installationId}; lifecycle {lifecycle}; authorization {authorization}; credential {credentialStatus}.",
         "configured": "codex: configuration {status} for provider {providerId} at {configPath}.",
         "auth_result": "Codex authentication mode: {mode}.",
         "reopen": "Reopen Codex for the change to take effect.",

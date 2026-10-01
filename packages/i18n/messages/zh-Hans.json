@@ -63,7 +63,6 @@
       "option_host_description": "绑定的主机",
       "option_port_description": "绑定的端口",
       "option_open_description": "TODO(i18n): Open the dashboard in the default browser after startup",
-      "started": "AIO Proxy 正在监听 {apiUrl}。控制台：{dashboardUrl}",
       "running": "AIO Proxy 正在运行",
       "label_api": "API",
       "label_dashboard": "Dashboard"
@@ -235,7 +234,6 @@
     "status": {
       "description": "显示 AIO Proxy 服务器是否正在运行",
       "option_deep_description": "额外探测各 provider 的健康状态",
-      "running": "AIO Proxy 正在 {url} 运行（版本 {version}）",
       "not_running": "无法在 {url} 连接到 AIO Proxy",
       "deep_unavailable": "无法探测 provider 健康状态（此版本的控制台需要密码）",
       "deep_probe_failed": "探测 provider 健康状态失败（{status}）",
@@ -274,10 +272,6 @@
     },
     "doctor": {
       "description": "诊断 AIO Proxy 运行环境",
-      "config_path": "配置文件：{path}",
-      "server_reachable": "服务可访问：{url}（版本 {version}）",
-      "server_unreachable": "服务不可访问：{url}",
-      "plugin_count": "已安装插件数：{count}",
       "label_config": "配置文件",
       "label_server": "服务器",
       "label_plugins": "插件",
@@ -309,7 +303,6 @@
       "restarting": "正在重启守护进程……"
     },
     "update": {
-      "available": "aio-proxy {version} 可用。运行 aio-proxy upgrade 或打开控制台。",
       "notify_title": "aio-proxy {version} 可用",
       "notify_body": "打开控制台或运行 aio-proxy upgrade。",
       "banner": "有可用更新 {current} → {latest}"
@@ -319,11 +312,8 @@
       "list": {
         "option_check": "检查实时控制面状态",
         "option_authorizations": "列出控制面授权",
-        "unresolved": "{target}：未解析（{reason}）；主机 {hostVersion}（最低 {minimumVersion}，{support}）；授权 {authorization}；架构 {schemaCompatibility}",
-        "target": "{target}：主机 {hostVersion}（最低 {minimumVersion}，{support}）；集成 {integration}；安装 {installationId}；适配器 {adapterVersion}；端点 {endpoint}（{endpointMatch}）；目录 {catalog}（上次成功 {lastSuccessfulAt}）；授权 {authorization}；架构 {schemaCompatibility}",
         "server": "aio-proxy：{status}",
         "capabilities": "设备授权 {deviceAuthorization}；目录架构 {catalogSchemaVersions}",
-        "authorization": "{installationId}：{target}，{authorization}，{local}",
         "label_host": "主机",
         "label_installation": "安装",
         "label_adapter": "适配器",
@@ -423,8 +413,6 @@
         "sources": "选择要迁移的会话历史来源",
         "sources_required": "至少选择一个来源。",
         "migrate": "要将 {sources} 中的 {active} 个活动会话和 {archived} 个归档会话迁移到 {target} 吗？",
-        "list": "codex：配置 {configPath}；Provider {providerId}；活动 Provider {activeProviderId}；基础 URL {baseUrl}；状态 {status}；连接 {connection}；变更路径 {changedPaths}",
-        "list_auth": "Codex 鉴权：模式 {mode}；installation {installationId}；生命周期 {lifecycle}；授权 {authorization}；凭据 {credentialStatus}。",
         "configured": "codex：已在 {configPath} 为 Provider {providerId} 完成配置（{status}）。",
         "auth_result": "Codex 鉴权模式：{mode}。",
         "reopen": "请重新打开 Codex 使配置生效。",

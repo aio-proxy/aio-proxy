@@ -63,7 +63,6 @@
       "option_host_description": "바인딩할 호스트",
       "option_port_description": "바인딩할 포트",
       "option_open_description": "시작 후 기본 브라우저에서 대시보드 열기",
-      "started": "AIO Proxy가 {apiUrl}에서 수신 대기 중입니다. 대시보드: {dashboardUrl}",
       "running": "AIO Proxy 실행 중",
       "label_api": "API",
       "label_dashboard": "Dashboard"
@@ -235,7 +234,6 @@
     "status": {
       "description": "AIO Proxy 서버의 실행 여부 표시",
       "option_deep_description": "프로바이더 상태를 추가로 프로브",
-      "running": "AIO Proxy가 {url}에서 실행 중입니다 (버전 {version})",
       "not_running": "{url}에서 AIO Proxy에 연결할 수 없습니다",
       "deep_unavailable": "프로바이더 상태 프로브를 사용할 수 없습니다 (이 빌드의 대시보드는 비밀번호가 필요합니다)",
       "deep_probe_failed": "프로바이더 상태 프로브에 실패했습니다 ({status})",
@@ -274,10 +272,6 @@
     },
     "doctor": {
       "description": "AIO Proxy 환경 진단",
-      "config_path": "구성 파일: {path}",
-      "server_reachable": "{url}에서 서버에 연결할 수 있습니다 (버전 {version})",
-      "server_unreachable": "{url}에서 서버에 연결할 수 없습니다",
-      "plugin_count": "설치된 플러그인: {count}",
       "label_config": "구성 파일",
       "label_server": "서버",
       "label_plugins": "플러그인",
@@ -309,7 +303,6 @@
       "restarting": "데몬을 재시작하는 중..."
     },
     "update": {
-      "available": "aio-proxy {version}을 사용할 수 있습니다. aio-proxy upgrade를 실행하거나 대시보드를 여세요.",
       "notify_title": "aio-proxy {version}을 사용할 수 있습니다",
       "notify_body": "대시보드를 열거나 aio-proxy upgrade를 실행하세요.",
       "banner": "업데이트 가능 {current} → {latest}"
@@ -319,11 +312,8 @@
       "list": {
         "option_check": "실시간 컨트롤 플레인 상태를 확인합니다",
         "option_authorizations": "컨트롤 플레인 권한을 포함합니다",
-        "unresolved": "{target}: 미해결({reason}); 호스트 {hostVersion}(최소 {minimumVersion}, {support}); 권한 {authorization}; 스키마 {schemaCompatibility}",
-        "target": "{target}: 호스트 {hostVersion}(최소 {minimumVersion}, {support}); 연동 {integration}; 설치 {installationId}; 어댑터 {adapterVersion}; 엔드포인트 {endpoint}({endpointMatch}); 카탈로그 {catalog}(마지막 성공 {lastSuccessfulAt}); 권한 {authorization}; 스키마 {schemaCompatibility}",
         "server": "aio-proxy: {status}",
         "capabilities": "디바이스 권한 {deviceAuthorization}; 카탈로그 스키마 {catalogSchemaVersions}",
-        "authorization": "{installationId}: {target}, {authorization}, {local}",
         "label_host": "호스트",
         "label_installation": "설치",
         "label_adapter": "어댑터",
@@ -423,8 +413,6 @@
         "sources": "마이그레이션할 세션 기록 소스를 선택하세요",
         "sources_required": "하나 이상의 소스를 선택하세요.",
         "migrate": "{sources}에서 {target}(으)로 활성 {active}개와 보관 {archived}개 세션을 마이그레이션할까요?",
-        "list": "codex: 구성 {configPath}; 제공자 {providerId}; 활성 {activeProviderId}; 기본 URL {baseUrl}; 상태 {status}; 연결 {connection}; 변경 경로 {changedPaths}",
-        "list_auth": "Codex 인증: 모드 {mode}; 설치 {installationId}; 수명 주기 {lifecycle}; 권한 {authorization}; 자격 증명 {credentialStatus}.",
         "configured": "codex: 제공자 {providerId} 구성을 {configPath}에 {status}했습니다.",
         "auth_result": "Codex 인증 모드: {mode}.",
         "reopen": "변경 사항을 적용하려면 Codex를 다시 여세요.",

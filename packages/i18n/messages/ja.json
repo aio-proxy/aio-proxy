@@ -63,7 +63,6 @@
       "option_host_description": "バインドするホスト",
       "option_port_description": "バインドするポート",
       "option_open_description": "起動後に既定のブラウザーでダッシュボードを開きます",
-      "started": "AIO Proxy は {apiUrl} でリッスンしています。ダッシュボード: {dashboardUrl}",
       "running": "AIO Proxy は実行中です",
       "label_api": "API",
       "label_dashboard": "Dashboard"
@@ -235,7 +234,6 @@
     "status": {
       "description": "AIO Proxy サーバーが実行中かどうかを表示します",
       "option_deep_description": "プロバイダーのヘルスも追加でプローブします",
-      "running": "AIO Proxy は {url} で実行中です (バージョン {version})",
       "not_running": "{url} で AIO Proxy に接続できません",
       "deep_unavailable": "プロバイダーのヘルスプローブは利用できません (このビルドのダッシュボードにはパスワードが必要です)",
       "deep_probe_failed": "プロバイダーのヘルスプローブに失敗しました ({status})",
@@ -274,10 +272,6 @@
     },
     "doctor": {
       "description": "AIO Proxy 環境を診断します",
-      "config_path": "設定ファイル: {path}",
-      "server_reachable": "{url} でサーバーに接続できます (バージョン {version})",
-      "server_unreachable": "{url} でサーバーに接続できません",
-      "plugin_count": "インストール済みプラグイン: {count}",
       "label_config": "設定ファイル",
       "label_server": "サーバー",
       "label_plugins": "プラグイン",
@@ -309,7 +303,6 @@
       "restarting": "デーモンを再起動しています…"
     },
     "update": {
-      "available": "aio-proxy {version} が利用できます。aio-proxy upgrade を実行するか、ダッシュボードを開いてください。",
       "notify_title": "aio-proxy {version} が利用できます",
       "notify_body": "ダッシュボードを開くか、aio-proxy upgrade を実行してください。",
       "banner": "アップデートがあります {current} → {latest}"
@@ -319,11 +312,8 @@
       "list": {
         "option_check": "稼働中のコントロールプレーン状態を確認します",
         "option_authorizations": "コントロールプレーンの認可を表示します",
-        "unresolved": "{target}: 未解決 ({reason})；ホスト {hostVersion}（最低 {minimumVersion}、{support}）；認可 {authorization}；スキーマ {schemaCompatibility}",
-        "target": "{target}: ホスト {hostVersion}（最低 {minimumVersion}、{support}）；連携 {integration}；インストール {installationId}；アダプター {adapterVersion}；エンドポイント {endpoint}（{endpointMatch}）；カタログ {catalog}（前回の成功 {lastSuccessfulAt}）；認可 {authorization}；スキーマ {schemaCompatibility}",
         "server": "aio-proxy: {status}",
         "capabilities": "デバイス認可 {deviceAuthorization}；カタログスキーマ {catalogSchemaVersions}",
-        "authorization": "{installationId}: {target}、{authorization}、{local}",
         "label_host": "ホスト",
         "label_installation": "インストール",
         "label_adapter": "アダプター",
@@ -423,8 +413,6 @@
         "sources": "移行するセッション履歴のソースを選択してください",
         "sources_required": "少なくとも 1 つのソースを選択してください。",
         "migrate": "{sources} から {target} へアクティブ {active} 件、アーカイブ {archived} 件を移行しますか？",
-        "list": "codex: 設定 {configPath}; プロバイダー {providerId}; active {activeProviderId}; ベース URL {baseUrl}; 状態 {status}; 接続 {connection}; 変更パス {changedPaths}",
-        "list_auth": "Codex 認証: モード {mode}; installation {installationId}; ライフサイクル {lifecycle}; 認可 {authorization}; 資格情報 {credentialStatus}。",
         "configured": "codex: プロバイダー {providerId} の設定を {configPath} に {status} しました。",
         "auth_result": "Codex の認証モード: {mode}。",
         "reopen": "変更を反映するには Codex を再起動してください。",

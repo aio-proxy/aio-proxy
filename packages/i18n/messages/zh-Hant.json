@@ -63,7 +63,6 @@
       "option_host_description": "繫結的主機",
       "option_port_description": "繫結的連接埠",
       "option_open_description": "TODO(i18n): Open the dashboard in the default browser after startup",
-      "started": "AIO Proxy 正在監聽 {apiUrl}。控制台：{dashboardUrl}",
       "running": "AIO Proxy 正在執行",
       "label_api": "API",
       "label_dashboard": "Dashboard"
@@ -235,7 +234,6 @@
     "status": {
       "description": "顯示 AIO Proxy 伺服器是否正在執行",
       "option_deep_description": "額外探測各 provider 的健康狀態",
-      "running": "AIO Proxy 正在 {url} 執行（版本 {version}）",
       "not_running": "無法在 {url} 連接到 AIO Proxy",
       "deep_unavailable": "無法探測 provider 健康狀態（此版本的控制台需要密碼）",
       "deep_probe_failed": "探測 provider 健康狀態失敗（{status}）",
@@ -274,10 +272,6 @@
     },
     "doctor": {
       "description": "診斷 AIO Proxy 執行環境",
-      "config_path": "設定檔：{path}",
-      "server_reachable": "服務可存取：{url}（版本 {version}）",
-      "server_unreachable": "服務無法存取：{url}",
-      "plugin_count": "已安裝外掛程式數：{count}",
       "label_config": "設定檔",
       "label_server": "伺服器",
       "label_plugins": "外掛",
@@ -309,7 +303,6 @@
       "restarting": "正在重新啟動守護行程……"
     },
     "update": {
-      "available": "aio-proxy {version} 可用。執行 aio-proxy upgrade 或開啟控制台。",
       "notify_title": "aio-proxy {version} 可用",
       "notify_body": "開啟控制台或執行 aio-proxy upgrade。",
       "banner": "有可用更新 {current} → {latest}"
@@ -319,11 +312,8 @@
       "list": {
         "option_check": "檢查即時控制面狀態",
         "option_authorizations": "列出控制面授權",
-        "unresolved": "{target}：未解析（{reason}）；主機 {hostVersion}（最低 {minimumVersion}，{support}）；授權 {authorization}；架構 {schemaCompatibility}",
-        "target": "{target}：主機 {hostVersion}（最低 {minimumVersion}，{support}）；整合 {integration}；安裝 {installationId}；配接器 {adapterVersion}；端點 {endpoint}（{endpointMatch}）；目錄 {catalog}（上次成功 {lastSuccessfulAt}）；授權 {authorization}；架構 {schemaCompatibility}",
         "server": "aio-proxy：{status}",
         "capabilities": "裝置授權 {deviceAuthorization}；目錄架構 {catalogSchemaVersions}",
-        "authorization": "{installationId}：{target}，{authorization}，{local}",
         "label_host": "主機",
         "label_installation": "安裝",
         "label_adapter": "轉接器",
@@ -423,8 +413,6 @@
         "sources": "選擇要移轉的工作階段歷史來源",
         "sources_required": "至少選擇一個來源。",
         "migrate": "要將 {sources} 中的 {active} 個活動工作階段和 {archived} 個封存工作階段移轉到 {target} 嗎？",
-        "list": "codex：設定 {configPath}；Provider {providerId}；活動 Provider {activeProviderId}；基礎 URL {baseUrl}；狀態 {status}；連線 {connection}；變更路徑 {changedPaths}",
-        "list_auth": "Codex 驗證：模式 {mode}；installation {installationId}；生命週期 {lifecycle}；授權 {authorization}；憑證 {credentialStatus}。",
         "configured": "已在 {configPath} 為 Provider {providerId} 完成 codex 設定（{status}）。",
         "auth_result": "Codex 驗證模式：{mode}。",
         "reopen": "請重新開啟 Codex 以套用設定。",
