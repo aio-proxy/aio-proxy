@@ -61,7 +61,9 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
   const featurePath = 'features\u0000api_key_model_discovery';
   const hasFeature = parsed.fields.some((field) => field.path.join('\u0000') === featurePath);
   const providerFields = hasFeature ? ownedProviderFields : legacyProviderFields;
+  const hasCatalog = parsed.fields.some((field) => field.path.length === 1 && field.path[0] === 'model_catalog_json');
   const allowed = new Set([
+    ...(hasCatalog ? ['model_catalog_json'] : []),
     'model_provider',
     ...(hasFeature ? [featurePath] : []),
     ...[...providerFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),
@@ -71,6 +73,7 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
   ]);
   const paths = new Set<string>();
   const expectedPaths = new Set([
+    ...(hasCatalog ? ['model_catalog_json'] : []),
     'model_provider',
     ...(hasFeature ? [featurePath] : []),
     ...[...providerFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),

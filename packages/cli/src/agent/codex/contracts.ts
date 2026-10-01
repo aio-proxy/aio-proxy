@@ -157,3 +157,6 @@ export type CodexRemoveResult = {
   readonly preservedPaths: readonly (readonly string[])[];
   readonly authorization?: 'revoked' | 'expired' | 'missing' | 'pending';
 };
+
+export type PreparedCodexCatalog = { readonly path: string; readonly digest: string };
+export type CodexCatalogUpdateResult = 'updated' | 'unchanged' | 'skipped';
