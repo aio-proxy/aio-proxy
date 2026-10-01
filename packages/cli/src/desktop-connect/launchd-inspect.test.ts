@@ -1,7 +1,10 @@
 import { expect, test } from 'bun:test';
+import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { LAUNCHD_EXEC_WRAPPER, LEGACY_LAUNCHD_EXEC_WRAPPERS } from '../service';
-import { inspectUnit, parseDisabled, parseJobPrint, unitOwner } from './launchd-inspect';
+import { inspectUnit, isRunnable, parseDisabled, parseJobPrint, unitOwner } from './launchd-inspect';
 
 const plist = (args: unknown, env: Record<string, string> = { AIO_PROXY_HOME: '/Users/u/.aio-proxy' }) => ({
   ProgramArguments: args,
@@ -72,4 +75,17 @@ test('parses print-disabled in both the current and the older boolean format', (
   expect(parseDisabled('disabled services = {\n\t"com.aio-proxy.agent" => enabled\n}')).toBe(false);
   expect(parseDisabled('disabled services = {\n\t"com.aio-proxy.agent" => true\n}')).toBe(true);
   expect(parseDisabled('disabled services = {\n\t"com.other" => disabled\n}')).toBe(false);
+});
+
+test('a target the launchd wrapper would skip with [ -x ] is not runnable', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-runnable-'));
+  const binary = join(dir, 'aio-proxy');
+  writeFileSync(binary, '#!/bin/sh\n');
+  chmodSync(binary, 0o755);
+  expect(isRunnable(binary)).toBe(true);
+  chmodSync(binary, 0o644);
+  expect(isRunnable(binary)).toBe(false);
+  expect(isRunnable(join(dir, 'missing'))).toBe(false);
+  // A directory passes -x but is not something launchd can run.
+  expect(isRunnable(dir)).toBe(false);
 });

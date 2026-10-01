@@ -7,6 +7,7 @@ import { controlBaseUrl, localControlHost, probeHealth, resolveControlAddress } 
 import { launchdDomain, launchdJobTarget, managedUnitPath } from '../service';
 import {
   inspectUnit,
+  isRunnable,
   parseDisabled,
   parseJobPrint,
   type UnitInspection,
@@ -28,8 +29,8 @@ export type DesktopConnectDeps = {
   readonly plistPath: string;
   readonly defaultHome: () => string;
   readonly plistExists: () => boolean;
-  /** Whether the plist's wrapper target still exists. */
-  readonly targetExists: (path: string) => boolean;
+  /** Whether the plist's wrapper target is still something launchd can run. */
+  readonly targetRunnable: (path: string) => boolean;
   readonly readToken: (home: string) => string | undefined;
   /** This process's uid: the listener must belong to it before the token is offered. */
   readonly uid: number;
@@ -160,7 +161,7 @@ function readTokenSafely(deps: DesktopConnectDeps, home: string): string | undef
 
 export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopConnectResult> {
   const unit = await readUnit(deps);
-  const owner = unitOwner(unit, deps.env['AIO_PROXY_DESKTOP_EXEC'], deps.targetExists);
+  const owner = unitOwner(unit, deps.env['AIO_PROXY_DESKTOP_EXEC'], deps.targetRunnable);
   const job = await readJob(deps);
   // The service's own home, not this process's environment: the app is launched from Finder and
   // does not inherit the shell that installed the service.
@@ -263,7 +264,7 @@ const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number): Desk
     const path = managedUnitPath('darwin');
     return path !== undefined && existsSync(path);
   },
-  targetExists: existsSync,
+  targetRunnable: isRunnable,
   readToken: (home) => readDesktopToken(home),
   uid: process.getuid?.() ?? -1,
   // A killed or budget-exhausted helper degrades its fields like any other launchctl/plutil failure.
