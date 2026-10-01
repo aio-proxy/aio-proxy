@@ -2,11 +2,27 @@
 //! scaled to the busiest day, and the column where each month starts.
 
 use super::format::{civil_from_days, parse_date};
-use crate::summary::ActivityDay;
+use std::collections::HashMap;
+
+use crate::summary::{ActivityDay, ActivityModel};
 
 pub const WEEKS: usize = 53;
 
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const LONG_MONTHS: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
 const WEEKDAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +37,8 @@ pub struct HeatGrid {
     pub months: Vec<(usize, &'static str)>,
     pub active_days: usize,
     pub total_tokens: u128,
+    /// Each day's model split, for the hover card.
+    pub models: HashMap<i64, Vec<ActivityModel>>,
 }
 
 /// 0 = Sunday. Day 0 (1970-01-01) was a Thursday.
@@ -32,19 +50,29 @@ pub fn weekday_name(day: i64) -> &'static str {
     WEEKDAYS[weekday(day)]
 }
 
-pub fn day_label(day: i64) -> String {
-    let (_, month, date) = civil_from_days(day);
-    format!("{} {} {date}", weekday_name(day), MONTHS[(month - 1) as usize])
+/// The hover card's date, as the Dashboard's `PPP` formats it in English: `October 1st, 2026`.
+pub fn long_date(day: i64) -> String {
+    let (year, month, date) = civil_from_days(day);
+    let suffix = match (date % 10, date % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{} {date}{suffix}, {year}", LONG_MONTHS[(month - 1) as usize])
 }
 
 pub fn heat_grid(activity: &[ActivityDay], today: i64) -> HeatGrid {
     let first = today - weekday(today) as i64 - (WEEKS as i64 - 1) * 7;
     let mut tokens = vec![0_u128; WEEKS * 7];
+    let mut models = HashMap::new();
     for entry in activity {
         let Some(date) = parse_date(&entry.date) else { continue };
         let index = date - first;
         if (0..=today - first).contains(&index) {
             tokens[index as usize] = entry.total_tokens;
+            models.insert(date, entry.models.clone());
         }
     }
     let max = tokens.iter().copied().max().unwrap_or(0);
@@ -75,6 +103,7 @@ pub fn heat_grid(activity: &[ActivityDay], today: i64) -> HeatGrid {
         months,
         active_days: tokens.iter().filter(|&&t| t > 0).count(),
         total_tokens: tokens.iter().sum(),
+        models,
     }
 }
 

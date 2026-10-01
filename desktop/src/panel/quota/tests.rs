@@ -25,6 +25,8 @@ fn provider(name: &str, quota: Quota, diagnostic: Option<&str>) -> Provider {
         name: name.into(),
         enabled: true,
         account_label: None,
+        service: None,
+        icon: None,
         state: ProviderState::Ok,
         diagnostic: diagnostic.map(|summary| Diagnostic {
             code: "X".into(),
@@ -147,4 +149,58 @@ fn a_diagnostic_outranks_a_ready_quota_and_failed_without_one_has_a_fallback_mes
     assert_eq!(blocks[1].message.as_deref(), Some("Token expiring"));
     assert_eq!(blocks[1].rank, 0);
     assert_eq!(attention_count(&blocks), 2);
+}
+
+#[test]
+fn oauth_blocks_are_titled_by_service_and_grouped_by_it() {
+    let account = |name: &str, service: &str, label: Option<&str>| Provider {
+        id: format!("{service}-{name}"),
+        service: Some(LocalizedText::Plain(service.into())),
+        icon: None,
+        account_label: label.map(Into::into),
+        ..provider(name, ready(vec![window(Some(0.9), Some(600), Some(1_440))]), None)
+    };
+    let providers = vec![
+        account("me@example.com", "xAI Grok", Some("me@example.com")),
+        account("me@example.com", "Cursor", Some("me@example.com")),
+        account("Work", "Cursor", None),
+        provider("Carpool", ready(vec![window(Some(0.9), Some(600), Some(1_440))]), None),
+    ];
+    let blocks = quota_blocks(&providers, NOW);
+    let titles: Vec<_> = blocks.iter().map(|b| (b.title.as_str(), b.subtitle.as_deref())).collect();
+    assert_eq!(
+        titles,
+        [
+            ("Carpool", None),
+            ("Cursor", Some("me@example.com")),
+            ("Cursor", Some("Work")),
+            ("xAI Grok", Some("me@example.com")),
+        ]
+    );
+}
+
+#[test]
+fn plugin_icons_resolve_like_the_dashboard() {
+    assert_eq!(
+        icon_url("antigravity-color", true).as_deref(),
+        Some("https://fastly.jsdelivr.net/npm/@lobehub/icons-static-png@latest/dark/antigravity-color.png")
+    );
+    assert_eq!(icon_url("https://example.com/a.png", false).as_deref(), Some("https://example.com/a.png"));
+    assert_eq!(icon_url("data:image/png;base64,AA==", false), None);
+    // Not a slug: never spliced into the CDN path.
+    assert_eq!(icon_url("../x", false), None);
+}
+
+#[test]
+fn the_collapsed_title_shows_the_tightest_window_and_attention_opens() {
+    let providers = vec![
+        provider("Calm", ready(vec![window(Some(0.9), Some(600), Some(1_440)), window(Some(0.5), None, None)]), None),
+        provider("Low", ready(vec![window(None, None, None), window(Some(0.06), Some(4_560), Some(43_200))]), None),
+        provider("Broken", Quota::Failed, None),
+    ];
+    let blocks = quota_blocks(&providers, NOW);
+    let tight: Vec<_> = blocks.iter().map(|b| (b.title.as_str(), b.tightest().and_then(|w| w.remaining))).collect();
+    assert_eq!(tight, [("Broken", None), ("Low", Some(0.06)), ("Calm", Some(0.5))]);
+    let open: Vec<_> = blocks.iter().map(|b| b.opens_by_default()).collect();
+    assert_eq!(open, [true, true, false]);
 }

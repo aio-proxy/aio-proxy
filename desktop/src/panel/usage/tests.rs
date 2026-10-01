@@ -37,37 +37,6 @@ fn cost_marks_partial_pricing_and_unknown_pricing() {
 }
 
 #[test]
-fn ranking_follows_the_metric_and_puts_zeros_last() {
-    let slices = [
-        UsageSlice { requests: 10, failed_requests: 0, total_tokens: 5, estimated_cost_nano_usd: 0 },
-        UsageSlice { requests: 2, failed_requests: 2, total_tokens: 50, estimated_cost_nano_usd: 9 },
-        UsageSlice { requests: 5, failed_requests: 0, total_tokens: 0, estimated_cost_nano_usd: 1 },
-    ];
-    let order = |metric| ranked(&slices, |s| s, metric, 0, None).iter().map(|(s, _, _)| s.requests).collect::<Vec<_>>();
-    assert_eq!(order(Metric::Requests), [10, 5, 2]);
-    assert_eq!(order(Metric::Cost), [2, 5, 10]);
-    assert_eq!(order(Metric::Failed), [2, 10, 5]);
-    let top = ranked(&slices, |s| s, Metric::Tokens, 55, Some(2));
-    assert_eq!(top.len(), 2);
-    assert!((top[0].2 - 50.0 / 55.0).abs() < 1e-9);
-}
-
-#[test]
-fn a_share_is_of_the_window_total_not_of_the_listed_items() {
-    // The listed items sum to 55 tokens; the window had 100 (the rest is outside the top-N).
-    let slices = [UsageSlice { requests: 0, failed_requests: 0, total_tokens: 50, estimated_cost_nano_usd: 0 }];
-    let rows = ranked(&slices, |s| s, Metric::Tokens, 100, None);
-    assert!((rows[0].2 - 0.5).abs() < 1e-9);
-}
-
-#[test]
-fn an_all_zero_metric_has_no_share() {
-    let slices = [UsageSlice::default(), UsageSlice::default()];
-    assert!(ranked(&slices, |s| s, Metric::Failed, 0, None).iter().all(|(_, v, share)| *v == 0 && *share == 0.0));
-    assert_eq!(Metric::Failed.empty_text(), "No failures in this window");
-}
-
-#[test]
 fn a_zero_percent_change_has_no_color() {
     assert_eq!(delta(1_004, 1_000, Metric::Cost), ("↑ 0%".to_string(), Tone::Neutral));
     assert_eq!(delta(996, 1_000, Metric::Cost), ("↓ 0%".to_string(), Tone::Neutral));
@@ -99,4 +68,53 @@ fn daily_buckets_use_weekdays_for_7d_and_month_day_for_30d() {
     // UTC−5: 2026-09-29T05:00Z is local midnight of Tue Sep 29.
     assert_eq!(bucket_label("2026-09-29T05:00:00.000Z", BucketUnit::Day, UsageRange::D7, -5 * 3_600), "Tue");
     assert_eq!(bucket_label("not a date", BucketUnit::Day, UsageRange::D30, 0), "");
+}
+
+fn requests(n: u128) -> UsageSlice {
+    UsageSlice { requests: n, ..UsageSlice::default() }
+}
+
+#[test]
+fn the_trend_stacks_the_top_four_and_folds_the_rest_into_other() {
+    let buckets: Vec<UsageBucket> =
+        [30, 12].iter().map(|&n| UsageBucket { start: String::new(), slice: requests(n) }).collect();
+    let cell = |bucket, key: &str, n| TrendCell { bucket, key: key.into(), slice: requests(n) };
+    // Six series; `a` ties `b` and `e` ties `f`, broken by name. The cells leave 3 + 2 of the buckets
+    // unsplit, as models beyond the server's top 20 would.
+    let cells = vec![
+        cell(0, "a", 10),
+        cell(0, "b", 6),
+        cell(1, "b", 4),
+        cell(0, "c", 5),
+        cell(0, "d", 4),
+        cell(1, "d", 2),
+        cell(0, "e", 1),
+        cell(1, "f", 1),
+        cell(1, "zero", 0),
+    ];
+    let series = stack(&buckets, &cells, |key| key.to_uppercase(), Metric::Requests);
+    let shape: Vec<_> = series.iter().map(|s| (s.label.as_str(), s.other, s.values.clone())).collect();
+    assert_eq!(
+        shape,
+        [
+            ("A", false, vec![10, 0]),
+            ("B", false, vec![6, 4]),
+            ("D", false, vec![4, 2]),
+            ("C", false, vec![5, 0]),
+            ("Other", true, vec![5, 6]),
+        ]
+    );
+    // Every bucket stacks to its total.
+    for (i, bucket) in buckets.iter().enumerate() {
+        assert_eq!(series.iter().map(|s| s.values[i]).sum::<u128>(), bucket.slice.requests);
+    }
+}
+
+#[test]
+fn a_fully_split_trend_has_no_other() {
+    let buckets = vec![UsageBucket { start: String::new(), slice: requests(3) }];
+    let cells = vec![TrendCell { bucket: 0, key: "a".into(), slice: requests(3) }];
+    let series = stack(&buckets, &cells, str::to_string, Metric::Requests);
+    assert_eq!(series.len(), 1);
+    assert!(stack(&buckets, &cells, str::to_string, Metric::Failed).is_empty());
 }

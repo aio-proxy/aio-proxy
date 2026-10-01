@@ -27,6 +27,10 @@ pub struct WindowView {
 
 pub struct QuotaBlock<'a> {
     pub provider: &'a Provider,
+    /// The service, so accounts of different plugins under one email stay apart.
+    pub title: String,
+    /// The account, or the Provider name when the plugin reports none; omitted when it repeats the title.
+    pub subtitle: Option<String>,
     pub windows: Vec<WindowView>,
     /// 0 failed or diagnostic, 1 a window below 15%, 2 a window behind pace, 3 the rest.
     pub rank: u8,
@@ -126,6 +130,8 @@ pub fn quota_blocks(providers: &[Provider], now: i64) -> Vec<QuotaBlock<'_>> {
             };
             QuotaBlock {
                 provider,
+                title: provider.title(),
+                subtitle: provider.subtitle(),
                 windows,
                 rank,
                 message,
@@ -140,10 +146,42 @@ pub fn quota_blocks(providers: &[Provider], now: i64) -> Vec<QuotaBlock<'_>> {
     blocks.sort_by(|a, b| {
         a.rank
             .cmp(&b.rank)
-            .then_with(|| a.provider.name.to_lowercase().cmp(&b.provider.name.to_lowercase()))
-            .then_with(|| a.provider.name.cmp(&b.provider.name))
+            .then_with(|| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+            .then_with(|| {
+                a.subtitle.as_ref().map(|s| s.to_lowercase()).cmp(&b.subtitle.as_ref().map(|s| s.to_lowercase()))
+            })
+            .then_with(|| a.title.cmp(&b.title))
     });
     blocks
+}
+
+/// Where a plugin icon loads from, as the Dashboard's `PluginIcon` resolves it: a URL as is, a
+/// Lobe Icons slug from the static PNG set for the appearance. Anything else draws no image.
+// ponytail: `data:image/` icons get the letter: GPUI parses an image URI as `http::Uri`, which
+// rejects `data:`. Decode them into an `Image` when a plugin ships one.
+pub fn icon_url(icon: &str, dark: bool) -> Option<String> {
+    if icon.starts_with("http://") || icon.starts_with("https://") {
+        return Some(icon.to_string());
+    }
+    let slug = icon.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+    let theme = if dark { "dark" } else { "light" };
+    slug.then(|| format!("https://fastly.jsdelivr.net/npm/@lobehub/icons-static-png@latest/{theme}/{icon}.png"))
+}
+
+impl QuotaBlock<'_> {
+    /// The window with the least left, which the collapsed title shows.
+    pub fn tightest(&self) -> Option<&WindowView> {
+        self.windows
+            .iter()
+            .filter_map(|w| w.remaining.map(|r| (w, r)))
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(w, _)| w)
+    }
+
+    /// Failing or nearly exhausted blocks open on their own; the rest start collapsed.
+    pub fn opens_by_default(&self) -> bool {
+        self.rank <= 1
+    }
 }
 
 /// Failing or nearly exhausted counts; merely over pace only sorts higher.

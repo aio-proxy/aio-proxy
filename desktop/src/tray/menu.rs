@@ -49,7 +49,7 @@ impl MenuCommand {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MenuEntry {
     Item { command: MenuCommand, label: String, enabled: bool },
-    Check { command: MenuCommand, label: String, checked: bool },
+    Check { command: MenuCommand, label: String, checked: bool, enabled: bool },
     Separator,
 }
 
@@ -73,12 +73,20 @@ pub fn menu_entries(offered: Offered, busy: bool, persistent: bool, login: Login
     }
     entries.push(item(MenuCommand::OpenLogs, "Open logs", true));
     entries.push(MenuEntry::Separator);
-    if persistent {
-        let label =
-            if login == LoginItemStatus::RequiresApproval { "Open at login (needs approval)" } else { "Open at login" };
-        let checked = matches!(login, LoginItemStatus::Enabled | LoginItemStatus::RequiresApproval);
-        entries.push(MenuEntry::Check { command: MenuCommand::ToggleLogin, label: label.into(), checked });
-    }
+    // Always listed, so the switch is findable; a copy outside Applications cannot register (the
+    // login item would point at wherever this bundle happens to be), so there it is disabled.
+    let label = match (persistent, login) {
+        (false, _) => "Open at login (move to Applications first)",
+        (true, LoginItemStatus::RequiresApproval) => "Open at login (needs approval)",
+        (true, _) => "Open at login",
+    };
+    let checked = persistent && matches!(login, LoginItemStatus::Enabled | LoginItemStatus::RequiresApproval);
+    entries.push(MenuEntry::Check {
+        command: MenuCommand::ToggleLogin,
+        label: label.into(),
+        checked,
+        enabled: persistent,
+    });
     entries.push(item(MenuCommand::CheckForUpdates, "Check for Updates…", true));
     entries.push(MenuEntry::Separator);
     entries.push(item(MenuCommand::Quit, "Quit AIO Proxy", true));

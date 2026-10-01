@@ -1,6 +1,7 @@
 //! The panel's root view: header, the scrolling groups with a sticky group header, and footer.
 //! Data renders from the `AppModel` global; only the panel-local picks live here.
 
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gpui_kit::component::*;
@@ -9,7 +10,7 @@ use gpui_kit::*;
 use super::activity::heat_grid;
 use super::format::local_utc_offset;
 use super::quota::quota_blocks;
-use super::usage::Metric;
+use super::usage::{Metric, Split};
 use super::{footer, groups, header, states, status};
 use crate::app::{AppModel, SummaryState};
 
@@ -18,14 +19,16 @@ const QUOTA_GROUP: usize = 1;
 
 pub struct PanelView {
     _activation: Subscription,
+    _appearance: Subscription,
     /// The body's scroll; `top_item` names the group whose header sticks.
     body: ScrollHandle,
     /// The heatmap's horizontal scroll; opened at the latest week once per window.
     pub(super) heat: ScrollHandle,
     heat_scrolled: bool,
     pub(super) metric: Metric,
-    pub(super) bar: Option<usize>,
-    pub(super) day: Option<i64>,
+    pub(super) split: Split,
+    /// Quota blocks the user opened or closed, by Provider id, until the panel closes.
+    pub(super) quota_open: HashMap<String, bool>,
 }
 
 impl PanelView {
@@ -36,14 +39,19 @@ impl PanelView {
                 super::window::close(window, cx);
             }
         });
+        // The window is new on every open, so it also picks up a change made while it was closed.
+        crate::theme::apply(window.appearance(), cx);
+        let appearance =
+            cx.observe_window_appearance(window, |_, window, cx| crate::theme::apply(window.appearance(), cx));
         Self {
             _activation: activation,
+            _appearance: appearance,
             body: ScrollHandle::new(),
             heat: ScrollHandle::new(),
             heat_scrolled: false,
             metric: Metric::default(),
-            bar: None,
-            day: None,
+            split: Split::default(),
+            quota_open: HashMap::new(),
         }
     }
 
@@ -55,6 +63,14 @@ impl PanelView {
             self.body.set_offset(point(self.body.offset().x, y));
         }
     }
+}
+
+/// A group on its own opaque card, so its content never draws over the translucent glass (see
+/// [`crate::theme::PanelColors::surface`]).
+fn card(group: impl IntoElement, cx: &App) -> Div {
+    let theme = crate::theme::colors(cx);
+    // No border: `--border` is lighter than the glass around the card and reads as a pale halo.
+    div().px_3().rounded_lg().bg(theme.surface).child(group)
 }
 
 impl Render for PanelView {
@@ -81,30 +97,44 @@ impl Render for PanelView {
                     .overflow_y_scroll()
                     .restrict_scroll_to_axis()
                     .track_scroll(&self.body)
-                    .px_3()
-                    .child(groups::usage(self, model, now, cx))
-                    .child(groups::quota(&blocks, now, cx))
-                    .child(groups::activity(self, &grid, cx));
+                    .flex()
+                    .flex_col()
+                    // One 8 pt gutter everywhere: the panel edges and between cards. Card padding
+                    // (`px_3`) on top of it is the header and footer's `px_5`, so their text lines up.
+                    .gap_2()
+                    .px_2()
+                    .py_2()
+                    .child(card(groups::usage(self, model, now, cx), cx))
+                    .child(card(groups::quota(self, &blocks, now, cx), cx))
+                    .child(card(groups::activity(self, &grid, cx), cx));
                 // GPUI has no `position: sticky`: overlay the header of the group under the top
                 // edge. A wheel scroll notifies this view, so the overlay follows the offset.
-                let sticky = (self.body.offset().y < px(0.)).then(|| {
+                // Only once the top card's own header has slid past the edge, not within the body's
+                // top padding.
+                let tucked = self
+                    .body
+                    .bounds_for_item(self.body.top_item())
+                    .is_some_and(|card| card.top() < self.body.bounds().top());
+                let sticky = tucked.then(|| {
                     let group = match self.body.top_item() {
-                        0 => groups::usage_header(model, cx),
+                        0 => groups::usage_header(model),
                         QUOTA_GROUP => groups::quota_header(&blocks, cx),
-                        _ => groups::activity_header(self, &grid, cx),
+                        _ => groups::activity_header(&grid, cx),
                     };
+                    // The top of a group card, over the card scrolling under it.
                     div()
                         .absolute()
                         .top_0()
-                        .left_0()
-                        .right_0()
+                        .left_2()
+                        .right_2()
                         // Clicks stop here instead of reaching the hidden header below; wheel
                         // events still scroll the body.
                         .block_mouse_except_scroll()
                         .px_3()
-                        .bg(cx.theme().background)
+                        .bg(crate::theme::colors(cx).surface)
                         .border_b_1()
-                        .border_color(cx.theme().border)
+                        .rounded_t_lg()
+                        .border_color(crate::theme::colors(cx).border)
                         .child(group)
                 });
                 if !self.heat_scrolled {
@@ -118,11 +148,9 @@ impl Render for PanelView {
         };
         v_flex()
             .size_full()
-            .bg(cx.theme().background)
-            .text_color(cx.theme().foreground)
+            .text_color(crate::theme::colors(cx).foreground)
             .child(header)
-            .child(div().mt_2().border_t_1().border_color(cx.theme().border))
             .child(content)
-            .child(footer::footer(model, cx))
+            .child(footer::footer(model))
     }
 }

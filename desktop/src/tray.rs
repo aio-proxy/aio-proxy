@@ -105,8 +105,8 @@ fn native_menu(entries: &[MenuEntry]) -> Menu {
             MenuEntry::Item { command, label, enabled } => {
                 menu.append(&MenuItem::with_id(command.id(), label, *enabled, None))
             }
-            MenuEntry::Check { command, label, checked } => {
-                menu.append(&CheckMenuItem::with_id(command.id(), label, true, *checked, None))
+            MenuEntry::Check { command, label, checked, enabled } => {
+                menu.append(&CheckMenuItem::with_id(command.id(), label, *enabled, *checked, None))
             }
             MenuEntry::Separator => menu.append(&PredefinedMenuItem::separator()),
         };
@@ -121,18 +121,36 @@ pub fn invalidate_menu(cx: &mut App) {
     }
 }
 
+/// The right-click menu for the model's state; the panel's `⋯` menu shows the same.
+pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
+    let offered = model
+        .discovery
+        .as_ref()
+        .map(|d| crate::connect::policy::offered_actions(d, model.persistent()))
+        .unwrap_or_default();
+    menu_entries(offered, model.action.is_busy(), model.persistent(), model.login_item)
+}
+
+/// Runs a menu command, from the right-click menu or the panel's `⋯` menu.
+pub fn run(cx: &mut App, command: MenuCommand) {
+    match command {
+        MenuCommand::OpenDashboard => crate::app::open_dashboard(cx),
+        MenuCommand::Run(action) => crate::app::run_user_action(cx, action),
+        MenuCommand::OpenLogs => crate::app::open_logs(cx),
+        MenuCommand::ToggleLogin => crate::app::toggle_login_item(cx),
+        MenuCommand::CheckForUpdates => crate::updater::check_now(),
+        // Quitting leaves the proxy running: launchd owns it.
+        MenuCommand::Quit => cx.quit(),
+    }
+}
+
 /// Re-derives the icon and the right-click menu from the model; cheap when nothing changed.
 pub fn sync(cx: &mut App) {
     let Some(model) = cx.try_global::<AppModel>() else {
         return;
     };
     let state = tray_state(model.health.state(), model.needs_attention());
-    let offered = model
-        .discovery
-        .as_ref()
-        .map(|d| crate::connect::policy::offered_actions(d, model.persistent()))
-        .unwrap_or_default();
-    let entries = menu_entries(offered, model.action.is_busy(), model.persistent(), model.login_item);
+    let entries = entries(model);
     let Some(tray) = cx.try_global::<Tray>() else {
         return;
     };

@@ -24,6 +24,19 @@ pub fn usd(nano: u128) -> String {
     format!("${}.{:02}", cents / 100, cents % 100)
 }
 
+/// The Cost card's amount: three significant digits, so `≈` and the amount fit the card (`$7.46`,
+/// `$74.6`, `$746`, `$1.2K`). Floors, as [`usd`] and [`compact`] do.
+pub fn usd_short(nano: u128) -> String {
+    let cents = nano / 10_000_000;
+    match cents {
+        0 if nano > 0 => "<$0.01".into(),
+        0..=999 => usd(nano),
+        1_000..=9_999 => format!("${}.{}", cents / 100, cents % 100 / 10),
+        10_000..=99_999 => format!("${}", cents / 100),
+        _ => format!("${}", compact(cents / 100)),
+    }
+}
+
 /// Floors (99.6% remaining is not 100%); the epsilon absorbs binary artifacts like 0.29 * 100 = 28.99….
 pub fn percent(ratio: f64) -> String {
     format!("{:.0}%", (ratio.clamp(0.0, 1.0) * 100.0 + 1e-9).floor())

@@ -3,6 +3,7 @@
 mod activity;
 mod group_header;
 mod quota;
+mod trend;
 mod usage;
 
 pub use activity::{activity, header as activity_header};

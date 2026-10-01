@@ -77,6 +77,20 @@ pub struct Usage {
     pub by_model: Vec<ModelUsage>,
     #[serde(default)]
     pub by_provider: Vec<ProviderUsage>,
+    #[serde(default)]
+    pub trend_by_model: Vec<TrendCell>,
+    #[serde(default)]
+    pub trend_by_provider: Vec<TrendCell>,
+}
+
+/// One series' part of one bucket; `bucket` indexes `Usage::buckets`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TrendCell {
+    pub bucket: usize,
+    #[serde(alias = "modelId", alias = "providerId")]
+    pub key: String,
+    #[serde(flatten)]
+    pub slice: UsageSlice,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -138,18 +152,53 @@ pub struct ActivityDay {
     pub date: String,
     #[serde(deserialize_with = "decimal")]
     pub total_tokens: u128,
+    /// The day's largest models by tokens.
+    #[serde(default)]
+    pub models: Vec<ActivityModel>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityModel {
+    pub model_id: String,
+    #[serde(deserialize_with = "decimal")]
+    pub total_tokens: u128,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Provider {
     pub id: String,
     pub name: String,
+    /// The OAuth plugin's display name; `None` for API Providers.
+    #[serde(default)]
+    pub service: Option<LocalizedText>,
+    /// The plugin's icon as declared: a Lobe Icons slug, an http(s) URL or a `data:image/` URI.
+    #[serde(default)]
+    pub icon: Option<String>,
     pub enabled: bool,
     #[serde(default, rename = "accountLabel")]
     pub account_label: Option<String>,
     pub state: ProviderState,
     pub diagnostic: Option<Diagnostic>,
     pub quota: Quota,
+}
+
+impl Provider {
+    /// The service for an OAuth Provider, so accounts of different plugins under one email stay
+    /// apart; otherwise the Provider name.
+    pub fn title(&self) -> String {
+        self.service.as_ref().map_or_else(|| self.name.clone(), |s| s.text().to_string())
+    }
+
+    /// The account, or the Provider name when the plugin reports none; `None` when it repeats the
+    /// title.
+    pub fn subtitle(&self) -> Option<String> {
+        let title = self.title();
+        self.account_label
+            .clone()
+            .or_else(|| self.service.as_ref().map(|_| self.name.clone()))
+            .filter(|subtitle| *subtitle != title)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

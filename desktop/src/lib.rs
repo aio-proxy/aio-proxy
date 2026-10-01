@@ -11,6 +11,7 @@ pub mod login_item;
 pub mod panel;
 pub mod process;
 pub mod summary;
+pub mod theme;
 pub mod token;
 pub mod tray;
 pub mod updater;

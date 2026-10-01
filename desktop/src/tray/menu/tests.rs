@@ -48,13 +48,24 @@ fn a_stopped_service_offers_start_and_a_fresh_one_install() {
 }
 
 #[test]
-fn a_read_only_copy_has_no_login_item_and_only_what_it_may_do() {
-    let entries =
-        labels(&menu_entries(offered(false, false, false, false, true), false, false, LoginItemStatus::Unavailable));
+fn a_read_only_copy_lists_login_disabled_and_only_what_it_may_do() {
+    let entries = menu_entries(offered(false, false, false, false, true), false, false, LoginItemStatus::Unavailable);
     assert_eq!(
-        entries,
-        ["Open Dashboard", "---", "Reload config", "Open logs", "---", "Check for Updates…", "---", "Quit AIO Proxy"]
+        labels(&entries),
+        [
+            "Open Dashboard",
+            "---",
+            "Reload config",
+            "Open logs",
+            "---",
+            "Open at login (move to Applications first)",
+            "Check for Updates…",
+            "---",
+            "Quit AIO Proxy"
+        ]
     );
+    // Listed so it can be found, but a copy outside Applications must not register itself.
+    assert!(entries.iter().any(|e| matches!(e, MenuEntry::Check { enabled: false, checked: false, .. })));
 }
 
 #[test]

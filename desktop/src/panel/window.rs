@@ -4,9 +4,12 @@
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
-use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_app_kit::{NSView, NSWindow, NSWindowAnimationBehavior};
+use objc2::{MainThreadMarker, MainThreadOnly};
+use objc2_app_kit::{
+    NSAutoresizingMaskOptions, NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState,
+    NSVisualEffectView, NSWindow, NSWindowAnimationBehavior, NSWindowOrderingMode,
+};
 use objc2_foundation::{NSNumber, NSString};
 use tray_icon::TrayIcon;
 
@@ -62,15 +65,25 @@ pub fn toggle(cx: &mut App) {
         is_movable: false,
         is_resizable: false,
         is_minimizable: false,
+        // See `frost`: the blur goes in by hand, under GPUI's content.
+        window_background: WindowBackgroundAppearance::Transparent,
         display_id: Some(DisplayId::new(u64::from(display))),
         ..Default::default()
     };
     match gpui_kit::open_window(options, cx, |window, cx| cx.new(|cx| PanelView::new(window, cx))) {
         Ok((handle, _view)) => {
+            // GPUI Component's root plugin fills the window with the theme background, which would
+            // cover the blur; the Root's own style is applied after it, so clear it there.
+            let _ = handle.update(cx, |_, window, cx| {
+                if let Some(Some(root)) = window.root::<gpui_kit::base::Root>() {
+                    root.update(cx, |root, _| root.style().background = Some(transparent_black().into()));
+                }
+            });
             let native = handle.update(cx, |_, window, _| native_window(window)).ok().flatten();
             if let Some(native) = &native {
                 // AppKit's utility-window animation otherwise runs on its own thread for every open and close.
                 native.setAnimationBehavior(NSWindowAnimationBehavior::None);
+                frost(native);
                 native.makeKeyAndOrderFront(None);
             }
             cx.global_mut::<PanelWindow>().handle = Some(handle);
@@ -117,6 +130,21 @@ fn anchor(tray: &TrayIcon) -> Option<(f64, f64, u32)> {
         .map(|n| n.unsignedIntValue())?;
     let (x, y) = panel_origin(frame(window.frame()), frame(screen.frame()), PANEL_WIDTH);
     Some((x, y, display))
+}
+
+/// Puts the system popover material under GPUI's content view. GPUI's own `Blurred` background
+/// strips the effect view's layers to make the blur colorless, which on macOS 27 leaves no blur at
+/// all; the panel tints the plain material with its own tokens instead.
+fn frost(window: &NSWindow) {
+    let (Some(mtm), Some(content)) = (MainThreadMarker::new(), window.contentView()) else { return };
+    let effect = NSVisualEffectView::initWithFrame(NSVisualEffectView::alloc(mtm), content.bounds());
+    effect.setMaterial(NSVisualEffectMaterial::Popover);
+    effect.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+    effect.setState(NSVisualEffectState::Active);
+    effect.setAutoresizingMask(
+        NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
+    );
+    content.addSubview_positioned_relativeTo(&effect, NSWindowOrderingMode::Below, None);
 }
 
 /// The NSWindow GPUI created, reached through the public raw-window-handle (an NSView).

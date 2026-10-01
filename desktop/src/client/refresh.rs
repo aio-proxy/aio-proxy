@@ -68,6 +68,11 @@ impl Scheduler {
         self.session.is_some()
     }
 
+    /// A summary request is out, automatic or manual.
+    pub fn is_fetching(&self) -> bool {
+        self.in_flight.is_some()
+    }
+
     /// Panel opened: a new session that fetches at once.
     pub fn open(&mut self, now: Instant) -> Option<FetchOrder> {
         self.close();

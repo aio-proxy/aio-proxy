@@ -1,6 +1,5 @@
 //! The panel header's words: what state the proxy is in and what the app may do about it.
 
-use gpui_kit::component::ActiveTheme;
 use gpui_kit::{App, Hsla};
 
 use crate::app::{ActionState, AppModel, SummaryState};
@@ -48,7 +47,7 @@ pub fn is_down(model: &AppModel) -> bool {
 
 /// The status dot: amber when running with alerts.
 pub fn dot(model: &AppModel, cx: &App) -> Hsla {
-    let theme = cx.theme();
+    let theme = crate::theme::colors(cx);
     match run(model) {
         Some(Run::Running) if matches!(&model.summary, SummaryState::Ready(s) if !s.alerts.is_empty()) => theme.warning,
         Some(Run::Running) => theme.success,

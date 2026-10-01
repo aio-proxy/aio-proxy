@@ -22,9 +22,9 @@ fn the_grid_is_53_sunday_first_weeks_ending_in_the_week_of_today() {
 fn levels_scale_to_the_busiest_day_and_count_active_days() {
     let today = day(2026, 10, 1);
     let activity = [
-        ActivityDay { date: "2026-10-01".into(), total_tokens: 400 },
-        ActivityDay { date: "2026-09-30".into(), total_tokens: 100 },
-        ActivityDay { date: "2025-01-01".into(), total_tokens: 999_999 }, // older than the grid
+        ActivityDay { date: "2026-10-01".into(), total_tokens: 400, models: vec![] },
+        ActivityDay { date: "2026-09-30".into(), total_tokens: 100, models: vec![] },
+        ActivityDay { date: "2025-01-01".into(), total_tokens: 999_999, models: vec![] }, // older than the grid
     ];
     let grid = heat_grid(&activity, today);
     let cell = |d| grid.weeks.iter().flatten().flatten().find(|c| c.day == d).copied().unwrap();
@@ -44,7 +44,6 @@ fn month_labels_mark_the_column_where_a_month_starts() {
     let mut columns: Vec<_> = grid.months.iter().map(|(c, _)| *c).collect();
     columns.dedup();
     assert_eq!(columns.len(), grid.months.len(), "one label per column at most");
-    assert_eq!(day_label(day(2026, 9, 29)), "Tue Sep 29");
 }
 
 #[test]
@@ -61,4 +60,12 @@ fn a_month_that_starts_tomorrow_is_not_labelled_yet() {
     let grid = heat_grid(&[], day(2026, 9, 30));
     assert_eq!(grid.months.last().map(|(_, m)| *m), Some("Sep"));
     assert!(grid.months.iter().all(|&(col, _)| col < WEEKS - 1), "no label over the all-Sep last column");
+}
+
+#[test]
+fn the_hover_date_reads_like_the_dashboard() {
+    assert_eq!(long_date(day(2026, 10, 1)), "October 1st, 2026");
+    assert_eq!(long_date(day(2026, 9, 22)), "September 22nd, 2026");
+    assert_eq!(long_date(day(2026, 9, 13)), "September 13th, 2026");
+    assert_eq!(long_date(day(2026, 5, 3)), "May 3rd, 2026");
 }

@@ -27,12 +27,25 @@ pub fn header(
     on_show: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
-    let theme = cx.theme();
+    let theme = crate::theme::colors(cx);
     let mut line = h_flex()
         .gap_2()
         .items_center()
         .child(div().size(px(8.)).rounded_full().bg(status::dot(model, cx)))
         .child(div().flex_1().text_base().font_semibold().child(status::headline(model)));
+    // Spins while any summary fetch is out, automatic or manual; a click fetches now.
+    if matches!(model.summary, SummaryState::Ready(_)) && !status::is_down(model) {
+        let updated = model.updated_text().unwrap_or_else(|| "Refresh".into());
+        line = line.child(
+            Button::new("refresh")
+                .ghost()
+                .xsmall()
+                .icon(IconName::RefreshCw)
+                .loading(model.is_refreshing())
+                .tooltip(updated)
+                .on_click(|_, _, cx| app::manual_refresh(cx)),
+        );
+    }
     if let Some((action, label)) = promoted(model) {
         line = line.child(
             Button::new("promoted")
@@ -43,13 +56,13 @@ pub fn header(
                 .on_click(move |_, _, cx| app::run_user_action(cx, action)),
         );
     }
-    let mut column = v_flex().px_3().pt_3().gap(px(2.)).child(line);
+    let mut column = v_flex().px_5().pt_3().gap(px(2.)).child(line);
     if let Some(endpoint) = status::endpoint_line(model) {
         column = column.child(
             div()
                 .text_xs()
                 .text_color(theme.muted_foreground)
-                .font_family(theme.mono_font_family.clone())
+                .font_family(cx.theme().mono_font_family.clone())
                 .child(endpoint),
         );
     }

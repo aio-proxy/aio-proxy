@@ -48,3 +48,19 @@ fn percents_floor_without_float_artifacts() {
     assert_eq!(percent(0.996), "99%");
     assert_eq!(percent(1.5), "100%");
 }
+
+#[test]
+fn the_cost_card_keeps_three_significant_digits() {
+    let usd = |dollars: f64| (dollars * 1e9) as u128;
+    let cases = [
+        (0.004, "<$0.01"),
+        (7.468, "$7.46"),
+        (74.6, "$74.6"),
+        (746.99, "$746"),
+        (1_234.0, "$1.2K"),
+        (56_000.0, "$56.0K"),
+    ];
+    for (amount, text) in cases {
+        assert_eq!(usd_short(usd(amount)), text, "{amount}");
+    }
+}

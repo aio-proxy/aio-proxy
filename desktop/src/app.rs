@@ -173,6 +173,11 @@ impl AppModel {
         self.summary_error.as_ref().filter(|(range, _)| *range == self.usage_range).map(|(_, error)| error.as_str())
     }
 
+    /// Whether a summary fetch is out: the header's refresh button spins.
+    pub fn is_refreshing(&self) -> bool {
+        self.scheduler.is_fetching()
+    }
+
     pub fn updated_text(&self) -> Option<String> {
         let minutes = self.last_summary_at?.elapsed().as_secs() / 60;
         Some(if minutes == 0 { "Updated just now".into() } else { format!("Updated {minutes} min ago") })

@@ -111,6 +111,8 @@ fn start_fetch(cx: &mut App, order: FetchOrder) {
                 cx.update(|cx| finish(cx, order, result));
             });
             cx.global_mut::<AppModel>().fetch_task = Some(task);
+            // The header's refresh button spins while the request is out.
+            changed(cx);
         }
         Err(state) => {
             let model = cx.global_mut::<AppModel>();

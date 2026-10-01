@@ -2,8 +2,8 @@
 //! how the breakdowns rank. Pure; the views only lay these out.
 
 use super::activity::weekday_name;
-use super::format::{civil_from_days, compact, parse_utc, usd};
-use crate::summary::{BucketUnit, UsageRange, UsageSlice, UsageTotals};
+use super::format::{civil_from_days, compact, parse_utc, usd, usd_short};
+use crate::summary::{BucketUnit, TrendCell, UsageBucket, UsageRange, UsageSlice, UsageTotals};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Metric {
@@ -71,10 +71,10 @@ pub fn format_value(value: u128, metric: Metric) -> String {
 }
 
 pub fn card_value(t: &UsageTotals, metric: Metric) -> String {
-    let value = format_value(metric_total(t, metric), metric);
     if metric != Metric::Cost {
-        return value;
+        return format_value(metric_total(t, metric), metric);
     }
+    let value = usd_short(t.estimated_cost_nano_usd);
     match t.pricing_coverage {
         None => "—".into(),
         Some(coverage) if coverage < 1.0 => format!("≈{value}"),
@@ -112,29 +112,82 @@ pub fn card_delta(current: &UsageTotals, previous: &UsageTotals, metric: Metric)
     delta(metric_total(current, metric), metric_total(previous, metric), metric)
 }
 
-/// Sorted by the metric, zeros last. `share` is each item's part of `total`, the window's total
-/// for the metric (0 when it is 0): the lists are partial (top-20 models, Providers with traffic
-/// only), so summing the items would overstate every share.
-pub fn ranked<T>(
-    items: &[T],
-    slice: impl Fn(&T) -> &UsageSlice,
+/// What the trend's bars stack by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Split {
+    #[default]
+    Model,
+    Provider,
+}
+
+impl Split {
+    pub const ALL: [Split; 2] = [Split::Model, Split::Provider];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Split::Model => "Model",
+            Split::Provider => "Provider",
+        }
+    }
+}
+
+/// The named series a trend stacks before the rest folds into Other, as the Dashboard's trend does.
+pub const STACKED: usize = 4;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Series {
+    /// The model or Provider id; `None` for Other.
+    pub key: Option<String>,
+    pub label: String,
+    pub other: bool,
+    /// The metric per bucket.
+    pub values: Vec<u128>,
+}
+
+/// The trend's series, bottom first: the top [`STACKED`] keys by the metric over the window, then
+/// Other, the rest of each bucket (cells cover only the server's top models), when any is left.
+/// Keys with nothing for the metric are not drawn.
+pub fn stack(
+    buckets: &[UsageBucket],
+    cells: &[TrendCell],
+    label: impl Fn(&str) -> String,
     metric: Metric,
-    total: u128,
-    limit: Option<usize>,
-) -> Vec<(&T, u128, f64)> {
-    let mut rows: Vec<_> = items
+) -> Vec<Series> {
+    let mut totals: Vec<(&str, u128)> = Vec::new();
+    for cell in cells {
+        let value = slice_value(&cell.slice, metric);
+        match totals.iter_mut().find(|(key, _)| *key == cell.key) {
+            Some((_, total)) => *total += value,
+            None => totals.push((&cell.key, value)),
+        }
+    }
+    totals.retain(|(_, total)| *total > 0);
+    totals.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+    totals.truncate(STACKED);
+    let mut series: Vec<Series> = totals
         .iter()
-        .map(|item| {
-            let value = slice_value(slice(item), metric);
-            let share = if total == 0 { 0.0 } else { (value as f64 / total as f64).min(1.0) };
-            (item, value, share)
+        .map(|(key, _)| {
+            let mut values = vec![0; buckets.len()];
+            for cell in cells.iter().filter(|cell| cell.key == *key) {
+                if let Some(value) = values.get_mut(cell.bucket) {
+                    *value += slice_value(&cell.slice, metric);
+                }
+            }
+            Series { key: Some(key.to_string()), label: label(key), other: false, values }
         })
         .collect();
-    rows.sort_by_key(|row| std::cmp::Reverse(row.1));
-    if let Some(limit) = limit {
-        rows.truncate(limit);
+    let other: Vec<u128> = buckets
+        .iter()
+        .enumerate()
+        .map(|(i, bucket)| {
+            let named: u128 = series.iter().map(|s| s.values[i]).sum();
+            slice_value(&bucket.slice, metric).saturating_sub(named)
+        })
+        .collect();
+    if other.iter().any(|&v| v > 0) {
+        series.push(Series { key: None, label: "Other".into(), other: true, values: other });
     }
-    rows
+    series
 }
 
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

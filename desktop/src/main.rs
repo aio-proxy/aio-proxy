@@ -6,9 +6,8 @@ use std::ptr::NonNull;
 use aio_proxy_desktop::app::{self, AppEvent, AppModel, changed};
 use aio_proxy_desktop::install::{self, Paths};
 use aio_proxy_desktop::panel::{self, PanelWindow};
-use aio_proxy_desktop::tray::MenuCommand;
 use aio_proxy_desktop::version::APP_VERSION;
-use aio_proxy_desktop::{http, log, tray, updater};
+use aio_proxy_desktop::{http, log, theme, tray, updater};
 use block2::RcBlock;
 use futures::StreamExt;
 use futures::channel::mpsc::{self, UnboundedSender};
@@ -44,8 +43,9 @@ fn main() {
         std::env::current_exe().ok().and_then(|exe| exe.canonicalize().ok()).and_then(|exe| install::bundle_of(&exe));
     log::info(format!("aio-proxy-desktop {APP_VERSION} starting from {bundle:?}"));
 
-    gpui_kit::application().run(move |cx| {
+    gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
+        theme::apply(cx.window_appearance(), cx);
         cx.set_http_client(std::sync::Arc::new(http::UrlSession));
         // GPUI forces the Regular policy in applicationDidFinishLaunching; LSUIElement covers launch.
         let mtm = MainThreadMarker::new().expect("GPUI runs this callback on the main thread");
@@ -72,15 +72,7 @@ fn handle(cx: &mut App, event: AppEvent) {
     match event {
         AppEvent::TogglePanel => panel::toggle(cx),
         AppEvent::ClosePanel => panel::close_open(cx),
-        AppEvent::Menu(command) => match command {
-            MenuCommand::OpenDashboard => app::open_dashboard(cx),
-            MenuCommand::Run(action) => app::run_user_action(cx, action),
-            MenuCommand::OpenLogs => app::open_logs(cx),
-            MenuCommand::ToggleLogin => app::toggle_login_item(cx),
-            MenuCommand::CheckForUpdates => updater::check_now(),
-            // Quitting leaves the proxy running: launchd owns it.
-            MenuCommand::Quit => cx.quit(),
-        },
+        AppEvent::Menu(command) => tray::run(cx, command),
         AppEvent::Wake => app::check_health(cx),
         AppEvent::UpdateAvailable(version) => {
             cx.global_mut::<AppModel>().update_pending = Some(version);
