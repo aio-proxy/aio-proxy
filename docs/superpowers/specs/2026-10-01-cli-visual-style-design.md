@@ -141,20 +141,33 @@
 
 ### `agent list`
 
-一张表：所有 agent 宿主加上 Codex 各占一行。
+分块详情，不用表格：`2026-08-18-agent-provider-integrations-design.md` 和 README 承诺 `agent list` 展示 installation ID、adapter 版本、endpoint 是否一致、catalog 最后成功时间等字段，一个都不省。每个 agent 宿主和 Codex 各一块，块与块之间空一行：
 
 ```text
-  AGENT     HOST     INTEGRATION  ENDPOINT                     CATALOG  AUTH
-● pi        0.99.2   managed      http://127.0.0.1:9317        stale    not_checked
-● codex     -        managed      http://127.0.0.1:9317/v1     -        not_checked
-    auth keep-chatgpt
-○ opencode  unknown  absent       -                            missing  not_checked
+● pi  managed
+    host          0.99.2 (minimum 0.84.2, supported)
+    installation  15331166-c62d-49e3-9a6e-01e7638595a3
+    adapter       0.35.1
+    endpoint      http://127.0.0.1:9317 (match)
+    catalog       stale (last success 2026-09-27T06:06:03.724Z)
+    authorization not_checked
+    schema        not_checked
+
+○ opencode  absent
+    host          unknown (minimum 1.17.10, unknown)
+    ...
+
+● codex  managed
+    config        /Users/me/.codex/config.toml
+    provider      aio-proxy
+    ...
 ```
 
-- 记号：`absent` 为 `○`；`unresolved`、`recovery_required`、endpoint 不一致、宿主版本不受支持为 `▲`；其余 `●`。
-- 子行：`unresolved` 的原因、configuration modified / missing / recovery required 的字段、Codex 的认证模式。
-- 表格之后，有对应数据时追加一个 `heading` 小节：Server 状态、capabilities、`--authorizations` 列表（authorizations 本身也是表格）。
-- installation id、adapter 版本、最低宿主版本、schema 兼容性不进表格，在 `--json` 里。
+- 标题行：记号、目标名（`strong`）、integration 或 Codex 的配置状态。
+- 字段与今天整句消息里的字段一一对应，标签 `muted`、左对齐成一列。值不截断。
+- 记号：`absent` 为 `○`；`unresolved`、`conflict`、宿主 `unsupported`、endpoint 不一致、Grok configuration 不是 `current`、Codex 状态 `modified` / `conflict` 或连接 `offline` / `unauthorized` / `invalid_response` 为 `▲`；其余 `●`。
+- Grok 的 configuration modified / missing / recovery required 句子作为块内最后一行，前缀 `▲`。
+- 所有块之后，有对应数据时追加 `heading` 小节：Server 状态、capabilities、`--authorizations` 列表（表格：INSTALLATION / TARGET / AUTHORIZATION / LOCAL）。
 
 ### 错误
 
@@ -177,22 +190,22 @@
 ```text
 packages/cli/src/ui/
 ├── style/      角色、记号、颜色深度判断。唯一写 ANSI 转义的地方
-├── table/      列对齐（Bun.stringWidth）、记号列、缩进子行
+├── layout/     表格（列对齐、记号列、缩进子行）和分块详情（标题行 + 对齐的标签 / 值）
 ├── help/       configureHelp 钩子、helpGroup 分组、标题本地化
-└── summary/    各命令的格式化函数，改用 style + table
+└── summary/    各命令的格式化函数，改用 style + layout
 ```
 
 - `style` 导出 `createStyle(stream, env)`，返回六个角色函数和五个记号。调用方传入实际写入的流（stdout 或 stderr），不在模块里读全局。
 - token hex 只写在 `style` 里一处，注释指向 `packages/ui/src/styles.css`。CLI 不能 import CSS，为几个值加同步脚本不值得。
-- `table` 只负责排版：输入表头、行（每行可带记号和子行）、样式，输出字符串数组。不知道 provider 或 agent。
-- `agent/output.ts` 里的列表渲染改用 `table`；把 agent 列表整句的 i18n 消息拆成列标题和值。
+- `layout` 只负责排版：表格输入表头、行（每行可带记号和子行）；分块输入记号、标题和标签 / 值对。都输出字符串数组，不知道 provider 或 agent。provider 详情视图和 agent 列表共用分块。
+- `agent/output.ts` 里的列表渲染改用 `layout` 的分块；把 agent 列表整句的 i18n 消息拆成字段标签和值模板。
 - `ui/summary/summary.ts` 和 `agent/output.ts` 超过 400 行时按命令拆开。
 - 现有 `labelValue` 里手写的 `\u001b[2m` 并入 `style`。
 
 ### 删除
 
 - `formatPluginLines` / `formatInstalledLines` / `formatDoctorLines` 里「放得下就一行，否则一字段一行」的 `fits` 分支：表格和清单在任何宽度下都是同一种排版。窄终端由终端自己换行，不截断 ID、包名和路径。
-- 整句的 `cli.agent.list.target`、`cli.agent.list.unresolved`、`cli.agent.codex.list`、`cli.agent.codex.list_auth` 消息，换成列标题和子行文案。
+- 整句的 `cli.agent.list.target`、`cli.agent.list.unresolved`、`cli.agent.codex.list`、`cli.agent.codex.list_auth` 消息，换成字段标签和值模板。
 
 ## 文案
 
@@ -203,10 +216,10 @@ packages/cli/src/ui/
 只测会坏、且坏了用户看得到的行为：
 
 - `style`：非 TTY 或 `NO_COLOR` 时输出不含 `\u001b`；16 色下 `warning` 是 33 而不是 31 / 91（防止警告看起来像失败）；真彩色下 `heading` 是 token 值。
-- `table`：中日文和 ASCII 混排时各列起始显示列一致；子行缩进在记号列之后。
+- `layout`：中日文和 ASCII 混排时表格各列、分块各值的起始显示列一致；子行缩进在记号列之后。
 - Help：根 help 含四个分组和版本头行；非 TTY 下 help 不含转义码。
 - provider：记号选择（disabled / unavailable / stale / 正常）；单个 provider 走详情视图，字段数与今天一致；空列表打印说明。
-- agent：`absent` / `unresolved` 的记号和子行；`--json` 输出与改动前逐字节相同。
+- agent：`absent` / `unresolved` 的记号；分块包含今天整句消息里的全部字段（保留现有「exposes every diagnostic field」测试的取值断言）；`--json` 输出与改动前逐字节相同。
 - 机器路径：`status --json`、`agent list --json` 的回归断言保留。
 
 现有 `main.rendering.test.ts`、`summary.test.ts`、`output.test.ts` 里断言旧排版的用例改成新排版，不保留旧排版的断言。
