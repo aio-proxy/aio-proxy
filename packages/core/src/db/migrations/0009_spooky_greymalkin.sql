@@ -1,0 +1,1 @@
+CREATE INDEX `trace_span_root_usage_idx` ON `trace_span` (`parent_span_id`,`ended_at`,`final_provider_id`,`termination_reason`,`input_tokens`,`output_tokens`,`estimated_cost_nano_usd`) WHERE parent_span_id IS NULL;

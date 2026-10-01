@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { createTraceStore } from '../index';
+import { bucketKeys, resolveRange } from '../overview';
 import { openTestDb } from '../test-support';
 import { attemptSpan, completion, rootSpan, rootStart } from '../trace-store.test-support';
 import type { TraceStore } from '../types';
@@ -18,6 +19,10 @@ type Seed = {
   readonly input?: number;
   readonly output?: number;
   readonly costUsd?: number;
+  /** `unpriced` records tokens without a cost; `none` records no usage at all. Default: priced. */
+  readonly pricing?: 'unpriced' | 'none';
+  /** A terminal reason on a request that still reached its final Provider. */
+  readonly termination?: 'failure' | 'cancelled';
 };
 
 function seed(store: TraceStore, s: Seed): void {
@@ -63,14 +68,14 @@ function seed(store: TraceStore, s: Seed): void {
     }),
   );
   const usage =
-    final === undefined
+    final === undefined || s.pricing === 'none'
       ? undefined
       : {
           providerId: final.provider,
           modelId: model,
           inputTokens: s.input ?? 10,
           outputTokens: s.output ?? 5,
-          estimatedCostUsd: s.costUsd ?? 0.001,
+          ...(s.pricing === 'unpriced' ? {} : { estimatedCostUsd: s.costUsd ?? 0.001 }),
         };
   store.complete(
     completion({
@@ -80,7 +85,12 @@ function seed(store: TraceStore, s: Seed): void {
       summary:
         final === undefined
           ? { terminationReason: 'failure' }
-          : { finalProviderId: final.provider, finalModelId: model, ...(usage === undefined ? {} : { usage }) },
+          : {
+              finalProviderId: final.provider,
+              finalModelId: model,
+              ...(s.termination === undefined ? {} : { terminationReason: s.termination }),
+              ...(usage === undefined ? {} : { usage }),
+            },
     }),
   );
 }
@@ -171,5 +181,120 @@ test('byModel is ordered by cost then requests and capped at 20', () => {
 
     expect(byModel).toHaveLength(20);
     expect(byModel[0]?.modelId).toBe('model-05');
+  });
+});
+
+test('7d: a request three days back lands in its day bucket and its failure is counted there', () => {
+  withStore((store) => {
+    seed(store, { id: 1, endedAt: new Date(NOW.getTime() - 3 * DAY), attempts: [{ provider: 'a', fail: true }] });
+
+    const usage = store.desktopUsage({ range: '7d', now: NOW });
+
+    const range = resolveRange('7d', NOW);
+    const keys = bucketKeys('7d', range.start, range.end);
+    const expected = keys.at(-4)?.key;
+    const hit = usage.buckets.filter((bucket) => bucket.requests !== '0');
+    expect(hit).toHaveLength(1);
+    expect(hit[0]?.start).toBe(expected);
+    expect(hit[0]?.failedRequests).toBe('1');
+    expect(usage.current.failedRequests).toBe('1');
+  });
+});
+
+test('a cancelled request counts as a request but not as a failure', () => {
+  withStore((store) => {
+    seed(store, {
+      id: 1,
+      endedAt: new Date(NOW.getTime() - HOUR),
+      attempts: [{ provider: 'a' }],
+      termination: 'cancelled',
+      pricing: 'none',
+    });
+
+    const usage = store.desktopUsage({ range: '24h', now: NOW });
+
+    expect(usage.current.requests).toBe('1');
+    expect(usage.current.failedRequests).toBe('0');
+    expect(usage.byProvider[0]?.failedRequests).toBe('0');
+  });
+});
+
+test('pricingCoverage is priced over with-usage requests, and null without any usage', () => {
+  withStore((store) => {
+    expect(store.desktopUsage({ range: '24h', now: NOW }).current.pricingCoverage).toBeNull();
+
+    seed(store, { id: 1, endedAt: new Date(NOW.getTime() - HOUR), attempts: [{ provider: 'a' }] });
+    seed(store, { id: 2, endedAt: new Date(NOW.getTime() - HOUR), attempts: [{ provider: 'a' }], pricing: 'unpriced' });
+    seed(store, { id: 3, endedAt: new Date(NOW.getTime() - HOUR), attempts: [{ provider: 'a' }], pricing: 'none' });
+
+    expect(store.desktopUsage({ range: '24h', now: NOW }).current.pricingCoverage).toBe(0.5);
+  });
+  withStore((store) => {
+    seed(store, { id: 1, endedAt: new Date(NOW.getTime() - HOUR), attempts: [{ provider: 'a' }], pricing: 'none' });
+
+    expect(store.desktopUsage({ range: '24h', now: NOW }).current.pricingCoverage).toBeNull();
+  });
+});
+
+test('byProvider counts a request that failed on its final Provider as a failure', () => {
+  withStore((store) => {
+    seed(store, {
+      id: 1,
+      endedAt: new Date(NOW.getTime() - HOUR),
+      attempts: [{ provider: 'a' }],
+      termination: 'failure',
+      pricing: 'none',
+    });
+
+    expect(store.desktopUsage({ range: '24h', now: NOW }).byProvider).toEqual([
+      { providerId: 'a', requests: '1', failedRequests: '1', totalTokens: '0', estimatedCostNanoUsd: '0' },
+    ]);
+  });
+});
+
+test('24h previous window totals mix success, failure, cancelled, priced, unpriced and no usage', () => {
+  withStore((store) => {
+    const at = new Date(NOW.getTime() - DAY - 2 * HOUR);
+    seed(store, { id: 1, endedAt: at, attempts: [{ provider: 'a' }], input: 100, output: 20 });
+    seed(store, { id: 2, endedAt: at, attempts: [{ provider: 'a' }], input: 5, output: 5, pricing: 'unpriced' });
+    seed(store, { id: 3, endedAt: at, attempts: [{ provider: 'a', fail: true }] });
+    seed(store, { id: 4, endedAt: at, attempts: [{ provider: 'a' }], termination: 'cancelled', pricing: 'none' });
+    seed(store, { id: 5, endedAt: at, attempts: [{ provider: 'a' }], pricing: 'none' });
+    // Outside the previous window on both sides.
+    seed(store, { id: 6, endedAt: new Date(NOW.getTime() - 2 * DAY - 60_000), attempts: [{ provider: 'a' }] });
+    seed(store, { id: 7, endedAt: new Date(NOW.getTime() - HOUR), attempts: [{ provider: 'a' }] });
+
+    const { previous } = store.desktopUsage({ range: '24h', now: NOW });
+
+    expect(previous).toEqual({
+      requests: '5',
+      failedRequests: '1',
+      inputTokens: '105',
+      outputTokens: '25',
+      estimatedCostNanoUsd: '1000000',
+      pricingCoverage: 0.5,
+    });
+  });
+});
+
+test('entries tied on cost and requests are ordered by name', () => {
+  withStore((store) => {
+    for (const [id, model] of [
+      [1, 'model-b'],
+      [2, 'model-a'],
+      [3, 'model-c'],
+    ] as const) {
+      seed(store, {
+        id,
+        endedAt: new Date(NOW.getTime() - HOUR),
+        model,
+        attempts: [{ provider: `p${(id % 3) + 1}` }],
+      });
+    }
+
+    const usage = store.desktopUsage({ range: '24h', now: NOW });
+
+    expect(usage.byModel.map((entry) => entry.modelId)).toEqual(['model-a', 'model-b', 'model-c']);
+    expect(usage.byProvider.map((entry) => entry.providerId)).toEqual(['p1', 'p2', 'p3']);
   });
 });

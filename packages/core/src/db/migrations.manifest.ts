@@ -8,6 +8,7 @@ import migration5Sql from "./migrations/0005_material_xavin.sql?raw";
 import migration6Sql from "./migrations/0006_furry_mastermind.sql?raw";
 import migration7Sql from "./migrations/0007_confused_puck.sql?raw";
 import migration8Sql from "./migrations/0008_absent_dark_phoenix.sql?raw";
+import migration9Sql from "./migrations/0009_spooky_greymalkin.sql?raw";
 export type Migration = {
     readonly version: number;
     readonly file: string;
@@ -68,6 +69,12 @@ export const MIGRATIONS: readonly Migration[] = [
         file: "0008_absent_dark_phoenix.sql",
         sha256: "82ce48ca7612664d00f38cbfa384c2345fd2fa7d731de8995008acd297e25d2a",
         sql: migration8Sql
+    },
+    {
+        version: 10,
+        file: "0009_spooky_greymalkin.sql",
+        sha256: "7c024d2578a604d4f0a6029d1a49baf5d50c113f1ae0878b6dd9aa0ccb5e4a9e",
+        sql: migration9Sql
     }
 ];
 export const COMPILED_SCHEMA_VERSION = MIGRATIONS.length;
