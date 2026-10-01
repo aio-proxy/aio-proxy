@@ -1,9 +1,6 @@
 //! The Usage group's numbers: which metric is picked, how it compares with the previous window, and
 //! how the breakdowns rank. Pure; the views only lay these out.
 
-// Removed by Task 9, which renders these.
-#![allow(dead_code)]
-
 use super::format::{civil_from_days, compact, parse_utc, usd};
 use crate::summary::{BucketUnit, UsageSlice, UsageTotals};
 

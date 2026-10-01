@@ -1,9 +1,27 @@
 //! The panel header's words: what state the proxy is in and what the app may do about it.
 
-use crate::app::{ActionState, AppModel};
+use gpui_kit::component::ActiveTheme;
+use gpui_kit::{App, Hsla};
+
+use crate::app::{ActionState, AppModel, SummaryState};
 use crate::client::health::HealthState;
 use crate::connect::discovery::Owner;
 use crate::install::{InstallState, ReadOnlyReason};
+
+enum Run {
+    Stopped,
+    NotResponding,
+    Running,
+}
+
+fn run(model: &AppModel) -> Option<Run> {
+    let d = model.discovery.as_ref()?;
+    Some(match (model.health.state(), d.instance.reachable) {
+        (HealthState::Down, _) | (_, false) if d.job.pid.is_none() => Run::Stopped,
+        (HealthState::Down, _) | (_, false) => Run::NotResponding,
+        _ => Run::Running,
+    })
+}
 
 pub fn headline(model: &AppModel) -> String {
     let Some(d) = &model.discovery else {
@@ -12,20 +30,51 @@ pub fn headline(model: &AppModel) -> String {
             None => "Connecting…".into(),
         };
     };
-    let version = d.instance.version.as_deref().map(|v| format!(" {v}")).unwrap_or_default();
-    match (model.health.state(), d.instance.reachable) {
-        (HealthState::Down, _) | (_, false) if d.job.pid.is_none() => "Stopped".into(),
-        (HealthState::Down, _) | (_, false) => "Not responding".into(),
-        _ => format!("Running{version}"),
+    match run(model) {
+        Some(Run::Stopped) => "Stopped".into(),
+        Some(Run::NotResponding) => "Not responding".into(),
+        _ => format!("Running{}", d.instance.version.as_deref().map(|v| format!(" {v}")).unwrap_or_default()),
     }
 }
 
-pub fn endpoint(model: &AppModel) -> Option<String> {
-    model.discovery.as_ref()?.instance.control_url.clone()
+pub fn is_stopped(model: &AppModel) -> bool {
+    matches!(run(model), Some(Run::Stopped))
+}
+
+/// The status dot: amber when running with alerts.
+pub fn dot(model: &AppModel, cx: &App) -> Hsla {
+    let theme = cx.theme();
+    match run(model) {
+        Some(Run::Running) if matches!(&model.summary, SummaryState::Ready(s) if !s.alerts.is_empty()) => theme.warning,
+        Some(Run::Running) => theme.success,
+        Some(Run::NotResponding) => theme.danger,
+        Some(Run::Stopped) | None => theme.muted_foreground,
+    }
+}
+
+/// `127.0.0.1:9317 · started by AIO Proxy`: the address and who runs the service.
+pub fn endpoint_line(model: &AppModel) -> Option<String> {
+    let d = model.discovery.as_ref()?;
+    let url = d.instance.control_url.as_deref()?;
+    let address = url.strip_prefix("http://").unwrap_or(url).trim_end_matches('/');
+    let owner = match d.unit.owner {
+        Owner::Desktop if d.job.disabled => Some("stopped by you"),
+        Owner::Desktop => Some("started by AIO Proxy"),
+        Owner::External => Some("managed by the aio-proxy CLI"),
+        Owner::Unknown | Owner::NoPlist => None,
+    };
+    Some(match owner {
+        Some(owner) => format!("{address} · {owner}"),
+        None => address.to_string(),
+    })
 }
 
 /// The one line of context under the headline, most important first.
 pub fn notice(model: &AppModel) -> Option<String> {
+    // Only this line reports a failed login-item change; the menu has no room for it.
+    if let Some(error) = &model.login_item_error {
+        return Some(error.clone());
+    }
     if let ActionState::Failed(error) = &model.action {
         return Some(error.clone());
     }
@@ -50,17 +99,14 @@ pub fn notice(model: &AppModel) -> Option<String> {
     if let Some(error) = &model.discovery_error {
         return Some(error.clone());
     }
-    let d = model.discovery.as_ref()?;
-    match d.unit.owner {
-        Owner::External => Some("Managed by the aio-proxy CLI. Changes happen only when you click.".into()),
-        Owner::Unknown => Some("The installed service is not recognised; the app will not change it.".into()),
-        Owner::Desktop if d.job.disabled => Some("Stopped by you. Click Start to run it again.".into()),
-        _ => match &model.action {
-            ActionState::Done(note) => Some(note.clone()),
-            ActionState::Running(action) => Some(format!("{}…", action.label())),
-            ActionState::Automatic(action) => Some(format!("{}…", action.label())),
-            _ => model.summary_error.clone(),
-        },
+    if model.discovery.as_ref()?.unit.owner == Owner::Unknown {
+        return Some("The installed service is not recognised; the app will not change it.".into());
+    }
+    match &model.action {
+        ActionState::Done(note) => Some(note.clone()),
+        ActionState::Running(action) => Some(format!("{}…", action.label())),
+        ActionState::Automatic(action) => Some(format!("{}…", action.label())),
+        _ => model.summary_error.as_ref().map(|error| format!("Couldn't refresh usage · {error}")),
     }
 }
 

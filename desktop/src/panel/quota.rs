@@ -1,9 +1,6 @@
 //! The Quota group's model: which Providers appear, each window's pace against an even burn, and
 //! the attention order. Pure; the view only lays these out.
 
-// Removed by Task 9, which renders these.
-#![allow(dead_code)]
-
 use super::format::{parse_utc, until};
 use crate::summary::{Provider, Quota, QuotaWindow};
 

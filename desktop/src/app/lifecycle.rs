@@ -227,10 +227,32 @@ fn execute(host: &impl Host, rendered: &Discovery, action: UserAction) -> Result
 }
 
 pub fn open_dashboard(cx: &mut App) {
-    let url = cx.global::<AppModel>().discovery.as_ref().and_then(|d| d.instance.dashboard_url.clone());
-    if let Some(url) = url {
-        cx.open_url(&url);
+    open_dashboard_at(cx, &[]);
+}
+
+pub fn open_dashboard_providers(cx: &mut App) {
+    open_dashboard_at(cx, &["providers", ""]);
+}
+
+pub fn open_dashboard_provider(cx: &mut App, id: &str) {
+    open_dashboard_at(cx, &["providers", id, "edit"]);
+}
+
+/// `segments` are percent-encoded onto the dashboard path; `""` last leaves a trailing slash.
+fn open_dashboard_at(cx: &mut App, segments: &[&str]) {
+    let Some(base) = cx.global::<AppModel>().discovery.as_ref().and_then(|d| d.instance.dashboard_url.clone()) else {
+        return;
+    };
+    let Ok(mut url) = url::Url::parse(&base) else {
+        return;
+    };
+    if !segments.is_empty() {
+        let Ok(mut path) = url.path_segments_mut() else {
+            return;
+        };
+        path.pop_if_empty().extend(segments);
     }
+    cx.open_url(url.as_str());
 }
 
 /// Reveals `$AIO_PROXY_HOME/logs`, the service's own home when the plist names one.

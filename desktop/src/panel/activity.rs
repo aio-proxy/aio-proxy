@@ -1,9 +1,6 @@
 //! The 12-month heatmap's layout: Sunday-first weekly columns ending in today's week, five levels
 //! scaled to the busiest day, and the column where each month starts.
 
-// Removed by Task 9, which renders these.
-#![allow(dead_code)]
-
 use super::format::{civil_from_days, parse_date};
 use crate::summary::ActivityDay;
 

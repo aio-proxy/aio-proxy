@@ -8,11 +8,15 @@ mod refresh;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use gpui_kit::{App, Global, Task};
 
 pub use health::{check_now as check_health, start_timer as start_health_timer};
-pub use lifecycle::{open_dashboard, open_logs, rediscover, run_user_action, set_login_item, start, toggle_login_item};
+pub use lifecycle::{
+    open_dashboard, open_dashboard_provider, open_dashboard_providers, open_logs, rediscover, run_user_action,
+    set_login_item, start, toggle_login_item,
+};
 pub use refresh::{manual_refresh, panel_closed, panel_opened, set_usage_range};
 
 use order::DiscoveryOrder;
@@ -86,6 +90,8 @@ pub struct AppModel {
     pub summary: SummaryState,
     /// Set when a fetch fails while the last good summary stays on screen.
     pub summary_error: Option<String>,
+    /// When the last summary landed, for the footer's "Updated …".
+    pub last_summary_at: Option<Instant>,
     pub action: ActionState,
     pub update_pending: Option<String>,
     pub login_item: LoginItemStatus,
@@ -123,6 +129,7 @@ impl AppModel {
             health: HealthTracker::default(),
             summary: SummaryState::Waiting,
             summary_error: None,
+            last_summary_at: None,
             action: ActionState::Idle,
             update_pending: None,
             login_item: LoginItemStatus::Unavailable,
@@ -145,6 +152,13 @@ impl AppModel {
 
     pub fn usage_for(&self, range: UsageRange) -> Option<&Usage> {
         self.usage_cache.get(&range)
+    }
+
+    pub fn updated_text(&self) -> String {
+        match self.last_summary_at.map(|at| at.elapsed().as_secs() / 60) {
+            None | Some(0) => "Updated just now".into(),
+            Some(minutes) => format!("Updated {minutes} min ago"),
+        }
     }
 
     pub fn persistent(&self) -> bool {

@@ -34,9 +34,24 @@ fn a_failed_action_is_shown_before_anything_else() {
 }
 
 #[test]
-fn ownership_explains_why_the_app_will_not_act() {
-    assert!(notice(&model(|v| v["unit"]["owner"] = json!("external"))).unwrap().contains("CLI"));
-    assert!(notice(&model(|v| v["job"]["disabled"] = json!(true))).unwrap().contains("Stopped by you"));
+fn the_endpoint_line_names_who_runs_the_service() {
+    assert_eq!(endpoint_line(&model(|_| {})).as_deref(), Some("127.0.0.1:9317 · started by AIO Proxy"));
+    assert_eq!(
+        endpoint_line(&model(|v| v["unit"]["owner"] = json!("external"))).as_deref(),
+        Some("127.0.0.1:9317 · managed by the aio-proxy CLI")
+    );
+    assert_eq!(
+        endpoint_line(&model(|v| v["job"]["disabled"] = json!(true))).as_deref(),
+        Some("127.0.0.1:9317 · stopped by you")
+    );
+}
+
+#[test]
+fn a_login_item_failure_outranks_every_other_notice() {
+    let mut m = model(|_| {});
+    m.action = ActionState::Failed("service start failed".into());
+    m.login_item_error = Some("Launch at login: denied".into());
+    assert_eq!(notice(&m).as_deref(), Some("Launch at login: denied"));
 }
 
 #[test]

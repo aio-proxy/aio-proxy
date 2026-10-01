@@ -83,12 +83,6 @@ pub fn until(now: i64, at: i64) -> String {
     }
 }
 
-/// `M/D` of the local day containing `unix`, for trend bar labels.
-pub fn month_day(unix: i64, utc_offset: i64) -> String {
-    let (_, month, day) = civil_from_days((unix + utc_offset).div_euclid(86_400));
-    format!("{month}/{day}")
-}
-
 /// The local UTC offset in seconds (glue for the pure functions above).
 pub fn local_utc_offset(unix: i64) -> i64 {
     let mut tm = std::mem::MaybeUninit::<libc::tm>::zeroed();

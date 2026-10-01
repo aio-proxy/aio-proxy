@@ -146,6 +146,7 @@ fn finish(cx: &mut App, tag: Tag, result: Result<Response, HttpError>) {
             model.usage_cache.insert(summary.usage.range, summary.usage.clone());
             model.summary = SummaryState::Ready(summary);
             model.summary_error = None;
+            model.last_summary_at = Some(Instant::now());
             model.auth_retry_used = false;
         }
         Ok(FetchOutcome::Degraded(reason)) => {

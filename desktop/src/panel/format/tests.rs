@@ -43,14 +43,6 @@ fn describes_reset_times() {
 }
 
 #[test]
-fn labels_a_bucket_by_its_local_day() {
-    // The golden fixture's bucket starts at local midnight in UTC+8.
-    let start = parse_utc("2026-09-28T16:00:00.000Z").unwrap();
-    assert_eq!(month_day(start, 8 * 3_600), "9/29");
-    assert_eq!(month_day(start, 0), "9/28");
-}
-
-#[test]
 fn percents_floor_without_float_artifacts() {
     assert_eq!(percent(0.29), "29%");
     assert_eq!(percent(0.996), "99%");
