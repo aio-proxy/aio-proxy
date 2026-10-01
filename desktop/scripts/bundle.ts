@@ -97,7 +97,7 @@ await Bun.write(
 // macOS 26+) and AppIcon.icns (earlier macOS), named after the document.
 const iconSource = join(out, 'icon', 'AppIcon.icon');
 rmSync(dirname(iconSource), { recursive: true, force: true });
-cpSync(join(root, 'packages/brand/src/apple-icon.icon'), iconSource, { recursive: true });
+cpSync(join(root, 'packages/brand/src/app-icon.icon'), iconSource, { recursive: true });
 await $`xcrun actool ${iconSource} --compile ${join(app, 'Contents/Resources')} --app-icon AppIcon --platform macosx --target-device mac --minimum-deployment-target ${MINIMUM_MACOS} --output-partial-info-plist ${join(dirname(iconSource), 'partial.plist')}`.quiet();
 // An older actool skips a `.icon` it cannot read without failing.
 for (const file of ['Assets.car', 'AppIcon.icns']) {

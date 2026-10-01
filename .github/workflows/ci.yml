@@ -76,7 +76,7 @@ jobs:
           echo "rust=$(changed desktop npm/aio-proxy/package.json packages/types/src/desktop-summary/fixtures .github/workflows/ci.yml)" >> "$GITHUB_OUTPUT"
           # Server and dashboard changes are left out to spare macOS minutes; the release desktop job
           # always runs the full runtime smoke before signing (spec "CI").
-          echo "bundle=$(changed desktop packages/cli/scripts packages/brand/src/apple-icon.icon .github/workflows bun.lock .bun-version)" >> "$GITHUB_OUTPUT"
+          echo "bundle=$(changed desktop packages/cli/scripts packages/brand/src/app-icon.icon .github/workflows bun.lock .bun-version)" >> "$GITHUB_OUTPUT"
 
   rust:
     needs: desktop-changes
