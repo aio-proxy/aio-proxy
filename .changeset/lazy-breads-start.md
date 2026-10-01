@@ -1,6 +1,7 @@
 ---
 'aio-proxy': minor
+'@aio-proxy/cli': minor
 '@aio-proxy/server': minor
 ---
 
-Codex model catalogs now use compact instructions for third-party models by default, reducing oversized discovery responses. Request codex_instructions=full for complete instructions; official model instructions and catalog capabilities remain intact without redundant prompt copies.
+Codex setup now saves a full local model catalog and refreshes it as models change, preserving complete task guidance and official instructions. HTTP model discovery uses compact guidance for third-party models to reduce response size. Restart Codex CLI or Desktop after local catalog updates; removing the integration restores the previous personal catalog configuration.
