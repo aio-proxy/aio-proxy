@@ -1,5 +1,12 @@
 # @aio-proxy/plugin-claude-code
 
+## 0.36.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.36.0
+
 ## 0.35.1
 
 ### Patch Changes
