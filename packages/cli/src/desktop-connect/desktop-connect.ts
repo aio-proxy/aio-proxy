@@ -21,6 +21,8 @@ export type DesktopConnectDeps = {
   readonly defaultHome: () => string;
   readonly plistExists: () => boolean;
   readonly readToken: (home: string) => string | undefined;
+  /** This process's uid: the listener must belong to it before the token is offered. */
+  readonly uid: number;
   readonly run: (cmd: readonly string[]) => Promise<{ readonly code: number; readonly stdout: string }>;
   readonly fetch: typeof fetch;
 };
@@ -106,6 +108,28 @@ async function summaryIdentity(
   }
 }
 
+/** The uids `lsof -F u` reports for the listeners on a port. */
+export function listenerUids(lsofOutput: string): readonly number[] {
+  return lsofOutput
+    .split('\n')
+    .filter((line) => /^u\d+$/u.test(line))
+    .map((line) => Number(line.slice(1)));
+}
+
+/**
+ * Whether a process of this user listens on `port`. Another local account could bind the port while
+ * the proxy is down and answer `/health`; the token goes only to a listener this user owns. An
+ * unprivileged `lsof` does not even see other users' sockets, and a failure counts as not ours.
+ */
+async function listenerIsOurs(deps: DesktopConnectDeps, port: number): Promise<boolean> {
+  try {
+    const { code, stdout } = await deps.run(['/usr/sbin/lsof', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fu']);
+    return code === 0 && listenerUids(stdout).includes(deps.uid);
+  } catch {
+    return false;
+  }
+}
+
 function readTokenSafely(deps: DesktopConnectDeps, home: string): string | undefined {
   try {
     return deps.readToken(home);
@@ -132,12 +156,16 @@ export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopC
       unit: { ...unit, owner },
       job,
       instance: UNREACHABLE,
-      token: token ?? null,
+      token: null,
     };
   }
   const controlUrl = controlBaseUrl(host, address.port);
   const health = await probeHealth(controlUrl, deps.fetch, PROBE_TIMEOUT_MS);
-  const identity = health === null ? undefined : await summaryIdentity(deps, controlUrl, token);
+  // The token is reported, and sent for the identity probe, only for a listener this user owns: the
+  // app sends it only to an instance discovery reported reachable, so withholding it here covers both.
+  const ours = health !== null && (await listenerIsOurs(deps, address.port));
+  const trustedToken = ours ? token : undefined;
+  const identity = trustedToken === undefined ? undefined : await summaryIdentity(deps, controlUrl, trustedToken);
   const pid = identity?.pid ?? null;
   const ppid = identity?.ppid ?? null;
   return {
@@ -155,7 +183,7 @@ export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopC
       // job.pid is the /bin/sh wrapper launchd started; a managed sidecar is its child, so ppid matches.
       matchesJob: pid === null || job.pid === null ? null : pid === job.pid || ppid === job.pid,
     },
-    token: token ?? null,
+    token: trustedToken ?? null,
   };
 }
 
@@ -215,6 +243,7 @@ const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number): Desk
     return path !== undefined && existsSync(path);
   },
   readToken: (home) => readDesktopToken(home),
+  uid: process.getuid?.() ?? -1,
   // A killed or budget-exhausted helper degrades its fields like any other launchctl/plutil failure.
   run: (cmd) => runWithin(cmd, spawnDeadline),
   fetch,

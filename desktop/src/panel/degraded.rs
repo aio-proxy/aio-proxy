@@ -15,7 +15,7 @@ pub fn body(reason: &DegradedReason) -> impl IntoElement {
             "This aio-proxy speaks a newer summary format. Update the desktop app to see usage."
         }
         DegradedReason::NoToken => {
-            "This aio-proxy has no desktop token, so usage cannot be shown. Update it to see usage."
+            "Usage cannot be shown: this aio-proxy has no desktop token, or the port belongs to another user's process. Update aio-proxy, or check what listens on its port."
         }
     };
     div().py_2().text_sm().child(text)

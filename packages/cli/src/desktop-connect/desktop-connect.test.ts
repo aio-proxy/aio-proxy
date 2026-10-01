@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { LAUNCHD_EXEC_WRAPPER } from '../service';
-import { desktopConnect, printDesktopConnect, runWithin, type DesktopConnectDeps } from './desktop-connect';
+import {
+  desktopConnect,
+  listenerUids,
+  printDesktopConnect,
+  runWithin,
+  type DesktopConnectDeps,
+} from './desktop-connect';
 
 let root: string;
 beforeEach(() => {
@@ -31,6 +37,8 @@ type Scenario = {
   readonly summaryPpid?: number;
   readonly failLaunchctl?: boolean;
   readonly disabledCode?: number;
+  /** The listener's uid as `lsof` reports it; `null` for none visible. Defaults to this user's. */
+  readonly listenerUid?: number | null;
 };
 
 const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | null }> = []): DesktopConnectDeps => ({
@@ -41,8 +49,13 @@ const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | 
   defaultHome: () => join(root, 'default-home'),
   plistExists: () => scenario.plist !== undefined,
   readToken: () => scenario.token,
+  uid: 501,
   run: async (cmd) => {
     if (cmd[0] === 'plutil') return { code: 0, stdout: JSON.stringify(scenario.plist) };
+    if (cmd[0] === '/usr/sbin/lsof') {
+      const uid = scenario.listenerUid === undefined ? 501 : scenario.listenerUid;
+      return uid === null ? { code: 1, stdout: '' } : { code: 0, stdout: `p4312\nu${uid}\nf12\n` };
+    }
     if (scenario.failLaunchctl === true) throw new Error('launchctl missing');
     if (cmd[1] === 'print') return scenario.jobPrint ?? { code: 113, stdout: '' };
     return { code: scenario.disabledCode ?? 0, stdout: scenario.disabled ?? '' };
@@ -279,4 +292,24 @@ test('discovery probes never route the desktop token through an environment prox
     await proxy.stop(true);
     await target.stop(true);
   }
+});
+
+// Another local account can bind the port while the proxy is down and answer /health: the token is
+// neither sent to that listener nor reported to the app, which sends it only where discovery allows.
+test('the token goes only to a listener this user owns', async () => {
+  for (const listenerUid of [502, null]) {
+    writeConfig(home(), '127.0.0.1', 9317);
+    const requests: Array<{ url: string; auth: string | null }> = [];
+    const result = await desktopConnect(
+      deps({ plist: desktopPlist(), token: 'T'.repeat(43), summaryPid: 4312, listenerUid }, requests),
+    );
+    expect(result.token).toBeNull();
+    expect(result.instance.reachable).toBe(true);
+    expect(requests.every((r) => r.auth === null)).toBe(true);
+  }
+});
+
+test("lsof field output yields the listeners' uids", () => {
+  expect(listenerUids('p92556\nu501\nf12\np7\nu0\nf3\n')).toEqual([501, 0]);
+  expect(listenerUids('')).toEqual([]);
 });
