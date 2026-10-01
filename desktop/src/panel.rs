@@ -8,6 +8,7 @@ mod format;
 mod placement;
 mod providers;
 mod status;
+mod usage;
 mod view;
 mod window;
 
