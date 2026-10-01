@@ -146,6 +146,7 @@
   }
   html {
     @apply font-sans;
+    text-autospace: normal;
   }
 }
 

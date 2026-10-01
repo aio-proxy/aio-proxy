@@ -821,6 +821,7 @@
       },
       "traffic": {
         "none": "無流量",
+        "none_description": "所選時間範圍內沒有發往該模型的請求。",
         "success_rate": "成功率 {value}",
         "chart_label": "各 Provider 已服務請求數隨時間變化",
         "refresh_failed": "正在顯示最後一次成功取得的資料，重新載入流量失敗。",

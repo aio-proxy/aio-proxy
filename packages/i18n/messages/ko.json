@@ -821,6 +821,7 @@
       },
       "traffic": {
         "none": "트래픽 없음",
+        "none_description": "선택한 기간에 이 모델로 처리된 요청이 없습니다.",
         "success_rate": "성공률 {value}",
         "chart_label": "Provider별 처리된 요청 추이",
         "refresh_failed": "마지막으로 성공한 측정값을 표시합니다. 트래픽 새로 고침에 실패했습니다.",

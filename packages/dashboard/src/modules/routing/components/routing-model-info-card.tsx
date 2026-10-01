@@ -45,7 +45,7 @@ export const RoutingModelInfoCard: React.FC<RoutingModelInfoCardProps> = ({ mode
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-sm">
           <dt className="text-muted-foreground">{m['dashboard.routing.profile.reference']()}</dt>
           <dd
-            className="min-w-0 truncate text-right font-mono text-xs leading-5"
+            className="min-w-0 truncate text-right"
             title={matched ? m['dashboard.routing.profile.reference_matched']() : undefined}
           >
             {slug === '' ? m['dashboard.routing.profile.reference_none']() : slug}

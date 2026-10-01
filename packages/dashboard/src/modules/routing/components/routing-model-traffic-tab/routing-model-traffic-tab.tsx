@@ -2,15 +2,19 @@ import { dateFnsLocale, getLocale, m } from '@aio-proxy/i18n';
 import type { UsageOverviewRange } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from '@aio-proxy/ui/components/chart';
-import { Empty, EmptyHeader, EmptyTitle } from '@aio-proxy/ui/components/empty';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@aio-proxy/ui/components/empty';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { format, parseISO } from 'date-fns';
+import { ChartColumnIcon } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+
+import { ProviderLabel } from '@/components/provider-label';
 
 import { routingTrafficChartRows, routingTrafficSeriesKey } from '../../lib/routing-traffic-chart';
 import { routingTrafficBucketsQueryOptions } from '../../services/routing-traffic-service';
+import { RoutingProviderIdentity } from '../routing-provider-identity';
 import { RoutingTrafficRefreshNotice } from '../routing-traffic-refresh-notice';
 
 export interface RoutingModelTrafficTabProps {
@@ -61,7 +65,11 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
         {refreshNotice}
         <Empty>
           <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <ChartColumnIcon />
+            </EmptyMedia>
             <EmptyTitle>{m['dashboard.routing.traffic.none']()}</EmptyTitle>
+            <EmptyDescription>{m['dashboard.routing.traffic.none_description']()}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -109,7 +117,12 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
                 labelFormatter={(value) => formatBucket(String(value), true)}
                 formatter={(value, name) => (
                   <div className="flex w-full items-center justify-between gap-4">
-                    <span className="text-muted-foreground">{String(name)}</span>
+                    {/* Series are keyed by Provider ID; the label names them as the route list does. */}
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                      <ProviderLabel providerId={String(name)}>
+                        {(view) => <RoutingProviderIdentity view={view} compact />}
+                      </ProviderLabel>
+                    </span>
                     <span className="font-mono font-medium tabular-nums">{Number(value)}</span>
                   </div>
                 )}

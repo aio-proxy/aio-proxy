@@ -42,7 +42,11 @@ export const dashboardAuthSessionQueryOptions = () =>
       if (!response.ok) throw new Error('Dashboard authentication status is unavailable');
       return response.json();
     },
-    retry: false,
+    // A live server always answers 200 here — a broken password config arrives as `status:
+    // 'unavailable'` data — so a failure only means the server is unreachable, as during a restart
+    // (`bun --watch` after an i18n change, an auto-update). The backoff (1+2+4+8s) rides that out
+    // instead of parking the page on the unavailable screen.
+    retry: 4,
     staleTime: 0,
   });
 
