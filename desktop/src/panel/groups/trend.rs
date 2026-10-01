@@ -11,7 +11,7 @@ use gpui_kit::component::*;
 use gpui_kit::*;
 
 use crate::panel::format::local_utc_offset;
-use crate::panel::usage::{Metric, Series, Split, bucket_label, format_value, stack};
+use crate::panel::usage::{Metric, Series, Split, bucket_labels, format_value, stack};
 use crate::panel::view::PanelView;
 use crate::summary::{BucketUnit, Provider, Usage};
 use gpui_kit::component::tab::TabBar;
@@ -50,17 +50,9 @@ fn provider_label(providers: &[Provider], id: &str) -> String {
     }
 }
 
-pub fn trend(
-    view: &PanelView,
-    usage: &Usage,
-    series: &[(Series, Hsla)],
-    now: i64,
-    cx: &Context<PanelView>,
-) -> impl IntoElement {
+pub fn trend(view: &PanelView, usage: &Usage, series: &[(Series, Hsla)], cx: &Context<PanelView>) -> impl IntoElement {
     let theme = crate::theme::colors(cx);
-    let offset = local_utc_offset(now);
-    let labels: Vec<String> =
-        usage.buckets.iter().map(|b| bucket_label(&b.start, usage.bucket_unit, usage.range, offset)).collect();
+    let labels = bucket_labels(&usage.buckets, usage.bucket_unit, usage.range, local_utc_offset);
     let per = match usage.bucket_unit {
         BucketUnit::Hour => "per hour",
         BucketUnit::Day => "per day",

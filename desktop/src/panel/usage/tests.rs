@@ -118,3 +118,15 @@ fn a_fully_split_trend_has_no_other() {
     assert_eq!(series.len(), 1);
     assert!(stack(&buckets, &cells, str::to_string, Metric::Failed).is_empty());
 }
+
+#[test]
+fn each_bucket_is_labelled_with_the_offset_at_its_own_start() {
+    // A fall-back in a UTC−4/−5 zone between the two buckets: each local midnight keeps its day.
+    let bucket = |start: &str| UsageBucket { start: start.into(), slice: UsageSlice::default() };
+    let buckets = [bucket("2026-10-31T04:00:00.000Z"), bucket("2026-11-02T05:00:00.000Z")];
+    let switch = parse_utc("2026-11-01T06:00:00.000Z").unwrap();
+    let offset_at = |unix: i64| if unix < switch { -4 * 3_600 } else { -5 * 3_600 };
+    assert_eq!(bucket_labels(&buckets, BucketUnit::Day, UsageRange::D30, offset_at), ["Oct 31", "Nov 2"]);
+    // The later offset for both would have put Oct 31's midnight on Oct 30.
+    assert_eq!(bucket_label(&buckets[0].start, BucketUnit::Day, UsageRange::D30, -5 * 3_600), "Oct 30");
+}

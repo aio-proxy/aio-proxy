@@ -192,6 +192,18 @@ pub fn stack(
 
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+/// Every bucket's label, each with the UTC offset in force at its own start (`offset_at`, local
+/// time's offset at a Unix time): a window can span a daylight-saving change, and the current
+/// offset would put an older local midnight on the day before.
+pub fn bucket_labels(
+    buckets: &[UsageBucket],
+    unit: BucketUnit,
+    range: UsageRange,
+    offset_at: impl Fn(i64) -> i64,
+) -> Vec<String> {
+    buckets.iter().map(|b| bucket_label(&b.start, unit, range, parse_utc(&b.start).map_or(0, &offset_at))).collect()
+}
+
 /// The axis and caption label of a bucket, from its UTC start. Hourly buckets are rolling (they
 /// start at now − 24 h + i h), so they read `HH:MM`; `7d` days read as weekdays (`Tue`) and `30d`
 /// days as `Mon D` (the server's day bucket starts at local midnight). Empty when the timestamp

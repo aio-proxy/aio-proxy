@@ -104,7 +104,7 @@ impl Render for PanelView {
                     .gap_2()
                     .px_2()
                     .py_2()
-                    .child(card(groups::usage(self, model, now, cx), cx))
+                    .child(card(groups::usage(self, model, cx), cx))
                     .child(card(groups::quota(self, &blocks, now, cx), cx))
                     .child(card(groups::activity(self, &grid, cx), cx));
                 // GPUI has no `position: sticky`: overlay the header of the group under the top

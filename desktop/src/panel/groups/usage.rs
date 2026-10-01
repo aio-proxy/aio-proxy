@@ -113,7 +113,7 @@ fn breakdown(series: &[(Series, Hsla)], split: Split, metric: Metric, total: u12
     }))
 }
 
-pub fn usage(view: &PanelView, model: &AppModel, now: i64, cx: &Context<PanelView>) -> impl IntoElement {
+pub fn usage(view: &PanelView, model: &AppModel, cx: &Context<PanelView>) -> impl IntoElement {
     let theme = crate::theme::colors(cx);
     let usage = model.usage_for(model.usage_range);
     let cards = h_flex().gap(px(5.)).children(Metric::ALL.map(|metric| card(view, usage, metric, cx)));
@@ -147,7 +147,7 @@ pub fn usage(view: &PanelView, model: &AppModel, now: i64, cx: &Context<PanelVie
         _ => &[],
     };
     let series = series(view, usage, providers, cx);
-    let group = group.child(trend(view, usage, &series, now, cx));
+    let group = group.child(trend(view, usage, &series, cx));
     // Spans pruned under live traffic: there is usage, but no Provider split for it.
     if view.split == Split::Provider && usage.trend_by_provider.is_empty() {
         return group.child(
