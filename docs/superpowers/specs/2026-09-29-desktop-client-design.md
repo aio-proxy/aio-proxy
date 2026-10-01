@@ -191,6 +191,8 @@ Read timeouts are already enforced by the host, not just signalled: `withOAuthAc
 
 ### `GET /dashboard/api/desktop-summary`
 
+> The panel refinement in `2026-10-01-desktop-panel-design.md` replaces `usage24h`/`trend7d` with a `?range=`-driven `usage` block and adds `accountLabel`, `quota.plan` and `diagnostic.suggestedCommand`; that document is authoritative for the DTO below.
+
 One versioned endpoint rather than several dashboard-internal ones: when the app attaches to an instance of a different version, this DTO is the contract. It is an explicit mapping, never a spread of internal objects.
 
 ```ts
@@ -289,8 +291,8 @@ One Cargo binary crate at `desktop/`, outside the Bun workspace.
 | Module | Responsibility |
 | --- | --- |
 | `main.rs` | GPUI application, single-instance lock, tray creation, wake notification, `--version` |
-| `tray.rs` | `tray-icon` setup; left click toggles the panel with the icon rect; right click opens a native menu (Open Dashboard, Quit); three icon states |
-| `panel/` | PopUp placement (below the menu bar, centered on the icon, clamped to the icon's screen) and views: stat cards, Provider quota list, 7-day trend, heatmap, action row |
+| `tray.rs` | `tray-icon` setup; left click toggles the panel with the icon rect; right click opens a native menu carrying every service action (contents: `2026-10-01-desktop-panel-design.md`, Right-click menu); three icon states |
+| `panel/` | PopUp placement (below the menu bar, centered on the icon, clamped to the icon's screen) and views: header, then one scrolling body of Usage (window switch, metric cards, trend, Top models, By Provider), Quota and Last 12 months groups, and a footer (layout: `2026-10-01-desktop-panel-design.md`) |
 | `install.rs` | Install-location policy, symlink maintenance and no-downgrade rule |
 | `connect.rs` | `__desktop-connect` invocation and parsing, automatic-action table, user actions with completion conditions |
 | `client.rs` | Local HTTP transport and the refresh policy |
@@ -307,7 +309,7 @@ Panel details:
   - Set `NSWindowAnimationBehaviorNone` on the GPUI panel right after creation, reached through `HasWindowHandle`. AppKit's default utility-window animation otherwise runs on its own thread for every open and close.
   - If the checks argue against hybrid, fall back to plain destroy (the same code without the cached model). Hide/show fails the closed-panel budget.
 - Anchor the panel only from a click (or on a later runloop turn): the status item's frame is zero right after `tray-icon` builds it.
-- "Open logs" reveals `$AIO_PROXY_HOME/logs` in Finder. The app's own log goes to `~/Library/Logs/aio-proxy-desktop/`.
+- "Open logs" (right-click menu) reveals `$AIO_PROXY_HOME/logs` in Finder. The app's own log goes to `~/Library/Logs/aio-proxy-desktop/`.
 - An instance whose `desktop-summary` is missing (404, older version) or has an unsupported `protocolVersion` gets a degraded panel: status, endpoint, Open Dashboard, Reload.
 
 ## Build, sign, release
