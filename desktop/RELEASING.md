@@ -51,15 +51,20 @@ to rehearse an update against a local feed; `desktop:publish` refuses such a bui
 
 ## Resuming a failed desktop publish
 
-Run `gh workflow run desktop-release.yml -f tag=v<version>`. The desktop publish is a separate
-run under Actions → "Desktop release", so a failure there does not mark the release run failed.
+After each release, check Actions → "Desktop release". It is a separate run, so a failure there
+does not fail the release run and may notify no one. Re-dispatch any tag whose run failed or was
+cancelled (a newer pending dispatch cancels an older pending one) with
+`gh workflow run desktop-release.yml -f tag=v<version>`.
 If the DMG is already on the Release, the job reuses and re-verifies it: a published version is
 never rebuilt or replaced. If the feed already offers the version, the job re-verifies that
 item. If the feed already offers something newer, the older version is not added.
 
-If `desktop-feed` exists but has no `appcast.xml`, or one with no items, the job stops: restore the file, or delete
-the `desktop-feed` Release to deliberately start a fresh feed.
+If `desktop-feed` exists but has no `appcast.xml`, or one with no items, the job stops. There is no
+appcast backup: delete the `desktop-feed` Release to start a fresh feed (installed apps only need
+the newest item).
 
-The job refuses to replace the feed when the new item has no valid EdDSA signature. The usual
-cause is a `SPARKLE_ED_PRIVATE_KEY` that does not match `SPARKLE_PUBLIC_ED_KEY`, because
-`generate_appcast` itself only warns in that case.
+The job checks the key pair first, before building and before uploading anything: the public key
+derived from `SPARKLE_ED_PRIVATE_KEY`, `SPARKLE_PUBLIC_ED_KEY` and the DMG's `SUPublicEDKey` must
+all be equal. It also refuses to upload when the feed already lists the version but the DMG is not
+on the Release, and to replace the feed when the new item has no valid EdDSA signature
+(`generate_appcast` itself only warns when the key does not match).

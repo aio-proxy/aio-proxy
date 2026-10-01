@@ -5,6 +5,7 @@ export {
   feedState,
   itemProblems,
   parseAppcast,
+  publicKeyFromPrivate,
   verifyEdSignature,
   type AppcastItem,
   type ExpectedItem,

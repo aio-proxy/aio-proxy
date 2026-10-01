@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 
-import { type AppcastItem, feedAction, feedProblems, feedState, parseAppcast, verifyEdSignature } from './appcast';
+import {
+  type AppcastItem,
+  feedAction,
+  feedProblems,
+  feedState,
+  parseAppcast,
+  publicKeyFromPrivate,
+  verifyEdSignature,
+} from './appcast';
 
 const prefix = 'https://github.com/aio-proxy/aio-proxy/releases/download';
 const item = (version: string, extra: Partial<AppcastItem> = {}): AppcastItem => ({
@@ -126,5 +134,20 @@ describe('verifyEdSignature', () => {
     const tampered = bytes.slice();
     tampered[0] = (tampered[0] ?? 0) ^ 1;
     expect(await verifyEdSignature(tampered, signature, publicKey)).toBe(false);
+  });
+});
+
+describe('publicKeyFromPrivate', () => {
+  test('derives the SUPublicEDKey from a Sparkle private key file, in the 32 and 64 byte forms', async () => {
+    const keys = (await crypto.subtle.generateKey('Ed25519', true, ['sign', 'verify'])) as CryptoKeyPair;
+    const publicRaw = Buffer.from(await crypto.subtle.exportKey('raw', keys.publicKey));
+    const seed = Buffer.from(await crypto.subtle.exportKey('pkcs8', keys.privateKey)).subarray(-32);
+    const publicKey = publicRaw.toString('base64');
+    expect(await publicKeyFromPrivate(seed.toString('base64'))).toBe(publicKey);
+    expect(await publicKeyFromPrivate(Buffer.concat([seed, publicRaw]).toString('base64'))).toBe(publicKey);
+  });
+
+  test('anything that is not a 32 or 64 byte key is refused', async () => {
+    await expect(publicKeyFromPrivate(Buffer.alloc(10).toString('base64'))).rejects.toThrow('not a base64 Ed25519 key');
   });
 });
