@@ -345,34 +345,46 @@ test('usage carries the requested range and names each Provider, falling back to
   expect(DesktopSummaryV1Schema.safeParse(summary).success).toBe(true);
 });
 
-test('7d and 30d usage is memoized for 60 s per range; 24h and refresh=true always recompute', async () => {
+const at = (ms: number) => new Date(now.getTime() + ms);
+const memoSource = (): DesktopSummarySource => source([], async () => ({ items: [] }));
+
+test('7d and 30d usage is memoized for 60 s per range and 24h always recomputes', async () => {
   let providers = [provider({ id: 'p', name: 'Before' })];
-  const memoSource: DesktopSummarySource = {
-    ...source([], async () => ({ items: [] })),
-    providerSummaries: async () => providers,
-  };
-  const at = (ms: number) => new Date(now.getTime() + ms);
+  const live: DesktopSummarySource = { ...memoSource(), providerSummaries: async () => providers };
   const memo = createUsageMemo();
   usageCalls = 0;
-  await buildDesktopSummary(memoSource, { ...input, range: '30d' }, memo);
+  await buildDesktopSummary(live, { ...input, range: '30d' }, memo);
   providers = [provider({ id: 'p', name: 'After' })];
-  const hit = await buildDesktopSummary(memoSource, { ...input, range: '30d', now: at(59_000) }, memo);
+  const hit = await buildDesktopSummary(live, { ...input, range: '30d', now: at(59_000) }, memo);
   expect(usageCalls).toBe(1);
   // Only usage is memoized: Provider state stays live on a memo hit.
   expect(hit.providers.map((entry) => entry.name)).toEqual(['After']);
-  await buildDesktopSummary(memoSource, { ...input, range: '30d', now: at(61_000) }, memo);
+  await buildDesktopSummary(live, { ...input, range: '30d', now: at(61_000) }, memo);
   expect(usageCalls).toBe(2);
-  await buildDesktopSummary(memoSource, { ...input, range: '30d', refresh: true, now: at(62_000) }, memo);
+  await buildDesktopSummary(live, { ...input, range: '7d' }, memo);
   expect(usageCalls).toBe(3);
-  // The refresh replaced the entry, so the next call inside its minute is a hit.
-  await buildDesktopSummary(memoSource, { ...input, range: '30d', now: at(63_000) }, memo);
-  expect(usageCalls).toBe(3);
-  // A clock stepping backwards recomputes instead of reusing the entry.
-  await buildDesktopSummary(memoSource, { ...input, range: '30d', now: at(61_000) }, memo);
-  expect(usageCalls).toBe(4);
-  await buildDesktopSummary(memoSource, { ...input, range: '24h' }, memo);
-  await buildDesktopSummary(memoSource, { ...input, range: '24h' }, memo);
-  expect(usageCalls).toBe(6);
+  await buildDesktopSummary(live, { ...input, range: '24h' }, memo);
+  await buildDesktopSummary(live, { ...input, range: '24h' }, memo);
+  expect(usageCalls).toBe(5);
+});
+
+test('refresh=true bypasses the memo and replaces its entry', async () => {
+  const memo = createUsageMemo();
+  usageCalls = 0;
+  await buildDesktopSummary(memoSource(), { ...input, range: '30d' }, memo);
+  await buildDesktopSummary(memoSource(), { ...input, range: '30d', refresh: true, now: at(50_000) }, memo);
+  expect(usageCalls).toBe(2);
+  // 50 s after the refresh entry (a hit) but 100 s after the first one (a miss).
+  await buildDesktopSummary(memoSource(), { ...input, range: '30d', now: at(100_000) }, memo);
+  expect(usageCalls).toBe(2);
+});
+
+test('a clock stepping backwards recomputes instead of reusing the memo entry', async () => {
+  const memo = createUsageMemo();
+  usageCalls = 0;
+  await buildDesktopSummary(memoSource(), { ...input, range: '30d', now: at(10_000) }, memo);
+  await buildDesktopSummary(memoSource(), { ...input, range: '30d', now: at(9_000) }, memo);
+  expect(usageCalls).toBe(2);
 });
 
 test('an invalid plan label loses only the plan, not the quota windows', async () => {

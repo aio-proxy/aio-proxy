@@ -38,8 +38,9 @@ export type UsageMemo = {
 export const createUsageMemo = (): UsageMemo => ({ entries: new Map() });
 
 // 7d/30d split usage by Provider by scanning a month of root spans; once a minute is affordable,
-// once per 15 s tick per open panel is not. 24h stays live: its query is measured at ≈46 ms for 36k requests/day; see
-// docs/superpowers/specs/2026-10-01-desktop-panel-design.md, Cost and the usage memo.
+// once per 15 s tick per open panel is not. 24h stays live: its query is measured at ≈46 ms for
+// 36k requests/day; see docs/superpowers/specs/2026-10-01-desktop-panel-design.md, Cost and the
+// usage memo.
 function usageFor(
   source: DesktopSummarySource,
   input: DesktopSummaryInput,
@@ -49,8 +50,10 @@ function usageFor(
   if (input.range === '24h' || memo === undefined) return compute();
   const hit = memo.entries.get(input.range);
   // A clock that steps backwards (negative age) must not keep the entry alive.
-  const age = hit === undefined ? -1 : input.now.getTime() - hit.at;
-  if (!input.refresh && hit !== undefined && age >= 0 && age < USAGE_MEMO_MS) return hit.usage;
+  if (!input.refresh && hit !== undefined) {
+    const age = input.now.getTime() - hit.at;
+    if (age >= 0 && age < USAGE_MEMO_MS) return hit.usage;
+  }
   const usage = compute();
   memo.entries.set(input.range, { at: input.now.getTime(), usage });
   return usage;
