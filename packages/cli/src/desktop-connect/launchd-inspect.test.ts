@@ -34,13 +34,25 @@ test('a hand-edited plist without AIO_PROXY_HOME reports no home', () => {
 });
 
 test('owner compares the wrapper target with the desktop symlink', () => {
+  const exists = () => true;
   const unit = inspectUnit(plist(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, '/link/aio-proxy']));
-  expect(unitOwner(unit, '/link/aio-proxy')).toBe('desktop');
-  expect(unitOwner(unit, '/other/aio-proxy')).toBe('external');
-  expect(unitOwner(unit, undefined)).toBe('external');
-  expect(unitOwner(inspectUnit(plist(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, ''])), '')).toBe('external');
-  expect(unitOwner(inspectUnit(plist(['/usr/local/bin/aio-proxy', 'run'])), '/link/aio-proxy')).toBe('unknown');
-  expect(unitOwner({ present: false, wrapperValid: false, target: null, home: null }, '/link/aio-proxy')).toBeNull();
+  expect(unitOwner(unit, '/link/aio-proxy', exists)).toBe('desktop');
+  expect(unitOwner(unit, '/other/aio-proxy', exists)).toBe('external');
+  expect(unitOwner(unit, undefined, exists)).toBe('external');
+  expect(unitOwner(inspectUnit(plist(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, ''])), '', exists)).toBe('external');
+  expect(unitOwner(inspectUnit(plist(['/usr/local/bin/aio-proxy', 'run'])), '/link/aio-proxy', exists)).toBe('unknown');
+  expect(
+    unitOwner({ present: false, wrapperValid: false, target: null, home: null }, '/link/aio-proxy', exists),
+  ).toBeNull();
+});
+
+test('an external unit whose CLI was uninstalled is orphaned; a desktop one with a dangling link is not', () => {
+  const gone = () => false;
+  const brew = inspectUnit(plist(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, '/opt/homebrew/bin/aio-proxy']));
+  expect(unitOwner(brew, '/link/aio-proxy', gone)).toBe('orphaned');
+  // The app repairs its own dangling symlink; that is not a takeover.
+  const desktop = inspectUnit(plist(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, '/link/aio-proxy']));
+  expect(unitOwner(desktop, '/link/aio-proxy', gone)).toBe('desktop');
 });
 
 test('parses launchctl print for a running, a stopped, and an unloaded job', () => {

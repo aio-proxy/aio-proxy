@@ -36,6 +36,8 @@ fn every_other_owner_shape_fails_closed_to_unknown() {
     assert_eq!(future.unit.owner, Owner::Unknown);
     let external = with(|v| v["unit"]["owner"] = serde_json::json!("external")).unwrap();
     assert_eq!(external.unit.owner, Owner::External);
+    let orphaned = with(|v| v["unit"]["owner"] = serde_json::json!("orphaned")).unwrap();
+    assert_eq!(orphaned.unit.owner, Owner::Orphaned);
 }
 
 #[test]

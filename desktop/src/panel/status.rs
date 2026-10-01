@@ -40,6 +40,11 @@ pub fn is_stopped(model: &AppModel) -> bool {
     matches!(run(model), Some(Run::Stopped))
 }
 
+/// Down, with a plist whose CLI was uninstalled: launchd can only fail to start it.
+pub fn is_orphaned(model: &AppModel) -> bool {
+    is_down(model) && model.discovery.as_ref().is_some_and(|d| d.unit.owner == Owner::Orphaned)
+}
+
 /// Stopped or not responding: a held summary is stale, so the panel shows a message instead.
 pub fn is_down(model: &AppModel) -> bool {
     matches!(run(model), Some(Run::Stopped | Run::NotResponding))
@@ -65,6 +70,7 @@ pub fn endpoint_line(model: &AppModel) -> Option<String> {
         Owner::Desktop if d.job.disabled => Some("stopped by you"),
         Owner::Desktop => Some("started by AIO Proxy"),
         Owner::External => Some("managed by the aio-proxy CLI"),
+        Owner::Orphaned => Some("left by an uninstalled aio-proxy CLI"),
         Owner::Unknown | Owner::NoPlist => None,
     };
     Some(match owner {

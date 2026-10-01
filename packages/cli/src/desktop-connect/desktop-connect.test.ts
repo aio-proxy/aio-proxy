@@ -54,6 +54,7 @@ const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | 
     plistPath: '/tmp/com.aio-proxy.agent.plist',
     defaultHome: () => join(root, 'default-home'),
     plistExists: () => scenario.plist !== undefined,
+    targetExists: () => true,
     readToken: () => scenario.token,
     uid: 501,
     run: async (cmd) => {

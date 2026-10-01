@@ -40,7 +40,7 @@ The organizing rule is time scope: **only the Usage group follows the time windo
   - When the alerting Provider is in the Quota group, **Show** scrolls the body to that group.
   - Otherwise **Show** opens the Dashboard's Providers page.
 - **Notice line** (muted): the outcome of the last user action, e.g. `Restarted · /health answered` or an action's error. It clears when the panel closes, as rev 4's F4 fix does today.
-- **Promoted action button:** only the state-relevant action from rev 4's offer table, and at most one: **Start** when stopped, **Install and start** when a fresh install is offered. Every other action lives in the right-click menu.
+- **Promoted action button:** only the state-relevant action from rev 4's offer table, and at most one: **Start** when stopped, **Install and start** when a fresh install is offered, **Take over** when the service's CLI was uninstalled (an orphaned plist). Every other action lives in the right-click menu.
 
 ### Footer
 
@@ -160,7 +160,7 @@ The icon's native menu (muda) carries every action. Items appear only when they 
 
 1. **Open Dashboard**
 2. ---
-3. **Start**, **Install and start**, **Stop**, **Restart**, **Reload config**: whichever the current offer allows. Each runs the same user action and completion condition as today. The outcome shows in the panel's notice line the next time the panel is open, and in the log.
+3. **Start**, **Install and start**, **Take over and start**, **Stop**, **Restart**, **Reload config**: whichever the current offer allows. Each runs the same user action and completion condition as today. The outcome shows in the panel's notice line the next time the panel is open, and in the log.
 4. **Open logs**
 5. ---
 6. **Open at login** (a check item). Always listed, so the switch can be found. A non-persistent copy shows it disabled and unchecked as **Open at login (move to Applications first)**: registering would point the login item at wherever that bundle happens to be.

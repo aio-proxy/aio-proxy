@@ -8,11 +8,14 @@ use super::status;
 use crate::app::{self, AppModel, SummaryState};
 use crate::connect::policy::{UserAction, offered_actions};
 
-/// The single state-relevant action: Start when stopped, Install and start when a fresh install is offered.
+/// The single state-relevant action: Start when stopped, Install and start when a fresh install is
+/// offered, Take over when the CLI that installed the service is gone.
 fn promoted(model: &AppModel) -> Option<(UserAction, &'static str)> {
     let offered = offered_actions(model.discovery.as_ref()?, model.persistent());
     if offered.install {
         Some((UserAction::InstallAndStart, "Install and start"))
+    } else if offered.take_over {
+        Some((UserAction::TakeOver, "Take over"))
     } else if offered.start {
         Some((UserAction::Start, "Start"))
     } else {

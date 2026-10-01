@@ -2,7 +2,7 @@ use super::*;
 use crate::connect::policy::Offered;
 
 fn offered(install: bool, start: bool, restart: bool, stop: bool, reload: bool) -> Offered {
-    Offered { install, start, restart, stop, reload }
+    Offered { install, take_over: false, start, restart, stop, reload }
 }
 
 fn labels(entries: &[MenuEntry]) -> Vec<String> {
@@ -106,6 +106,7 @@ fn ids_round_trip() {
     for command in [
         MenuCommand::OpenDashboard,
         MenuCommand::Run(UserAction::InstallAndStart),
+        MenuCommand::Run(UserAction::TakeOver),
         MenuCommand::Run(UserAction::Start),
         MenuCommand::Run(UserAction::Stop),
         MenuCommand::Run(UserAction::Restart),

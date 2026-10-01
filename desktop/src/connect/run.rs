@@ -92,6 +92,7 @@ pub fn run_user(host: &impl Host, rendered: &Discovery, action: UserAction) -> R
             let expected = (now.unit.owner == Owner::Desktop).then(|| now.bundled_version.clone());
             restart_wait(&now, expected)
         }
+        UserAction::TakeOver => restart_wait(&now, Some(now.bundled_version.clone())),
         UserAction::Stop => Wait::Stop,
         UserAction::InstallAndStart | UserAction::Start => start_wait(&now),
         UserAction::Reload => Wait::Nothing,

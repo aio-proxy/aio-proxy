@@ -28,13 +28,21 @@ export function inspectUnit(plist: unknown): UnitInspection {
   return { present: true, wrapperValid, target: wrapperValid ? (args[3] as string) : null, home };
 }
 
+export type UnitOwner = 'desktop' | 'external' | 'orphaned' | 'unknown' | null;
+
+/**
+ * `orphaned` is an external unit whose target is gone: the CLI that installed it was removed
+ * (`brew uninstall` leaves the plist behind), so launchd can only fail to start it.
+ */
 export function unitOwner(
   unit: UnitInspection,
   desktopExec: string | undefined,
-): 'desktop' | 'external' | 'unknown' | null {
+  targetExists: (path: string) => boolean,
+): UnitOwner {
   if (!unit.present) return null;
   if (!unit.wrapperValid || unit.target === null) return 'unknown';
-  return desktopExec !== undefined && desktopExec !== '' && unit.target === desktopExec ? 'desktop' : 'external';
+  if (desktopExec !== undefined && desktopExec !== '' && unit.target === desktopExec) return 'desktop';
+  return targetExists(unit.target) ? 'external' : 'orphaned';
 }
 
 export function parseJobPrint(code: number, stdout: string): { readonly loaded: boolean; readonly pid: number | null } {

@@ -12,6 +12,9 @@ pub enum Owner {
     Desktop,
     /// A valid wrapper pointing anywhere else (a CLI install).
     External,
+    /// An external wrapper whose target is gone: the CLI was uninstalled and left its plist, so
+    /// launchd can only fail to start it. Offered for takeover on a click.
+    Orphaned,
     /// Unrecognized wrapper, or anything the app cannot read.
     #[default]
     Unknown,
@@ -101,6 +104,7 @@ fn owner(unit: &serde_json::Value) -> Owner {
         Some(serde_json::Value::Null) => Owner::NoPlist,
         Some(serde_json::Value::String(owner)) if owner == "desktop" => Owner::Desktop,
         Some(serde_json::Value::String(owner)) if owner == "external" => Owner::External,
+        Some(serde_json::Value::String(owner)) if owner == "orphaned" => Owner::Orphaned,
         _ => Owner::Unknown,
     }
 }

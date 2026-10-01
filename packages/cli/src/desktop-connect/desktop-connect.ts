@@ -5,7 +5,14 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { controlBaseUrl, localControlHost, probeHealth, resolveControlAddress } from '../control-plane';
 import { launchdDomain, launchdJobTarget, managedUnitPath } from '../service';
-import { inspectUnit, parseDisabled, parseJobPrint, type UnitInspection, unitOwner } from './launchd-inspect';
+import {
+  inspectUnit,
+  parseDisabled,
+  parseJobPrint,
+  type UnitInspection,
+  type UnitOwner,
+  unitOwner,
+} from './launchd-inspect';
 import { parseSockets, type Socket, verifiedGet } from './verified-get';
 
 const PROBE_TIMEOUT_MS = 2_000;
@@ -21,6 +28,8 @@ export type DesktopConnectDeps = {
   readonly plistPath: string;
   readonly defaultHome: () => string;
   readonly plistExists: () => boolean;
+  /** Whether the plist's wrapper target still exists. */
+  readonly targetExists: (path: string) => boolean;
   readonly readToken: (home: string) => string | undefined;
   /** This process's uid: the listener must belong to it before the token is offered. */
   readonly uid: number;
@@ -38,7 +47,7 @@ export type DesktopConnectDeps = {
 export type DesktopConnectResult = {
   readonly protocolVersion: 1;
   readonly bundledVersion: string;
-  readonly unit: UnitInspection & { readonly owner: 'desktop' | 'external' | 'unknown' | null };
+  readonly unit: UnitInspection & { readonly owner: UnitOwner };
   readonly job: { readonly loaded: boolean; readonly disabled: boolean; readonly pid: number | null };
   readonly instance: {
     readonly controlUrl: string | null;
@@ -151,7 +160,7 @@ function readTokenSafely(deps: DesktopConnectDeps, home: string): string | undef
 
 export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopConnectResult> {
   const unit = await readUnit(deps);
-  const owner = unitOwner(unit, deps.env['AIO_PROXY_DESKTOP_EXEC']);
+  const owner = unitOwner(unit, deps.env['AIO_PROXY_DESKTOP_EXEC'], deps.targetExists);
   const job = await readJob(deps);
   // The service's own home, not this process's environment: the app is launched from Finder and
   // does not inherit the shell that installed the service.
@@ -254,6 +263,7 @@ const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number): Desk
     const path = managedUnitPath('darwin');
     return path !== undefined && existsSync(path);
   },
+  targetExists: existsSync,
   readToken: (home) => readDesktopToken(home),
   uid: process.getuid?.() ?? -1,
   // A killed or budget-exhausted helper degrades its fields like any other launchctl/plutil failure.
