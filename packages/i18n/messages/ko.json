@@ -47,7 +47,8 @@
       "header_name": "이름",
       "header_package": "패키지",
       "header_version": "버전",
-      "header_directory": "디렉터리"
+      "header_directory": "디렉터리",
+      "header_state": "상태"
     },
     "root": {
       "description": "AIO Proxy 명령줄 인터페이스"
@@ -65,7 +66,7 @@
       "option_open_description": "시작 후 기본 브라우저에서 대시보드 열기",
       "running": "AIO Proxy 실행 중",
       "label_api": "API",
-      "label_dashboard": "Dashboard"
+      "label_dashboard": "대시보드"
     },
     "dashboard": {
       "description": "AIO Proxy 대시보드 열기",

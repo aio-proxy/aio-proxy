@@ -47,7 +47,8 @@
       "header_name": "name",
       "header_package": "package",
       "header_version": "version",
-      "header_directory": "directory"
+      "header_directory": "directory",
+      "header_state": "state"
     },
     "root": {
       "description": "AIO Proxy command line interface"

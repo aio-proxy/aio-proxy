@@ -28,7 +28,7 @@ export function formatPluginTable(style: Style, plugins: readonly PluginListItem
         ...(plugin.description === undefined ? [] : [style.muted(plugin.description)]),
       ],
     })),
-    [m['cli.ui.header_name'](), m['cli.ui.header_package'](), m['cli.provider.list.header_state']()],
+    [m['cli.ui.header_name'](), m['cli.ui.header_package'](), m['cli.ui.header_state']()],
   );
 }
 
@@ -50,6 +50,7 @@ export function formatDoctorLines(
   style: Style,
   report: {
     readonly configPath: string;
+    readonly configExists: boolean;
     readonly url: string;
     readonly version?: string;
     readonly reachable: boolean;
@@ -64,7 +65,10 @@ export function formatDoctorLines(
       ? { mark: style.mark('warn'), value: m['cli.doctor.plugins_none']() }
       : { mark: style.mark('ok'), value: m['cli.doctor.plugins_installed']({ count: report.pluginCount }) };
   return formatTable(style, [
-    { mark: style.mark('ok'), cells: [m['cli.doctor.label_config'](), style.muted(report.configPath)] },
+    {
+      mark: style.mark(report.configExists ? 'ok' : 'off'),
+      cells: [m['cli.doctor.label_config'](), style.muted(report.configPath)],
+    },
     { mark: server.mark, cells: [m['cli.doctor.label_server'](), style.muted(server.value)] },
     { mark: plugins.mark, cells: [m['cli.doctor.label_plugins'](), style.muted(plugins.value)] },
   ]);

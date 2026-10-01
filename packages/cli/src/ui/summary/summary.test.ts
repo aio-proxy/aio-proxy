@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { m } from '@aio-proxy/i18n';
+import { getLocale, m, setLocale } from '@aio-proxy/i18n';
 
 import { plainStyle } from '../style';
 import {
@@ -41,6 +41,16 @@ describe('formatPluginTable', () => {
     expect(lines[rowFor(lines, 'pkg') + 1]).toBe('    desc');
   });
 
+  test('localizes the state column header', async () => {
+    const previous = getLocale();
+    await setLocale('ja');
+    try {
+      expect(formatPluginTable(plainStyle, [base])[0]).toContain('状態');
+    } finally {
+      await setLocale(previous);
+    }
+  });
+
   test('keeps a CJK description whole on its own line', () => {
     const description = '字'.repeat(50);
     expect(formatPluginTable(plainStyle, [{ ...base, description }])).toContain(`    ${description}`);
@@ -68,6 +78,7 @@ describe('formatInstalledLines', () => {
 describe('formatDoctorLines', () => {
   const doctor = {
     configPath: '/cfg',
+    configExists: true,
     url: 'http://127.0.0.1:9317',
     version: '1.2.3',
     reachable: true,
@@ -81,6 +92,11 @@ describe('formatDoctorLines', () => {
     expect(lines.every((line) => line.startsWith('● '))).toBe(true);
     expect(lines[1]).toContain('http://127.0.0.1:9317 · v1.2.3');
     expect(valueColumn(lines[0]!, '/cfg')).toBe(valueColumn(lines[1]!, 'http'));
+  });
+
+  test('marks a missing config file as not present', () => {
+    const lines = formatDoctorLines(plainStyle, { ...doctor, configExists: false });
+    expect(lines[0]!.startsWith('○ ')).toBe(true);
   });
 
   test('marks an unreachable server as failed and no plugins as a warning', () => {

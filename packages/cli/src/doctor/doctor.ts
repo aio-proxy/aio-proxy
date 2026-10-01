@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+
 import { configPath, listInstalledNpmPackages } from '@aio-proxy/core';
 
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
@@ -22,6 +24,7 @@ export async function doctorCommand(
   const installed = await listInstalledNpmPackages();
   for (const line of formatDoctorLines(createStyle(process.stdout), {
     configPath: configPath(),
+    configExists: existsSync(configPath()),
     url,
     ...(health?.version === undefined ? {} : { version: health.version }),
     reachable: health !== null,

@@ -47,7 +47,8 @@
       "header_name": "名前",
       "header_package": "パッケージ",
       "header_version": "バージョン",
-      "header_directory": "ディレクトリ"
+      "header_directory": "ディレクトリ",
+      "header_state": "状態"
     },
     "root": {
       "description": "AIO Proxy コマンドラインインターフェース"
@@ -65,7 +66,7 @@
       "option_open_description": "起動後に既定のブラウザーでダッシュボードを開きます",
       "running": "AIO Proxy は実行中です",
       "label_api": "API",
-      "label_dashboard": "Dashboard"
+      "label_dashboard": "ダッシュボード"
     },
     "dashboard": {
       "description": "AIO Proxy ダッシュボードを開きます",

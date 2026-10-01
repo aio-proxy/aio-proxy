@@ -5,8 +5,8 @@ import {
   dashboardProviderSuggestedCommand,
 } from '@aio-proxy/types';
 
-import { type Block, type Field, formatBlock, formatTable, type TableRow } from '../layout';
-import type { Style } from '../style';
+import { type Block, type Field, formatBlock, formatTable, type TableRow } from '../../layout';
+import type { Style } from '../../style';
 
 const ProviderListSchema = DashboardProvidersResponseSchema.pick({ providers: true });
 

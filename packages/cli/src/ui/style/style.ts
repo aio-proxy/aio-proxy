@@ -34,7 +34,7 @@ const BOLD = '\u001B[1m';
 const RESET = '\u001B[0m';
 
 export function colorDepth(isTTY: boolean, env: NodeJS.ProcessEnv): ColorDepth {
-  if (!useColor(isTTY, env)) return 'none';
+  if (!useColor(isTTY, env) || env['TERM'] === 'dumb') return 'none';
   const colorterm = env['COLORTERM'];
   if (colorterm === 'truecolor' || colorterm === '24bit') return 'truecolor';
   if (env['TERM']?.includes('256color') === true) return '256';

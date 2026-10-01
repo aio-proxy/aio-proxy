@@ -47,7 +47,8 @@
       "header_name": "名称",
       "header_package": "包",
       "header_version": "版本",
-      "header_directory": "目录"
+      "header_directory": "目录",
+      "header_state": "状态"
     },
     "root": {
       "description": "AIO Proxy 命令行界面"
@@ -65,7 +66,7 @@
       "option_open_description": "TODO(i18n): Open the dashboard in the default browser after startup",
       "running": "AIO Proxy 正在运行",
       "label_api": "API",
-      "label_dashboard": "Dashboard"
+      "label_dashboard": "控制台"
     },
     "dashboard": {
       "description": "打开 AIO Proxy 控制台",

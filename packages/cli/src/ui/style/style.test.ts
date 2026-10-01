@@ -16,6 +16,10 @@ describe('colorDepth', () => {
     expect(colorDepth(true, { TERM: 'xterm-256color' })).toBe('256');
     expect(colorDepth(true, { TERM: 'xterm' })).toBe('16');
   });
+
+  test('is none on a dumb terminal', () => {
+    expect(colorDepth(true, { TERM: 'dumb' })).toBe('none');
+  });
 });
 
 describe('styleFor', () => {

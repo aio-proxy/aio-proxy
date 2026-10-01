@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { m } from '@aio-proxy/i18n';
 import { type DashboardProviderSummary, ProviderKind } from '@aio-proxy/types';
 
-import { plainStyle } from '../style';
+import { plainStyle } from '../../style';
 import { formatDeepProviderLines, formatProviderLines } from './provider';
 
 const provider: DashboardProviderSummary = {
