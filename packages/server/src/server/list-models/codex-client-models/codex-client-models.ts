@@ -1,5 +1,7 @@
 import { ModelContextAggregation, type CodexUpstreamModel, type ModelLimit } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
+import type { CodexCatalog, CodexInstructionsMode } from '../../../codex-catalog-sync';
 import type { ServerState } from '../../../server-state';
 import {
   type ResolvedModel,
@@ -10,7 +12,11 @@ import {
 import { assembleCodexModel, projectCodexMetadata, renderDefaultInstructions } from './codex-assembly';
 import { readCodexModelsCache } from './codex-cache';
 
-type Options = { readonly fetchImpl?: typeof fetch; readonly signal?: AbortSignal };
+type Options = {
+  readonly fetchImpl?: typeof fetch;
+  readonly signal?: AbortSignal;
+  readonly instructionsMode?: CodexInstructionsMode;
+};
 
 const nonEmpty = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value : undefined;
@@ -82,22 +88,20 @@ function resolveCodexWindows(model: ResolvedModel, codexBySlug: ReadonlyMap<stri
 //      base_instructions when the template is absent. A missing Option key
 //      deserializes to None, so an absent template is fine, but a present empty
 //      one would be used verbatim and yield an empty prompt.
-// Upstream gpt-5.6-* rows omit base_instructions and carry the prompt under
-// instructions_template. Resolve one non-empty text (existing template, else
-// base_instructions, else the bundled default) and write it back so both the
-// required field and the runtime-preferred field are non-empty. model_messages
-// is cloned before edit so the shared cache object is never mutated.
+// Keep the effective prompt non-empty, but carry it only once: Codex caps the
+// catalog response at 1 MiB. The required base_instructions String can be empty
+// when the client uses a template; an absent template still needs the full base.
 function normalizeInstructions(row: Record<string, unknown>, slug: string): Record<string, unknown> {
   const messages = row['model_messages'];
-  const hasMessages = typeof messages === 'object' && messages !== null;
-  const template = hasMessages ? (messages as { instructions_template?: unknown })['instructions_template'] : undefined;
+  const hasTemplate = isPlainObject(messages) && 'instructions_template' in messages;
+  const template = hasTemplate ? messages['instructions_template'] : undefined;
   const resolved = nonEmpty(template) ?? nonEmpty(row['base_instructions']) ?? renderDefaultInstructions(slug);
 
-  const patch: Record<string, unknown> = { base_instructions: resolved };
-  // Only rewrite the template when the client would otherwise read an empty one;
-  // an absent template is left absent so the client keeps falling back to base.
-  if (hasMessages && 'instructions_template' in (messages as object) && nonEmpty(template) === undefined) {
-    patch['model_messages'] = { ...(messages as object), instructions_template: resolved };
+  const patch: Record<string, unknown> = { base_instructions: hasTemplate ? '' : resolved };
+  // Repair an empty template without mutating the shared cache or dropping its
+  // variables, approvals, or future fields. Leave an absent template absent.
+  if (hasTemplate && nonEmpty(template) === undefined) {
+    patch['model_messages'] = { ...messages, instructions_template: resolved };
   }
   return patch;
 }
@@ -117,10 +121,7 @@ function servesCodexText(model: ResolvedModel): boolean {
   return resolveModelCapabilities(model)?.modalities?.output?.includes('text') === true;
 }
 
-export async function codexClientModels(
-  state: ServerState,
-  options: Options = {},
-): Promise<{ readonly models: readonly Record<string, unknown>[] }> {
+export async function codexClientModels(state: ServerState, options: Options = {}): Promise<CodexCatalog> {
   const [enabled, upstream] = await Promise.all([resolveEnabledModels(state), readCodexModelsCache(options)]);
   const resolved = enabled.filter(servesCodexText);
   // The reviewer is hidden, so the text filter above drops it, but it still has to be
@@ -199,6 +200,7 @@ export async function codexClientModels(
           contextWindow: windows.contextWindow,
           maxContextWindow: windows.maxContextWindow,
           template,
+          instructionsMode: options.instructionsMode,
         }),
         // assembleCodexModel lists ordinary synthesized models. This reviewer stays hidden
         // even when the official catalog is unavailable and the row has to be synthesized.

@@ -2,7 +2,8 @@ import { expect, test } from 'bun:test';
 
 import type { ModelMetadata } from '@aio-proxy/types';
 
-import { assembleCodexModel } from './codex-assembly';
+import { assembleCodexModel, renderDefaultInstructions } from './codex-assembly';
+import fullInstructions from './default-instructions.md' with { type: 'text' };
 
 // Merged, config-over-catalog metadata (camelCase ModelMetadata) — the shape
 // assembleCodexModel actually consumes, so a config override reaches the entry.
@@ -89,11 +90,10 @@ test('synthesized entry substitutes model name and omits availability_nux', () =
   expect(entry.slug).toBe('my-alias');
   expect(entry.id).toBe('my-alias');
   expect(entry.display_name).toBe('My Alias');
-  expect((entry.base_instructions as string).includes('based on my-alias.')).toBe(true);
-  expect((entry.base_instructions as string).includes('{{model_name}}')).toBe(false);
-  expect((entry.model_messages as { instructions_template: string }).instructions_template).toBe(
-    entry.base_instructions,
-  );
+  const template = (entry.model_messages as { instructions_template: string }).instructions_template;
+  expect(template).toContain('based on my-alias.');
+  expect(template).not.toContain('{{model_name}}');
+  expect(entry.base_instructions).toBe('');
   expect('availability_nux' in entry).toBe(false);
   // CodexModelBaseSchema requires these; a synthesized entry must carry them.
   expect(entry.priority).toBe(999);
@@ -212,4 +212,25 @@ test('config metadata overrides (description, modalities, reasoning) flow into t
   expect(entry.description).toBe('Config-overridden description');
   expect(entry.input_modalities).toEqual(['text', 'image']);
   expect((entry.supported_reasoning_levels as { effort: string }[]).map((l) => l.effort)).toEqual(['high', 'max']);
+});
+
+test('synthesis defaults to compact and full keeps the original complete prompt', () => {
+  const input = {
+    slug: 'third-party',
+    displayName: 'Third Party',
+    metadata: undefined,
+    contextWindow: 272_000,
+    maxContextWindow: 272_000,
+    template: undefined,
+  };
+  const compact = assembleCodexModel(input);
+  const full = assembleCodexModel({ ...input, instructionsMode: 'full' });
+  expect(compact.model_messages).not.toEqual(full.model_messages);
+  expect(full.model_messages).toMatchObject({
+    instructions_template: fullInstructions.replaceAll('{{model_name}}', input.slug),
+  });
+  expect(renderDefaultInstructions(input.slug)).toBe(fullInstructions.replaceAll('{{model_name}}', input.slug));
+  expect(
+    new TextEncoder().encode(renderDefaultInstructions('{{model_name}}', 'compact')).byteLength,
+  ).toBeLessThanOrEqual(6_144);
 });

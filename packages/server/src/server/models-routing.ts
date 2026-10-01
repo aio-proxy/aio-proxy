@@ -65,7 +65,11 @@ export const listModelsHandler =
       if (grant !== undefined && grant.target !== 'codex') {
         return context.json({ error: { code: 'invalid_request', message: 'Invalid Agent catalog negotiation.' } }, 400);
       }
-      return context.json(await codexClientModels(state, { signal: context.req.raw.signal }));
+      const instructionsMode = context.req.query('codex_instructions') ?? 'compact';
+      if (instructionsMode !== 'compact' && instructionsMode !== 'full') {
+        return context.json({ error: { code: 'invalid_request', message: 'Invalid Codex instructions mode.' } }, 400);
+      }
+      return context.json(await codexClientModels(state, { signal: context.req.raw.signal, instructionsMode }));
     }
     if (grant !== undefined && grant.target !== 'codex') {
       return context.json({ error: { code: 'invalid_request', message: 'Invalid Agent catalog negotiation.' } }, 400);

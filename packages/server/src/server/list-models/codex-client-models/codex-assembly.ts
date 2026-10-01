@@ -1,5 +1,7 @@
 import type { CodexUpstreamModel, ModelCapabilities, ModelMetadata } from '@aio-proxy/types';
 
+import type { CodexInstructionsMode } from '../../../codex-catalog-sync';
+import compactInstructions from './compact-instructions.md' with { type: 'text' };
 import instructions from './default-instructions.md' with { type: 'text' };
 
 const REASONING_DESCRIPTIONS = {
@@ -16,8 +18,8 @@ type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 // Renders the bundled base prompt for a slug. Case B uses it as the synthesized
 // instructions; Case A uses it only as the last-resort fallback when an upstream
 // row carries neither base_instructions nor model_messages.instructions_template.
-export function renderDefaultInstructions(slug: string): string {
-  return instructions.replaceAll('{{model_name}}', slug);
+export function renderDefaultInstructions(slug: string, mode: CodexInstructionsMode = 'full'): string {
+  return (mode === 'compact' ? compactInstructions : instructions).replaceAll('{{model_name}}', slug);
 }
 
 // Codex's ModelInfo struct requires these fields (no serde default, non-Option);
@@ -44,6 +46,7 @@ type AssembleInput = {
   // A complete upstream ModelInfo cloned as the base so every required field is
   // present. Undefined only when the catalog cache is empty (first-run offline).
   readonly template: CodexUpstreamModel | undefined;
+  readonly instructionsMode?: CodexInstructionsMode;
 };
 
 function reasoningLevel(effort: ReasoningLevel) {
@@ -93,7 +96,7 @@ export function projectCodexMetadata(
 }
 
 export function assembleCodexModel(input: AssembleInput): Record<string, unknown> {
-  const text = renderDefaultInstructions(input.slug);
+  const text = renderDefaultInstructions(input.slug, input.instructionsMode ?? 'compact');
   const metadataPatch = projectCodexMetadata(input.metadata, input.template === undefined);
 
   // Clone a complete template so every required field is inherited; fall back to
@@ -129,7 +132,8 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
     supports_search_tool: false,
     prefer_websockets: false,
     service_tiers: [],
-    base_instructions: text,
+    // Required for deserialization, but the client uses the template below.
+    base_instructions: '',
     model_messages: {
       instructions_template: text,
       instructions_variables: {},

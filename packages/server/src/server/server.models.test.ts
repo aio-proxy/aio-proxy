@@ -11,6 +11,7 @@ import { createServer as createBaseServer } from '#server-test-lifecycle';
 
 import { config } from '../../__tests__/server.test-support';
 import { loopbackServer } from '../dashboard-auth/test-support';
+import { renderDefaultInstructions } from './list-models/codex-client-models/codex-assembly';
 
 describe('GET /v1/models client_version routing', () => {
   let dir: string;
@@ -181,7 +182,7 @@ describe('GET /v1/models client_version routing', () => {
 
   test('Agent negotiation wins over client_version and static keys cannot read it', async () => {
     const agentResponse = await app.request(
-      '/v1/models?agent=opencode&adapter_version=1.2.3&schema_version=1&client_version=0.146.0',
+      '/v1/models?agent=opencode&adapter_version=1.2.3&schema_version=1&client_version=0.146.0&codex_instructions=invalid',
       { headers: { authorization: `Bearer ${opencode.accessToken}` } },
       loopbackServer,
     );
@@ -251,7 +252,7 @@ describe('GET /v1/models client_version routing', () => {
     expect(body.models).toBeUndefined();
   });
 
-  test.each(['/v1/models', '/v1/models?client_version=0.146.0'])(
+  test.each(['/v1/models?codex_instructions=invalid', '/v1/models?client_version=0.146.0&codex_instructions=invalid'])(
     'Grok installation receives ordinary models at %s',
     async (path) => {
       for (const server of [app, lockedApp]) {
@@ -323,5 +324,59 @@ describe('GET /v1/models client_version routing', () => {
         ).status,
       ).not.toBe(200);
     }
+  });
+
+  test('Codex HTTP defaults to compact and accepts explicit compact/full', async () => {
+    const request = async (mode = '') => {
+      const response = await codexApp.request(
+        `/v1/models?client_version=any${mode}`,
+        { headers: { authorization: `Bearer ${codex.accessToken}` } },
+        loopbackServer,
+      );
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    const compact = await request();
+    expect(await request('&codex_instructions=compact')).toEqual(compact);
+    const full = await request('&codex_instructions=full');
+    expect(compact.models.map((row: { slug: string }) => row.slug)).toEqual(
+      full.models.map((row: { slug: string }) => row.slug),
+    );
+    expect(compact.models[0].model_messages).not.toEqual(full.models[0].model_messages);
+    for (const row of full.models) {
+      expect(row.model_messages.instructions_template).toBe(renderDefaultInstructions(row.slug));
+    }
+  });
+
+  test.each(['invalid', '', 'FULL'])('rejects invalid Codex instructions mode %s', async (mode) => {
+    const response = await codexApp.request(
+      `/v1/models?client_version=any&codex_instructions=${mode}`,
+      { headers: { authorization: `Bearer ${codex.accessToken}` } },
+      loopbackServer,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: 'invalid_request' } });
+  });
+
+  test.each(['full', 'invalid'])('instructions mode %s does not bypass authentication', async (mode) => {
+    expect(
+      (await lockedApp.request(`/v1/models?client_version=any&codex_instructions=${mode}`, {}, loopbackServer)).status,
+    ).toBe(401);
+  });
+
+  test.each(['opencode', 'pi', 'omp'] as const)('%s cannot bypass Agent negotiation using full', async (target) => {
+    const credential = target === 'opencode' ? opencode : target === 'pi' ? pi : omp;
+    const response = await codexApp.request(
+      '/v1/models?client_version=any&codex_instructions=full',
+      { headers: { authorization: `Bearer ${credential.accessToken}` } },
+      loopbackServer,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test('ordinary lists ignore instructions mode', async () => {
+    const response = await app.request('/v1/models?codex_instructions=invalid', undefined, loopbackServer);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ object: 'list' });
   });
 });
