@@ -14,7 +14,8 @@ mod menu;
 pub use menu::{MenuCommand, MenuEntry, menu_entries};
 
 /// 18 pt tall at 2x.
-pub const ICON_PX: u32 = 36;
+pub const ICON_WIDTH: u32 = 58;
+pub const ICON_HEIGHT: u32 = 36;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayState {
@@ -32,27 +33,36 @@ pub fn tray_state(health: HealthState, attention: bool) -> TrayState {
     }
 }
 
-/// Template-image pixels: a disc (running), a ring (down), a disc with a hole (attention). AppKit
-/// tints template images for light and dark menu bars.
+/// The AIO mark from `packages/brand`, 10 pt tall in a 58 x 36 canvas (18 pt at 2x) with room at the right
+/// for the attention dot. Regenerate it from the brand path if the mark changes.
+const MARK_PNG: &[u8] = include_bytes!("../assets/tray-mark.png");
+
+/// Template-image pixels: the mark (running), the mark dimmed (down), the mark with a dot at its top
+/// right (attention). AppKit tints template images for light and dark menu bars.
 pub fn icon_rgba(state: TrayState) -> Vec<u8> {
-    let centre = (ICON_PX as f32 - 1.0) / 2.0;
-    let mut rgba = Vec::with_capacity((ICON_PX * ICON_PX * 4) as usize);
-    for y in 0..ICON_PX {
-        for x in 0..ICON_PX {
-            let d = ((x as f32 - centre).powi(2) + (y as f32 - centre).powi(2)).sqrt();
-            let on = match state {
-                TrayState::Running => d <= 12.0,
-                TrayState::Down => (9.0..=12.0).contains(&d),
-                TrayState::Attention => (4.5..=12.0).contains(&d),
-            };
-            rgba.extend_from_slice(if on { &[0, 0, 0, 255] } else { &[0, 0, 0, 0] });
-        }
+    let mark = image::load_from_memory_with_format(MARK_PNG, image::ImageFormat::Png)
+        .expect("the bundled tray mark decodes")
+        .to_rgba8();
+    let (dot_x, dot_y, dot_r) = (53.5_f32, 9.5_f32, 3.5_f32);
+    let mut rgba = Vec::with_capacity((ICON_WIDTH * ICON_HEIGHT * 4) as usize);
+    for (x, y, pixel) in mark.enumerate_pixels() {
+        let alpha = f32::from(pixel[3]) / 255.0;
+        let alpha = match state {
+            TrayState::Running => alpha,
+            // Like a disabled menu-bar item.
+            TrayState::Down => alpha * 0.4,
+            TrayState::Attention => {
+                let d = ((x as f32 - dot_x).powi(2) + (y as f32 - dot_y).powi(2)).sqrt();
+                alpha.max((dot_r + 0.5 - d).clamp(0.0, 1.0))
+            }
+        };
+        rgba.extend_from_slice(&[0, 0, 0, (alpha * 255.0).round() as u8]);
     }
     rgba
 }
 
 fn icon(state: TrayState) -> Icon {
-    Icon::from_rgba(icon_rgba(state), ICON_PX, ICON_PX).expect("icon buffer matches its size")
+    Icon::from_rgba(icon_rgba(state), ICON_WIDTH, ICON_HEIGHT).expect("icon buffer matches its size")
 }
 
 pub struct Tray {

@@ -154,6 +154,8 @@ Only ranks 1 and 2 count toward `need attention`. Being merely over pace sorts a
 
 ## Right-click menu
 
+The menu-bar icon is the AIO mark from `packages/brand` as a template image (glyphs 10 pt tall in a 58 × 36 px canvas, 18 pt high, `desktop/assets/tray-mark.png`), sized with the system's own status items: full strength when running, at 40% when down, with a dot at its top right when running with something needing attention.
+
 The icon's native menu (muda) carries every action. Items appear only when they apply, using rev 4's ownership and offer rules unchanged:
 
 1. **Open Dashboard**

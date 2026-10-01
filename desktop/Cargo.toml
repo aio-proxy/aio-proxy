@@ -46,6 +46,8 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 semver = "1.0.28"
 url = "2.5.8"
+# Already in the tree through GPUI; only PNG, for the bundled tray mark.
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 libc = "0.2.189"
 
 [dev-dependencies]
