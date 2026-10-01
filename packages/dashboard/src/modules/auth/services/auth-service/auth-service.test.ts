@@ -4,17 +4,18 @@ import { clearDashboardAuthToken, readDashboardAuthToken } from '@/lib/dashboard
 import { queryClient } from '@/lib/query-client';
 
 import { setDashboardAuthSession } from '../auth-session-store';
-import { loginDashboard, logoutDashboard } from './auth-service';
+import { dashboardAuthSessionQueryOptions, loginDashboard, logoutDashboard } from './auth-service';
 
 const mocks = rs.hoisted(() => ({
   login: rs.fn(),
+  session: rs.fn(),
   unauthorized: undefined as (() => void) | undefined,
   unavailable: undefined as (() => void) | undefined,
 }));
 
 rs.mock('@/lib/dashboard-client', () => ({
   dashboardClient: {
-    dashboard: { api: { auth: { login: { $post: mocks.login } } } },
+    dashboard: { api: { auth: { login: { $post: mocks.login }, session: { $get: mocks.session } } } },
   },
   setDashboardUnauthorizedHandler: (handler: () => void) => {
     mocks.unauthorized = handler;
@@ -28,6 +29,7 @@ beforeEach(() => {
   queryClient.clear();
   clearDashboardAuthToken();
   mocks.login.mockReset();
+  mocks.session.mockReset();
 });
 
 afterEach(() => {
@@ -40,6 +42,22 @@ test('a business API 401 transitions a cached disabled session to unauthenticate
   mocks.unauthorized?.();
 
   expect(queryClient.getQueryData(['dashboard-auth'])).toEqual({ status: 'unauthenticated' });
+});
+
+test('the session check rides out a server restart instead of failing on the first refused request', async () => {
+  // A dev `bun --watch` restart or an auto-update: the connection is refused, then the proxy times
+  // out, then the server is back. Failing on the first error parks the page on "Dashboard unavailable".
+  mocks.session
+    .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    .mockResolvedValueOnce({ ok: false, status: 504 })
+    .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ status: 'authenticated' }) });
+
+  // Only the backoff is shortened; the retry policy under test is the real one.
+  await expect(queryClient.fetchQuery({ ...dashboardAuthSessionQueryOptions(), retryDelay: 0 })).resolves.toEqual({
+    status: 'authenticated',
+  });
+  expect(mocks.session).toHaveBeenCalledTimes(4);
 });
 
 test('login 409 transitions the cached session back to disabled', async () => {
