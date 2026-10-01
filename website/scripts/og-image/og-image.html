@@ -1,0 +1,259 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=block"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0c0c09;
+        --olive-900: #1c211d;
+        --olive-700: #4f574d;
+        --olive-400: #88907f;
+        --olive-100: #f0f2ed;
+        --teal-300: #5eead4;
+        --teal-400: #2dd4bf;
+        --teal-500: #14b8a6;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        width: 1280px;
+        height: 640px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+      body {
+        position: relative;
+        font-family: Lexend, sans-serif;
+        color: var(--olive-100);
+      }
+      .grid {
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(circle at center, rgb(240 242 237 / 0.13) 1.2px, transparent 1.7px);
+        background-size: 32px 32px;
+        mask-image: radial-gradient(ellipse 75% 85% at 72% 50%, black 15%, transparent 75%);
+      }
+      .glow {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(120px);
+      }
+      .glow.a {
+        width: 620px;
+        height: 620px;
+        left: 600px;
+        top: -180px;
+        background: rgb(13 148 136 / 0.32);
+      }
+      .glow.b {
+        width: 520px;
+        height: 520px;
+        left: -200px;
+        top: 320px;
+        background: rgb(19 78 74 / 0.55);
+      }
+      .card {
+        position: absolute;
+        inset: 0;
+        padding: 64px 72px;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      header svg {
+        height: 38px;
+        width: auto;
+        color: var(--olive-100);
+      }
+      .url {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 20px;
+        color: var(--olive-400);
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 52px;
+        align-self: flex-start;
+        border: 1px solid rgb(45 212 191 / 0.25);
+        background: rgb(4 47 46 / 0.6);
+        color: #99f6e4;
+        padding: 7px 16px;
+        border-radius: 999px;
+        font-size: 17px;
+        font-weight: 500;
+      }
+      .pill i {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--teal-500);
+        box-shadow: 0 0 0 4px rgb(20 184 166 / 0.25);
+      }
+      h1 {
+        margin-top: 26px;
+        font-size: 68px;
+        line-height: 1.06;
+        font-weight: 600;
+        letter-spacing: -0.025em;
+      }
+      h1 span {
+        display: block;
+      }
+      h1 .accent {
+        background: linear-gradient(90deg, var(--teal-300), var(--teal-500));
+        -webkit-background-clip: text;
+        color: transparent;
+      }
+      .install {
+        margin-top: 36px;
+        align-self: flex-start;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 19px;
+        padding: 13px 20px;
+        border-radius: 14px;
+        border: 1px solid rgb(255 255 255 / 0.1);
+        background: rgb(28 33 29 / 0.7);
+        color: var(--olive-100);
+      }
+      .install b {
+        color: var(--teal-400);
+        font-weight: 500;
+        margin-right: 12px;
+      }
+
+      /* Routing diagram: clients -> hub -> providers, mirroring the homepage hero visual. */
+      .route {
+        position: absolute;
+        left: 700px;
+        top: 140px;
+        width: 508px;
+        height: 380px;
+      }
+      .route svg.lines {
+        position: absolute;
+        inset: 0;
+        overflow: visible;
+      }
+      .col {
+        position: absolute;
+        top: 0;
+        height: 100%;
+        width: 168px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-around;
+      }
+      .col.l {
+        left: 0;
+      }
+      .col.r {
+        right: 0;
+      }
+      .chip {
+        border-radius: 14px;
+        border: 1px solid rgb(255 255 255 / 0.1);
+        background: rgb(28 33 29 / 0.85);
+        padding: 10px 14px;
+        font-size: 17px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      .chip small {
+        display: block;
+        margin-top: 2px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 12px;
+        font-weight: 400;
+        color: var(--olive-400);
+      }
+      .chip.on {
+        border-color: rgb(20 184 166 / 0.7);
+        background: rgb(4 47 46 / 0.9);
+      }
+      .hub {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 92px;
+        height: 92px;
+        transform: translate(-50%, -50%);
+        border-radius: 24px;
+        border: 1.5px solid rgb(20 184 166 / 0.7);
+        background: var(--bg);
+        display: grid;
+        place-items: center;
+        box-shadow: 0 0 60px rgb(20 184 166 / 0.35);
+      }
+      .hub svg {
+        width: 64px;
+        height: 64px;
+        color: var(--olive-100);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid"></div>
+    <div class="glow a"></div>
+    <div class="glow b"></div>
+
+    <div class="card">
+      <header>
+        {{wordmark}}
+        <span class="url">aioproxy.dev</span>
+      </header>
+
+      <span class="pill"><i></i>Open source · Local-first model gateway</span>
+      <h1>
+        <span>Every model.</span>
+        <span>Every client.</span>
+        <span class="accent">One endpoint.</span>
+      </h1>
+      <div class="install"><b>$</b>bun add -g aio-proxy</div>
+    </div>
+
+    <div class="route">
+      <svg class="lines" viewBox="0 0 508 380" fill="none">
+        <!-- client rows at y = 47.5,142.5,237.5,332.5 (4 rows); provider rows same; hub at 254,190 -->
+        <g stroke="#4f574d" stroke-width="1.5">
+          <path d="M168 47.5 C 220 47.5, 210 190, 254 190" />
+          <path d="M168 237.5 C 220 237.5, 210 190, 254 190" />
+          <path d="M168 332.5 C 220 332.5, 210 190, 254 190" />
+          <path d="M254 190 C 298 190, 288 47.5, 340 47.5" />
+          <path d="M254 190 C 298 190, 288 142.5, 340 142.5" />
+          <path d="M254 190 C 298 190, 288 332.5, 340 332.5" />
+        </g>
+        <g stroke="#14b8a6" stroke-width="2.5" stroke-dasharray="6 6">
+          <path d="M168 142.5 C 220 142.5, 210 190, 254 190" />
+          <path d="M254 190 C 298 190, 288 237.5, 340 237.5" />
+        </g>
+      </svg>
+      <div class="col l">
+        <div class="chip">Claude Code<small>anthropic</small></div>
+        <div class="chip on">Codex<small>openai-response</small></div>
+        <div class="chip">Cursor<small>openai-compatible</small></div>
+        <div class="chip">Gemini SDK<small>gemini</small></div>
+      </div>
+      <div class="hub">{{mark}}</div>
+      <div class="col r">
+        <div class="chip">Anthropic<small>api</small></div>
+        <div class="chip">ChatGPT Pro<small>oauth</small></div>
+        <div class="chip on">GitHub Copilot<small>oauth</small></div>
+        <div class="chip">OpenRouter<small>api</small></div>
+      </div>
+    </div>
+  </body>
+</html>

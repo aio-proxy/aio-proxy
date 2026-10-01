@@ -1,6 +1,7 @@
 ---
 description: AIO Proxy lets existing clients connect to, route across, and observe multiple model providers through one endpoint.
 pageType: home
+titleSuffix: Every model. Every client. One endpoint.
 
 hero:
   name: AIO Proxy
