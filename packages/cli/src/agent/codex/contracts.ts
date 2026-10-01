@@ -1,7 +1,9 @@
 import type { AtomicConfigFile } from '@aio-proxy/core';
+import type { CodexCatalog } from '@aio-proxy/server';
 import type { AgentDeviceCodeResponse, AgentRevokeStatus } from '@aio-proxy/types';
 
 import type { ValueSlot } from './config-document';
+import type { CodexCatalogFetchInput } from './model-catalog';
 
 export type CodexLocation = {
   readonly home: string;
@@ -123,6 +125,7 @@ export type CodexSetupCommit = ConfigCommit & {
 };
 
 export type CodexSetupContext = {
+  readonly fetchCatalog?: (input: CodexCatalogFetchInput) => Promise<CodexCatalog>;
   readonly location: CodexLocation;
   readonly endpoint: string;
   readonly adapterVersion: string;

@@ -8,7 +8,7 @@ import type { AgentDeviceCodeResponse } from '@aio-proxy/types';
 import packageJson from '../../../../package.json' with { type: 'json' };
 import { readServiceEnvironment } from '../../../service-env';
 import { readCodexDocument } from '../config-document';
-import type { CodexLocation } from '../contracts';
+import type { CodexLocation, CodexSetupContext } from '../contracts';
 import { probeProxyApiKey } from '../credentials';
 import { resolveCodexLocation } from '../location';
 import { inspectCodexConfig } from '../managed-config';
@@ -42,6 +42,7 @@ export const createCredentialDeps = (endpoint: string) => {
 export type CodexAuthContextOverrides = {
   readonly onDevice?: (device: AgentDeviceCodeResponse) => Promise<void>;
   readonly signal?: AbortSignal;
+  readonly fetchCatalog?: CodexSetupContext['fetchCatalog'];
 };
 
 const AUTH_TIMEOUT_MS = 600_000;
@@ -50,6 +51,7 @@ export const authContext = (location: CodexLocation, endpoint: string, overrides
   location,
   endpoint,
   adapterVersion: packageJson.version,
+  ...(overrides.fetchCatalog === undefined ? {} : { fetchCatalog: overrides.fetchCatalog }),
   signal:
     overrides.signal === undefined
       ? AbortSignal.timeout(AUTH_TIMEOUT_MS)

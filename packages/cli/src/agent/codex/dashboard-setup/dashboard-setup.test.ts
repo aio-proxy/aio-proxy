@@ -1,8 +1,15 @@
 import { expect, mock, test } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import type { AgentDeviceCodeResponse, CodexConfigureInput } from '@aio-proxy/types';
 
 import type { CodexSetupSelection, MigrationPreview, MigrationTarget } from '../contracts';
+import { resolveCodexLocation } from '../location';
+import { inspectCodexConfig } from '../managed-config';
+import { authContext } from '../runtime';
+import { commitCodexSetup } from '../setup';
 import { buildCodexSetupPlan, configureCodexFromDashboard, type CodexDashboardDeps } from './dashboard-setup';
 
 const ENDPOINT = 'http://127.0.0.1:9317';
@@ -197,3 +204,54 @@ test('a session rewritten after the plan was shown makes the submission stale ev
   ).rejects.toMatchObject({ code: 'plan_stale' });
   expect(fixture.migrateSessions).not.toHaveBeenCalled();
 });
+
+for (const failure of [false, true]) {
+  test(`dashboard shares full catalog setup and ${failure ? 'fails without modifying config' : 'commits the catalog path'}`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'aio-codex-dashboard-catalog-'));
+    const location = resolveCodexLocation(root, {});
+    const fixture = setupFixture();
+    const catalog = { models: [] };
+    const deps: CodexDashboardDeps = {
+      ...fixture.deps,
+      location,
+      inspectConfig: () => inspectCodexConfig(location),
+      occupiedIds: async () => [],
+      inspectSessions: async () => ({ groups: [], targets: [], blocked: [] }),
+      commitSetup: (selection, endpoint, overrides) =>
+        commitCodexSetup(
+          selection,
+          authContext(location, endpoint, {
+            ...overrides,
+            fetchCatalog: async ({ token }) => {
+              expect(token).toBe('sk-secret');
+              if (failure) throw new Error('catalog unavailable');
+              return catalog;
+            },
+          }),
+        ),
+    };
+    try {
+      const plan = await buildCodexSetupPlan(deps);
+      const result = configureCodexFromDashboard(
+        {
+          providerId: 'aio-proxy',
+          auth: { mode: 'keep-chatgpt', key: { kind: 'existing', id: 'k1' } },
+          migrateFrom: [],
+          planToken: plan.planToken,
+        },
+        events(),
+        deps,
+      );
+      if (failure) {
+        await expect(result).rejects.toThrow('catalog unavailable');
+        expect(await Bun.file(location.configPath).exists()).toBe(false);
+      } else {
+        await expect(result).resolves.toMatchObject({ status: 'configured', credential: 'existing' });
+        const parsed = Bun.TOML.parse(await Bun.file(location.configPath).text()) as { model_catalog_json: string };
+        expect(await Bun.file(parsed.model_catalog_json).json()).toEqual(catalog);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+}
