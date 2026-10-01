@@ -2,7 +2,7 @@ import { m } from '@aio-proxy/i18n';
 
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
 import { StatusNotRunningError } from '../errors';
-import { createStyle, formatDeepProviderLines, formatStatusLine, useColor } from '../ui';
+import { createStyle, formatDeepProviderLines, formatStatusLine } from '../ui';
 
 export type StatusOptions = {
   readonly host?: string;
@@ -94,8 +94,7 @@ export async function statusCommand(
       if (deepFailure.reason === 'auth') print(m['cli.status.deep_unavailable']());
       else print(m['cli.status.deep_probe_failed']({ status: String(deepFailure.status ?? 'network error') }));
     } else {
-      const color = useColor(process.stdout.isTTY === true, process.env);
-      const lines = formatDeepProviderLines(providers, color);
+      const lines = formatDeepProviderLines(style, providers);
       if (lines === undefined) print(m['cli.ui.status_deep_unexpected']());
       else for (const line of lines) print(line);
     }

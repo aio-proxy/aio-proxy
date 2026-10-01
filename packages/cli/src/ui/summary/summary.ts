@@ -1,73 +1,10 @@
 import { m } from '@aio-proxy/i18n';
-import {
-  type DashboardProviderSummary,
-  DashboardProvidersResponseSchema,
-  dashboardProviderSuggestedCommand,
-} from '@aio-proxy/types';
 
 import { formatBlock, formatTable } from '../layout';
 import type { Style } from '../style';
 
-const ProviderListSchema = DashboardProvidersResponseSchema.pick({ providers: true });
-
-function labelValue(label: string, value: string, color: boolean): string {
-  const shown = color ? `\u001b[2m${label}\u001b[0m` : label;
-  return `${shown}: ${value}`;
-}
-
 function fits(wide: string, columns: number | undefined): boolean {
   return columns !== undefined && columns >= 80 && Bun.stringWidth(wide) <= columns;
-}
-
-function providerFields(provider: DashboardProviderSummary, probe: boolean, color: boolean): string[] {
-  const catalog = provider.state.status === 'ready' ? (provider.state.catalog ?? '-') : '-';
-  const rows: readonly (readonly [string, string])[] = [
-    [m['cli.provider.list.header_id'](), provider.id],
-    [m['cli.provider.list.header_kind'](), provider.kind],
-    [m['cli.provider.list.header_enabled'](), String(provider.enabled)],
-    [m['cli.provider.list.header_passthrough'](), String(provider.passthrough)],
-    [m['cli.provider.list.header_last_status'](), provider.last_status],
-    [
-      m['cli.provider.list.header_last_latency'](),
-      provider.last_latency === null ? '-' : String(provider.last_latency),
-    ],
-    [m['cli.provider.list.header_state'](), provider.state.status],
-    [m['cli.provider.list.header_catalog'](), catalog],
-    [m['cli.provider.list.header_plugin'](), provider.plugin ?? '-'],
-    [m['cli.provider.list.header_capability'](), provider.capability ?? '-'],
-    [m['cli.provider.list.header_account'](), provider.accountLabel ?? '-'],
-    [
-      m['cli.provider.list.header_expires_at'](),
-      provider.expiresAt === undefined ? '-' : new Date(provider.expiresAt).toISOString(),
-    ],
-    [m['cli.provider.list.header_catalog_last_success_at'](), provider.catalogLastSuccessAt ?? '-'],
-    [m['cli.provider.list.header_diagnostic'](), provider.state.diagnostic?.summary ?? '-'],
-    [m['cli.provider.list.header_suggested_command'](), dashboardProviderSuggestedCommand(provider) ?? '-'],
-  ];
-  const withProbe = probe
-    ? [...rows, [m['cli.provider.list.header_probe'](), provider.probe ?? 'FAIL'] as const]
-    : rows;
-  return withProbe.map(([label, value]) => labelValue(label, value, color));
-}
-
-export function formatProviderLines(
-  providers: readonly DashboardProviderSummary[],
-  probe: boolean,
-  color: boolean,
-): readonly string[] {
-  if (providers.length === 0) return [m['cli.ui.provider_list_empty']()];
-  const lines: string[] = [];
-  for (const provider of providers) {
-    if (lines.length > 0) lines.push('');
-    lines.push(...providerFields(provider, probe, color));
-  }
-  return lines;
-}
-
-export function formatDeepProviderLines(data: unknown, color: boolean): readonly string[] | undefined {
-  const parsed = ProviderListSchema.safeParse(data);
-  if (!parsed.success) return undefined;
-  return formatProviderLines(parsed.data.providers, true, color);
 }
 
 export function formatPluginLines(
@@ -91,12 +28,14 @@ export function formatPluginLines(
 }
 
 export function formatInstalledLines(
-  item: { readonly packageName: string; readonly version: string; readonly directory: string },
-  columns: number | undefined,
+  style: Style,
+  items: readonly { readonly packageName: string; readonly version: string; readonly directory: string }[],
 ): readonly string[] {
-  const wide = `${item.packageName} ${item.version} ${item.directory}`;
-  if (fits(wide, columns)) return [wide];
-  return [item.packageName, item.version, item.directory];
+  return formatTable(
+    style,
+    items.map((item) => ({ cells: [style.strong(item.packageName), item.version, style.muted(item.directory)] })),
+    [m['cli.ui.header_package'](), m['cli.ui.header_version'](), m['cli.ui.header_directory']()],
+  );
 }
 
 const withVersion = (url: string, version: string | undefined): string =>

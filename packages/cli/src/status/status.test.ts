@@ -145,7 +145,7 @@ test('--deep human output prints provider rows and does not dump JSON', async ()
     const lines: string[] = [];
     await statusCommand({ port: String(server.port), deep: true }, (line) => lines.push(line));
     const out = lines.join('\n');
-    expect(out).toContain('id: openai');
+    expect(out).toContain('● openai');
     expect(out).not.toContain('"protocols"');
   } finally {
     server.stop(true);

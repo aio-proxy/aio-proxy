@@ -4,70 +4,12 @@ import { m } from '@aio-proxy/i18n';
 
 import { plainStyle } from '../style';
 import {
-  formatDeepProviderLines,
   formatDoctorLines,
   formatInstalledLines,
   formatPluginLines,
-  formatProviderLines,
   formatRunSummary,
   formatStatusLine,
 } from './summary';
-
-const provider = {
-  id: 'openai',
-  kind: 'api',
-  enabled: true,
-  passthrough: false,
-  last_status: 'ok',
-  last_latency: 0,
-  protocols: [],
-  hasQuota: false,
-  canRefreshCredential: false,
-  clientModels: [],
-  state: { status: 'ready', catalog: 'fresh' },
-} as const;
-
-describe('formatProviderLines', () => {
-  test('prints one labeled field per line without pipes or color', () => {
-    const text = formatProviderLines([provider], false, false).join('\n');
-    expect(text).toContain('id: openai');
-    expect(text).toContain('last_latency: 0');
-    expect(text).toContain('catalog: fresh');
-    expect(text).not.toContain('|');
-    expect(text).not.toContain('\u001b');
-  });
-
-  test('dims labels when color is requested', () => {
-    const text = formatProviderLines([provider], false, true).join('\n');
-    expect(text).toContain('\u001b[2mid\u001b[0m: openai');
-  });
-
-  test('separates providers with one blank line and does not trail one', () => {
-    const lines = formatProviderLines([provider, { ...provider, id: 'anthropic' }], false, false);
-    const secondId = lines.findIndex((line) => line.startsWith('id: anthropic'));
-    expect(lines[secondId - 1]).toBe('');
-    expect(lines.at(-1)).not.toBe('');
-  });
-
-  test('returns the empty copy when there are no providers', () => {
-    expect(formatProviderLines([], false, false)).toEqual([m['cli.ui.provider_list_empty']()]);
-  });
-
-  test('keeps a 200-character provider id intact', () => {
-    const id = 'x'.repeat(200);
-    const text = formatProviderLines([{ ...provider, id }], false, false).join('\n');
-    expect(text).toContain(id);
-  });
-});
-
-describe('formatDeepProviderLines', () => {
-  test('formats a probe view when the payload parses and returns undefined otherwise', () => {
-    const text = formatDeepProviderLines({ providers: [provider] }, false)?.join('\n');
-    expect(text).toContain('id: openai');
-    expect(text).toContain('probe: FAIL');
-    expect(formatDeepProviderLines({ providers: 'nope' }, false)).toBeUndefined();
-  });
-});
 
 describe('formatPluginLines', () => {
   const plugin = { label: 'Name', packageName: 'pkg', state: 'configured', description: 'desc' };
@@ -89,14 +31,15 @@ describe('formatPluginLines', () => {
 });
 
 describe('formatInstalledLines', () => {
-  const item = { packageName: 'pkg', version: '1.0.0', directory: '/tmp/pkg' };
-
-  test('keeps the legacy sentence when the line fits', () => {
-    expect(formatInstalledLines(item, 120)).toEqual(['pkg 1.0.0 /tmp/pkg']);
-  });
-
-  test('splits the three fields when the terminal is narrow', () => {
-    expect(formatInstalledLines(item, 20)).toEqual(['pkg', '1.0.0', '/tmp/pkg']);
+  test('prints an aligned table with a header', () => {
+    const lines = formatInstalledLines(plainStyle, [
+      { packageName: 'pkg', version: '1.0.0', directory: '/tmp/pkg' },
+      { packageName: '@scope/longer', version: '10.0.0', directory: '/tmp/l' },
+    ]);
+    expect(lines[0]).toContain(m['cli.ui.header_package']().toLocaleUpperCase());
+    expect(Bun.stringWidth(lines[1]!.slice(0, lines[1]!.indexOf('1.0.0')))).toBe(
+      Bun.stringWidth(lines[2]!.slice(0, lines[2]!.indexOf('10.0.0'))),
+    );
   });
 });
 

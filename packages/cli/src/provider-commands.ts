@@ -12,7 +12,7 @@ import { type DashboardProviderSummary, DashboardProvidersResponseSchema } from 
 import { ProviderDashboardError } from './errors';
 import { providerImport as pluginProviderImport } from './plugin-commands/provider-import';
 import { type ProviderLoginOptions, providerLogin as pluginProviderLogin } from './plugin-commands/provider-login';
-import { formatInstalledLines, formatProviderLines, useColor } from './ui';
+import { createStyle, formatInstalledLines, formatProviderLines } from './ui';
 
 export type ProviderListOptions = {
   readonly filter?: string;
@@ -71,19 +71,14 @@ export async function providerTest(id: string, options: Omit<ProviderListOptions
 async function providerInstalledList(): Promise<void> {
   const installed = await listInstalledNpmPackages();
   if (installed.length === 0) return;
-  for (const item of installed) {
-    for (const line of formatInstalledLines(
-      { packageName: item.packageName, version: item.version, directory: dirname(item.entrypoint) },
-      process.stdout.columns,
-    )) {
-      console.log(line);
-    }
-  }
+  const items = installed.map((item) => ({
+    packageName: item.packageName,
+    version: item.version,
+    directory: dirname(item.entrypoint),
+  }));
+  for (const line of formatInstalledLines(createStyle(process.stdout), items)) console.log(line);
 }
 
 function printProviderTable(providers: readonly DashboardProviderSummary[], probe: boolean): void {
-  const color = useColor(process.stdout.isTTY === true, process.env);
-  for (const line of formatProviderLines(providers, probe, color)) {
-    console.log(line);
-  }
+  for (const line of formatProviderLines(createStyle(process.stdout), providers, probe)) console.log(line);
 }
