@@ -231,4 +231,4 @@ Codex 0.159.2 实际验收：50 条本地 full 为 1,199,550 字节、100 条本
 - Task 4 增加安全日志事件的 bridge 映射，补全既有事件表；若不合适，代价是撤销一项映射。
 - Task 4 同域导出 run.ts 的组合入口并加入窄 gate 测试依赖，不向更高层导出，验证拒绝分支不注入本地能力；若不合适，代价是移除这一内部测试入口。
 
-用户原有 bun.lock 保留且未提交。没有推送、部署或修改用户实际 Codex 配置。整分支最终审查另行执行；本地目录更新仍需重启客户端。
+用户原有 bun.lock 保留且未提交。没有推送、部署或修改用户实际 Codex 配置。整分支最终审查已由 Astra 完成，未发现新增 Critical、Important 或 Minor 问题；完整记录见 `docs/superpowers/reviews/2026-10-01-codex-dual-catalog-review.md`。本地目录更新仍需重启客户端。
