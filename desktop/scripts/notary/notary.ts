@@ -3,24 +3,26 @@ import { $ } from 'bun';
 export type NotarySubmission = { readonly id: string; readonly status: string };
 
 /**
- * `notarytool submit --wait --output-format json` ends with one JSON object. Its exit code alone is
- * not trusted: only an "Accepted" status passes.
+ * `notarytool submit --wait --output-format json` ends with one JSON object, compact or pretty-printed
+ * over several lines, after any progress lines. Its exit code alone is not trusted: only an "Accepted"
+ * status passes.
  */
 export function parseSubmission(stdout: string): NotarySubmission {
-  const line = stdout
-    .split('\n')
-    .map((text) => text.trim())
-    .filter((text) => text.startsWith('{'))
-    .at(-1);
+  const lines = stdout.split('\n');
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(line ?? '');
-  } catch {
+  // The result starts on the last line that opens an object and runs to the end of the output.
+  for (let start = lines.length - 1; start >= 0 && parsed === undefined; start--) {
+    if (!lines[start]!.trimStart().startsWith('{')) continue;
+    try {
+      parsed = JSON.parse(lines.slice(start).join('\n'));
+    } catch {}
+  }
+  if (parsed === undefined) {
     throw new Error(`notarytool printed no JSON result: ${stdout.trim().slice(0, 300)}`);
   }
   const { id, status } = (typeof parsed === 'object' && parsed !== null ? parsed : {}) as Record<string, unknown>;
   if (typeof id !== 'string' || typeof status !== 'string') {
-    throw new Error(`notarytool result has no id or status: ${line}`);
+    throw new Error(`notarytool result has no id or status: ${JSON.stringify(parsed).slice(0, 300)}`);
   }
   return { id, status };
 }
