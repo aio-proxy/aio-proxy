@@ -96,11 +96,11 @@ A hidden CLI command, run through the symlink (or the bundled binary before the 
 
 ### What the app does automatically
 
-Automatic mutation requires **`owner: desktop` and either `matchesJob: true` or no reachable instance**, plus a valid install location. Everything else is read-only until the user clicks.
+Automatic mutation requires **`owner: desktop` and either `matchesJob: true` or no reachable instance**, plus a valid install location. The one exception is a fresh install, which by definition has no owner yet: it requires **no plist (`owner: null`), a probed control address that nothing answers (`controlUrl` set, `reachable: false`), no launchd job (not loaded, no pid) and `job.disabled: false`** (a disabled leftover is a user's `service uninstall`), plus a valid install location. Like every automatic mutation, it re-runs discovery first and proceeds only if owner, `matchesJob` and `disabled` are unchanged. Everything else is read-only until the user clicks.
 
 | State | Automatic action |
 | --- | --- |
-| No plist | `service install` + `service start` (fresh install; the app now owns the service) |
+| No plist, and the fresh-install conditions above hold | `service install` + `service start` (fresh install; the app now owns the service) |
 | Desktop, loaded, enabled, no process | `service start` (which kickstarts, see CLI changes) — the recovery path after a dangling-symlink exit or an external SIGTERM. One attempt per app launch; on failure show the error, no retry loop (a broken config's exit 1 is remapped to 0 and looks identical, so retrying would loop) |
 | Desktop, not loaded, enabled | `service start` |
 | Desktop, disabled | Nothing. The user stopped it; show Stopped with a Start button |
