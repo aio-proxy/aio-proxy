@@ -85,7 +85,7 @@ A hidden CLI command, run through the symlink (or the bundled binary before the 
 }
 ```
 
-- **`unit`** comes from parsing the plist. The aio-proxy path is not `ProgramArguments[0]` (that is `/bin/sh`); `wrapperValid` requires `ProgramArguments` to be exactly `["/bin/sh", "-c", <known wrapper>, <target>]`, and `target` is the fourth element. `home` is the plist's `AIO_PROXY_HOME`. `owner` is `desktop` when `target` equals the symlink path, `external` for any other valid target, `unknown` when the wrapper is not recognized, `null` when no plist exists.
+- **`unit`** comes from parsing the plist. The aio-proxy path is not `ProgramArguments[0]` (that is `/bin/sh`); `wrapperValid` requires `ProgramArguments` to be exactly `["/bin/sh", "-c", <known wrapper>, <target>]`, and `target` is the fourth element. `home` is the plist's `AIO_PROXY_HOME`. `owner` is `desktop` when `target` equals the symlink path, `external` for any other valid target that is an executable file, `orphaned` for one that is not, which the wrapper's `[ -x "$0" ]` can never run (the CLI was uninstalled, e.g. by `brew uninstall`, which leaves its plist loaded, or lost its execute bit), `unknown` when the wrapper is not recognized, `null` when no plist exists.
 - **`job`** comes from `launchctl print gui/<uid>/com.aio-proxy.agent` (loaded, pid) and `launchctl print-disabled gui/<uid>` (disabled). The disk plist and the loaded job can differ; both are reported. `job.pid` is the `/bin/sh` wrapper launchd started, not the sidecar: the sidecar is the wrapper's child in the same process group.
 - **`instance`** resolves the address with `AIO_PROXY_HOME` set to `unit.home` (the service's own config, not the calling process's environment), else the default home. A wildcard bind maps to its loopback (`0.0.0.0` → `127.0.0.1`, `::` → `::1`); a non-loopback bind yields `controlUrl: null` and no token is ever sent. `version`, `pid` and `ppid` come from `GET /dashboard/api/desktop-summary` (authenticated; `server.version`, `server.pid`, `server.ppid`), not `/health`, so an instance is identified by a credential only a same-user process can read. `matchesJob` is `instance.pid == job.pid || instance.ppid == job.pid`, and `null` when `instance.pid` or `job.pid` is unknown (an older instance without `desktop-summary` reports `version` from `/health` and `pid: null`, `ppid: null`); `null` counts as not matching for automation. A sidecar reparented to launchd (ppid 1, wrapper gone) does not match, so it gets no automation.
 - **`token`** is read from `<home>/desktop-token`; `null` if absent or failing the file checks below.
@@ -106,7 +106,7 @@ Automatic mutation requires **`owner: desktop` and either `matchesJob: true` or 
 | Desktop, disabled | Nothing. The user stopped it; show Stopped with a Start button |
 | Desktop, running, `instance.version < bundledVersion` | `service restart`, then wait up to 30s for the pre-restart `instance.pid` to be gone and `/health` reporting `bundledVersion`. One attempt per app launch; on failure show the error, no retry loop |
 | Desktop, running, `instance.version >= bundledVersion` | Nothing (never downgrade) |
-| External or unknown owner, or `matchesJob: false` | Nothing, ever. Buttons act only on click |
+| External, orphaned or unknown owner, or `matchesJob: false` | Nothing, ever. Buttons act only on click |
 
 The version-triggered restart interrupts in-flight requests: `shutdownProxyServer` is not a drain (`app.close()` then `server.stop(true)`), and `aio-proxy run` force-exits 3 s after SIGTERM (CLI changes). This is an accepted product decision for phase 1. The restart runs when the app relaunches after Sparkle's "Install and Relaunch", which the user has already consented to.
 
@@ -123,7 +123,7 @@ Every mutating command re-runs `__desktop-connect` first and aborts if ownership
 
 Completion conditions differ per action: Restart waits for the pre-restart `instance.pid` to be gone and `/health` with the expected version (this is the guard against the inferred case where an old sidecar outlives SIGTERM, the new instance fails to bind and exits, and the old binary keeps serving); Stop waits for `job.pid == null` and the instance unreachable; Reload reports the response (`409` carries `error` and `stage`). Then the panel refetches.
 
-`service restart` is never used on an external service: `writeManagedUnit` rewrites the plist with the invoking binary.
+`service restart` is never used on an external service: `writeManagedUnit` rewrites the plist with the invoking binary. That rewrite is exactly what an orphaned plist needs, so **Take over and start** is `service restart` (keeping the plist's `AIO_PROXY_HOME`), offered only for an orphaned owner in a persistent install and completed like a desktop Restart; Start, Stop and Restart are not offered for it, since launchd can only relaunch the missing binary.
 
 "Proxy starts at login" is the launchd job itself (`RunAtLoad`). "App starts at login" is a separate toggle backed by `SMAppService`, whose UI reflects the real status including "requires approval" (with a link to System Settings).
 

@@ -1,7 +1,10 @@
 import { expect, test } from 'bun:test';
+import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { LAUNCHD_EXEC_WRAPPER, LEGACY_LAUNCHD_EXEC_WRAPPERS } from '../service';
-import { inspectUnit, parseDisabled, parseJobPrint, unitOwner } from './launchd-inspect';
+import { inspectUnit, isRunnable, parseDisabled, parseJobPrint, unitOwner } from './launchd-inspect';
 
 const plist = (args: unknown, env: Record<string, string> = { AIO_PROXY_HOME: '/Users/u/.aio-proxy' }) => ({
   ProgramArguments: args,
@@ -34,13 +37,25 @@ test('a hand-edited plist without AIO_PROXY_HOME reports no home', () => {
 });
 
 test('owner compares the wrapper target with the desktop symlink', () => {
+  const exists = () => true;
   const unit = inspectUnit(plist(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, '/link/aio-proxy']));
-  expect(unitOwner(unit, '/link/aio-proxy')).toBe('desktop');
-  expect(unitOwner(unit, '/other/aio-proxy')).toBe('external');
-  expect(unitOwner(unit, undefined)).toBe('external');
-  expect(unitOwner(inspectUnit(plist(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, ''])), '')).toBe('external');
-  expect(unitOwner(inspectUnit(plist(['/usr/local/bin/aio-proxy', 'run'])), '/link/aio-proxy')).toBe('unknown');
-  expect(unitOwner({ present: false, wrapperValid: false, target: null, home: null }, '/link/aio-proxy')).toBeNull();
+  expect(unitOwner(unit, '/link/aio-proxy', exists)).toBe('desktop');
+  expect(unitOwner(unit, '/other/aio-proxy', exists)).toBe('external');
+  expect(unitOwner(unit, undefined, exists)).toBe('external');
+  expect(unitOwner(inspectUnit(plist(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, ''])), '', exists)).toBe('external');
+  expect(unitOwner(inspectUnit(plist(['/usr/local/bin/aio-proxy', 'run'])), '/link/aio-proxy', exists)).toBe('unknown');
+  expect(
+    unitOwner({ present: false, wrapperValid: false, target: null, home: null }, '/link/aio-proxy', exists),
+  ).toBeNull();
+});
+
+test('an external unit whose CLI was uninstalled is orphaned; a desktop one with a dangling link is not', () => {
+  const gone = () => false;
+  const brew = inspectUnit(plist(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, '/opt/homebrew/bin/aio-proxy']));
+  expect(unitOwner(brew, '/link/aio-proxy', gone)).toBe('orphaned');
+  // The app repairs its own dangling symlink; that is not a takeover.
+  const desktop = inspectUnit(plist(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, '/link/aio-proxy']));
+  expect(unitOwner(desktop, '/link/aio-proxy', gone)).toBe('desktop');
 });
 
 test('parses launchctl print for a running, a stopped, and an unloaded job', () => {
@@ -60,4 +75,17 @@ test('parses print-disabled in both the current and the older boolean format', (
   expect(parseDisabled('disabled services = {\n\t"com.aio-proxy.agent" => enabled\n}')).toBe(false);
   expect(parseDisabled('disabled services = {\n\t"com.aio-proxy.agent" => true\n}')).toBe(true);
   expect(parseDisabled('disabled services = {\n\t"com.other" => disabled\n}')).toBe(false);
+});
+
+test('a target the launchd wrapper would skip with [ -x ] is not runnable', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-runnable-'));
+  const binary = join(dir, 'aio-proxy');
+  writeFileSync(binary, '#!/bin/sh\n');
+  chmodSync(binary, 0o755);
+  expect(isRunnable(binary)).toBe(true);
+  chmodSync(binary, 0o644);
+  expect(isRunnable(binary)).toBe(false);
+  expect(isRunnable(join(dir, 'missing'))).toBe(false);
+  // A directory passes -x but is not something launchd can run.
+  expect(isRunnable(dir)).toBe(false);
 });

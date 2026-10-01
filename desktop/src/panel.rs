@@ -10,6 +10,9 @@ mod placement;
 mod quota;
 mod states;
 mod status;
+
+/// The menus disable Open Dashboard by the same rule that hides the footer's button.
+pub(crate) use status::is_down;
 mod usage;
 mod view;
 mod window;

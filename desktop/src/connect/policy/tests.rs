@@ -204,11 +204,27 @@ fn restart_uses_kickstart_for_external_and_service_restart_only_for_desktop() {
 }
 
 #[test]
+fn an_orphaned_service_is_only_taken_over_on_a_click() {
+    // The brew-uninstalled CLI's plist: KeepAlive keeps relaunching a missing binary.
+    let orphaned = |v: &mut Value| {
+        v["unit"]["owner"] = json!("orphaned");
+        stopped_process(v);
+    };
+    assert_eq!(auto(orphaned), None);
+    // Start would only relaunch the missing binary; taking over rewrites the plist to this app.
+    assert_eq!(offered_actions(&discovery(orphaned), true), Offered { take_over: true, ..Offered::default() });
+    assert_eq!(offered_actions(&discovery(orphaned), false), Offered::default());
+    assert_eq!(user_mutations(UserAction::TakeOver, Owner::Orphaned), Some(&[Mutation::Service("restart")][..]));
+    assert_eq!(user_mutations(UserAction::TakeOver, Owner::External), None);
+    assert_eq!(user_mutations(UserAction::Start, Owner::Orphaned), None);
+}
+
+#[test]
 fn buttons_follow_ownership_and_running_state() {
     let running = offered_actions(&discovery(|_| {}), true);
-    assert_eq!(running, Offered { install: false, start: false, restart: true, stop: true, reload: true });
+    assert_eq!(running, Offered { start: false, restart: true, stop: true, reload: true, ..Offered::default() });
     let stopped = offered_actions(&discovery(stopped_process), true);
-    assert_eq!(stopped, Offered { install: false, start: true, restart: false, stop: false, reload: false });
+    assert_eq!(stopped, Offered { start: true, ..Offered::default() });
     let unknown = offered_actions(&discovery(|v| v["unit"]["owner"] = json!("unknown")), true);
     assert_eq!(unknown, Offered { reload: true, ..Offered::default() });
     let read_only = offered_actions(&discovery(|_| {}), false);

@@ -67,6 +67,18 @@ fn the_headline_tells_stopped_from_running() {
 }
 
 #[test]
+fn a_live_health_answer_outranks_a_stale_unreachable_discovery() {
+    let mut model = model(|v| {
+        v["job"]["pid"] = Value::Null;
+        v["instance"]["reachable"] = json!(false);
+    });
+    assert!(is_down(&model));
+    // The probe answered after discovery; its rediscovery failed, so the old discovery stays.
+    model.health.record(true);
+    assert!(!is_down(&model));
+}
+
+#[test]
 fn actions_in_flight_read_as_words() {
     let mut m = model(|_| {});
     m.action = ActionState::Automatic(crate::connect::policy::AutoAction::RestartForVersion);

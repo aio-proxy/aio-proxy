@@ -18,6 +18,7 @@ impl MenuCommand {
         match self {
             MenuCommand::OpenDashboard => "open-dashboard",
             MenuCommand::Run(UserAction::InstallAndStart) => "run-install",
+            MenuCommand::Run(UserAction::TakeOver) => "run-take-over",
             MenuCommand::Run(UserAction::Start) => "run-start",
             MenuCommand::Run(UserAction::Stop) => "run-stop",
             MenuCommand::Run(UserAction::Restart) => "run-restart",
@@ -33,6 +34,7 @@ impl MenuCommand {
         Some(match id {
             "open-dashboard" => MenuCommand::OpenDashboard,
             "run-install" => MenuCommand::Run(UserAction::InstallAndStart),
+            "run-take-over" => MenuCommand::Run(UserAction::TakeOver),
             "run-start" => MenuCommand::Run(UserAction::Start),
             "run-stop" => MenuCommand::Run(UserAction::Stop),
             "run-restart" => MenuCommand::Run(UserAction::Restart),
@@ -57,10 +59,18 @@ fn item(command: MenuCommand, label: &str, enabled: bool) -> MenuEntry {
     MenuEntry::Item { command, label: label.into(), enabled }
 }
 
-pub fn menu_entries(offered: Offered, busy: bool, persistent: bool, login: LoginItemStatus) -> Vec<MenuEntry> {
-    let mut entries = vec![item(MenuCommand::OpenDashboard, "Open Dashboard", true), MenuEntry::Separator];
+/// `dashboard` is false while the proxy is down: from live health, not only the last discovery.
+pub fn menu_entries(
+    offered: Offered,
+    dashboard: bool,
+    busy: bool,
+    persistent: bool,
+    login: LoginItemStatus,
+) -> Vec<MenuEntry> {
+    let mut entries = vec![item(MenuCommand::OpenDashboard, "Open Dashboard", dashboard), MenuEntry::Separator];
     let services = [
         (offered.install, UserAction::InstallAndStart, "Install and start"),
+        (offered.take_over, UserAction::TakeOver, "Take over and start"),
         (offered.start, UserAction::Start, "Start"),
         (offered.stop, UserAction::Stop, "Stop"),
         (offered.restart, UserAction::Restart, "Restart"),

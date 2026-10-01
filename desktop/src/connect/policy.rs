@@ -94,7 +94,7 @@ pub fn automatic_action(d: &Discovery, persistent: bool, attempts: &AutoAttempts
                 AutoAction::RestartForVersion
             }
         }
-        Owner::NoPlist | Owner::External | Owner::Unknown => return None,
+        Owner::NoPlist | Owner::External | Owner::Orphaned | Owner::Unknown => return None,
     };
     (!attempts.used(action)).then_some(action)
 }
@@ -105,6 +105,8 @@ pub enum UserAction {
     /// is possible, even when the automatic row is blocked by a leftover `job.disabled` (the
     /// user's own `service uninstall`) or an already-spent attempt.
     InstallAndStart,
+    /// Rewrite an orphaned plist to this app's symlink and start it: `service restart`.
+    TakeOver,
     Start,
     Restart,
     Stop,
@@ -116,6 +118,7 @@ impl UserAction {
     pub fn label(self) -> &'static str {
         match self {
             UserAction::InstallAndStart => "Install and start",
+            UserAction::TakeOver => "Take over and start",
             UserAction::Start => "Start",
             UserAction::Restart => "Restart",
             UserAction::Stop => "Stop",
@@ -127,6 +130,7 @@ impl UserAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Offered {
     pub install: bool,
+    pub take_over: bool,
     pub start: bool,
     pub restart: bool,
     pub stop: bool,
@@ -134,13 +138,14 @@ pub struct Offered {
 }
 
 /// Which buttons the panel shows. Service actions need a persistent install and a desktop or
-/// external owner; Install needs a persistent install and a fresh-install candidate; Reload only
-/// needs a reachable instance.
+/// external owner; Install needs a persistent install and a fresh-install candidate; Take over needs
+/// a persistent install and an orphaned plist; Reload only needs a reachable instance.
 pub fn offered_actions(d: &Discovery, persistent: bool) -> Offered {
     let service = persistent && matches!(d.unit.owner, Owner::Desktop | Owner::External);
     let running = d.job.loaded && d.job.pid.is_some();
     Offered {
         install: persistent && fresh_install_possible(d),
+        take_over: persistent && d.unit.owner == Owner::Orphaned,
         start: service && !running,
         restart: service && running,
         stop: service && running,
@@ -170,6 +175,8 @@ pub fn auto_mutations(action: AutoAction) -> &'static [Mutation] {
 pub fn user_mutations(action: UserAction, owner: Owner) -> Option<&'static [Mutation]> {
     match (action, owner) {
         (UserAction::InstallAndStart, Owner::NoPlist) => Some(auto_mutations(AutoAction::InstallAndStart)),
+        // `service restart` rewrites the plist to the symlink, then reloads it.
+        (UserAction::TakeOver, Owner::Orphaned) => Some(&[Mutation::Service("restart")]),
         (UserAction::Start, Owner::Desktop | Owner::External) => Some(&[Mutation::Service("start")]),
         (UserAction::Restart, Owner::Desktop) => Some(&[Mutation::Service("restart")]),
         (UserAction::Restart, Owner::External) => Some(&[Mutation::Kickstart]),

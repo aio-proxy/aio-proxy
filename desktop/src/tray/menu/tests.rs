@@ -2,7 +2,7 @@ use super::*;
 use crate::connect::policy::Offered;
 
 fn offered(install: bool, start: bool, restart: bool, stop: bool, reload: bool) -> Offered {
-    Offered { install, start, restart, stop, reload }
+    Offered { install, take_over: false, start, restart, stop, reload }
 }
 
 fn labels(entries: &[MenuEntry]) -> Vec<String> {
@@ -17,7 +17,7 @@ fn labels(entries: &[MenuEntry]) -> Vec<String> {
 
 #[test]
 fn a_running_desktop_service_offers_stop_restart_reload_and_login() {
-    let entries = menu_entries(offered(false, false, true, true, true), false, true, LoginItemStatus::Enabled);
+    let entries = menu_entries(offered(false, false, true, true, true), true, false, true, LoginItemStatus::Enabled);
     assert_eq!(
         labels(&entries),
         [
@@ -39,17 +39,28 @@ fn a_running_desktop_service_offers_stop_restart_reload_and_login() {
 
 #[test]
 fn a_stopped_service_offers_start_and_a_fresh_one_install() {
-    let stopped =
-        labels(&menu_entries(offered(false, true, false, false, false), false, true, LoginItemStatus::NotRegistered));
+    let stopped = labels(&menu_entries(
+        offered(false, true, false, false, false),
+        true,
+        false,
+        true,
+        LoginItemStatus::NotRegistered,
+    ));
     assert!(stopped.contains(&"Start".to_string()) && !stopped.contains(&"Stop".to_string()));
-    let fresh =
-        labels(&menu_entries(offered(true, false, false, false, false), false, true, LoginItemStatus::NotRegistered));
+    let fresh = labels(&menu_entries(
+        offered(true, false, false, false, false),
+        true,
+        false,
+        true,
+        LoginItemStatus::NotRegistered,
+    ));
     assert!(fresh.contains(&"Install and start".to_string()));
 }
 
 #[test]
 fn a_read_only_copy_lists_login_disabled_and_only_what_it_may_do() {
-    let entries = menu_entries(offered(false, false, false, false, true), false, false, LoginItemStatus::Unavailable);
+    let entries =
+        menu_entries(offered(false, false, false, false, true), true, false, false, LoginItemStatus::Unavailable);
     assert_eq!(
         labels(&entries),
         [
@@ -70,7 +81,8 @@ fn a_read_only_copy_lists_login_disabled_and_only_what_it_may_do() {
 
 #[test]
 fn busy_disables_service_actions_and_approval_is_named() {
-    let entries = menu_entries(offered(false, false, true, true, true), true, true, LoginItemStatus::RequiresApproval);
+    let entries =
+        menu_entries(offered(false, false, true, true, true), true, true, true, LoginItemStatus::RequiresApproval);
     let enabled_of = |wanted: MenuCommand| {
         entries.iter().find_map(|e| match e {
             MenuEntry::Item { command, enabled, .. } if *command == wanted => Some(*enabled),
@@ -106,6 +118,7 @@ fn ids_round_trip() {
     for command in [
         MenuCommand::OpenDashboard,
         MenuCommand::Run(UserAction::InstallAndStart),
+        MenuCommand::Run(UserAction::TakeOver),
         MenuCommand::Run(UserAction::Start),
         MenuCommand::Run(UserAction::Stop),
         MenuCommand::Run(UserAction::Restart),

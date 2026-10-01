@@ -138,7 +138,8 @@ pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
         .as_ref()
         .map(|d| crate::connect::policy::offered_actions(d, model.persistent()))
         .unwrap_or_default();
-    menu_entries(offered, model.action.is_busy(), model.persistent(), model.login_item)
+    let dashboard = !crate::panel::is_down(model);
+    menu_entries(offered, dashboard, model.action.is_busy(), model.persistent(), model.login_item)
 }
 
 /// Runs a menu command, from the right-click menu or the panel's `⋯` menu.

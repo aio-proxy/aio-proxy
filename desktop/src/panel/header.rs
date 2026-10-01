@@ -1,4 +1,5 @@
-//! Status, endpoint, one alert line with Show, one notice line, and at most one promoted action.
+//! Status, endpoint, one alert line with Show, and one notice line. A down proxy's start action
+//! is the body's (`states.rs`).
 
 use gpui_kit::component::button::*;
 use gpui_kit::component::*;
@@ -6,19 +7,6 @@ use gpui_kit::*;
 
 use super::status;
 use crate::app::{self, AppModel, SummaryState};
-use crate::connect::policy::{UserAction, offered_actions};
-
-/// The single state-relevant action: Start when stopped, Install and start when a fresh install is offered.
-fn promoted(model: &AppModel) -> Option<(UserAction, &'static str)> {
-    let offered = offered_actions(model.discovery.as_ref()?, model.persistent());
-    if offered.install {
-        Some((UserAction::InstallAndStart, "Install and start"))
-    } else if offered.start {
-        Some((UserAction::Start, "Start"))
-    } else {
-        None
-    }
-}
 
 /// `on_show` scrolls to the Quota group; it runs only when the alerting Provider is listed there.
 pub fn header(
@@ -44,16 +32,6 @@ pub fn header(
                 .loading(model.is_refreshing())
                 .tooltip(updated)
                 .on_click(|_, _, cx| app::manual_refresh(cx)),
-        );
-    }
-    if let Some((action, label)) = promoted(model) {
-        line = line.child(
-            Button::new("promoted")
-                .small()
-                .primary()
-                .label(label)
-                .disabled(model.action.is_busy())
-                .on_click(move |_, _, cx| app::run_user_action(cx, action)),
         );
     }
     let mut column = v_flex().px_5().pt_3().gap(px(2.)).child(line);
