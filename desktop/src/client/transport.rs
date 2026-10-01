@@ -185,8 +185,9 @@ fn exchange(request: &Request, limits: Limits, deadline: Instant, cancel: &Cance
     })?;
     cancel.register(&stream)?;
     // Checked on the connection that would carry the token: the proxy may have exited since
-    // discovery, and another account's listener may now hold the port.
-    if request.bearer.is_some() && !super::listener::owned_by_this_user(request.url.addr, deadline) {
+    // discovery, and another account may hold the port, or may have accepted this very connection
+    // and handed the port back; only this connection's serving socket decides.
+    if request.bearer.is_some() && !super::listener::peer_owned_by_this_user(&stream, deadline) {
         return Err(HttpError::UntrustedListener);
     }
     stream.set_write_timeout(Some(remaining(deadline)?)).map_err(HttpError::Io)?;

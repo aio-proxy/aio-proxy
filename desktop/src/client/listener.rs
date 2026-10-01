@@ -1,8 +1,8 @@
-//! Whether this user owns the socket listening at an address. Another local account can bind the
-//! proxy's port while it is down and answer `/health`; the desktop token goes only to a listener of
-//! this user, checked on the connection that is about to carry it (the same rule as discovery's).
+//! Whether this user owns the other end of a connection. Another local account can bind the proxy's
+//! port while it is down and answer `/health`; the desktop token goes only over a connection whose
+//! serving socket belongs to this user.
 
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpStream};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,7 +14,7 @@ pub struct Listener {
     pub address: String,
 }
 
-/// The listening sockets in `lsof -F tun` output: each file's family and address, under its uid.
+/// The sockets in `lsof -F tun` output: each file's family and name, under its process's uid.
 pub fn parse_listeners(output: &str) -> Vec<Listener> {
     let mut listeners = Vec::new();
     let (mut uid, mut family) = (None, String::new());
@@ -35,41 +35,59 @@ pub fn parse_listeners(output: &str) -> Vec<Listener> {
     listeners
 }
 
-/// `uid` listens at `addr` itself or on its family's wildcard. The kernel keeps a second user off a
-/// port within one family but not across IPv4 and IPv6, so a listener elsewhere proves nothing.
-pub fn listens_at(listeners: &[Listener], uid: u32, addr: SocketAddr) -> bool {
-    let family = if addr.is_ipv6() { "IPv6" } else { "IPv4" };
-    let (exact, wildcard) = (addr.to_string(), format!("*:{}", addr.port()));
-    listeners.iter().any(|l| l.uid == uid && l.family == family && (l.address == exact || l.address == wildcard))
+/// The serving side of a connection from `local` to `peer`, as `lsof` names it (`peer->local`),
+/// owned by `uid`. An unprivileged `lsof` lists only this user's sockets, so another account's
+/// accepted socket never matches.
+pub fn serves(sockets: &[Listener], uid: u32, peer: SocketAddr, local: SocketAddr) -> bool {
+    let name = format!("{peer}->{local}");
+    sockets.iter().any(|s| s.uid == uid && s.address == name)
 }
 
-/// Runs `lsof` (an unprivileged one does not even see other users' sockets) until `deadline`; any
-/// failure counts as not ours.
-pub fn owned_by_this_user(addr: SocketAddr, deadline: Instant) -> bool {
-    let Ok(mut child) = Command::new("/usr/sbin/lsof")
-        .args(["-nP", &format!("-iTCP:{}", addr.port()), "-sTCP:LISTEN", "-Ftun"])
+/// Whether this user's process holds the other end of `stream`: the socket that is about to carry
+/// the token, not merely whatever listens on the port now (a listener can change hands after the
+/// connection was accepted). The server may not have accepted yet, so `lsof` is retried until
+/// `deadline`; any failure counts as not ours.
+pub fn peer_owned_by_this_user(stream: &TcpStream, deadline: Instant) -> bool {
+    let (Ok(local), Ok(peer)) = (stream.local_addr(), stream.peer_addr()) else { return false };
+    // SAFETY: getuid cannot fail.
+    let uid = unsafe { libc::getuid() };
+    loop {
+        if let Some(output) = lsof(local.port(), deadline)
+            && serves(&parse_listeners(&output), uid, peer, local)
+        {
+            return true;
+        }
+        if Instant::now() + RETRY >= deadline {
+            return false;
+        }
+        thread::sleep(RETRY);
+    }
+}
+
+const RETRY: Duration = Duration::from_millis(25);
+
+/// `lsof`'s field output for the TCP sockets on `port` (either end), or `None` past `deadline`.
+fn lsof(port: u16, deadline: Instant) -> Option<String> {
+    let mut child = Command::new("/usr/sbin/lsof")
+        .args(["-nP", &format!("-iTCP:{port}"), "-Ftun"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-    else {
-        return false;
-    };
+        .ok()?;
     loop {
         match child.try_wait() {
-            Ok(Some(status)) if status.success() => break,
-            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
+            Ok(Some(_)) => break,
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(5)),
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return false;
+                return None;
             }
         }
     }
-    let Ok(output) = child.wait_with_output() else { return false };
-    // SAFETY: getuid cannot fail.
-    let uid = unsafe { libc::getuid() };
-    listens_at(&parse_listeners(&String::from_utf8_lossy(&output.stdout)), uid, addr)
+    let output = child.wait_with_output().ok()?;
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 #[cfg(test)]

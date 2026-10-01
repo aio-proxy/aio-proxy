@@ -1,28 +1,32 @@
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::time::{Duration, Instant};
 
 use super::*;
 
-const LSOF: &str = "p1\nu501\nf12\ntIPv4\nn127.0.0.1:9317\nf13\ntIPv6\nn*:9418\np2\nu502\nf3\ntIPv6\nn[::1]:9317\n";
-
 #[test]
-fn a_listener_vouches_only_for_its_own_address_and_family() {
-    let listeners = parse_listeners(LSOF);
-    assert_eq!(listeners.len(), 3);
-    let at = |addr: &str| listens_at(&listeners, 501, addr.parse().unwrap());
-    assert!(at("127.0.0.1:9317"));
-    // Another user holds ::1 on the same port; our IPv4 listener says nothing about it.
-    assert!(!at("[::1]:9317"));
-    assert!(at("[::1]:9418"));
-    // An IPv6 wildcard does not vouch for an IPv4 connection.
-    assert!(!at("127.0.0.1:9418"));
+fn only_this_users_serving_socket_for_this_connection_counts() {
+    // Our client end, our server end of this connection, and another user's socket elsewhere.
+    let lsof = "p1\nu501\nf8\ntIPv4\nn127.0.0.1:55000->127.0.0.1:9317\nf9\ntIPv4\nn127.0.0.1:9317->127.0.0.1:55000\np2\nu502\nf3\ntIPv6\nn[::1]:9317->[::1]:55001\n";
+    let sockets = parse_listeners(lsof);
+    assert_eq!(sockets.len(), 3);
+    let (server, client) = ("127.0.0.1:9317".parse().unwrap(), "127.0.0.1:55000".parse().unwrap());
+    assert!(serves(&sockets, 501, server, client));
+    // Only our client end is visible when another user accepted the connection: not served by us.
+    let client_only = parse_listeners("p1\nu501\nf8\ntIPv4\nn127.0.0.1:55000->127.0.0.1:9317\n");
+    assert!(!serves(&client_only, 501, server, client));
+    // Another user's accepted socket never vouches, even on the same port.
+    let (v6_server, v6_client) = ("[::1]:9317".parse().unwrap(), "[::1]:55001".parse().unwrap());
+    assert!(!serves(&sockets, 501, v6_server, v6_client));
 }
 
 #[test]
-fn this_users_own_listener_is_recognised() {
+fn a_connection_this_process_serves_is_recognised() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap();
-    assert!(owned_by_this_user(addr, Instant::now() + Duration::from_secs(5)));
+    let stream = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+    let (accepted, _) = listener.accept().unwrap();
+    assert!(peer_owned_by_this_user(&stream, Instant::now() + Duration::from_secs(5)));
     drop(listener);
-    assert!(!owned_by_this_user(addr, Instant::now() + Duration::from_secs(5)));
+    // Still the same accepted socket: closing the listener changes nothing about this connection.
+    assert!(peer_owned_by_this_user(&stream, Instant::now() + Duration::from_secs(5)));
+    drop(accepted);
 }
