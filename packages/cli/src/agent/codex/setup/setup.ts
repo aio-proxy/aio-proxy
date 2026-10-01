@@ -31,6 +31,7 @@ import {
   validateCodexConfig,
 } from '../managed-config';
 import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
+import { prepareSetupConfig } from './catalog-preparation';
 import {
   advanceAuthOperation,
   authOperationPath,
@@ -138,15 +139,7 @@ async function commitKeepChatgpt(
   const identity = await readCodexCommandIdentity(context.location);
   const credentialInstallationId = await readCodexCommandCredentialInstallationId(context.location);
   const installationId = identity?.marker.installationId ?? credentialInstallationId ?? inspection.installationId;
-  await validateCodexConfig(
-    {
-      location: context.location,
-      providerId,
-      baseUrl: codexBaseUrl(context.endpoint),
-      auth: { mode: 'keep-chatgpt', token: credential.token },
-    },
-    lease,
-  );
+  const input = await prepareSetupConfig(context, providerId, { mode: 'keep-chatgpt', token: credential.token }, lease);
   const fromMode = modeOf(inspection);
   if (installationId !== undefined) {
     const operation = await writeAuthOperation(context.location, {
@@ -161,15 +154,7 @@ async function commitKeepChatgpt(
     await revokeAndClear(context, lease, installationId);
     await advanceAuthOperation(context.location, operation, 'revoked');
   }
-  const commit = await configureCodexConfig(
-    {
-      location: context.location,
-      providerId,
-      baseUrl: codexBaseUrl(context.endpoint),
-      auth: { mode: 'keep-chatgpt', token: credential.token },
-    },
-    lease,
-  );
+  const commit = await configureCodexConfig(input, lease);
   await clearAuthOperation(context.location);
   return {
     ...commit,
@@ -277,19 +262,17 @@ async function commitCommand(
     );
     await advanceAuthOperation(context.location, operation, 'authorized');
   }
-  const commit = await configureCodexConfig(
+  const input = await prepareSetupConfig(
+    context,
+    providerId,
     {
-      location: context.location,
-      providerId,
-      baseUrl: codexBaseUrl(context.endpoint),
-      auth: {
-        mode: 'command',
-        installationId: prepared.marker.installationId,
-        command: selection.command,
-      },
+      mode: 'command',
+      installationId: prepared.marker.installationId,
+      command: selection.command,
     },
     lease,
   );
+  const commit = await configureCodexConfig(input, lease);
   await advanceAuthOperation(context.location, operation, 'config-written');
   if (prepared.providerId !== providerId)
     await rebindCodexCommandInstallation(context.location, prepared.marker.installationId, providerId, lease);
@@ -350,19 +333,17 @@ async function recoverComplete(
       lease,
     );
   }
-  await configureCodexConfig(
+  const input = await prepareSetupConfig(
+    context,
+    operation.providerId,
     {
-      location: context.location,
-      providerId: operation.providerId,
-      baseUrl: codexBaseUrl(context.endpoint),
-      auth: {
-        mode: 'command',
-        installationId: operation.installationId,
-        command: await resolveCodexAuthCommand(),
-      },
+      mode: 'command',
+      installationId: operation.installationId,
+      command: await resolveCodexAuthCommand(),
     },
     lease,
   );
+  await configureCodexConfig(input, lease);
   if (identity.providerId !== operation.providerId)
     await rebindCodexCommandInstallation(context.location, operation.installationId, operation.providerId, lease);
   await activateCodexCommandInstallation(context.location, operation.installationId, lease);

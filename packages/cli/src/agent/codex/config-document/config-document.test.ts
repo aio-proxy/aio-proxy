@@ -292,3 +292,17 @@ test('rejects an empty keep-chatgpt token', () => {
     /token cannot be empty/i,
   );
 });
+
+test('local catalog path is a top-level field and preserves unrelated settings', () => {
+  const source = '# user comment\nmodel = "custom"\nmodel_catalog_json = "/user/catalog.json"\n';
+  const text = editCodexDocument(
+    source,
+    codexProviderEdits('aio-proxy', 'http://proxy/v1', keep('key'), '/managed/catalog.json'),
+  );
+  expect(Bun.TOML.parse(text)).toMatchObject({
+    model: 'custom',
+    model_catalog_json: '/managed/catalog.json',
+    model_providers: { 'aio-proxy': { model_catalog_url: 'http://proxy/v1/models' } },
+  });
+  expect(text).toContain('# user comment');
+});

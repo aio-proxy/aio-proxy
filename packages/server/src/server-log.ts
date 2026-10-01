@@ -4,6 +4,12 @@ import { safeDiagnosticFields } from './request-logging/capture-policy';
 import { capturesRequestPayload } from './request-logging/context';
 import type { HttpRequestMetadata } from './request-logging/request-metadata';
 
+export type CodexCatalogSyncFailedLog = {
+  readonly event: 'codex.catalog_sync_failed';
+  readonly errorType: string;
+  readonly code?: string;
+};
+
 export type ConfigReloadLog = {
   readonly error: string;
   readonly event: 'config.reload_failed';
@@ -301,6 +307,7 @@ export type GuardianEvaluationUnavailableLog = {
 };
 
 export type ServerLog =
+  | CodexCatalogSyncFailedLog
   | AgentOperationFailedLog
   | AutoUpdateFailedLog
   | ConfigOAuthLeftoverModelsLog

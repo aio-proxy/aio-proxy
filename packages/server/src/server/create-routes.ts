@@ -191,6 +191,29 @@ const realtimeRouteSource = (state: ServerState): RealtimeRouteSource => ({
 
 const videoRouteSource = (state: ServerState): VideosRouteSource => state;
 
+const skipHttpLog = (context: Context): boolean =>
+  context.req.path === '/health' ||
+  context.req.path === '/dashboard' ||
+  context.req.path.startsWith('/dashboard/') ||
+  context.req.path === '/oauth/device/code' ||
+  context.req.path === '/oauth/token';
+
+const httpRequestLogger = () =>
+  honoLogger({
+    category: ['aio-proxy', 'server', 'http'],
+    level: 'info',
+    format: 'structured-combined',
+    context: {
+      requestId: {
+        headerNames: [],
+        responseHeader: false,
+        generate: () => currentRequestId() ?? crypto.randomUUID(),
+      },
+      include: ['requestId'],
+    },
+    skip: skipHttpLog,
+  });
+
 export const createRoutes = (
   state: ServerState,
   dashboardAssets?: DashboardAssets,
@@ -204,30 +227,11 @@ export const createRoutes = (
     readonly logger?: ServerLogSink;
     readonly shutdown?: AbortSignal;
   } = {},
+  onCodexCatalogRequest?: () => void,
 ) => {
   const app = new Hono();
   app.use((_context, next) => withRequestId(crypto.randomUUID(), next));
-  app.use(
-    honoLogger({
-      category: ['aio-proxy', 'server', 'http'],
-      level: 'info',
-      format: 'structured-combined',
-      context: {
-        requestId: {
-          headerNames: [],
-          responseHeader: false,
-          generate: () => currentRequestId() ?? crypto.randomUUID(),
-        },
-        include: ['requestId'],
-      },
-      skip: (context) =>
-        context.req.path === '/health' ||
-        context.req.path === '/dashboard' ||
-        context.req.path.startsWith('/dashboard/') ||
-        context.req.path === '/oauth/device/code' ||
-        context.req.path === '/oauth/token',
-    }),
-  );
+  app.use(httpRequestLogger());
   const modelAuthentication = requireModelAuthentication({
     // The authored keys are always matched, so a caller that presents one keeps its own
     // principal; `server.requireApiKey` — the resolved policy, anded with the key count by
@@ -236,7 +240,12 @@ export const createRoutes = (
     enforceApiKeys: () => state.currentConfig().server.requireApiKey,
     authenticateAgent: (token) => state.agentIdentity.authenticateAccessToken(token),
   });
-  app.get('/v1/models', parseAgentCatalogNegotiation, modelAuthentication, listModelsHandler(state));
+  app.get(
+    '/v1/models',
+    parseAgentCatalogNegotiation,
+    modelAuthentication,
+    listModelsHandler(state, onCodexCatalogRequest),
+  );
   app.use('/v1/*', modelAuthentication);
   app.use('/v1beta/*', modelAuthentication);
   mountHealthAndDesktopSummary(app, state, version);

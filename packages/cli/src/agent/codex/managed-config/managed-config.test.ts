@@ -6,7 +6,15 @@ import { join } from 'node:path';
 import { processStarttime } from '@aio-proxy/core';
 
 import { resolveCodexLocation } from '../location';
-import { configureCodexConfig, inspectCodexConfig, recoverCodexConfigOperation, removeCodexConfig } from './index';
+import { withCodexInstallation } from '../storage/installation-lock';
+import {
+  configureCodexConfig,
+  inspectCodexConfig,
+  prepareCodexCatalog,
+  recoverCodexConfigOperation,
+  removeCodexConfig,
+  updateManagedCodexCatalog,
+} from './index';
 import { fingerprint, startJournal } from './journal';
 import { readRegularFile, writeTomlAtomically } from './storage';
 
@@ -779,6 +787,53 @@ test('recovery cancellation leaves an absent managed root untouched', async () =
       }),
     ).rejects.toThrow('aborted');
     expect(await Bun.file(join(location.managedRoot, 'config-operation.json')).exists()).toBe(true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('identical configure after a background catalog update preserves config and marker files', async () => {
+  const { root, location } = await fixture(
+    'model_provider = "openai"\nmodel_catalog_json = "/user/original-catalog.json"\n',
+  );
+  try {
+    const input = { location, providerId: 'aio-proxy', baseUrl: 'http://proxy/v1', auth: keep('test-key') };
+    const a = await withCodexInstallation(location, AbortSignal.timeout(15000), (lease) =>
+      prepareCodexCatalog(location, { models: [{ slug: 'A', model_messages: { instructions: 'complete A' } }] }, lease),
+    );
+    await configureCodexConfig({ ...input, catalogPath: a.path });
+    expect(
+      await updateManagedCodexCatalog({
+        location,
+        baseUrl: input.baseUrl,
+        catalog: { models: [{ slug: 'B', model_messages: { instructions: 'complete B' } }] },
+        signal: AbortSignal.timeout(15000),
+      }),
+    ).toBe('updated');
+    const catalogPath = (Bun.TOML.parse(await Bun.file(location.configPath).text()) as Record<string, unknown>)[
+      'model_catalog_json'
+    ] as string;
+    const snapshots = await Promise.all(
+      [location.configPath, location.markerPath].map(async (path) => ({
+        path,
+        text: await Bun.file(path).text(),
+        stat: await lstat(path),
+      })),
+    );
+    for (const selectedCatalogPath of [catalogPath, undefined]) {
+      const result = await configureCodexConfig({ ...input, catalogPath: selectedCatalogPath });
+      for (const before of snapshots) {
+        expect(await Bun.file(before.path).text()).toBe(before.text);
+        const after = await lstat(before.path);
+        expect(after.ino).toBe(before.stat.ino);
+        expect(after.mtimeMs).toBe(before.stat.mtimeMs);
+      }
+      expect(result.status).toBe('unchanged');
+    }
+    expect((await removeCodexConfig(location)).status).toBe('removed');
+    expect(
+      (Bun.TOML.parse(await Bun.file(location.configPath).text()) as Record<string, unknown>)['model_catalog_json'],
+    ).toBe('/user/original-catalog.json');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

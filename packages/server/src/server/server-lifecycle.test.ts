@@ -154,3 +154,70 @@ test('configured keys the operator switched off stop rejecting callers and warn 
   ]);
   app.close();
 });
+
+test('catalog lifecycle supplies a full source and closes synchronizer on success or assembly failure', async () => {
+  const home = isolateHome('aio-proxy-catalog-lifecycle-');
+  const reasons: string[] = [];
+  let closes = 0;
+  const factory = () => ({
+    schedule(reason: string) {
+      reasons.push(reason);
+    },
+    close() {
+      closes++;
+    },
+  });
+  const app = await createServer({ config: { providers: {} }, dbHome: home, localCodexCatalog: factory });
+  expect(reasons).toEqual(['startup']);
+  app.close();
+  app.close();
+  expect(closes).toBe(1);
+  await expect(
+    createServer({
+      config: { providers: {} },
+      dbHome: home,
+      localCodexCatalog: factory,
+      __test: {
+        createRoutes() {
+          throw new Error('assembly');
+        },
+      },
+    }),
+  ).rejects.toThrow('assembly');
+  expect(closes).toBe(2);
+});
+
+test('successful server config publication schedules models-changed without waiting for local update', async () => {
+  const home = isolateHome('aio-proxy-catalog-snapshot-');
+  const path = join(home, 'config.json');
+  await Bun.write(path, JSON.stringify({ providers: {} }));
+  const reasons: string[] = [];
+  const app = await createServer({
+    config: { providers: {} },
+    configPath: path,
+    dbHome: home,
+    watchConfig: false,
+    localCodexCatalog: () => ({
+      schedule(reason) {
+        reasons.push(reason);
+        if (reason === 'models-changed') throw new Error('injected');
+      },
+      close() {},
+    }),
+  });
+  try {
+    await Bun.write(path, JSON.stringify({ providers: {}, server: { port: 9987 } }));
+    const response = await app.request(
+      'http://127.0.0.1:9317/dashboard/api/reload',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: 'http://127.0.0.1:9317' },
+      },
+      loopbackServer,
+    );
+    expect(response.status).toBe(200);
+    expect(reasons).toEqual(['startup', 'models-changed']);
+  } finally {
+    app.close();
+  }
+});

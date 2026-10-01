@@ -1,4 +1,4 @@
-import { isPlainObject } from 'es-toolkit/predicate';
+import { isEqual, isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import type { ValueSlot } from '../config-document';
@@ -61,7 +61,9 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
   const featurePath = 'features\u0000api_key_model_discovery';
   const hasFeature = parsed.fields.some((field) => field.path.join('\u0000') === featurePath);
   const providerFields = hasFeature ? ownedProviderFields : legacyProviderFields;
+  const hasCatalog = parsed.fields.some((field) => field.path.length === 1 && field.path[0] === 'model_catalog_json');
   const allowed = new Set([
+    ...(hasCatalog ? ['model_catalog_json'] : []),
     'model_provider',
     ...(hasFeature ? [featurePath] : []),
     ...[...providerFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),
@@ -71,6 +73,7 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
   ]);
   const paths = new Set<string>();
   const expectedPaths = new Set([
+    ...(hasCatalog ? ['model_catalog_json'] : []),
     'model_provider',
     ...(hasFeature ? [featurePath] : []),
     ...[...providerFields].map((field) => `model_providers\u0000${parsed.providerId}\u0000${field}`),
@@ -100,6 +103,18 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
   }
   return parsed as CodexMarker;
 }
+
+// Field and table ownership are keyed by their paths; their serialization order has no meaning.
+function markerOwnership(marker: CodexMarker) {
+  return {
+    ...marker,
+    fields: Object.fromEntries(marker.fields.map((field) => [field.path.join('\u0000'), field])),
+    createdTables: Object.fromEntries(marker.createdTables.map((path) => [path.join('\u0000'), true])),
+  };
+}
+
+export const equalMarkerOwnership = (left: CodexMarker, right: CodexMarker): boolean =>
+  isEqual(markerOwnership(left), markerOwnership(right));
 
 export async function readMarker(location: CodexLocation): Promise<CodexMarker | undefined> {
   const stat = await inspectRegularFile(location.markerPath);

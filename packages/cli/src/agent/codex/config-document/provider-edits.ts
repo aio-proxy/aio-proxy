@@ -14,7 +14,12 @@ function catalogUrl(baseUrl: string): string {
   }
 }
 
-export function codexProviderEdits(providerId: string, baseUrl: string, auth: CodexAuthConfig): readonly FieldEdit[] {
+export function codexProviderEdits(
+  providerId: string,
+  baseUrl: string,
+  auth: CodexAuthConfig,
+  catalogPath?: string,
+): readonly FieldEdit[] {
   const id = validateCodexProviderId(providerId);
   if (auth.mode === 'keep-chatgpt' && auth.token.length === 0) throw new Error('Codex bearer token cannot be empty');
   const fields: Record<string, ManagedValue> = {
@@ -24,6 +29,9 @@ export function codexProviderEdits(providerId: string, baseUrl: string, auth: Co
     wire_api: 'responses',
   };
   return [
+    ...(catalogPath === undefined
+      ? []
+      : [{ path: ['model_catalog_json'], next: { present: true as const, value: catalogPath } }]),
     { path: ['model_provider'], next: { present: true, value: id } },
     { path: ['features', 'api_key_model_discovery'], next: { present: true, value: true } },
     ...Object.entries(fields).map(([key, value]) => ({

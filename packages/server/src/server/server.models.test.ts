@@ -10,7 +10,9 @@ import { openDb } from '@aio-proxy/core/db';
 import { createServer as createBaseServer } from '#server-test-lifecycle';
 
 import { config } from '../../__tests__/server.test-support';
+import type { CodexCatalog, CodexCatalogSource } from '../codex-catalog-sync';
 import { loopbackServer } from '../dashboard-auth/test-support';
+import { renderDefaultInstructions } from './list-models/codex-client-models/codex-assembly';
 
 describe('GET /v1/models client_version routing', () => {
   let dir: string;
@@ -18,6 +20,10 @@ describe('GET /v1/models client_version routing', () => {
   let originalAioHome: string | undefined;
   let lockedHome: string;
   let codexHome: string;
+  let catalogSource: CodexCatalogSource;
+  let localWork: (() => void) | undefined;
+  let notifications: string[];
+  let throwNotification = false;
   let app: Awaited<ReturnType<typeof createBaseServer>>;
   let lockedApp: Awaited<ReturnType<typeof createBaseServer>>;
   let codexApp: Awaited<ReturnType<typeof createBaseServer>>;
@@ -31,6 +37,9 @@ describe('GET /v1/models client_version routing', () => {
   let closeIdentity: () => void = () => {};
 
   beforeEach(async () => {
+    localWork = undefined;
+    notifications = [];
+    throwNotification = false;
     dir = mkdtempSync(join(tmpdir(), 'aio-proxy-server-'));
     tmpAioHome = mkdtempSync(join(tmpdir(), 'aio-proxy-home-'));
     originalAioHome = process.env.AIO_PROXY_HOME;
@@ -91,6 +100,13 @@ describe('GET /v1/models client_version routing', () => {
     app = await createBaseServer({ config, dbHome: dir, __test: { agentIdentity: identity } });
     lockedHome = mkdtempSync(join(tmpdir(), 'aio-proxy-locked-models-'));
     lockedApp = await createBaseServer({
+      localCodexCatalog: () => ({
+        schedule(reason) {
+          notifications.push(reason);
+          if (throwNotification) throw new Error('injected notification');
+        },
+        close() {},
+      }),
       config: { ...config, server: { ...config.server, apiKeys: [{ key: 'static-key' }] } },
       dbHome: lockedHome,
       __test: { agentIdentity: identity },
@@ -100,6 +116,15 @@ describe('GET /v1/models client_version routing', () => {
     codexHome = mkdtempSync(join(tmpdir(), 'aio-proxy-codex-models-'));
     const textOutput = { metadata: { capabilities: { modalities: { output: ['text'] } } } };
     codexApp = await createBaseServer({
+      localCodexCatalog: (source) => {
+        catalogSource = source;
+        return {
+          schedule() {
+            localWork?.();
+          },
+          close() {},
+        };
+      },
       config: {
         ...config,
         router: { models: { 'gpt-alias': textOutput, compatible: textOutput, 'compatible-test': textOutput } },
@@ -121,6 +146,65 @@ describe('GET /v1/models client_version routing', () => {
     rmSync(lockedHome, { recursive: true, force: true });
     rmSync(codexHome, { recursive: true, force: true });
     rmSync(tmpAioHome, { recursive: true, force: true });
+  });
+
+  test('authenticated Codex requests notify without awaiting local work or sharing HTTP abort', async () => {
+    expect(notifications).toEqual(['startup']);
+    notifications.length = 0;
+    throwNotification = true;
+    const controller = new AbortController();
+    const response = await lockedApp.request('/v1/models?client_version=0.146.0', {
+      headers: { authorization: 'Bearer static-key' },
+      signal: controller.signal,
+    });
+    expect(response.status).toBe(200);
+    controller.abort();
+    expect(notifications).toEqual(['request']);
+    notifications.length = 0;
+    const denied = await lockedApp.request('/v1/models?client_version=0.146.0');
+    expect(denied.status).toBe(401);
+    await lockedApp.request('/v1/models', { headers: { authorization: 'Bearer static-key' } });
+    await lockedApp.request('/v1/models?client_version=0.146.0', {
+      headers: { authorization: `Bearer ${grok.accessToken}` },
+    });
+    await lockedApp.request('/v1/models?client_version=0.146.0', {
+      headers: { authorization: `Bearer ${opencode.accessToken}` },
+    });
+    await lockedApp.request('/v1/models?agent=pi&adapter_version=1.2.3&schema_version=1', {
+      headers: { authorization: `Bearer ${pi.accessToken}` },
+    });
+    expect(notifications).toEqual([]);
+  });
+
+  test('pending local file updates do not block GET and source remains full after HTTP cancellation', async () => {
+    const service = new AbortController();
+    const request = new AbortController();
+    let loaded: CodexCatalog | undefined;
+    let loadError: unknown;
+    const fileUpdate = new Promise<void>(() => {});
+    localWork = () => {
+      void catalogSource
+        .load(service.signal)
+        .then(async (value) => {
+          loaded = value;
+          await fileUpdate;
+        })
+        .catch((error: unknown) => {
+          loadError = error;
+        });
+    };
+    const response = await codexApp.request('/v1/models?client_version=0.146.0', { signal: request.signal });
+    expect(response.status).toBe(200);
+    request.abort();
+    expect(service.signal.aborted).toBe(false);
+    for (let i = 0; i < 100 && loaded === undefined; i++) await Bun.sleep(2);
+    expect(loadError).toBeUndefined();
+    expect(loaded).toBeDefined();
+    const model = loaded!.models.find((row) => row['slug'] === 'gpt-alias');
+    expect((model!['model_messages'] as { instructions_template: string }).instructions_template).toBe(
+      renderDefaultInstructions('gpt-alias', 'full'),
+    );
+    service.abort();
   });
 
   const cases = [
@@ -181,7 +265,7 @@ describe('GET /v1/models client_version routing', () => {
 
   test('Agent negotiation wins over client_version and static keys cannot read it', async () => {
     const agentResponse = await app.request(
-      '/v1/models?agent=opencode&adapter_version=1.2.3&schema_version=1&client_version=0.146.0',
+      '/v1/models?agent=opencode&adapter_version=1.2.3&schema_version=1&client_version=0.146.0&codex_instructions=invalid',
       { headers: { authorization: `Bearer ${opencode.accessToken}` } },
       loopbackServer,
     );
@@ -251,7 +335,7 @@ describe('GET /v1/models client_version routing', () => {
     expect(body.models).toBeUndefined();
   });
 
-  test.each(['/v1/models', '/v1/models?client_version=0.146.0'])(
+  test.each(['/v1/models?codex_instructions=invalid', '/v1/models?client_version=0.146.0&codex_instructions=invalid'])(
     'Grok installation receives ordinary models at %s',
     async (path) => {
       for (const server of [app, lockedApp]) {
@@ -323,5 +407,59 @@ describe('GET /v1/models client_version routing', () => {
         ).status,
       ).not.toBe(200);
     }
+  });
+
+  test('Codex HTTP defaults to compact and accepts explicit compact/full', async () => {
+    const request = async (mode = '') => {
+      const response = await codexApp.request(
+        `/v1/models?client_version=any${mode}`,
+        { headers: { authorization: `Bearer ${codex.accessToken}` } },
+        loopbackServer,
+      );
+      expect(response.status).toBe(200);
+      return response.json();
+    };
+    const compact = await request();
+    expect(await request('&codex_instructions=compact')).toEqual(compact);
+    const full = await request('&codex_instructions=full');
+    expect(compact.models.map((row: { slug: string }) => row.slug)).toEqual(
+      full.models.map((row: { slug: string }) => row.slug),
+    );
+    expect(compact.models[0].model_messages).not.toEqual(full.models[0].model_messages);
+    for (const row of full.models) {
+      expect(row.model_messages.instructions_template).toBe(renderDefaultInstructions(row.slug));
+    }
+  });
+
+  test.each(['invalid', '', 'FULL'])('rejects invalid Codex instructions mode %s', async (mode) => {
+    const response = await codexApp.request(
+      `/v1/models?client_version=any&codex_instructions=${mode}`,
+      { headers: { authorization: `Bearer ${codex.accessToken}` } },
+      loopbackServer,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: 'invalid_request' } });
+  });
+
+  test.each(['full', 'invalid'])('instructions mode %s does not bypass authentication', async (mode) => {
+    expect(
+      (await lockedApp.request(`/v1/models?client_version=any&codex_instructions=${mode}`, {}, loopbackServer)).status,
+    ).toBe(401);
+  });
+
+  test.each(['opencode', 'pi', 'omp'] as const)('%s cannot bypass Agent negotiation using full', async (target) => {
+    const credential = target === 'opencode' ? opencode : target === 'pi' ? pi : omp;
+    const response = await codexApp.request(
+      '/v1/models?client_version=any&codex_instructions=full',
+      { headers: { authorization: `Bearer ${credential.accessToken}` } },
+      loopbackServer,
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test('ordinary lists ignore instructions mode', async () => {
+    const response = await app.request('/v1/models?codex_instructions=invalid', undefined, loopbackServer);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ object: 'list' });
   });
 });

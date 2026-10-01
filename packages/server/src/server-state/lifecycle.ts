@@ -105,6 +105,9 @@ export async function commitConfig(
   );
   const before = (runtime.manager.current() as Snapshot).summaries;
   const retired = runtime.manager.swap(candidate);
+  try {
+    runtime.options.onProviderSnapshotChanged?.();
+  } catch {}
   replaceCatalogJobs(runtime, candidate.catalogJobs);
   runtime.events.publish({ event: 'config.changed', data: providerDiff(before, candidate.summaries) });
   // The candidate carries the runtime identities this commit produced; nothing is re-read.

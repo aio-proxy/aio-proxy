@@ -17,7 +17,15 @@ import type {
   ConfigRemoval,
   OwnedField,
 } from '../contracts';
-import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
+import type { CodexLease } from '../storage/installation-lock';
+import {
+  catalogOwnedField,
+  catalogReference,
+  pruneCodexCatalogs,
+  pruneRemovedCatalogs,
+  validateCatalogPath,
+} from './catalog-storage';
+import { completeOperation, recoverPending, runExclusive, withInstallationLease } from './config-operation';
 import { changedFields, equalSlot } from './inspect';
 import {
   clearJournal,
@@ -28,16 +36,8 @@ import {
   startJournal,
   updateJournal,
 } from './journal';
-import { deleteMarker, readMarker, validateMarker, writeMarker } from './marker';
-import {
-  assertNoSymlinkParents,
-  chmodChecked,
-  ensureManagedRoot,
-  inspectDirectory,
-  readRegularFile,
-  syncParent,
-  writeTomlAtomically,
-} from './storage';
+import { deleteMarker, equalMarkerOwnership, readMarker, validateMarker } from './marker';
+import { assertNoSymlinkParents, chmodChecked, ensureManagedRoot, inspectDirectory, readRegularFile } from './storage';
 
 const providerFields = [
   'name',
@@ -50,33 +50,6 @@ const providerFields = [
 const featureFields = ['api_key_model_discovery'] as const;
 const commandFields = ['command', 'args', 'timeout_ms', 'refresh_interval_ms'] as const;
 const authenticationFields = new Set(['env_key', 'aws', 'headers', 'header', 'api_key']);
-const operations = new Map<string, Promise<void>>();
-
-const runExclusive = async <T>(key: string, operation: () => Promise<T>): Promise<T> => {
-  const prior = operations.get(key) ?? Promise.resolve();
-  let release!: () => void;
-  const current = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  operations.set(key, current);
-  await prior;
-  try {
-    return await operation();
-  } finally {
-    release();
-    if (operations.get(key) === current) operations.delete(key);
-  }
-};
-
-const withInstallationLease = <T>(
-  location: CodexLocation,
-  lease: CodexLease | undefined,
-  operation: (owned: CodexLease) => Promise<T>,
-): Promise<T> => {
-  if (lease !== undefined) return lease.withOwnership(async () => operation(lease));
-  return withCodexInstallation(location, AbortSignal.timeout(15_000), operation);
-};
-
 const providerPath = (providerId: string, field: string): readonly string[] => ['model_providers', providerId, field];
 const ownedPaths = (providerId: string): readonly (readonly string[])[] => [
   ['model_provider'],
@@ -127,37 +100,6 @@ function removeCreatedTables(text: string, marker: CodexMarker): string {
 function restoreOwnedFields(text: string, marker: CodexMarker, edits: readonly FieldEdit[]): string {
   const restored = applyEditsSequentially(text, edits);
   return removeCreatedTables(restored, marker);
-}
-
-async function recoverPending(location: CodexLocation, assertOwned?: () => Promise<void>): Promise<void> {
-  await ensureManagedRoot(location);
-  const pending = await readJournal(location);
-  if (pending === undefined) return;
-  if (await isLiveJournal(pending)) throw new Error('A live Codex configuration operation is pending');
-  const current = await readText(location);
-  const currentFingerprint = current === undefined ? undefined : fingerprint(current.text);
-  const beforeMatches =
-    currentFingerprint === pending.beforeFingerprint && pending.originalExists === (current !== undefined);
-  const afterMatches = currentFingerprint === pending.afterFingerprint;
-  if (pending.stage === 'prepared' && beforeMatches) {
-    await assertOwned?.();
-    await clearJournal(location);
-    return;
-  }
-  if (afterMatches) {
-    await assertOwned?.();
-    if (pending.operation === 'remove') await deleteMarker(location);
-    else await writeMarker(location, pending.targetMarker);
-    await assertOwned?.();
-    await clearJournal(location);
-    return;
-  }
-  if (pending.stage === 'config-written' && beforeMatches) {
-    await assertOwned?.();
-    await clearJournal(location);
-    return;
-  }
-  throw new Error('Codex configuration operation has an unknown recovery state; manual review is required');
 }
 
 export async function recoverCodexConfigOperation(
@@ -236,33 +178,6 @@ function markerFor(
       };
 }
 
-async function completeOperation(
-  location: CodexLocation,
-  journal: Parameters<typeof startJournal>[1],
-  original: Awaited<ReturnType<typeof readText>>,
-  nextText: string,
-  marker: CodexMarker | undefined,
-  lease: CodexLease,
-): Promise<void> {
-  await lease.withOwnershipFence(async (assertOwned) => {
-    const ownedJournal = await startJournal(location, journal);
-    try {
-      await assertOwned();
-      await writeTomlAtomically(location, original, nextText);
-      await updateJournal(location, { ...ownedJournal, stage: 'config-written' });
-      await assertOwned();
-      if (marker === undefined) await deleteMarker(location);
-      else await writeMarker(location, marker);
-      await updateJournal(location, { ...ownedJournal, stage: 'marker-written' });
-      await clearJournal(location);
-      await syncParent(location.markerPath);
-    } catch (error) {
-      await releaseJournalOwner(location, ownedJournal).catch(() => undefined);
-      throw error;
-    }
-  });
-}
-
 function makeFields(text: string, edits: readonly FieldEdit[], prior?: CodexMarker): OwnedField[] {
   return edits.map((edit) => ({
     path: edit.path,
@@ -280,6 +195,7 @@ export async function configureCodexConfig(
     readonly baseUrl: string;
     readonly auth: CodexAuthConfig;
     readonly validateOnly?: boolean;
+    readonly catalogPath?: string;
   },
   lease?: CodexLease,
 ): Promise<ConfigCommit> {
@@ -287,6 +203,7 @@ export async function configureCodexConfig(
     runExclusive(input.location.markerPath, async () => {
       const { location, providerId, baseUrl, auth } = input;
       await ownedLease.withOwnershipFence((assertOwned) => recoverPending(location, assertOwned));
+      if (input.catalogPath !== undefined) await validateCatalogPath(location, input.catalogPath);
       const current = await readText(location);
       const text = current?.text ?? '';
       const document =
@@ -326,7 +243,13 @@ export async function configureCodexConfig(
         if (drift.length > 0)
           throw new Error(`Codex managed fields changed: ${drift.map((path) => path.join('.')).join(', ')}`);
       }
-      const edits = codexProviderEdits(providerId, baseUrl, auth);
+      const retainedCatalog = marker === undefined ? undefined : catalogOwnedField(marker);
+      const edits = [
+        ...codexProviderEdits(providerId, baseUrl, auth, input.catalogPath),
+        ...(input.catalogPath === undefined && retainedCatalog !== undefined
+          ? [{ path: retainedCatalog.path, next: retainedCatalog.applied }]
+          : []),
+      ];
       const editedText = editCodexDocument(workingText, edits);
       const nextText = marker?.providerId === providerId ? removeCreatedTables(editedText, marker) : editedText;
       const fields = makeFields(workingText, edits, marker?.providerId === providerId ? marker : undefined);
@@ -347,7 +270,7 @@ export async function configureCodexConfig(
       const nextMarker = markerFor(location, providerId, fields, createdTables, auth);
       validateMarker(nextMarker, location);
       if (input.validateOnly) return { status: 'unchanged', providerId };
-      if (nextText === text && marker?.providerId === providerId && changedFields(marker, text).length === 0) {
+      if (nextText === text && marker?.providerId === providerId && equalMarkerOwnership(nextMarker, marker)) {
         await chmodChecked(location.configPath, 0o600);
         await chmodChecked(location.markerPath, 0o600);
         return { status: 'unchanged', providerId };
@@ -369,6 +292,15 @@ export async function configureCodexConfig(
         ownedLease,
       );
       await chmodChecked(location.configPath, 0o600);
+      if (input.catalogPath !== undefined || retainedCatalog !== undefined)
+        await pruneCodexCatalogs(
+          location,
+          [
+            input.catalogPath,
+            marker === undefined ? undefined : catalogReference(catalogOwnedField(marker)?.applied),
+          ].filter((path): path is string => path !== undefined),
+          ownedLease,
+        );
       return { status: 'configured', providerId };
     }),
   );
@@ -414,6 +346,7 @@ export async function removeCodexConfig(location: CodexLocation, lease?: CodexLe
             throw error;
           }
         });
+        await pruneRemovedCatalogs(location, marker, ownedLease);
         return { status: 'absent', preservedPaths: [] };
       }
       const restoreEdits: FieldEdit[] = [];
@@ -442,6 +375,7 @@ export async function removeCodexConfig(location: CodexLocation, lease?: CodexLe
         undefined,
         ownedLease,
       );
+      await pruneRemovedCatalogs(location, marker, ownedLease);
       return { status: preservedPaths.length === 0 ? 'removed' : 'partial', preservedPaths };
     }),
   );

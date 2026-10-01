@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { Router } from '@aio-proxy/core';
 import { ConfigSchema } from '@aio-proxy/types';
 
 import { createServerState } from '#server-test-lifecycle';
@@ -45,3 +46,44 @@ function tempHome(): string {
   homes.push(home);
   return home;
 }
+
+test('successful snapshot commits notify after publication and callback errors are isolated', async () => {
+  const home = tempHome();
+  const path = join(home, 'config.json');
+  await Bun.write(path, JSON.stringify({ providers: {} }));
+  let notifications = 0;
+  let failRebuild = false;
+  const state = await createServerState({
+    config: ConfigSchema.parse({ providers: {} }),
+    configPath: path,
+    dbHome: home,
+    watchConfig: false,
+    logger: () => {},
+    __test: {
+      createRouter(providers, routerConfig) {
+        if (failRebuild) throw new Error('injected rebuild');
+        return new Router(providers, routerConfig);
+      },
+    },
+    onProviderSnapshotChanged() {
+      notifications++;
+      throw new Error('injected callback');
+    },
+  });
+  try {
+    await Bun.write(path, JSON.stringify({ providers: {}, server: { port: 9876 } }));
+    expect((await state.reload()).ok).toBe(true);
+    expect(state.currentConfig().server.port).toBe(9876);
+    expect(notifications).toBe(1);
+    failRebuild = true;
+    await Bun.write(path, JSON.stringify({ providers: {}, server: { port: 8765 } }));
+    expect((await state.reload()).ok).toBe(false);
+    expect(state.currentConfig().server.port).toBe(9876);
+    expect(notifications).toBe(1);
+    await Bun.write(path, '{broken');
+    expect((await state.reload()).ok).toBe(false);
+    expect(notifications).toBe(1);
+  } finally {
+    state.close();
+  }
+});

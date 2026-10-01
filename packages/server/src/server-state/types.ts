@@ -47,6 +47,7 @@ export type ServerStateOptions = {
   readonly importPlugin?: PluginPackageImporter;
   readonly pluginLogger?: PluginLogSink;
   readonly builtIns?: readonly BuiltInPluginDefinition[];
+  readonly onProviderSnapshotChanged?: () => void;
 };
 
 export type RecoveryTimer = { readonly clear: () => void };

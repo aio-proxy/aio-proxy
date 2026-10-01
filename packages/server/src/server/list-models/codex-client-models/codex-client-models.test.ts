@@ -14,7 +14,9 @@ import type { Model, ProviderMap } from '@opencode-ai/models';
 
 import type { RuntimeProviderInstance } from '../../../runtime';
 import type { ServerState } from '../../../server-state';
+import { renderDefaultInstructions } from './codex-assembly';
 import { codexClientModels } from './codex-client-models';
+import officialFixture from './fixtures/official-models-2026-10-01.json';
 
 const provider = {
   id: 'p1',
@@ -127,6 +129,44 @@ afterEach(() => {
   else process.env.AIO_PROXY_HOME = original;
 });
 
+test('a large catalog fits the Codex 1 MiB response limit without losing effective instructions', async () => {
+  const slugs = Array.from({ length: 40 }, (_, index) => `model-${index}`);
+  const catalogProvider = {
+    ...provider,
+    alias: Object.fromEntries(
+      slugs.map((slug, index) => [slug, { model: index < 5 ? upstream.slug : 'third-party-model', preserve: false }]),
+    ),
+  } as RuntimeProviderInstance;
+  const template = 'Complete upstream instructions. '.repeat(700);
+  const remote = {
+    ...upstream,
+    base_instructions: 'STALE BASE',
+    model_messages: {
+      instructions_template: template,
+      instructions_variables: { personality_default: 'Runtime personality' },
+      approvals: null,
+    },
+  };
+  const fetchImpl = (async () => Response.json({ models: [remote] })) as unknown as typeof fetch;
+  const result = await codexClientModels(
+    fakeState([catalogProvider], undefined, Object.fromEntries(slugs.map((slug) => [slug, { metadata: TEXT_OUTPUT }]))),
+    { fetchImpl, instructionsMode: 'full' },
+  );
+
+  expect(result.models).toHaveLength(40);
+  expect(new TextEncoder().encode(JSON.stringify(result)).byteLength).toBeLessThanOrEqual(1_048_576);
+  for (const entry of result.models) {
+    expect(entry.base_instructions).toBe('');
+    const messages = entry.model_messages as { instructions_template: string; instructions_variables: unknown };
+    if (Number((entry.slug as string).split('-')[1]) < 5) {
+      expect(messages.instructions_template).toBe(template);
+      expect(messages.instructions_variables).toEqual({ personality_default: 'Runtime personality' });
+    } else {
+      expect(messages.instructions_template).toBe(renderDefaultInstructions(entry.slug as string));
+    }
+  }
+});
+
 test('case A returns upstream verbatim with alias slug/id; case B synthesizes without availability_nux', async () => {
   const fetchImpl = (async () => Response.json({ models: [upstream] })) as unknown as typeof fetch;
   const { models } = await codexClientModels(fakeState(), { fetchImpl });
@@ -144,7 +184,9 @@ test('case A returns upstream verbatim with alias slug/id; case B synthesizes wi
   expect(caseBEntry.slug).toBe('my-alias');
   expect(caseBEntry.display_name).toBe('My Alias');
   expect('availability_nux' in caseBEntry).toBe(false);
-  expect((caseBEntry.base_instructions as string).includes('based on my-alias.')).toBe(true);
+  expect((caseBEntry.model_messages as { instructions_template: string }).instructions_template).toContain(
+    'based on my-alias.',
+  );
 });
 
 test('case B inherits forward-compatible fields from the first remote model template', async () => {
@@ -417,21 +459,22 @@ test('router metadata overrides flow into the synthesized case B entry', async (
   expect(caseB.input_modalities).toEqual(['text', 'image']);
 });
 
-test('case A backfills base_instructions from model_messages.instructions_template when the row omits it', async () => {
+test('case A supplies the required base field without duplicating an existing template', async () => {
   // Codex client 0.146.0 requires ModelInfo.base_instructions; upstream gpt-5.6-*
   // rows omit it and carry the prompt under model_messages.instructions_template.
-  // The emitted row must still expose a non-empty base_instructions or the client
-  // rejects the whole catalog and shows an empty picker.
+  // The emitted row must expose a String; it can be empty when the template
+  // carries the effective prompt.
   const { base_instructions: _dropped, ...withoutBase } = upstream;
   const rowWithTemplate = {
     ...withoutBase,
     model_messages: { instructions_template: 'TEMPLATE PROMPT', instructions_variables: {}, approvals: null },
   };
   const fetchImpl = (async () => Response.json({ models: [rowWithTemplate] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+  const { models } = await codexClientModels(fakeState(), { fetchImpl, instructionsMode: 'full' });
 
   const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
-  expect(caseA.base_instructions).toBe('TEMPLATE PROMPT');
+  expect(caseA.base_instructions).toBe('');
+  expect((caseA.model_messages as { instructions_template: string }).instructions_template).toBe('TEMPLATE PROMPT');
 });
 
 test('case A falls back to the bundled template when the row has neither base_instructions nor instructions_template', async () => {
@@ -443,23 +486,55 @@ test('case A falls back to the bundled template when the row has neither base_in
   expect((caseA.base_instructions as string).includes('based on gpt-5.')).toBe(true);
 });
 
-test('case A leaves an absent instructions_template absent (client falls back to base_instructions)', async () => {
+test.each([
+  { label: 'absent messages', messages: undefined },
+  { label: 'null messages', messages: null },
+  { label: 'messages without a template', messages: { instructions_variables: {}, approvals: null } },
+])('case A retains the base prompt with $label', async ({ messages }) => {
   // A missing Option key deserializes to None, so the client falls back to
   // base_instructions. We must not fabricate a template that would then be
   // preferred over the real base prompt.
-  const rowWithoutMessages = { ...upstream, base_instructions: 'REAL BASE' };
+  const rowWithoutMessages = {
+    ...upstream,
+    base_instructions: 'REAL BASE',
+    ...(messages === undefined ? {} : { model_messages: messages }),
+  };
   const fetchImpl = (async () => Response.json({ models: [rowWithoutMessages] })) as unknown as typeof fetch;
   const { models } = await codexClientModels(fakeState(), { fetchImpl });
 
   const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
   expect(caseA.base_instructions).toBe('REAL BASE');
-  expect('model_messages' in caseA).toBe(false);
+  expect(caseA.model_messages).toEqual(messages);
+});
+
+test('case A repairs an empty template from the base prompt before removing duplicate instructions', async () => {
+  const row = {
+    ...upstream,
+    base_instructions: 'REAL BASE',
+    model_messages: {
+      instructions_template: '',
+      instructions_variables: { personality_default: 'Keep this variable' },
+      approvals: null,
+      future_field: { enabled: true },
+    },
+  };
+  const fetchImpl = (async () => Response.json({ models: [row] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState(), { fetchImpl, instructionsMode: 'full' });
+
+  const entry = models.find((model) => model.id === 'gpt-5') as Record<string, unknown>;
+  expect(entry.base_instructions).toBe('');
+  expect(entry.model_messages).toEqual({
+    instructions_template: 'REAL BASE',
+    instructions_variables: { personality_default: 'Keep this variable' },
+    approvals: null,
+    future_field: { enabled: true },
+  });
 });
 
 test('case A rewrites an empty instructions_template so the client does not read an empty prompt', async () => {
   // The client prefers instructions_template whenever the key is present, even
   // when empty. A present-but-empty template must be replaced, and here there is
-  // no base_instructions, so both fields fall back to the bundled template.
+  // no base_instructions, so the effective prompt falls back to the bundled template.
   const { base_instructions: _dropped, ...withoutBase } = upstream;
   const rowWithEmptyTemplate = {
     ...withoutBase,
@@ -469,25 +544,22 @@ test('case A rewrites an empty instructions_template so the client does not read
   const { models } = await codexClientModels(fakeState(), { fetchImpl });
 
   const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
-  const rendered = caseA.base_instructions as string;
+  const rendered = (caseA.model_messages as { instructions_template: string }).instructions_template;
   expect(rendered.includes('based on gpt-5.')).toBe(true);
-  expect((caseA.model_messages as { instructions_template: string }).instructions_template).toBe(rendered);
+  expect(caseA.base_instructions).toBe('');
 });
 
-test('case A prefers a non-empty instructions_template over base_instructions for the required field', async () => {
-  // When the client will use the template at runtime, base_instructions must be
-  // seeded from that same template so the deserialization-required field matches
-  // the effective prompt.
+test('case A preserves the preferred template without duplicating it in the required base field', async () => {
   const rowWithBoth = {
     ...upstream,
     base_instructions: 'STALE BASE',
     model_messages: { instructions_template: 'LIVE TEMPLATE', instructions_variables: {}, approvals: null },
   };
   const fetchImpl = (async () => Response.json({ models: [rowWithBoth] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+  const { models } = await codexClientModels(fakeState(), { fetchImpl, instructionsMode: 'full' });
 
   const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
-  expect(caseA.base_instructions).toBe('LIVE TEMPLATE');
+  expect(caseA.base_instructions).toBe('');
   expect((caseA.model_messages as { instructions_template: string }).instructions_template).toBe('LIVE TEMPLATE');
 });
 
@@ -616,3 +688,118 @@ test('returns hidden codex-auto-review only when an enabled route exposes it', a
   });
   expect(offline.models.find((entry) => entry.slug === 'codex-auto-review')).toMatchObject({ visibility: 'hide' });
 });
+
+test('compact and full preserve catalog identity and official alias instructions', async () => {
+  const official = { ...officialFixture.models[0]!, future_catalog_field: { mode: 'future' } };
+  const aliases = {
+    'official-alias': { model: official.slug, preserve: false },
+    'gpt-looking-synthetic': { model: 'not-official', preserve: false },
+  };
+  const state = fakeState(
+    [{ ...provider, alias: aliases } as RuntimeProviderInstance],
+    undefined,
+    Object.fromEntries(Object.keys(aliases).map((slug) => [slug, { metadata: TEXT_OUTPUT }])),
+  );
+  const fetchImpl = (async () => Response.json({ models: [official] })) as unknown as typeof fetch;
+  const compact = await codexClientModels(state, { fetchImpl });
+  const explicitCompact = await codexClientModels(state, { fetchImpl, instructionsMode: 'compact' });
+  const full = await codexClientModels(state, { fetchImpl, instructionsMode: 'full' });
+  expect(compact).toEqual(explicitCompact);
+  expect(compact.models.map(({ slug }) => slug)).toEqual(full.models.map(({ slug }) => slug));
+  const compactOfficial = compact.models.find(({ slug }) => slug === 'official-alias')!;
+  const fullOfficial = full.models.find(({ slug }) => slug === 'official-alias')!;
+  const compactNonOfficial = compact.models.find(({ slug }) => slug === 'gpt-looking-synthetic')!;
+  const fullNonOfficial = full.models.find(({ slug }) => slug === 'gpt-looking-synthetic')!;
+  expect(compactOfficial.model_messages).toEqual(fullOfficial.model_messages);
+  expect(compactOfficial.model_messages).toEqual(official.model_messages);
+  expect(compactOfficial.base_instructions).toBe('');
+  expect(compactNonOfficial.model_messages).not.toEqual(fullNonOfficial.model_messages);
+  for (const catalog of [compact, full]) {
+    expect(catalog.models.every((row) => row.future_catalog_field !== undefined)).toBe(true);
+  }
+  const withoutInstructions = (row: Record<string, unknown>) => {
+    const { base_instructions: _base, model_messages: _messages, ...rest } = row;
+    return rest;
+  };
+  expect(compact.models.map(withoutInstructions)).toEqual(full.models.map(withoutInstructions));
+});
+
+test('50 mixed models fit compact budget', async () => {
+  const syntheticSlugs = Array.from({ length: 44 }, (_, index) => `synthetic-${index}`);
+  const slugs = [...officialFixture.models.map(({ slug }) => slug), ...syntheticSlugs];
+  const state = fakeState(
+    [
+      {
+        ...provider,
+        alias: Object.fromEntries(slugs.map((slug) => [slug, { model: slug, preserve: false }])),
+      } as RuntimeProviderInstance,
+    ],
+    undefined,
+    Object.fromEntries(slugs.map((slug) => [slug, { metadata: TEXT_OUTPUT }])),
+  );
+  const fetchImpl = (async () => Response.json({ models: officialFixture.models })) as unknown as typeof fetch;
+  const compact = await codexClientModels(state, { fetchImpl });
+  const full = await codexClientModels(state, { fetchImpl, instructionsMode: 'full' });
+  expect(compact.models).toHaveLength(50);
+  expect(new TextEncoder().encode(JSON.stringify(compact)).byteLength).toBeLessThanOrEqual(786_432);
+  for (const slug of syntheticSlugs) {
+    const entry = full.models.find((row) => row.slug === slug)!;
+    expect(entry.model_messages).toMatchObject({ instructions_template: renderDefaultInstructions(slug) });
+    expect(entry.base_instructions).toBe('');
+  }
+});
+
+test.each(['compact', 'full'] as const)(
+  '%s preserves official empty-template repair and unknown fields',
+  async (instructionsMode) => {
+    const rows = [
+      {
+        ...upstream,
+        slug: 'base-fallback',
+        base_instructions: 'REAL BASE',
+        model_messages: {
+          instructions_template: '',
+          instructions_variables: { personality_default: 'keep' },
+          approvals: { mode: 'keep' },
+          future: { enabled: true },
+        },
+      },
+      {
+        ...upstream,
+        slug: 'full-fallback',
+        base_instructions: '',
+        model_messages: { instructions_template: '  ', future: { enabled: true } },
+      },
+      {
+        ...upstream,
+        slug: 'no-template',
+        base_instructions: 'VALID BASE',
+        model_messages: { future: { enabled: true } },
+      },
+    ];
+    const state = fakeState(
+      [
+        {
+          ...provider,
+          alias: Object.fromEntries(rows.map(({ slug }) => [slug, { model: slug, preserve: false }])),
+        } as RuntimeProviderInstance,
+      ],
+      undefined,
+      Object.fromEntries(rows.map(({ slug }) => [slug, { metadata: TEXT_OUTPUT }])),
+    );
+    const fetchImpl = (async () => Response.json({ models: rows })) as unknown as typeof fetch;
+    const catalog = await codexClientModels(state, { fetchImpl, instructionsMode });
+    const bySlug = new Map(catalog.models.map((row) => [row.slug, row]));
+    expect(bySlug.get('base-fallback')?.model_messages).toEqual({
+      ...rows[0]!.model_messages,
+      instructions_template: 'REAL BASE',
+    });
+    expect(bySlug.get('full-fallback')?.model_messages).toEqual({
+      ...rows[1]!.model_messages,
+      instructions_template: renderDefaultInstructions('full-fallback'),
+    });
+    expect(bySlug.get('no-template')?.model_messages).toEqual(rows[2]!.model_messages);
+    expect(bySlug.get('no-template')?.base_instructions).toBe('VALID BASE');
+    expect(rows[0]!.model_messages.instructions_template).toBe('');
+  },
+);

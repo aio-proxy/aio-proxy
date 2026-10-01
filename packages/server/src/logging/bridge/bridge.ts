@@ -9,6 +9,7 @@ export const SERVER_LOG_LEVEL = {
   'auto_update.failed': 'warn',
   'config.oauth_leftover_models': 'warn',
   'config.reload_failed': 'error',
+  'codex.catalog_sync_failed': 'warn',
   'dashboard.auth_unavailable': 'error',
   'desktop_token.unavailable': 'warn',
   'otel.export': 'warn',
