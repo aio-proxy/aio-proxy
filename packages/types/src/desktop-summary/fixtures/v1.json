@@ -2,34 +2,70 @@
   "protocolVersion": 1,
   "generatedAt": "2026-09-29T08:00:00.000Z",
   "server": { "version": "0.36.0", "pid": 4312, "ppid": 4310 },
-  "usage24h": {
-    "requests": "257",
-    "failedRequests": "53",
-    "inputTokens": "14815402",
-    "outputTokens": "44305",
-    "estimatedCostNanoUsd": "20521353840",
-    "pricingCoverage": 1
-  },
-  "trend7d": [
-    {
-      "start": "2026-09-28T16:00:00.000Z",
+  "usage": {
+    "range": "7d",
+    "bucketUnit": "day",
+    "rangeStart": "2026-09-22T16:00:00.000Z",
+    "rangeEnd": "2026-09-29T08:00:00.000Z",
+    "current": {
       "requests": "257",
-      "totalTokens": "14859707",
-      "estimatedCostNanoUsd": "20521353840"
-    }
-  ],
+      "failedRequests": "53",
+      "inputTokens": "14815402",
+      "outputTokens": "44305",
+      "estimatedCostNanoUsd": "20521353840",
+      "pricingCoverage": 1
+    },
+    "previous": {
+      "requests": "200",
+      "failedRequests": "60",
+      "inputTokens": "10000000",
+      "outputTokens": "40000",
+      "estimatedCostNanoUsd": "18000000000",
+      "pricingCoverage": 0.5
+    },
+    "buckets": [
+      {
+        "start": "2026-09-28T16:00:00.000Z",
+        "requests": "257",
+        "failedRequests": "53",
+        "totalTokens": "14859707",
+        "estimatedCostNanoUsd": "20521353840"
+      }
+    ],
+    "byModel": [
+      {
+        "modelId": "gpt-5.2-codex",
+        "requests": "257",
+        "failedRequests": "53",
+        "totalTokens": "14859707",
+        "estimatedCostNanoUsd": "20521353840"
+      }
+    ],
+    "byProvider": [
+      {
+        "providerId": "codex",
+        "name": "Codex",
+        "requests": "257",
+        "failedRequests": "53",
+        "totalTokens": "14859707",
+        "estimatedCostNanoUsd": "20521353840"
+      }
+    ]
+  },
   "activity": [{ "date": "2026-09-29", "totalTokens": "14859707" }],
   "providers": [
     {
       "id": "codex",
       "name": "Codex",
       "enabled": true,
+      "accountLabel": "you@example.com",
       "state": "ok",
       "diagnostic": null,
       "quota": {
         "status": "ready",
         "sampledAt": "2026-09-29T07:58:00.000Z",
         "refreshFailed": false,
+        "plan": { "default": "Pro", "zh-Hans": "专业版" },
         "windows": [
           {
             "id": "primary",
@@ -45,8 +81,13 @@
       "id": "cursor",
       "name": "cursor",
       "enabled": true,
+      "accountLabel": null,
       "state": "degraded",
-      "diagnostic": { "code": "CREDENTIAL_REFRESH_FAILED", "summary": "Refresh token expired" },
+      "diagnostic": {
+        "code": "CREDENTIAL_REFRESH_FAILED",
+        "summary": "Refresh token expired",
+        "suggestedCommand": "aio-proxy provider login cursor"
+      },
       "quota": { "status": "loading" }
     }
   ],

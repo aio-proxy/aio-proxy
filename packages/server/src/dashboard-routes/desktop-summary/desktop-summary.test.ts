@@ -4,71 +4,57 @@ import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 import {
   DesktopSummaryV1Schema,
   type DashboardOverviewActivityResponse,
-  type DashboardOverviewResponse,
   type DashboardProviderSummary,
-  type DashboardUsageOverviewResponse,
 } from '@aio-proxy/types';
 
 import { createOAuthQuotaCache } from '../../plugin-quota';
 import { OAuthQuotaCapabilityUnavailableError } from '../../plugin-quota/errors';
-import { buildDesktopSummary, type DesktopSummarySource } from './desktop-summary';
+import { buildDesktopSummary, createUsageMemo, type DesktopSummarySource } from './desktop-summary';
 
 const now = new Date('2026-09-29T08:00:00.000Z');
-const totals = (requests: string) => ({
-  requestCount: requests,
-  totalTokens: '100',
-  inputTokens: '60',
-  outputTokens: '40',
-  cacheReadTokens: '0',
-  cacheWriteTokens: '0',
-  cacheHitRate: null,
-  estimatedCostNanoUsd: '5',
-  averageRpm: 0,
-  averageTpm: 0,
-});
-const trend = (values: Record<string, string>) => ({
-  buckets: [{ key: '2026-09-28T16:00:00.000Z', values }],
-  series: Object.keys(values).map((key) => ({ key, kind: 'dimension' as const })),
+let usageCalls = 0;
+const usage = (range: '24h' | '7d' | '30d') => ({
+  range,
+  bucketUnit: range === '24h' ? ('hour' as const) : ('day' as const),
+  rangeStart: '2026-09-28T08:00:00.000Z',
+  rangeEnd: now.toISOString(),
+  current: {
+    requests: '10',
+    failedRequests: '3',
+    inputTokens: '600',
+    outputTokens: '400',
+    estimatedCostNanoUsd: '20',
+    pricingCoverage: 0.5,
+  },
+  previous: {
+    requests: '8',
+    failedRequests: '1',
+    inputTokens: '500',
+    outputTokens: '300',
+    estimatedCostNanoUsd: '10',
+    pricingCoverage: null,
+  },
+  buckets: [
+    {
+      start: '2026-09-28T08:00:00.000Z',
+      requests: '10',
+      failedRequests: '3',
+      totalTokens: '1000',
+      estimatedCostNanoUsd: '20',
+    },
+  ],
+  byModel: [{ modelId: 'm', requests: '10', failedRequests: '3', totalTokens: '1000', estimatedCostNanoUsd: '20' }],
+  byProvider: [
+    { providerId: 'codex', requests: '9', failedRequests: '3', totalTokens: '900', estimatedCostNanoUsd: '20' },
+    { providerId: 'gone', requests: '1', failedRequests: '0', totalTokens: '100', estimatedCostNanoUsd: '0' },
+  ],
 });
 
 const traceStore: DesktopSummarySource['traceStore'] = {
-  overview: () =>
-    ({
-      range: '24h',
-      metric: 'requests',
-      groupBy: 'provider',
-      rangeStart: '2026-09-28T08:00:00.000Z',
-      rangeEnd: now.toISOString(),
-      bucketUnit: 'hour',
-      summary: {
-        estimatedCostNanoUsd: '20',
-        pricingCoverage: 0.5,
-        pricedRequestCount: '5',
-        usageRequestCount: '9',
-        requestCount: '10',
-        successCount: '7',
-        failureCount: '3',
-        cancelledCount: '0',
-        successRate: 0.7,
-        inputTokens: '600',
-        outputTokens: '400',
-        totalTokens: '1000',
-        averageRpm: 0,
-        averageTpm: 0,
-      },
-      series: [],
-      buckets: [],
-    }) satisfies DashboardUsageOverviewResponse,
-  overviewDashboard: () =>
-    ({
-      range: '7d',
-      summary: { current: totals('10'), previous: totals('0'), peakRpm: 0, peakTpm: 0, providerCount: 2 },
-      modelTrendByMetric: {
-        requests: trend({ a: '4', b: '6' }),
-        tokens: trend({ a: '40', b: '60' }),
-        cost: trend({ a: '1', b: '2' }),
-      },
-    }) satisfies DashboardOverviewResponse,
+  desktopUsage: ({ range }) => {
+    usageCalls += 1;
+    return usage(range);
+  },
   overviewDashboardActivity: () =>
     ({
       from: '2026-09-29',
@@ -101,17 +87,19 @@ const source = (
   quotaCache: createOAuthQuotaCache({ read }),
 });
 
-const input = { version: '0.36.0', pid: 4312, ppid: 4310, now, refresh: false };
+const input = { version: '0.36.0', pid: 4312, ppid: 4310, now, refresh: false, range: '24h' as const };
 
-test('maps usage, the 7-day trend, activity, and providers into the strict v1 shape', async () => {
+test('maps usage, activity, and providers into the strict v1 shape', async () => {
   const diagnostic = {
     code: 'CREDENTIAL_REFRESH_FAILED' as const,
     summary: 'Refresh token expired',
     retryable: true,
     occurredAt: now.toISOString(),
+    suggestedCommand: 'aio-proxy provider login codex',
   };
   const cache = createOAuthQuotaCache({
     read: async () => ({
+      plan: 'Pro',
       items: [
         {
           id: 'primary',
@@ -130,7 +118,13 @@ test('maps usage, the 7-day trend, activity, and providers into the strict v1 sh
     {
       traceStore,
       providerSummaries: async () => [
-        provider({ id: 'codex', name: 'Codex', hasQuota: true, state: { status: 'ready', diagnostic } }),
+        provider({
+          id: 'codex',
+          name: 'Codex',
+          accountLabel: 'you@example.com',
+          hasQuota: true,
+          state: { status: 'ready', diagnostic },
+        }),
       ],
       quotaCache: cache,
     },
@@ -142,12 +136,18 @@ test('maps usage, the 7-day trend, activity, and providers into the strict v1 sh
       id: 'codex',
       name: 'Codex',
       enabled: true,
+      accountLabel: 'you@example.com',
       state: 'degraded',
-      diagnostic: { code: 'CREDENTIAL_REFRESH_FAILED', summary: 'Refresh token expired' },
+      diagnostic: {
+        code: 'CREDENTIAL_REFRESH_FAILED',
+        summary: 'Refresh token expired',
+        suggestedCommand: 'aio-proxy provider login --provider codex',
+      },
       quota: {
         status: 'ready',
         sampledAt: expect.any(String),
         refreshFailed: false,
+        plan: 'Pro',
         windows: [
           {
             id: 'primary',
@@ -160,7 +160,7 @@ test('maps usage, the 7-day trend, activity, and providers into the strict v1 sh
       },
     },
   ]);
-  expect(summary.usage24h).toEqual({
+  expect(summary.usage.current).toEqual({
     requests: '10',
     failedRequests: '3',
     inputTokens: '600',
@@ -168,8 +168,14 @@ test('maps usage, the 7-day trend, activity, and providers into the strict v1 sh
     estimatedCostNanoUsd: '20',
     pricingCoverage: 0.5,
   });
-  expect(summary.trend7d).toEqual([
-    { start: '2026-09-28T16:00:00.000Z', requests: '10', totalTokens: '100', estimatedCostNanoUsd: '3' },
+  expect(summary.usage.buckets).toEqual([
+    {
+      start: '2026-09-28T08:00:00.000Z',
+      requests: '10',
+      failedRequests: '3',
+      totalTokens: '1000',
+      estimatedCostNanoUsd: '20',
+    },
   ]);
   expect(summary.activity).toEqual([{ date: '2026-09-29', totalTokens: '1000' }]);
   expect(summary.server).toEqual({ version: '0.36.0', pid: 4312, ppid: 4310 });
@@ -220,6 +226,7 @@ test('one provider failing its quota read does not fail the summary', async () =
     status: 'ready',
     sampledAt: expect.any(String),
     refreshFailed: false,
+    plan: null,
     windows: [
       { id: 'primary', label: 'Primary', remainingRatio: 0, resetsAt: '2026-09-29T10:00:00.000Z', windowMinutes: 300 },
     ],
@@ -326,4 +333,54 @@ test('refresh starts a background read even inside the cooldown and does not wai
   );
   expect(calls).toBe(2);
   expect(summary.providers[0]?.quota.status).toBe('ready');
+});
+
+test('usage carries the requested range and names each Provider, falling back to its id', async () => {
+  const summary = await buildDesktopSummary(
+    source([provider({ id: 'codex', name: 'Codex' })], async () => ({ items: [] })),
+    { ...input, range: '7d' },
+  );
+  expect(summary.usage.range).toBe('7d');
+  expect(summary.usage.byProvider.map((entry) => entry.name)).toEqual(['Codex', 'gone']);
+  expect(DesktopSummaryV1Schema.safeParse(summary).success).toBe(true);
+});
+
+test('7d and 30d usage is memoized for 60 s per range; 24h and refresh=true always recompute', async () => {
+  const memoSource = source([], async () => ({ items: [] }));
+  const memo = createUsageMemo();
+  usageCalls = 0;
+  await buildDesktopSummary(memoSource, { ...input, range: '30d' }, memo);
+  await buildDesktopSummary(memoSource, { ...input, range: '30d', now: new Date(now.getTime() + 59_000) }, memo);
+  expect(usageCalls).toBe(1);
+  await buildDesktopSummary(memoSource, { ...input, range: '30d', now: new Date(now.getTime() + 61_000) }, memo);
+  expect(usageCalls).toBe(2);
+  await buildDesktopSummary(memoSource, { ...input, range: '30d', refresh: true }, memo);
+  expect(usageCalls).toBe(3);
+  await buildDesktopSummary(memoSource, { ...input, range: '24h' }, memo);
+  await buildDesktopSummary(memoSource, { ...input, range: '24h' }, memo);
+  expect(usageCalls).toBe(5);
+});
+
+test('accountLabel, quota plan and the suggested command pass through as null when absent', async () => {
+  const diagnostic = {
+    code: 'CREDENTIAL_REFRESH_FAILED' as const,
+    summary: 'Refresh token expired',
+    retryable: true,
+    occurredAt: now.toISOString(),
+  };
+  const cache = createOAuthQuotaCache({ read: async () => ({ items: [] }) });
+  await cache.read('p');
+  const summary = await buildDesktopSummary(
+    {
+      traceStore,
+      providerSummaries: async () => [provider({ hasQuota: true, state: { status: 'ready', diagnostic } })],
+      quotaCache: cache,
+    },
+    input,
+  );
+  expect(summary.providers[0]).toMatchObject({
+    accountLabel: null,
+    diagnostic: { suggestedCommand: null },
+    quota: { status: 'ready', plan: null },
+  });
 });

@@ -29,6 +29,7 @@ export const DesktopQuotaSchema = z.discriminatedUnion('status', [
       status: z.literal('ready'),
       sampledAt: z.iso.datetime(),
       refreshFailed: z.boolean(),
+      plan: DashboardLocalizedTextSchema.nullable(),
       windows: z.array(DesktopQuotaWindowSchema),
     })
     .strict(),
@@ -39,12 +40,45 @@ export const DesktopProviderSchema = z
     id: z.string().min(1),
     name: z.string().min(1),
     enabled: z.boolean(),
+    accountLabel: z.string().min(1).nullable(),
     state: z.enum(['ok', 'degraded', 'unavailable', 'disabled']),
     diagnostic: z
-      .object({ code: z.string().min(1), summary: z.string().min(1) })
+      .object({ code: z.string().min(1), summary: z.string().min(1), suggestedCommand: z.string().min(1).nullable() })
       .strict()
       .nullable(),
     quota: DesktopQuotaSchema,
+  })
+  .strict();
+
+const DesktopUsageTotalsSchema = z
+  .object({
+    requests: NonNegativeIntegerStringSchema,
+    failedRequests: NonNegativeIntegerStringSchema,
+    inputTokens: NonNegativeIntegerStringSchema,
+    outputTokens: NonNegativeIntegerStringSchema,
+    estimatedCostNanoUsd: NonNegativeIntegerStringSchema,
+    pricingCoverage: z.number().min(0).max(1).nullable(),
+  })
+  .strict();
+
+const sliceShape = {
+  requests: NonNegativeIntegerStringSchema,
+  failedRequests: NonNegativeIntegerStringSchema,
+  totalTokens: NonNegativeIntegerStringSchema,
+  estimatedCostNanoUsd: NonNegativeIntegerStringSchema,
+};
+
+export const DesktopUsageSchema = z
+  .object({
+    range: DesktopUsageRangeSchema,
+    bucketUnit: z.enum(['hour', 'day']),
+    rangeStart: z.iso.datetime(),
+    rangeEnd: z.iso.datetime(),
+    current: DesktopUsageTotalsSchema,
+    previous: DesktopUsageTotalsSchema,
+    buckets: z.array(z.object({ start: z.iso.datetime(), ...sliceShape }).strict()),
+    byModel: z.array(z.object({ modelId: z.string().min(1), ...sliceShape }).strict()).max(20),
+    byProvider: z.array(z.object({ providerId: z.string().min(1), name: z.string().min(1), ...sliceShape }).strict()),
   })
   .strict();
 
@@ -56,26 +90,7 @@ export const DesktopSummaryV1Schema = z
     server: z
       .object({ version: z.string().min(1), pid: z.number().int().positive(), ppid: z.number().int().nonnegative() })
       .strict(),
-    usage24h: z
-      .object({
-        requests: NonNegativeIntegerStringSchema,
-        failedRequests: NonNegativeIntegerStringSchema,
-        inputTokens: NonNegativeIntegerStringSchema,
-        outputTokens: NonNegativeIntegerStringSchema,
-        estimatedCostNanoUsd: NonNegativeIntegerStringSchema,
-        pricingCoverage: z.number().min(0).max(1).nullable(),
-      })
-      .strict(),
-    trend7d: z.array(
-      z
-        .object({
-          start: z.iso.datetime(),
-          requests: NonNegativeIntegerStringSchema,
-          totalTokens: NonNegativeIntegerStringSchema,
-          estimatedCostNanoUsd: NonNegativeIntegerStringSchema,
-        })
-        .strict(),
-    ),
+    usage: DesktopUsageSchema,
     activity: z.array(z.object({ date: z.iso.date(), totalTokens: NonNegativeIntegerStringSchema }).strict()),
     providers: z.array(DesktopProviderSchema),
     alerts: z.array(
@@ -92,4 +107,5 @@ export const DesktopSummaryV1Schema = z
 
 export type DesktopQuota = z.output<typeof DesktopQuotaSchema>;
 export type DesktopProvider = z.output<typeof DesktopProviderSchema>;
+export type DesktopUsage = z.output<typeof DesktopUsageSchema>;
 export type DesktopSummaryV1 = z.output<typeof DesktopSummaryV1Schema>;

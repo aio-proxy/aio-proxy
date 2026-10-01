@@ -1,18 +1,20 @@
-import type { TraceStore } from '@aio-proxy/core/db';
+import type { DesktopUsageResult, TraceStore } from '@aio-proxy/core/db';
 import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 import {
   DesktopQuotaSchema,
+  dashboardProviderSuggestedCommand,
   type DashboardProviderSummary,
   type DesktopProvider,
   type DesktopQuota,
   type DesktopSummaryV1,
+  type DesktopUsageRange,
 } from '@aio-proxy/types';
 
 import type { OAuthQuotaCache, OAuthQuotaCacheEntry } from '../../plugin-quota';
 import type { ServerState } from '../../server-state';
 
 export type DesktopSummarySource = {
-  readonly traceStore: Pick<TraceStore, 'overview' | 'overviewDashboard' | 'overviewDashboardActivity'>;
+  readonly traceStore: Pick<TraceStore, 'desktopUsage' | 'overviewDashboardActivity'>;
   readonly providerSummaries: ServerState['providerSummaries'];
   readonly quotaCache: Pick<OAuthQuotaCache, 'status' | 'warm' | 'refresh'>;
 };
@@ -23,18 +25,32 @@ export type DesktopSummaryInput = {
   readonly ppid: number;
   readonly now: Date;
   readonly refresh: boolean;
+  readonly range: DesktopUsageRange;
 };
 
-type Bucket = { readonly key: string; readonly values: Readonly<Record<string, string>> };
+export const USAGE_MEMO_MS = 60_000;
 
-const sumValues = (values: Readonly<Record<string, string>>): string => {
-  let total = 0n;
-  for (const value of Object.values(values)) total += BigInt(value);
-  return String(total);
+export type UsageMemo = {
+  readonly entries: Map<DesktopUsageRange, { readonly at: number; readonly usage: DesktopUsageResult }>;
 };
 
-const totalsByKey = (buckets: readonly Bucket[]): ReadonlyMap<string, string> =>
-  new Map(buckets.map((bucket) => [bucket.key, sumValues(bucket.values)]));
+export const createUsageMemo = (): UsageMemo => ({ entries: new Map() });
+
+// 7d/30d split usage by Provider by scanning a month of root spans; once a minute is affordable,
+// once per 15 s tick per open panel is not. 24h stays live, as rev 4 measured it.
+function usageFor(
+  source: DesktopSummarySource,
+  input: DesktopSummaryInput,
+  memo: UsageMemo | undefined,
+): DesktopUsageResult {
+  const compute = () => source.traceStore.desktopUsage({ range: input.range, now: input.now });
+  if (input.range === '24h' || memo === undefined) return compute();
+  const hit = memo.entries.get(input.range);
+  if (!input.refresh && hit !== undefined && input.now.getTime() - hit.at < USAGE_MEMO_MS) return hit.usage;
+  const usage = compute();
+  memo.entries.set(input.range, { at: input.now.getTime(), usage });
+  return usage;
+}
 
 function quotaWindows(snapshot: OAuthQuotaSnapshot) {
   return snapshot.items.map((item) => ({
@@ -69,6 +85,7 @@ function readyQuota(entry: OAuthQuotaCacheEntry): DesktopQuota {
       status: 'ready',
       sampledAt: new Date(entry.sampledAt).toISOString(),
       refreshFailed: entry.stale,
+      plan: entry.snapshot.plan ?? null,
       windows: quotaWindows(entry.snapshot),
     });
     return quota.success ? quota.data : { status: 'failed' };
@@ -87,14 +104,25 @@ function toDesktopProvider(summary: DashboardProviderSummary, quota: DesktopQuot
   const diagnostic = summary.state.diagnostic;
   return {
     id: summary.id,
-    // `name: ""` is valid config but the DTO requires a non-empty name.
-    name: summary.name === undefined || summary.name === '' ? summary.id : summary.name,
+    name: displayName(summary),
     enabled: summary.enabled,
+    accountLabel: summary.accountLabel === undefined || summary.accountLabel === '' ? null : summary.accountLabel,
     state: providerState(summary),
-    diagnostic: diagnostic === undefined ? null : { code: diagnostic.code, summary: diagnostic.summary },
+    diagnostic:
+      diagnostic === undefined
+        ? null
+        : {
+            code: diagnostic.code,
+            summary: diagnostic.summary,
+            suggestedCommand: dashboardProviderSuggestedCommand(summary) ?? null,
+          },
     quota,
   };
 }
+
+// `name: ""` is valid config but the DTO requires a non-empty name.
+const displayName = (summary: DashboardProviderSummary): string =>
+  summary.name === undefined || summary.name === '' ? summary.id : summary.name;
 
 function alertsFor(providers: readonly DesktopProvider[]): DesktopSummaryV1['alerts'] {
   const alerts: DesktopSummaryV1['alerts'][number][] = [];
@@ -116,18 +144,12 @@ function alertsFor(providers: readonly DesktopProvider[]): DesktopSummaryV1['ale
 export async function buildDesktopSummary(
   source: DesktopSummarySource,
   input: DesktopSummaryInput,
+  memo?: UsageMemo,
 ): Promise<DesktopSummaryV1> {
-  const usage = source.traceStore.overview({
-    range: '24h',
-    metric: 'requests',
-    groupBy: 'provider',
-    now: input.now,
-  }).summary;
-  const week = source.traceStore.overviewDashboard({ range: '7d', now: input.now }).modelTrendByMetric;
-  const tokens = totalsByKey(week.tokens.buckets);
-  const cost = totalsByKey(week.cost.buckets);
+  const usage = usageFor(source, input, memo);
   const activity = source.traceStore.overviewDashboardActivity({ now: input.now });
   const summaries = await source.providerSummaries({ probe: false });
+  const names = new Map(summaries.map((summary) => [summary.id, displayName(summary)]));
   const providers = summaries.map((summary) =>
     toDesktopProvider(summary, quotaFor(source.quotaCache, summary, input.refresh)),
   );
@@ -135,20 +157,17 @@ export async function buildDesktopSummary(
     protocolVersion: 1,
     generatedAt: input.now.toISOString(),
     server: { version: input.version, pid: input.pid, ppid: input.ppid },
-    usage24h: {
-      requests: usage.requestCount,
-      failedRequests: usage.failureCount,
-      inputTokens: usage.inputTokens,
-      outputTokens: usage.outputTokens,
-      estimatedCostNanoUsd: usage.estimatedCostNanoUsd,
-      pricingCoverage: usage.pricingCoverage,
+    usage: {
+      ...usage,
+      // The query result is readonly; the DTO type is the mutable output of the schema.
+      buckets: [...usage.buckets],
+      byModel: [...usage.byModel],
+      // A Provider removed from config still has history: it keeps its id as its name.
+      byProvider: usage.byProvider.map((entry) => ({
+        ...entry,
+        name: names.get(entry.providerId) ?? entry.providerId,
+      })),
     },
-    trend7d: week.requests.buckets.map((bucket) => ({
-      start: bucket.key,
-      requests: sumValues(bucket.values),
-      totalTokens: tokens.get(bucket.key) ?? '0',
-      estimatedCostNanoUsd: cost.get(bucket.key) ?? '0',
-    })),
     activity: activity.items.map((item) => ({ date: item.date, totalTokens: item.totalTokens })),
     providers,
     alerts: alertsFor(providers),

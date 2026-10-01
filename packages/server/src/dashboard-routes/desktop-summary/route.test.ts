@@ -35,6 +35,17 @@ test('the desktop token reads the summary without a dashboard password', async (
   expect(DesktopSummaryV1Schema.safeParse(await res.json()).success).toBe(true);
 });
 
+test('an unknown range is a 400 and a known one is accepted', async () => {
+  const app = await serve();
+  const token = readDesktopToken(dir) ?? '';
+  const get = (query: string) =>
+    app.request(`/dashboard/api/desktop-summary${query}`, { headers: bearer(token) }, loopbackServer);
+  expect((await get('?range=90d')).status).toBe(400);
+  const week = await get('?range=7d');
+  expect(week.status).toBe(200);
+  expect(DesktopSummaryV1Schema.parse(await week.json()).usage.range).toBe('7d');
+});
+
 test('with a dashboard password the token reads the summary but nothing else', async () => {
   const app = await serve({ password: await Bun.password.hash('pw') });
   const token = readDesktopToken(dir) ?? '';
