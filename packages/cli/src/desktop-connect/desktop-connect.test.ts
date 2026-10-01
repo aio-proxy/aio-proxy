@@ -4,14 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { LAUNCHD_EXEC_WRAPPER } from '../service';
-import {
-  desktopConnect,
-  listensAt,
-  parseListeners,
-  printDesktopConnect,
-  runWithin,
-  type DesktopConnectDeps,
-} from './desktop-connect';
+import { desktopConnect, listensAt, printDesktopConnect, runWithin, type DesktopConnectDeps } from './desktop-connect';
+import { parseSockets } from './verified-get';
 
 let root: string;
 beforeEach(() => {
@@ -42,40 +36,51 @@ type Scenario = {
   readonly listenerUid?: number | null;
 };
 
-const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | null }> = []): DesktopConnectDeps => ({
-  platform: 'darwin',
-  env: { AIO_PROXY_DESKTOP_EXEC: link },
-  bundledVersion: '0.37.0',
-  plistPath: '/tmp/com.aio-proxy.agent.plist',
-  defaultHome: () => join(root, 'default-home'),
-  plistExists: () => scenario.plist !== undefined,
-  readToken: () => scenario.token,
-  uid: 501,
-  run: async (cmd) => {
-    if (cmd[0] === 'plutil') return { code: 0, stdout: JSON.stringify(scenario.plist) };
-    if (cmd[0] === '/usr/sbin/lsof') {
-      const uid = scenario.listenerUid === undefined ? 501 : scenario.listenerUid;
-      // Listening on the probed IPv4 address, at the port in `-iTCP:<port>`.
-      const port = cmd[2]?.slice('-iTCP:'.length);
-      return uid === null
-        ? { code: 1, stdout: '' }
-        : { code: 0, stdout: `p4312\nu${uid}\nf12\ntIPv4\nn127.0.0.1:${port}\n` };
-    }
-    if (scenario.failLaunchctl === true) throw new Error('launchctl missing');
-    if (cmd[1] === 'print') return scenario.jobPrint ?? { code: 113, stdout: '' };
-    return { code: scenario.disabledCode ?? 0, stdout: scenario.disabled ?? '' };
+// The identity GET goes through the same fake server as fetch, so the recorded requests show its bearer.
+const withIdentity = (d: Omit<DesktopConnectDeps, 'identityGet'>): DesktopConnectDeps => ({
+  ...d,
+  identityGet: async (host, port, path, token) => {
+    const authority = host.includes(':') ? `[${host}]` : host;
+    const res = await d.fetch(`http://${authority}:${port}${path}`, { headers: { authorization: `Bearer ${token}` } });
+    return { status: res.status, body: await res.text() };
   },
-  fetch: (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = String(input);
-    requests.push({ url, auth: new Headers(init?.headers).get('authorization') });
-    if (url.endsWith('/health')) return Response.json({ status: 'ok', version: '0.36.0' });
-    if (scenario.summaryPid === undefined) return new Response('not found', { status: 404 });
-    return Response.json({
-      protocolVersion: 1,
-      server: { version: '0.36.0', pid: scenario.summaryPid, ppid: scenario.summaryPpid ?? 1 },
-    });
-  }) as typeof fetch,
 });
+
+const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | null }> = []): DesktopConnectDeps =>
+  withIdentity({
+    platform: 'darwin',
+    env: { AIO_PROXY_DESKTOP_EXEC: link },
+    bundledVersion: '0.37.0',
+    plistPath: '/tmp/com.aio-proxy.agent.plist',
+    defaultHome: () => join(root, 'default-home'),
+    plistExists: () => scenario.plist !== undefined,
+    readToken: () => scenario.token,
+    uid: 501,
+    run: async (cmd) => {
+      if (cmd[0] === 'plutil') return { code: 0, stdout: JSON.stringify(scenario.plist) };
+      if (cmd[0] === '/usr/sbin/lsof') {
+        const uid = scenario.listenerUid === undefined ? 501 : scenario.listenerUid;
+        // Listening on the probed IPv4 address, at the port in `-iTCP:<port>`.
+        const port = cmd[2]?.slice('-iTCP:'.length);
+        return uid === null
+          ? { code: 1, stdout: '' }
+          : { code: 0, stdout: `p4312\nu${uid}\nf12\ntIPv4\nn127.0.0.1:${port}\n` };
+      }
+      if (scenario.failLaunchctl === true) throw new Error('launchctl missing');
+      if (cmd[1] === 'print') return scenario.jobPrint ?? { code: 113, stdout: '' };
+      return { code: scenario.disabledCode ?? 0, stdout: scenario.disabled ?? '' };
+    },
+    fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, auth: new Headers(init?.headers).get('authorization') });
+      if (url.endsWith('/health')) return Response.json({ status: 'ok', version: '0.36.0' });
+      if (scenario.summaryPid === undefined) return new Response('not found', { status: 404 });
+      return Response.json({
+        protocolVersion: 1,
+        server: { version: '0.36.0', pid: scenario.summaryPid, ppid: scenario.summaryPpid ?? 1 },
+      });
+    }) as typeof fetch,
+  });
 
 const desktopPlist = (target = link) => ({
   ProgramArguments: ['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, target],
@@ -315,7 +320,7 @@ test('the token goes only to a listener this user owns', async () => {
 });
 
 test("the listener must be at the probed address or its family's wildcard", () => {
-  const listeners = parseListeners(
+  const listeners = parseSockets(
     'p1\nu501\nf12\ntIPv4\nn127.0.0.1:9317\nf13\ntIPv6\nn*:9418\np2\nu502\nf3\ntIPv6\nn[::1]:9317\n',
   );
   expect(listeners).toEqual([

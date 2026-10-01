@@ -6,6 +6,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import { controlBaseUrl, localControlHost, probeHealth, resolveControlAddress } from '../control-plane';
 import { launchdDomain, launchdJobTarget, managedUnitPath } from '../service';
 import { inspectUnit, parseDisabled, parseJobPrint, type UnitInspection, unitOwner } from './launchd-inspect';
+import { parseSockets, type Socket, verifiedGet } from './verified-get';
 
 const PROBE_TIMEOUT_MS = 2_000;
 // The spec bounds the whole command at 10 s. The two HTTP probes take at most 2 s each, so the
@@ -25,6 +26,13 @@ export type DesktopConnectDeps = {
   readonly uid: number;
   readonly run: (cmd: readonly string[]) => Promise<{ readonly code: number; readonly stdout: string }>;
   readonly fetch: typeof fetch;
+  /** The token-bearing identity GET, sent only over a connection this user's process serves. */
+  readonly identityGet: (
+    host: string,
+    port: string,
+    path: string,
+    token: string,
+  ) => Promise<{ readonly status: number; readonly body: string } | undefined>;
 };
 
 export type DesktopConnectResult = {
@@ -82,18 +90,14 @@ async function readJob(deps: DesktopConnectDeps): Promise<DesktopConnectResult['
 
 async function summaryIdentity(
   deps: DesktopConnectDeps,
-  controlUrl: string,
-  token: string | undefined,
+  host: string,
+  port: string,
+  token: string,
 ): Promise<{ readonly version: string; readonly pid: number; readonly ppid: number | null } | undefined> {
-  if (token === undefined) return undefined;
   try {
-    const res = await deps.fetch(`${controlUrl}/dashboard/api/desktop-summary`, {
-      headers: { authorization: `Bearer ${token}` },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    });
-    if (!res.ok) return undefined;
-    const body: unknown = await res.json();
+    const res = await deps.identityGet(host, port, '/dashboard/api/desktop-summary', token);
+    if (res === undefined || res.status < 200 || res.status > 299) return undefined;
+    const body: unknown = JSON.parse(res.body);
     const server = isPlainObject(body) ? body['server'] : undefined;
     if (!isPlainObject(server) || typeof server['version'] !== 'string' || typeof server['pid'] !== 'number') {
       return undefined;
@@ -108,29 +112,12 @@ async function summaryIdentity(
   }
 }
 
-export type Listener = { readonly uid: number; readonly family: string; readonly address: string };
-
-/** The listening sockets in `lsof -F tun` output: each file's family and address, under its process's uid. */
-export function parseListeners(lsofOutput: string): readonly Listener[] {
-  const listeners: Listener[] = [];
-  let uid = -1;
-  let family = '';
-  for (const line of lsofOutput.split('\n')) {
-    const value = line.slice(1);
-    if (line.startsWith('u')) uid = Number(value);
-    else if (line.startsWith('f')) family = '';
-    else if (line.startsWith('t')) family = value;
-    else if (line.startsWith('n')) listeners.push({ uid, family, address: value });
-  }
-  return listeners;
-}
-
 /**
  * Whether `uid` listens where the probe connects: on `host` itself or on its family's wildcard. The
  * kernel refuses a second user the same port within one family, but not across IPv4 and IPv6, so a
  * listener of this user on `127.0.0.1` proves nothing about `::1`.
  */
-export function listensAt(listeners: readonly Listener[], uid: number, host: string, port: string): boolean {
+export function listensAt(listeners: readonly Socket[], uid: number, host: string, port: string): boolean {
   const ipv6 = host.includes(':');
   const exact = ipv6 ? `[${host}]:${port}` : `${host}:${port}`;
   const family = ipv6 ? 'IPv6' : 'IPv4';
@@ -148,7 +135,7 @@ async function listenerIsOurs(deps: DesktopConnectDeps, host: string, port: stri
   if (!/^\d+$/u.test(port)) return false;
   try {
     const { code, stdout } = await deps.run(['/usr/sbin/lsof', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Ftun']);
-    return code === 0 && listensAt(parseListeners(stdout), deps.uid, host, port);
+    return code === 0 && listensAt(parseSockets(stdout), deps.uid, host, port);
   } catch {
     return false;
   }
@@ -189,7 +176,8 @@ export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopC
   // app sends it only to an instance discovery reported reachable, so withholding it here covers both.
   const ours = health !== null && (await listenerIsOurs(deps, host, address.port));
   const trustedToken = ours ? token : undefined;
-  const identity = trustedToken === undefined ? undefined : await summaryIdentity(deps, controlUrl, trustedToken);
+  const identity =
+    trustedToken === undefined ? undefined : await summaryIdentity(deps, host, address.port, trustedToken);
   const pid = identity?.pid ?? null;
   const ppid = identity?.ppid ?? null;
   return {
@@ -270,5 +258,15 @@ const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number): Desk
   uid: process.getuid?.() ?? -1,
   // A killed or budget-exhausted helper degrades its fields like any other launchctl/plutil failure.
   run: (cmd) => runWithin(cmd, spawnDeadline),
+  identityGet: (host, port, path, token) =>
+    verifiedGet(
+      (cmd) => runWithin(cmd, spawnDeadline),
+      process.getuid?.() ?? -1,
+      host,
+      port,
+      path,
+      token,
+      PROBE_TIMEOUT_MS,
+    ),
   fetch,
 });
