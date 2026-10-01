@@ -1,4 +1,5 @@
 export { canPrompt, useColor, type PromptIo } from './mode';
+export { createStyle, plainStyle, styleFor, type Style } from './style';
 export {
   createClackPrompts,
   PromptCancelledError,
