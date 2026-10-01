@@ -3,28 +3,33 @@ import { m } from '@aio-proxy/i18n';
 import { formatBlock, formatTable } from '../layout';
 import type { Style } from '../style';
 
-function fits(wide: string, columns: number | undefined): boolean {
-  return columns !== undefined && columns >= 80 && Bun.stringWidth(wide) <= columns;
-}
+export type PluginListItem = {
+  readonly label?: string;
+  readonly packageName: string;
+  readonly status: 'configured' | 'builtin' | 'not_installed' | 'failed';
+  readonly state: string;
+  readonly description?: string;
+};
 
-export function formatPluginLines(
-  plugin: {
-    readonly label?: string;
-    readonly packageName: string;
-    readonly state: string;
-    readonly description?: string;
-  },
-  columns: number | undefined,
-): readonly string[] {
-  const identity = plugin.label === undefined ? plugin.packageName : `${plugin.label} (${plugin.packageName})`;
-  const wide = `${identity} ${plugin.state}${plugin.description === undefined ? '' : ` — ${plugin.description}`}`;
-  if (fits(wide, columns)) return [wide];
-  return [
-    ...(plugin.label === undefined ? [] : [plugin.label]),
-    plugin.packageName,
-    plugin.state,
-    ...(plugin.description === undefined ? [] : [plugin.description]),
-  ];
+const PLUGIN_MARKS = { configured: 'ok', builtin: 'ok', not_installed: 'off', failed: 'fail' } as const;
+
+export function formatPluginTable(style: Style, plugins: readonly PluginListItem[]): readonly string[] {
+  return formatTable(
+    style,
+    plugins.map((plugin) => ({
+      mark: style.mark(PLUGIN_MARKS[plugin.status]),
+      cells: [
+        plugin.label ?? '-',
+        style.strong(plugin.packageName),
+        plugin.status === 'failed' ? style.danger(m['cli.plugin.state_failed']()) : plugin.state,
+      ],
+      notes: [
+        ...(plugin.status === 'failed' ? [style.muted(plugin.state)] : []),
+        ...(plugin.description === undefined ? [] : [style.muted(plugin.description)]),
+      ],
+    })),
+    [m['cli.ui.header_name'](), m['cli.ui.header_package'](), m['cli.provider.list.header_state']()],
+  );
 }
 
 export function formatInstalledLines(

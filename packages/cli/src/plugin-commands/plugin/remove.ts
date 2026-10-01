@@ -3,7 +3,7 @@ import { getLocale, m } from '@aio-proxy/i18n';
 import { resolveLocalizedText } from '@aio-proxy/plugin-sdk';
 import { uniq } from 'es-toolkit/array';
 
-import { formatPluginLines } from '../../ui';
+import { createStyle, formatPluginTable, type PluginListItem } from '../../ui';
 import { entries, packageNameOf, removePlugin, requirePluginPackageName, usedPackageNames } from './config-entry';
 import {
   beginPluginSession,
@@ -38,28 +38,35 @@ export async function pluginList(_options: PluginListOptions, injected?: PluginL
       secrets: { readPluginSecret: (plugin) => deps.repository.readPluginSecret(plugin)?.value },
     });
     const names = uniq([...deps.builtInNames, ...configured]).sort();
-    for (const packageName of names) {
+    const items: PluginListItem[] = names.map((packageName) => {
       const loaded = snapshot.plugins.get(packageName);
+      let status: PluginListItem['status'] = 'not_installed';
       let state: string = m['cli.plugin.state_not_installed']();
-      if (installed.has(packageName)) state = m['cli.plugin.state_configured']();
-      if (deps.builtInNames.has(packageName)) state = m['cli.plugin.state_builtin']();
-      if (loaded?.state.status === 'failed') state = loaded.state.diagnostic.summary;
+      if (installed.has(packageName)) {
+        status = 'configured';
+        state = m['cli.plugin.state_configured']();
+      }
+      if (deps.builtInNames.has(packageName)) {
+        status = 'builtin';
+        state = m['cli.plugin.state_builtin']();
+      }
+      if (loaded?.state.status === 'failed') {
+        status = 'failed';
+        state = loaded.state.diagnostic.summary;
+      }
       const label =
         loaded?.displayName === undefined ? undefined : resolveLocalizedText(loaded.displayName, getLocale());
       const description =
         loaded?.description === undefined ? undefined : resolveLocalizedText(loaded.description, getLocale());
-      for (const line of formatPluginLines(
-        {
-          ...(label === undefined ? {} : { label }),
-          packageName,
-          state,
-          ...(description === undefined ? {} : { description }),
-        },
-        process.stdout.columns,
-      )) {
-        deps.print(line);
-      }
-    }
+      return {
+        ...(label === undefined ? {} : { label }),
+        packageName,
+        status,
+        state,
+        ...(description === undefined ? {} : { description }),
+      };
+    });
+    for (const line of formatPluginTable(createStyle(process.stdout), items)) deps.print(line);
   } finally {
     if (injected === undefined) deps.close?.();
   }

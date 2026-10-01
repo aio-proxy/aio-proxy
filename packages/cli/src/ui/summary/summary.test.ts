@@ -6,27 +6,48 @@ import { plainStyle } from '../style';
 import {
   formatDoctorLines,
   formatInstalledLines,
-  formatPluginLines,
+  formatPluginTable,
   formatRunSummary,
   formatStatusLine,
 } from './summary';
 
-describe('formatPluginLines', () => {
-  const plugin = { label: 'Name', packageName: 'pkg', state: 'configured', description: 'desc' };
+describe('formatPluginTable', () => {
+  const base = {
+    label: 'Name',
+    packageName: 'pkg',
+    status: 'configured',
+    state: 'configured',
+    description: 'desc',
+  } as const;
+  const rowFor = (lines: readonly string[], pkg: string): number =>
+    lines.findIndex((line) => line.includes(` ${pkg} `) || line.endsWith(` ${pkg}`));
 
-  test('keeps the legacy sentence when the line fits', () => {
-    expect(formatPluginLines(plugin, 120)).toEqual(['Name (pkg) configured — desc']);
+  test('marks plugins by status and puts the description underneath', () => {
+    const lines = formatPluginTable(plainStyle, [
+      base,
+      { ...base, packageName: 'built', status: 'builtin', state: 'built-in' },
+      { ...base, packageName: 'missing', status: 'not_installed', state: 'not-installed' },
+      { ...base, packageName: 'broken', status: 'failed', state: 'load failed: x' },
+    ]);
+    expect(lines[0]).toContain(m['cli.ui.header_package']().toLocaleUpperCase());
+    expect(lines[rowFor(lines, 'pkg')]!.startsWith('● ')).toBe(true);
+    expect(lines[rowFor(lines, 'built')]!.startsWith('● ')).toBe(true);
+    expect(lines[rowFor(lines, 'missing')]!.startsWith('○ ')).toBe(true);
+    const broken = rowFor(lines, 'broken');
+    expect(lines[broken]!.startsWith('✗ ')).toBe(true);
+    expect(lines[broken]).toContain(m['cli.plugin.state_failed']());
+    expect(lines[broken + 1]).toBe('    load failed: x');
+    expect(lines[rowFor(lines, 'pkg') + 1]).toBe('    desc');
   });
 
-  test('splits present fields when the width is unknown', () => {
-    expect(formatPluginLines(plugin, undefined)).toEqual(['Name', 'pkg', 'configured', 'desc']);
-  });
-
-  test('does not slice a description wider than the terminal', () => {
+  test('keeps a CJK description whole on its own line', () => {
     const description = '字'.repeat(50);
-    const lines = formatPluginLines({ ...plugin, description }, 80);
-    expect(lines.length).toBeGreaterThan(1);
-    expect(lines.join('\n')).toContain(description);
+    expect(formatPluginTable(plainStyle, [{ ...base, description }])).toContain(`    ${description}`);
+  });
+
+  test('shows a dash when a plugin has no display name', () => {
+    const { label: _label, ...unnamed } = base;
+    expect(formatPluginTable(plainStyle, [unnamed])[1]!.startsWith('● -  ')).toBe(true);
   });
 });
 
