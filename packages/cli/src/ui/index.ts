@@ -1,4 +1,7 @@
 export { canPrompt, useColor, type PromptIo } from './mode';
+export { createStyle, plainStyle, styleFor, type Style } from './style';
+export { applyHelpStyle } from './help';
+export { formatBlock, formatBlocks, formatTable, type Block, type Field, type TableRow } from './layout';
 export {
   createClackPrompts,
   PromptCancelledError,
@@ -21,8 +24,10 @@ export {
 export {
   formatDeepProviderLines,
   formatDoctorLines,
+  formatErrorLines,
   formatInstalledLines,
-  formatPluginLines,
+  formatPluginTable,
+  type PluginListItem,
   formatProviderLines,
   formatRunSummary,
   formatStatusLine,

@@ -1,152 +1,146 @@
 import { describe, expect, test } from 'bun:test';
 
-import { m } from '@aio-proxy/i18n';
+import { getLocale, m, setLocale } from '@aio-proxy/i18n';
 
+import { plainStyle } from '../style';
 import {
-  formatDeepProviderLines,
   formatDoctorLines,
+  formatErrorLines,
   formatInstalledLines,
-  formatPluginLines,
-  formatProviderLines,
+  formatPluginTable,
   formatRunSummary,
   formatStatusLine,
 } from './summary';
 
-const provider = {
-  id: 'openai',
-  kind: 'api',
-  enabled: true,
-  passthrough: false,
-  last_status: 'ok',
-  last_latency: 0,
-  protocols: [],
-  hasQuota: false,
-  canRefreshCredential: false,
-  clientModels: [],
-  state: { status: 'ready', catalog: 'fresh' },
-} as const;
+describe('formatPluginTable', () => {
+  const base = {
+    label: 'Name',
+    packageName: 'pkg',
+    status: 'configured',
+    state: 'configured',
+    description: 'desc',
+  } as const;
+  const rowFor = (lines: readonly string[], pkg: string): number =>
+    lines.findIndex((line) => line.includes(` ${pkg} `) || line.endsWith(` ${pkg}`));
 
-describe('formatProviderLines', () => {
-  test('prints one labeled field per line without pipes or color', () => {
-    const text = formatProviderLines([provider], false, false).join('\n');
-    expect(text).toContain('id: openai');
-    expect(text).toContain('last_latency: 0');
-    expect(text).toContain('catalog: fresh');
-    expect(text).not.toContain('|');
-    expect(text).not.toContain('\u001b');
+  test('marks plugins by status and puts the description underneath', () => {
+    const lines = formatPluginTable(plainStyle, [
+      base,
+      { ...base, packageName: 'built', status: 'builtin', state: 'built-in' },
+      { ...base, packageName: 'missing', status: 'not_installed', state: 'not-installed' },
+      { ...base, packageName: 'broken', status: 'failed', state: 'load failed: x' },
+    ]);
+    expect(lines[0]).toContain(m['cli.ui.header_package']().toLocaleUpperCase());
+    expect(lines[rowFor(lines, 'pkg')]!.startsWith('● ')).toBe(true);
+    expect(lines[rowFor(lines, 'built')]!.startsWith('● ')).toBe(true);
+    expect(lines[rowFor(lines, 'missing')]!.startsWith('○ ')).toBe(true);
+    const broken = rowFor(lines, 'broken');
+    expect(lines[broken]!.startsWith('✗ ')).toBe(true);
+    expect(lines[broken]).toContain(m['cli.plugin.state_failed']());
+    expect(lines[broken + 1]).toBe('    load failed: x');
+    expect(lines[rowFor(lines, 'pkg') + 1]).toBe('    desc');
   });
 
-  test('dims labels when color is requested', () => {
-    const text = formatProviderLines([provider], false, true).join('\n');
-    expect(text).toContain('\u001b[2mid\u001b[0m: openai');
+  test('localizes the state column header', async () => {
+    const previous = getLocale();
+    await setLocale('ja');
+    try {
+      expect(formatPluginTable(plainStyle, [base])[0]).toContain('状態');
+    } finally {
+      await setLocale(previous);
+    }
   });
 
-  test('separates providers with one blank line and does not trail one', () => {
-    const lines = formatProviderLines([provider, { ...provider, id: 'anthropic' }], false, false);
-    const secondId = lines.findIndex((line) => line.startsWith('id: anthropic'));
-    expect(lines[secondId - 1]).toBe('');
-    expect(lines.at(-1)).not.toBe('');
-  });
-
-  test('returns the empty copy when there are no providers', () => {
-    expect(formatProviderLines([], false, false)).toEqual([m['cli.ui.provider_list_empty']()]);
-  });
-
-  test('keeps a 200-character provider id intact', () => {
-    const id = 'x'.repeat(200);
-    const text = formatProviderLines([{ ...provider, id }], false, false).join('\n');
-    expect(text).toContain(id);
-  });
-});
-
-describe('formatDeepProviderLines', () => {
-  test('formats a probe view when the payload parses and returns undefined otherwise', () => {
-    const text = formatDeepProviderLines({ providers: [provider] }, false)?.join('\n');
-    expect(text).toContain('id: openai');
-    expect(text).toContain('probe: FAIL');
-    expect(formatDeepProviderLines({ providers: 'nope' }, false)).toBeUndefined();
-  });
-});
-
-describe('formatPluginLines', () => {
-  const plugin = { label: 'Name', packageName: 'pkg', state: 'configured', description: 'desc' };
-
-  test('keeps the legacy sentence when the line fits', () => {
-    expect(formatPluginLines(plugin, 120)).toEqual(['Name (pkg) configured — desc']);
-  });
-
-  test('splits present fields when the width is unknown', () => {
-    expect(formatPluginLines(plugin, undefined)).toEqual(['Name', 'pkg', 'configured', 'desc']);
-  });
-
-  test('does not slice a description wider than the terminal', () => {
+  test('keeps a CJK description whole on its own line', () => {
     const description = '字'.repeat(50);
-    const lines = formatPluginLines({ ...plugin, description }, 80);
-    expect(lines.length).toBeGreaterThan(1);
-    expect(lines.join('\n')).toContain(description);
+    expect(formatPluginTable(plainStyle, [{ ...base, description }])).toContain(`    ${description}`);
+  });
+
+  test('shows a dash when a plugin has no display name', () => {
+    const { label: _label, ...unnamed } = base;
+    expect(formatPluginTable(plainStyle, [unnamed])[1]!.startsWith('● -  ')).toBe(true);
   });
 });
 
 describe('formatInstalledLines', () => {
-  const item = { packageName: 'pkg', version: '1.0.0', directory: '/tmp/pkg' };
-
-  test('keeps the legacy sentence when the line fits', () => {
-    expect(formatInstalledLines(item, 120)).toEqual(['pkg 1.0.0 /tmp/pkg']);
-  });
-
-  test('splits the three fields when the terminal is narrow', () => {
-    expect(formatInstalledLines(item, 20)).toEqual(['pkg', '1.0.0', '/tmp/pkg']);
+  test('prints an aligned table with a header', () => {
+    const lines = formatInstalledLines(plainStyle, [
+      { packageName: 'pkg', version: '1.0.0', directory: '/tmp/pkg' },
+      { packageName: '@scope/longer', version: '10.0.0', directory: '/tmp/l' },
+    ]);
+    expect(lines[0]).toContain(m['cli.ui.header_package']().toLocaleUpperCase());
+    expect(Bun.stringWidth(lines[1]!.slice(0, lines[1]!.indexOf('1.0.0')))).toBe(
+      Bun.stringWidth(lines[2]!.slice(0, lines[2]!.indexOf('10.0.0'))),
+    );
   });
 });
 
 describe('formatDoctorLines', () => {
   const doctor = {
     configPath: '/cfg',
+    configExists: true,
     url: 'http://127.0.0.1:9317',
     version: '1.2.3',
     reachable: true,
     pluginCount: 2,
   };
+  const valueColumn = (line: string, value: string): number => Bun.stringWidth(line.slice(0, line.indexOf(value)));
 
-  test('joins the three sentences when the line fits', () => {
-    const lines = formatDoctorLines(doctor, 200);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain('● ');
-    expect(lines[0]).toContain('1.2.3');
-  });
-
-  test('marks only the server sentence when the width is unknown', () => {
-    const lines = formatDoctorLines(doctor, undefined);
+  test('prints one marked, aligned line per check', () => {
+    const lines = formatDoctorLines(plainStyle, doctor);
     expect(lines).toHaveLength(3);
-    expect(lines.filter((line) => line.startsWith('● '))).toEqual([lines[1]]);
+    expect(lines.every((line) => line.startsWith('● '))).toBe(true);
+    expect(lines[1]).toContain('http://127.0.0.1:9317 · v1.2.3');
+    expect(valueColumn(lines[0]!, '/cfg')).toBe(valueColumn(lines[1]!, 'http'));
   });
 
-  test('marks an unreachable server with an open circle', () => {
-    const lines = formatDoctorLines({ ...doctor, reachable: false }, undefined);
-    expect(lines[1]?.startsWith('○ ')).toBe(true);
+  test('marks a missing config file as not present', () => {
+    const lines = formatDoctorLines(plainStyle, { ...doctor, configExists: false });
+    expect(lines[0]!.startsWith('○ ')).toBe(true);
+  });
+
+  test('marks an unreachable server as failed and no plugins as a warning', () => {
+    const lines = formatDoctorLines(plainStyle, { ...doctor, reachable: false, pluginCount: 0 });
+    expect(lines[1]!.startsWith('✗ ')).toBe(true);
+    expect(lines[1]).toContain(m['cli.doctor.server_not_reachable']());
+    expect(lines[2]!.startsWith('▲ ')).toBe(true);
+    expect(lines[2]).toContain(m['cli.doctor.plugins_none']());
   });
 });
 
 describe('formatStatusLine', () => {
-  test('marks a running proxy and keeps the address and version', () => {
-    const line = formatStatusLine({ running: true, url: 'http://127.0.0.1:9317', version: '1.2.3' });
-    expect(line.startsWith('● ')).toBe(true);
-    expect(line).toContain('1.2.3');
-    expect(line).toContain('9317');
+  test('marks a running proxy and shows address and version', () => {
+    const line = formatStatusLine(plainStyle, { running: true, url: 'http://127.0.0.1:9317', version: '1.2.3' });
+    expect(line).toBe(`● ${m['cli.status.state_running']()}  http://127.0.0.1:9317 · v1.2.3`);
+  });
+
+  test('omits the version instead of printing vunknown', () => {
+    const line = formatStatusLine(plainStyle, { running: true, url: 'http://127.0.0.1:9317' });
+    expect(line).not.toContain('unknown');
+    expect(line.endsWith('http://127.0.0.1:9317')).toBe(true);
   });
 
   test('marks a stopped proxy with an open circle', () => {
-    const line = formatStatusLine({ running: false, url: 'http://127.0.0.1:9317' });
-    expect(line.startsWith('○ ')).toBe(true);
+    const line = formatStatusLine(plainStyle, { running: false, url: 'http://127.0.0.1:9317' });
+    expect(line).toBe(`○ ${m['cli.status.state_not_running']()}  http://127.0.0.1:9317`);
   });
 });
 
 describe('formatRunSummary', () => {
-  test('marks startup and includes both URLs without color', () => {
-    const line = formatRunSummary('http://127.0.0.1:9317', 'http://127.0.0.1:9317/dashboard');
-    expect(line.startsWith('● ')).toBe(true);
-    expect(line).toContain('http://127.0.0.1:9317');
-    expect(line).toContain('http://127.0.0.1:9317/dashboard');
-    expect(line).not.toContain('\u001b');
+  test('prints a block with aligned API and Dashboard addresses and no color', () => {
+    const lines = formatRunSummary(plainStyle, 'http://127.0.0.1:9317', 'http://127.0.0.1:9317/dashboard');
+    expect(lines[0]).toBe(`● ${m['cli.run.running']()}`);
+    expect(lines[1]).toContain('http://127.0.0.1:9317');
+    expect(lines[2]).toContain('http://127.0.0.1:9317/dashboard');
+    expect(lines.join('\n')).not.toContain('\u001b');
+  });
+});
+
+describe('formatErrorLines', () => {
+  test('marks the first line and indents the rest', () => {
+    expect(formatErrorLines(plainStyle, 'Server is not running\nStart it first')).toEqual([
+      '✗ Server is not running',
+      '  Start it first',
+    ]);
   });
 });

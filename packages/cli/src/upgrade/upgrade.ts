@@ -8,6 +8,7 @@ import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-p
 import { defaultCliDeps } from '../dashboard-assets';
 import { CliExit, EXIT } from '../exit';
 import { isManagedServiceInstalled, readDesktopOwnedUnit, serviceRestart } from '../service';
+import { createStyle } from '../ui';
 import { updateViaBinary } from './binary';
 import { NPM_REGISTRY, type UpgradeTarget } from './constants';
 import { resolveManagedRestartExec, resolveUpgradeTarget } from './detect';
@@ -172,7 +173,7 @@ export const runUpgradeCommand = async (
 
   const cmp = Bun.semver.order(latest, current);
   if (cmp <= 0 && options.force !== true) {
-    print(m['cli.upgrade.up_to_date']({ version: current }));
+    print(`${createStyle(process.stdout).mark('ok')} ${m['cli.upgrade.up_to_date']({ version: current })}`);
     return 'unchanged';
   }
   if (cmp > 0) print(m['cli.upgrade.new_version']({ version: latest }));
@@ -192,7 +193,7 @@ export const runUpgradeCommand = async (
     if (target.method === 'brew') {
       const actual = await deps.readInstalledVersion(target.bin);
       if (options.force !== true && Bun.semver.order(actual, current) <= 0) {
-        print(m['cli.upgrade.up_to_date']({ version: current }));
+        print(`${createStyle(process.stdout).mark('ok')} ${m['cli.upgrade.up_to_date']({ version: current })}`);
         return 'unchanged';
       }
       installedVersion = actual;
@@ -200,7 +201,7 @@ export const runUpgradeCommand = async (
   } catch (err) {
     throw new CliExit(EXIT.transient, m['cli.upgrade.install_failed']({ reason: errorReason(err) }));
   }
-  print(m['cli.upgrade.success']({ version: installedVersion }));
+  print(`${createStyle(process.stdout).mark('ok')} ${m['cli.upgrade.success']({ version: installedVersion })}`);
 
   try {
     const binary = await deps.resolveNewBinary(target, installedVersion);

@@ -9,6 +9,7 @@ import { ConfigValidationError } from '../errors';
 import { CliExit, EXIT } from '../exit';
 import { DEFAULT_CONFIG } from '../run';
 import { loadServiceEnv } from '../service-env';
+import { createStyle } from '../ui';
 
 export type ConfigShowOptions = { readonly json?: boolean };
 
@@ -37,7 +38,7 @@ export async function configValidate(
       m['cli.config.invalid']({ error: cause instanceof Error ? cause.message : String(cause) }),
     );
   }
-  print(m['cli.config.valid']({ path: resolved }));
+  print(`${createStyle(process.stdout).mark('ok')} ${m['cli.config.valid']({ path: resolved })}`);
 }
 
 export function configPathCommand(print: (line: string) => void = console.log): void {

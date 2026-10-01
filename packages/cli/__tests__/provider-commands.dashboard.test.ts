@@ -95,29 +95,34 @@ describe('provider commands dashboard', () => {
           runCliAsync(['provider', 'list', '--url', url]),
           runCliAsync(['provider', 'test', 'openai', '--url', url]),
           runCliAsync(['provider', 'test', 'slow-ai', '--url', url]),
-          runCliAsync(['--lang', 'zh-Hans', 'provider', 'list', '--url', url]),
+          runCliAsync(['--lang', 'zh-Hans', 'provider', 'list', '--url', url, '--filter', 'openai']),
         ]);
 
         // Then
         expect(list.exitCode).toBe(0);
-        expect(list.stdout).toContain('id: openai');
-        expect(list.stdout).toContain('kind: api');
-        expect(list.stdout).toContain('passthrough: true');
-        expect(list.stdout).toContain('last_latency: -');
+        // Several providers: one aligned table row each, details left to --filter.
+        expect(list.stdout).toMatch(/^ {2}ID +KIND +STATE/m);
+        expect(list.stdout).toMatch(/^● openai +api +ready/m);
+        expect(list.stdout).toMatch(/^● slow-ai +ai-sdk +ready/m);
+        expect(list.stdout).not.toContain('passthrough');
+        expect(list.stdout).not.toContain('\u001b');
+        // One provider: every field as a labeled block.
         expect(testProvider.exitCode).toBe(0);
-        expect(testProvider.stdout).toContain('openai');
-        expect(testProvider.stdout).toContain('OK');
+        expect(testProvider.stdout).toMatch(/^● openai$/m);
+        expect(testProvider.stdout).toMatch(/passthrough +true/);
+        expect(testProvider.stdout).toMatch(/last_latency +-/);
+        expect(testProvider.stdout).toMatch(/probe +OK/);
         expect(testProvider.stdout).not.toContain('slow-ai');
         expect(failedProvider.exitCode).toBe(0);
         expect(failedProvider.stdout).toContain('slow-ai');
         expect(failedProvider.stdout).toContain('FAIL');
         expect(failedProvider.stdout).not.toContain('openai');
-        expect(localized.stdout).toContain('标识: openai');
-        expect(localized.stdout).toContain('类型: api');
-        expect(localized.stdout).toContain('已启用: true');
-        expect(localized.stdout).toContain('直通: true');
-        expect(localized.stdout).toContain('最近状态: unknown');
-        expect(localized.stdout).toContain('最近延迟: -');
+        expect(localized.stdout).toMatch(/标识 +openai/);
+        expect(localized.stdout).toMatch(/类型 +api/);
+        expect(localized.stdout).toMatch(/已启用 +true/);
+        expect(localized.stdout).toMatch(/直通 +true/);
+        expect(localized.stdout).toMatch(/最近状态 +unknown/);
+        expect(localized.stdout).toMatch(/最近延迟 +-/);
       },
     );
   });
@@ -161,19 +166,22 @@ describe('provider commands dashboard', () => {
         },
       ],
       async (url) => {
-        const result = await runCliAsync(['provider', 'list', '--url', url]);
+        const [result, detail] = await Promise.all([
+          runCliAsync(['provider', 'list', '--url', url]),
+          runCliAsync(['provider', 'list', '--url', url, '--filter', 'copilot-octocat']),
+        ]);
 
         expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain('ready');
-        expect(result.stdout).toContain('stale');
-        expect(result.stdout).toContain('@aio-proxy/plugin-github-copilot');
-        expect(result.stdout).toContain('default');
-        expect(result.stdout).toContain('octocat');
-        expect(result.stdout).toContain('2026-07-14T00:00:00.000Z');
-        expect(result.stdout).toContain('unavailable');
-        expect(result.stdout).toContain('Credential refresh failed.');
-        expect(result.stdout).toContain('aio-proxy provider login --provider chatgpt-personal');
+        expect(result.stdout).toMatch(/^▲ copilot-octocat +oauth +ready +stale/m);
+        expect(result.stdout).toMatch(/^✗ chatgpt-personal +oauth +unavailable/m);
+        expect(result.stdout).toContain('    Credential refresh failed.');
+        expect(result.stdout).toContain('    → aio-proxy provider login --provider chatgpt-personal');
         expect(result.stdout).not.toContain('aio-proxy provider login default');
+        expect(detail.exitCode).toBe(0);
+        expect(detail.stdout).toMatch(/plugin +@aio-proxy\/plugin-github-copilot/);
+        expect(detail.stdout).toMatch(/capability +default/);
+        expect(detail.stdout).toMatch(/account +octocat/);
+        expect(detail.stdout).toMatch(/catalog_last_success_at +2026-07-14T00:00:00.000Z/);
       },
     );
   });

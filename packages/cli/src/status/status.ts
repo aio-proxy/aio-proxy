@@ -2,7 +2,7 @@ import { m } from '@aio-proxy/i18n';
 
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
 import { StatusNotRunningError } from '../errors';
-import { formatDeepProviderLines, formatStatusLine, useColor } from '../ui';
+import { createStyle, formatDeepProviderLines, formatStatusLine } from '../ui';
 
 export type StatusOptions = {
   readonly host?: string;
@@ -41,6 +41,7 @@ export async function statusCommand(
   options: StatusOptions = {},
   print: (line: string) => void = console.log,
 ): Promise<void> {
+  const style = createStyle(process.stdout);
   const { host, port } = await resolveControlAddress(options);
   const url = controlBaseUrl(host, port);
   const health = await probeHealth(url);
@@ -54,7 +55,7 @@ export async function statusCommand(
 
   if (health === null) {
     if (options.json === true) print(JSON.stringify({ ...result }, undefined, 2));
-    else print(formatStatusLine({ running: false, url }));
+    else print(formatStatusLine(style, { running: false, url }));
     // Result already printed; signal "down" with a nonzero exit so health checks and
     // service scripts can tell an unreachable daemon apart from a running one without
     // parsing localized output.
@@ -87,14 +88,13 @@ export async function statusCommand(
     return;
   }
 
-  print(formatStatusLine({ running: true, url, version: health.version }));
+  print(formatStatusLine(style, { running: true, url, version: health.version }));
   if (options.deep === true) {
     if (deepFailure !== undefined) {
       if (deepFailure.reason === 'auth') print(m['cli.status.deep_unavailable']());
       else print(m['cli.status.deep_probe_failed']({ status: String(deepFailure.status ?? 'network error') }));
     } else {
-      const color = useColor(process.stdout.isTTY === true, process.env);
-      const lines = formatDeepProviderLines(providers, color);
+      const lines = formatDeepProviderLines(style, providers);
       if (lines === undefined) print(m['cli.ui.status_deep_unexpected']());
       else for (const line of lines) print(line);
     }

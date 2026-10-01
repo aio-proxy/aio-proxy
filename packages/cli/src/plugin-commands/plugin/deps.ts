@@ -23,6 +23,7 @@ import { openDb } from '@aio-proxy/core/db';
 import {
   canPrompt,
   createClackPrompts,
+  createStyle,
   openProductionSession,
   PromptRequiresTtyError,
   type CommandSession,
@@ -90,7 +91,7 @@ export function beginPluginSession(deps: PluginLifecycleDeps, title: string): Co
 
 export function reportLine(deps: PluginLifecycleDeps, session: CommandSession | undefined, message: string): void {
   if (session?.finish(message) === true) return;
-  deps.print(message);
+  deps.print(`${createStyle(process.stdout).mark('ok')} ${message}`);
 }
 
 export function createDefaultPluginLifecycleDeps(): PluginLifecycleDeps {

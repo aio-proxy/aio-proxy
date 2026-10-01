@@ -66,11 +66,8 @@ const AGENT_KEYS = [
   'cli.agent.description',
   'cli.agent.list.option_check',
   'cli.agent.list.option_authorizations',
-  'cli.agent.list.unresolved',
-  'cli.agent.list.target',
   'cli.agent.list.server',
   'cli.agent.list.capabilities',
-  'cli.agent.list.authorization',
   'cli.agent.configure.host_missing',
   'cli.agent.configure.unsupported',
   'cli.agent.configure.version_unknown',
@@ -116,7 +113,6 @@ const AGENT_KEYS = [
   'cli.agent.codex.sources',
   'cli.agent.codex.sources_required',
   'cli.agent.codex.migrate',
-  'cli.agent.codex.list',
   'cli.agent.codex.configured',
   'cli.agent.codex.cancelled',
   'cli.agent.codex.non_interactive',
@@ -146,6 +142,9 @@ const AGENT_KEYS = [
   'cli.agent.grok_endpoint_changed',
   'cli.agent.grok_retained_files',
   'cli.agent.grok_skipped_fields',
+  'cli.agent.list.label_host',
+  'cli.agent.list.host_value',
+  'cli.agent.list.catalog_value',
 ] as const;
 
 const flattenMessages = (value: unknown, prefix = ''): Record<string, string> => {
@@ -161,6 +160,44 @@ test('JSON list rendering is exactly one parseable line', () => {
   const lines = renderAgentList(completeListResult, true);
   expect(lines).toHaveLength(1);
   expect(JSON.parse(lines[0]!)).toEqual(completeListResult);
+});
+
+test('text list prints one block per agent with aligned labels', () => {
+  const lines = renderAgentList(completeListResult, false);
+  expect(lines[0]).toBe('● opencode  managed');
+  const columnOf = (text: string): number => {
+    const line = lines.find((candidate) => candidate.includes(text))!;
+    return Bun.stringWidth(line.slice(0, line.indexOf(text)));
+  };
+  expect(columnOf('1.17.10 (')).toBe(columnOf(OUTPUT_INSTALLATION));
+  expect(lines).toContain('');
+  expect(lines.some((line) => line.startsWith('○ codex  absent'))).toBe(true);
+  expect(lines).toContain(m['cli.agent.list.section_control_plane']());
+  expect(lines).toContain(m['cli.agent.list.section_authorizations']());
+});
+
+test('text list marks absent and unresolved agents', () => {
+  const absent: AgentListResult = {
+    ...completeListResult,
+    targets: [{ ...completeListResult.targets[0]!, integration: 'absent' } as AgentListResult['targets'][number]],
+  };
+  expect(renderAgentList(absent, false)[0]!.startsWith('○ opencode')).toBe(true);
+  const unresolved: AgentListResult = {
+    ...completeListResult,
+    targets: [
+      {
+        target: 'pi',
+        host: { target: 'pi', detected: false, minimumVersion: '0.84.2', support: 'unknown' },
+        integration: 'unresolved',
+        reason: 'host_missing',
+        authorization: 'not_checked',
+        schemaCompatibility: 'not_checked',
+      },
+    ],
+  };
+  const lines = renderAgentList(unresolved, false);
+  expect(lines[0]).toBe('▲ pi  unresolved');
+  expect(lines.join('\n')).toContain('host_missing');
 });
 
 test('text list rendering exposes every diagnostic field promised by list --check', () => {

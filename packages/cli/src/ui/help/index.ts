@@ -1,0 +1,1 @@
+export { applyHelpStyle } from './help';

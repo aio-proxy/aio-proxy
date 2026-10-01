@@ -3,6 +3,7 @@ import { m } from '@aio-proxy/i18n';
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
 import { StatusNotRunningError } from '../errors';
 import { openBrowser as defaultOpenBrowser } from '../open-browser';
+import { createStyle } from '../ui';
 
 export type DashboardOptions = {
   readonly host?: string;
@@ -31,7 +32,7 @@ export async function dashboardCommand(options: DashboardOptions = {}, deps: Das
   const dashboardUrl = `${base}/dashboard`;
   const health = await probe(base);
   if (health === null) {
-    print(m['cli.status.not_running']({ url: base }));
+    print(`${createStyle(process.stdout).mark('off')} ${m['cli.status.not_running']({ url: base })}`);
     throw new StatusNotRunningError();
   }
 
@@ -41,6 +42,6 @@ export async function dashboardCommand(options: DashboardOptions = {}, deps: Das
   } catch {
     opened = false;
   }
-  if (opened) print(m['cli.dashboard.opened']());
+  if (opened) print(`${createStyle(process.stdout).mark('ok')} ${m['cli.dashboard.opened']()}`);
   print(dashboardUrl);
 }

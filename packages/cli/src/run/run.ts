@@ -16,7 +16,7 @@ import { ServeListenError } from '../errors';
 import { CliExit, EXIT } from '../exit';
 import { openBrowser } from '../open-browser';
 import { loadServiceEnv } from '../service-env';
-import { formatRunSummary } from '../ui';
+import { createStyle, formatRunSummary } from '../ui';
 import { createCliAutoUpdateHooks, migratePreMarkerManagedUnit } from './auto-update-hooks';
 
 const VERSION = packageJson.version;
@@ -307,7 +307,13 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   }
 
   onShutdownSignal(() => shutdownProxyServer(server, app));
-  console.error(formatRunSummary(controlBaseUrl(server.hostname ?? host, String(server.port)), dashboardUrl));
+  for (const line of formatRunSummary(
+    createStyle(process.stderr),
+    controlBaseUrl(server.hostname ?? host, String(server.port)),
+    dashboardUrl,
+  )) {
+    console.error(line);
+  }
   if (options.open === true) {
     openBrowser(dashboardUrl);
   }

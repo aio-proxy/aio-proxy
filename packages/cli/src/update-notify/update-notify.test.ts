@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { readUpdateCheckState, writeUpdateCheckState } from '@aio-proxy/core';
+import { m } from '@aio-proxy/i18n';
 
 import { notifyUpdateAvailable, printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
 
@@ -50,7 +51,7 @@ test('prints a banner only when the persisted latest is newer', async () => {
     expect(lines).toEqual([]);
     await writeUpdateCheckState({ latest: '2.0.0', checkedAt: 1 });
     printUpdateBanner('1.0.0', (line) => lines.push(line));
-    expect(lines.join('\n')).toContain('2.0.0');
+    expect(lines).toEqual([`▲ ${m['cli.update.banner']({ current: '1.0.0', latest: '2.0.0' })}  → aio-proxy upgrade`]);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

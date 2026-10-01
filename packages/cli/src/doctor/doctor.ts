@@ -1,7 +1,9 @@
+import { existsSync } from 'node:fs';
+
 import { configPath, listInstalledNpmPackages } from '@aio-proxy/core';
 
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
-import { formatDoctorLines } from '../ui';
+import { createStyle, formatDoctorLines } from '../ui';
 
 export type DoctorOptions = {
   readonly host?: string;
@@ -20,16 +22,14 @@ export async function doctorCommand(
 
   const health = await probeHealth(url);
   const installed = await listInstalledNpmPackages();
-  for (const line of formatDoctorLines(
-    {
-      configPath: configPath(),
-      url,
-      ...(health?.version === undefined ? {} : { version: health.version }),
-      reachable: health !== null,
-      pluginCount: installed.length,
-    },
-    process.stdout.columns,
-  )) {
+  for (const line of formatDoctorLines(createStyle(process.stdout), {
+    configPath: configPath(),
+    configExists: existsSync(configPath()),
+    url,
+    ...(health?.version === undefined ? {} : { version: health.version }),
+    reachable: health !== null,
+    pluginCount: installed.length,
+  })) {
     print(line);
   }
 }

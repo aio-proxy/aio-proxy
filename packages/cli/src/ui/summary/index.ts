@@ -1,9 +1,10 @@
+export { formatDeepProviderLines, formatProviderLines } from './provider';
 export {
-  formatDeepProviderLines,
   formatDoctorLines,
+  formatErrorLines,
   formatInstalledLines,
-  formatPluginLines,
-  formatProviderLines,
+  formatPluginTable,
+  type PluginListItem,
   formatRunSummary,
   formatStatusLine,
 } from './summary';

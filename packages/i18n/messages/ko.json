@@ -43,7 +43,12 @@
       "outro_provider_login": "로그인했습니다",
       "outro_codex_configure": "Codex 구성을 마쳤습니다",
       "provider_list_empty": "Provider가 없습니다",
-      "status_deep_unexpected": "Provider 상태를 표시할 수 없습니다"
+      "status_deep_unexpected": "Provider 상태를 표시할 수 없습니다",
+      "header_name": "이름",
+      "header_package": "패키지",
+      "header_version": "버전",
+      "header_directory": "디렉터리",
+      "header_state": "상태"
     },
     "root": {
       "description": "AIO Proxy 명령줄 인터페이스"
@@ -59,7 +64,9 @@
       "option_host_description": "바인딩할 호스트",
       "option_port_description": "바인딩할 포트",
       "option_open_description": "시작 후 기본 브라우저에서 대시보드 열기",
-      "started": "AIO Proxy가 {apiUrl}에서 수신 대기 중입니다. 대시보드: {dashboardUrl}"
+      "running": "AIO Proxy 실행 중",
+      "label_api": "API",
+      "label_dashboard": "대시보드"
     },
     "dashboard": {
       "description": "AIO Proxy 대시보드 열기",
@@ -209,7 +216,8 @@
       "diagnostic_authorization_failed": "프로바이더 {provider}의 인증에 실패했습니다",
       "diagnostic_catalog_unavailable": "프로바이더 {provider}의 모델 카탈로그를 사용할 수 없습니다",
       "diagnostic_proxy_unsupported": "프로바이더 {provider}은(는) 구성된 프록시를 지원하지 않습니다",
-      "diagnostic_runtime_create_failed": "프로바이더 {provider}의 런타임을 생성할 수 없습니다"
+      "diagnostic_runtime_create_failed": "프로바이더 {provider}의 런타임을 생성할 수 없습니다",
+      "state_failed": "로드 실패"
     },
     "error": {
       "port_out_of_range": "포트 {port}이(가) 범위를 벗어났습니다 (1-65535)",
@@ -227,10 +235,11 @@
     "status": {
       "description": "AIO Proxy 서버의 실행 여부 표시",
       "option_deep_description": "프로바이더 상태를 추가로 프로브",
-      "running": "AIO Proxy가 {url}에서 실행 중입니다 (버전 {version})",
       "not_running": "{url}에서 AIO Proxy에 연결할 수 없습니다",
       "deep_unavailable": "프로바이더 상태 프로브를 사용할 수 없습니다 (이 빌드의 대시보드는 비밀번호가 필요합니다)",
-      "deep_probe_failed": "프로바이더 상태 프로브에 실패했습니다 ({status})"
+      "deep_probe_failed": "프로바이더 상태 프로브에 실패했습니다 ({status})",
+      "state_running": "실행 중",
+      "state_not_running": "실행 중 아님"
     },
     "config": {
       "description": "AIO Proxy 구성 파일 확인",
@@ -264,10 +273,12 @@
     },
     "doctor": {
       "description": "AIO Proxy 환경 진단",
-      "config_path": "구성 파일: {path}",
-      "server_reachable": "{url}에서 서버에 연결할 수 있습니다 (버전 {version})",
-      "server_unreachable": "{url}에서 서버에 연결할 수 없습니다",
-      "plugin_count": "설치된 플러그인: {count}"
+      "label_config": "구성 파일",
+      "label_server": "서버",
+      "label_plugins": "플러그인",
+      "server_not_reachable": "연결할 수 없음",
+      "plugins_none": "설치된 항목 없음",
+      "plugins_installed": "{count}개 설치됨"
     },
     "completion": {
       "description": "셸 자동 완성 스크립트 출력 (bash, zsh 또는 fish)",
@@ -293,20 +304,40 @@
       "restarting": "데몬을 재시작하는 중..."
     },
     "update": {
-      "available": "aio-proxy {version}을 사용할 수 있습니다. aio-proxy upgrade를 실행하거나 대시보드를 여세요.",
       "notify_title": "aio-proxy {version}을 사용할 수 있습니다",
-      "notify_body": "대시보드를 열거나 aio-proxy upgrade를 실행하세요."
+      "notify_body": "대시보드를 열거나 aio-proxy upgrade를 실행하세요.",
+      "banner": "업데이트 가능 {current} → {latest}"
     },
     "agent": {
       "description": "Agent 연동을 관리합니다",
       "list": {
         "option_check": "실시간 컨트롤 플레인 상태를 확인합니다",
         "option_authorizations": "컨트롤 플레인 권한을 포함합니다",
-        "unresolved": "{target}: 미해결({reason}); 호스트 {hostVersion}(최소 {minimumVersion}, {support}); 권한 {authorization}; 스키마 {schemaCompatibility}",
-        "target": "{target}: 호스트 {hostVersion}(최소 {minimumVersion}, {support}); 연동 {integration}; 설치 {installationId}; 어댑터 {adapterVersion}; 엔드포인트 {endpoint}({endpointMatch}); 카탈로그 {catalog}(마지막 성공 {lastSuccessfulAt}); 권한 {authorization}; 스키마 {schemaCompatibility}",
         "server": "aio-proxy: {status}",
         "capabilities": "디바이스 권한 {deviceAuthorization}; 카탈로그 스키마 {catalogSchemaVersions}",
-        "authorization": "{installationId}: {target}, {authorization}, {local}"
+        "label_host": "호스트",
+        "label_installation": "설치",
+        "label_adapter": "어댑터",
+        "label_endpoint": "엔드포인트",
+        "label_catalog": "카탈로그",
+        "label_authorization": "권한",
+        "label_schema": "스키마",
+        "label_reason": "이유",
+        "label_target": "대상",
+        "label_local": "로컬",
+        "label_config": "구성",
+        "label_provider": "Provider",
+        "label_active_provider": "활성 Provider",
+        "label_base_url": "기본 URL",
+        "label_connection": "연결",
+        "label_changed_paths": "변경된 경로",
+        "label_auth_mode": "인증 모드",
+        "label_lifecycle": "수명 주기",
+        "label_credential": "자격 증명",
+        "host_value": "{version} (최소 {minimum}, {support})",
+        "catalog_value": "{catalog} (마지막 성공 {lastSuccessfulAt})",
+        "section_control_plane": "컨트롤 플레인",
+        "section_authorizations": "권한 부여"
       },
       "configure": {
         "host_missing": "{target}이(가) 설치되어 있지 않습니다. aio-proxy는 파일을 변경하지 않았습니다.",
@@ -383,8 +414,6 @@
         "sources": "마이그레이션할 세션 기록 소스를 선택하세요",
         "sources_required": "하나 이상의 소스를 선택하세요.",
         "migrate": "{sources}에서 {target}(으)로 활성 {active}개와 보관 {archived}개 세션을 마이그레이션할까요?",
-        "list": "codex: 구성 {configPath}; 제공자 {providerId}; 활성 {activeProviderId}; 기본 URL {baseUrl}; 상태 {status}; 연결 {connection}; 변경 경로 {changedPaths}",
-        "list_auth": "Codex 인증: 모드 {mode}; 설치 {installationId}; 수명 주기 {lifecycle}; 권한 {authorization}; 자격 증명 {credentialStatus}.",
         "configured": "codex: 제공자 {providerId} 구성을 {configPath}에 {status}했습니다.",
         "auth_result": "Codex 인증 모드: {mode}.",
         "reopen": "변경 사항을 적용하려면 Codex를 다시 여세요.",
@@ -420,6 +449,18 @@
       "grok_endpoint_changed": "Grok이 다른 프록시 엔드포인트로 이미 구성되어 있습니다. 통합을 제거한 다음 다시 구성하세요.",
       "grok_retained_files": "유지된 파일: {files}.",
       "grok_skipped_fields": "건너뛴 필드: {fields}."
+    },
+    "help": {
+      "usage": "사용법",
+      "options": "옵션",
+      "commands": "명령",
+      "arguments": "인수",
+      "group_server": "서버",
+      "group_providers": "Provider",
+      "group_agents": "Agent",
+      "group_setup": "설정",
+      "option_description": "도움말 표시",
+      "command_description": "명령 도움말 표시"
     }
   },
   "oauth": {
