@@ -154,3 +154,17 @@ fn the_same_range_is_a_no_op_and_a_closed_panel_only_remembers() {
     assert_eq!(order.range, UsageRange::D7);
     assert!(s.set_range(UsageRange::D7, start).is_none());
 }
+
+#[test]
+fn a_manual_refresh_fetches_again_to_pick_up_the_refreshed_quota() {
+    let t0 = Instant::now();
+    let mut s = Scheduler::default();
+    let order = s.open(t0).unwrap();
+    s.finished(order.tag, DONE, t0);
+    let manual = s.trigger(Trigger::Manual, t0 + secs(2)).unwrap();
+    // The response still holds the cached quota while the server reads the new one.
+    s.finished(manual.tag, DONE, t0 + secs(2));
+    assert_eq!(s.next_wake(), Some(t0 + secs(4)));
+    let follow = s.wake(t0 + secs(4)).expect("one follow-up after 2 s");
+    assert!(!follow.refresh_quota, "the follow-up only reads");
+}

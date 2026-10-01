@@ -55,8 +55,9 @@ pub struct Scheduler {
     sessions: u64,
     instance: u64,
     counter: u64,
-    /// The one request allowed in flight, and whether it is the loading retry.
-    in_flight: Option<(Tag, bool)>,
+    /// The one request allowed in flight, whether it is the loading retry, and whether it asked the
+    /// server to refresh quota.
+    in_flight: Option<(Tag, bool, bool)>,
     dirty: Option<Dirty>,
     last_start: Option<Instant>,
     retry_at: Option<Instant>,
@@ -138,14 +139,18 @@ impl Scheduler {
 
     /// A request finished. Returns whether its result may be shown, plus a follow-up fetch.
     pub fn finished(&mut self, tag: Tag, outcome: Finished, now: Instant) -> (bool, Option<FetchOrder>) {
-        let Some((current, is_retry)) = self.in_flight else {
+        let Some((current, is_retry, refreshed_quota)) = self.in_flight else {
             return (false, None);
         };
         if current != tag || self.session != Some(tag.session) || self.instance != tag.instance {
             return (false, None);
         }
         self.in_flight = None;
-        if outcome == (Finished::Summary { any_loading: true }) && !is_retry && self.retry_at.is_none() {
+        // A quota refresh only starts the read; the response still carries the cached quota, so a
+        // manual refresh gets the same one follow-up as a loading quota.
+        let loading = outcome == (Finished::Summary { any_loading: true });
+        let refreshing = refreshed_quota && matches!(outcome, Finished::Summary { .. });
+        if (loading || refreshing) && !is_retry && self.retry_at.is_none() {
             self.retry_at = Some(now + LOADING_RETRY);
         }
         let follow = match self.dirty.take() {
@@ -191,7 +196,7 @@ impl Scheduler {
         let session = self.session?;
         self.counter += 1;
         let tag = Tag { session, instance: self.instance, counter: self.counter };
-        self.in_flight = Some((tag, is_retry));
+        self.in_flight = Some((tag, is_retry, refresh_quota));
         self.last_start = Some(now);
         if !is_retry {
             // The response re-arms the retry if quota is still loading.
