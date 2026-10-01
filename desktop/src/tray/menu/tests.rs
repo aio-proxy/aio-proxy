@@ -60,16 +60,38 @@ fn a_read_only_copy_has_no_login_item_and_only_what_it_may_do() {
 #[test]
 fn busy_disables_service_actions_and_approval_is_named() {
     let entries = menu_entries(offered(false, false, true, true, true), true, true, LoginItemStatus::RequiresApproval);
-    for entry in &entries {
-        if let MenuEntry::Item { command: MenuCommand::Run(_), enabled, .. } = entry {
-            assert!(!enabled);
-        }
+    let enabled_of = |wanted: MenuCommand| {
+        entries.iter().find_map(|e| match e {
+            MenuEntry::Item { command, enabled, .. } if *command == wanted => Some(*enabled),
+            _ => None,
+        })
+    };
+    let runs: Vec<bool> = entries
+        .iter()
+        .filter_map(|e| match e {
+            MenuEntry::Item { command: MenuCommand::Run(_), enabled, .. } => Some(*enabled),
+            _ => None,
+        })
+        .collect();
+    assert!(!runs.is_empty() && runs.iter().all(|enabled| !enabled));
+    for command in [MenuCommand::OpenDashboard, MenuCommand::OpenLogs, MenuCommand::CheckForUpdates, MenuCommand::Quit]
+    {
+        assert_eq!(enabled_of(command), Some(true), "{command:?} stays enabled while busy");
     }
     assert!(labels(&entries).contains(&"Open at login (needs approval)".to_string()));
 }
 
 #[test]
 fn ids_round_trip() {
+    // The exhaustive match below stops compiling when `MenuCommand` gains a variant: add it here too.
+    let _exhaustive = |c: MenuCommand| match c {
+        MenuCommand::OpenDashboard
+        | MenuCommand::Run(_)
+        | MenuCommand::OpenLogs
+        | MenuCommand::ToggleLogin
+        | MenuCommand::CheckForUpdates
+        | MenuCommand::Quit => (),
+    };
     for command in [
         MenuCommand::OpenDashboard,
         MenuCommand::Run(UserAction::InstallAndStart),

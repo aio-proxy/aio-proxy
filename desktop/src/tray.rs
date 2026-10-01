@@ -114,6 +114,13 @@ fn native_menu(entries: &[MenuEntry]) -> Menu {
     menu
 }
 
+/// Forces the next `sync` to rebuild the menu, discarding any state muda changed natively.
+pub fn invalidate_menu(cx: &mut App) {
+    if cx.try_global::<Tray>().is_some() {
+        cx.global_mut::<Tray>().entries.clear();
+    }
+}
+
 /// Re-derives the icon and the right-click menu from the model; cheap when nothing changed.
 pub fn sync(cx: &mut App) {
     let Some(model) = cx.try_global::<AppModel>() else {

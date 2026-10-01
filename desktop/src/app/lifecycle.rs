@@ -262,7 +262,12 @@ pub fn toggle_login_item(cx: &mut App) {
     let status = cx.global::<AppModel>().login_item;
     if status == crate::login_item::LoginItemStatus::RequiresApproval {
         crate::login_item::open_settings();
-        return;
+    } else {
+        set_login_item(cx, status != crate::login_item::LoginItemStatus::Enabled);
     }
-    set_login_item(cx, status != crate::login_item::LoginItemStatus::Enabled);
+    // muda flips the native check itself on click; re-read the status and force a menu rebuild so
+    // an unchanged model (approval pending, failed register) cannot leave it flipped.
+    cx.global_mut::<AppModel>().login_item = crate::login_item::status();
+    crate::tray::invalidate_menu(cx);
+    changed(cx);
 }
