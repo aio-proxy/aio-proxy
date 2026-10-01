@@ -1,5 +1,22 @@
 # @aio-proxy/dashboard
 
+## 0.36.0
+
+### Minor Changes
+
+- [#456](https://github.com/aio-proxy/aio-proxy/pull/456) [`dcb1ebd`](https://github.com/aio-proxy/aio-proxy/commit/dcb1ebd82b6fddd964c3083c83ff3c2d57c275be) Thanks @baranwang - `aio-proxy service start` now starts a loaded-but-stopped launchd service, `service restart` waits for the old job to unload, and a service whose binary was removed no longer respawns in a loop. A stopping proxy exits within 3 seconds. Groundwork for the macOS desktop app: a private `desktop-token` file in the proxy home, a local summary endpoint and a discovery command. An app-managed install never self-upgrades (the Dashboard hides "Update now" there), and `aio-proxy upgrade` never restarts an app-owned service.
+
+### Patch Changes
+
+- [#457](https://github.com/aio-proxy/aio-proxy/pull/457) [`98aa84c`](https://github.com/aio-proxy/aio-proxy/commit/98aa84c42b513080f18edf43d7bc4ac8dbb924c5) Thanks @baranwang - The dashboard now waits out a brief server restart instead of showing "Dashboard unavailable" until reloaded. On the Routing page, token limits and prices follow the dashboard language (`128K`, `$2.00`) instead of the system one, traffic charts name Providers instead of showing their IDs, API Providers no longer list their protocol, and an empty traffic chart gets a proper empty state. Mixed CJK and Latin text is now auto-spaced.
+- Updated dependencies [[`dcb1ebd`](https://github.com/aio-proxy/aio-proxy/commit/dcb1ebd82b6fddd964c3083c83ff3c2d57c275be), [`4869672`](https://github.com/aio-proxy/aio-proxy/commit/4869672879e888f4d07fa9efe385d588dbd0e80b), [`98aa84c`](https://github.com/aio-proxy/aio-proxy/commit/98aa84c42b513080f18edf43d7bc4ac8dbb924c5)]:
+  - @aio-proxy/server@0.36.0
+  - @aio-proxy/types@0.36.0
+  - @aio-proxy/i18n@0.36.0
+  - @aio-proxy/ui@0.36.0
+  - @aio-proxy/plugin-sdk@0.36.0
+  - @aio-proxy/brand@0.36.0
+
 ## 0.35.1
 
 ### Patch Changes

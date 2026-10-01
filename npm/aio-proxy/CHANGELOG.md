@@ -1,5 +1,19 @@
 # aio-proxy
 
+## 0.36.0
+
+### Minor Changes
+
+- [#456](https://github.com/aio-proxy/aio-proxy/pull/456) [`6a7d9c8`](https://github.com/aio-proxy/aio-proxy/commit/6a7d9c89c8c8d4b90efa45a0d903f24b0ec1eb77) Thanks @baranwang - New macOS menu-bar app for Apple Silicon (macOS 13 or later). It runs aio-proxy as a login service without a separate Bun or CLI install. Its panel shows proxy status, usage over 24 hours, 7 days or 30 days by model and by Provider, quota with a pace projection, and a 12-month activity heatmap; start, stop, restart and reload live in the icon's right-click menu. A service installed with the CLI is only changed when you click. Download `aio-proxy-<version>-arm64.dmg` from the release; later updates arrive in the app.
+
+- [#456](https://github.com/aio-proxy/aio-proxy/pull/456) [`dcb1ebd`](https://github.com/aio-proxy/aio-proxy/commit/dcb1ebd82b6fddd964c3083c83ff3c2d57c275be) Thanks @baranwang - `aio-proxy service start` now starts a loaded-but-stopped launchd service, `service restart` waits for the old job to unload, and a service whose binary was removed no longer respawns in a loop. A stopping proxy exits within 3 seconds. Groundwork for the macOS desktop app: a private `desktop-token` file in the proxy home, a local summary endpoint and a discovery command. An app-managed install never self-upgrades (the Dashboard hides "Update now" there), and `aio-proxy upgrade` never restarts an app-owned service.
+
+- [#459](https://github.com/aio-proxy/aio-proxy/pull/459) [`4869672`](https://github.com/aio-proxy/aio-proxy/commit/4869672879e888f4d07fa9efe385d588dbd0e80b) Thanks @baranwang - Codex setup now saves a full local model catalog and refreshes it as models change, preserving complete task guidance and official instructions. HTTP model discovery uses compact guidance for third-party models to reduce response size. Restart Codex CLI or Desktop after local catalog updates; removing the integration restores the previous personal catalog configuration.
+
+### Patch Changes
+
+- [#457](https://github.com/aio-proxy/aio-proxy/pull/457) [`98aa84c`](https://github.com/aio-proxy/aio-proxy/commit/98aa84c42b513080f18edf43d7bc4ac8dbb924c5) Thanks @baranwang - The dashboard now waits out a brief server restart instead of showing "Dashboard unavailable" until reloaded. On the Routing page, token limits and prices follow the dashboard language (`128K`, `$2.00`) instead of the system one, traffic charts name Providers instead of showing their IDs, API Providers no longer list their protocol, and an empty traffic chart gets a proper empty state. Mixed CJK and Latin text is now auto-spaced.
+
 ## 0.35.1
 
 ### Patch Changes

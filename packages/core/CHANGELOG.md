@@ -1,5 +1,30 @@
 # @aio-proxy/core
 
+## 0.36.0
+
+### Minor Changes
+
+- [#456](https://github.com/aio-proxy/aio-proxy/pull/456) [`dcb1ebd`](https://github.com/aio-proxy/aio-proxy/commit/dcb1ebd82b6fddd964c3083c83ff3c2d57c275be) Thanks @baranwang - `aio-proxy service start` now starts a loaded-but-stopped launchd service, `service restart` waits for the old job to unload, and a service whose binary was removed no longer respawns in a loop. A stopping proxy exits within 3 seconds. Groundwork for the macOS desktop app: a private `desktop-token` file in the proxy home, a local summary endpoint and a discovery command. An app-managed install never self-upgrades (the Dashboard hides "Update now" there), and `aio-proxy upgrade` never restarts an app-owned service.
+
+### Patch Changes
+
+- Updated dependencies [[`dcb1ebd`](https://github.com/aio-proxy/aio-proxy/commit/dcb1ebd82b6fddd964c3083c83ff3c2d57c275be)]:
+  - @aio-proxy/types@0.36.0
+  - @aio-proxy/i18n@0.36.0
+  - @aio-proxy/plugin-sdk@0.36.0
+  - @aio-proxy/plugin-cursor@0.36.0
+  - @aio-proxy/plugin-openai-chatgpt@0.36.0
+  - @aio-proxy/logger@0.36.0
+  - @aio-proxy/plugin-claude-code@0.36.0
+  - @aio-proxy/plugin-github-copilot@0.36.0
+  - @aio-proxy/plugin-google-antigravity@0.36.0
+  - @aio-proxy/plugin-kimi-code@0.36.0
+  - @aio-proxy/plugin-muse-code@0.36.0
+  - @aio-proxy/plugin-opencode-go@0.36.0
+  - @aio-proxy/plugin-openrouter@0.36.0
+  - @aio-proxy/plugin-xai-grok@0.36.0
+  - @aio-proxy/shared@0.36.0
+
 ## 0.35.1
 
 ### Patch Changes

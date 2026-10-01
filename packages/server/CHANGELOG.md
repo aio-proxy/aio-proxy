@@ -1,5 +1,23 @@
 # @aio-proxy/server
 
+## 0.36.0
+
+### Minor Changes
+
+- [#456](https://github.com/aio-proxy/aio-proxy/pull/456) [`dcb1ebd`](https://github.com/aio-proxy/aio-proxy/commit/dcb1ebd82b6fddd964c3083c83ff3c2d57c275be) Thanks @baranwang - `aio-proxy service start` now starts a loaded-but-stopped launchd service, `service restart` waits for the old job to unload, and a service whose binary was removed no longer respawns in a loop. A stopping proxy exits within 3 seconds. Groundwork for the macOS desktop app: a private `desktop-token` file in the proxy home, a local summary endpoint and a discovery command. An app-managed install never self-upgrades (the Dashboard hides "Update now" there), and `aio-proxy upgrade` never restarts an app-owned service.
+
+- [#459](https://github.com/aio-proxy/aio-proxy/pull/459) [`4869672`](https://github.com/aio-proxy/aio-proxy/commit/4869672879e888f4d07fa9efe385d588dbd0e80b) Thanks @baranwang - Codex setup now saves a full local model catalog and refreshes it as models change, preserving complete task guidance and official instructions. HTTP model discovery uses compact guidance for third-party models to reduce response size. Restart Codex CLI or Desktop after local catalog updates; removing the integration restores the previous personal catalog configuration.
+
+### Patch Changes
+
+- Updated dependencies [[`dcb1ebd`](https://github.com/aio-proxy/aio-proxy/commit/dcb1ebd82b6fddd964c3083c83ff3c2d57c275be)]:
+  - @aio-proxy/core@0.36.0
+  - @aio-proxy/types@0.36.0
+  - @aio-proxy/i18n@0.36.0
+  - @aio-proxy/plugin-sdk@0.36.0
+  - @aio-proxy/logger@0.36.0
+  - @aio-proxy/shared@0.36.0
+
 ## 0.35.1
 
 ### Patch Changes
