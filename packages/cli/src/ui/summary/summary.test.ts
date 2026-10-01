@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { m } from '@aio-proxy/i18n';
 
+import { plainStyle } from '../style';
 import {
   formatDeepProviderLines,
   formatDoctorLines,
@@ -107,46 +108,49 @@ describe('formatDoctorLines', () => {
     reachable: true,
     pluginCount: 2,
   };
+  const valueColumn = (line: string, value: string): number => Bun.stringWidth(line.slice(0, line.indexOf(value)));
 
-  test('joins the three sentences when the line fits', () => {
-    const lines = formatDoctorLines(doctor, 200);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain('● ');
-    expect(lines[0]).toContain('1.2.3');
-  });
-
-  test('marks only the server sentence when the width is unknown', () => {
-    const lines = formatDoctorLines(doctor, undefined);
+  test('prints one marked, aligned line per check', () => {
+    const lines = formatDoctorLines(plainStyle, doctor);
     expect(lines).toHaveLength(3);
-    expect(lines.filter((line) => line.startsWith('● '))).toEqual([lines[1]]);
+    expect(lines.every((line) => line.startsWith('● '))).toBe(true);
+    expect(lines[1]).toContain('http://127.0.0.1:9317 · v1.2.3');
+    expect(valueColumn(lines[0]!, '/cfg')).toBe(valueColumn(lines[1]!, 'http'));
   });
 
-  test('marks an unreachable server with an open circle', () => {
-    const lines = formatDoctorLines({ ...doctor, reachable: false }, undefined);
-    expect(lines[1]?.startsWith('○ ')).toBe(true);
+  test('marks an unreachable server as failed and no plugins as a warning', () => {
+    const lines = formatDoctorLines(plainStyle, { ...doctor, reachable: false, pluginCount: 0 });
+    expect(lines[1]!.startsWith('✗ ')).toBe(true);
+    expect(lines[1]).toContain(m['cli.doctor.server_not_reachable']());
+    expect(lines[2]!.startsWith('▲ ')).toBe(true);
+    expect(lines[2]).toContain(m['cli.doctor.plugins_none']());
   });
 });
 
 describe('formatStatusLine', () => {
-  test('marks a running proxy and keeps the address and version', () => {
-    const line = formatStatusLine({ running: true, url: 'http://127.0.0.1:9317', version: '1.2.3' });
-    expect(line.startsWith('● ')).toBe(true);
-    expect(line).toContain('1.2.3');
-    expect(line).toContain('9317');
+  test('marks a running proxy and shows address and version', () => {
+    const line = formatStatusLine(plainStyle, { running: true, url: 'http://127.0.0.1:9317', version: '1.2.3' });
+    expect(line).toBe(`● ${m['cli.status.state_running']()}  http://127.0.0.1:9317 · v1.2.3`);
+  });
+
+  test('omits the version instead of printing vunknown', () => {
+    const line = formatStatusLine(plainStyle, { running: true, url: 'http://127.0.0.1:9317' });
+    expect(line).not.toContain('unknown');
+    expect(line.endsWith('http://127.0.0.1:9317')).toBe(true);
   });
 
   test('marks a stopped proxy with an open circle', () => {
-    const line = formatStatusLine({ running: false, url: 'http://127.0.0.1:9317' });
-    expect(line.startsWith('○ ')).toBe(true);
+    const line = formatStatusLine(plainStyle, { running: false, url: 'http://127.0.0.1:9317' });
+    expect(line).toBe(`○ ${m['cli.status.state_not_running']()}  http://127.0.0.1:9317`);
   });
 });
 
 describe('formatRunSummary', () => {
-  test('marks startup and includes both URLs without color', () => {
-    const line = formatRunSummary('http://127.0.0.1:9317', 'http://127.0.0.1:9317/dashboard');
-    expect(line.startsWith('● ')).toBe(true);
-    expect(line).toContain('http://127.0.0.1:9317');
-    expect(line).toContain('http://127.0.0.1:9317/dashboard');
-    expect(line).not.toContain('\u001b');
+  test('prints a block with aligned API and Dashboard addresses and no color', () => {
+    const lines = formatRunSummary(plainStyle, 'http://127.0.0.1:9317', 'http://127.0.0.1:9317/dashboard');
+    expect(lines[0]).toBe(`● ${m['cli.run.running']()}`);
+    expect(lines[1]).toContain('http://127.0.0.1:9317');
+    expect(lines[2]).toContain('http://127.0.0.1:9317/dashboard');
+    expect(lines.join('\n')).not.toContain('\u001b');
   });
 });
