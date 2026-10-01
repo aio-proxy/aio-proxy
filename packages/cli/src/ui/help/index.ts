@@ -1,1 +1,0 @@
-export { applyHelpStyling } from './help';
