@@ -36,7 +36,7 @@ import {
   startJournal,
   updateJournal,
 } from './journal';
-import { deleteMarker, readMarker, validateMarker } from './marker';
+import { deleteMarker, equalMarkerOwnership, readMarker, validateMarker } from './marker';
 import { assertNoSymlinkParents, chmodChecked, ensureManagedRoot, inspectDirectory, readRegularFile } from './storage';
 
 const providerFields = [
@@ -270,11 +270,7 @@ export async function configureCodexConfig(
       const nextMarker = markerFor(location, providerId, fields, createdTables, auth);
       validateMarker(nextMarker, location);
       if (input.validateOnly) return { status: 'unchanged', providerId };
-      if (
-        nextText === text &&
-        marker?.providerId === providerId &&
-        JSON.stringify(nextMarker) === JSON.stringify(marker)
-      ) {
+      if (nextText === text && marker?.providerId === providerId && equalMarkerOwnership(nextMarker, marker)) {
         await chmodChecked(location.configPath, 0o600);
         await chmodChecked(location.markerPath, 0o600);
         return { status: 'unchanged', providerId };

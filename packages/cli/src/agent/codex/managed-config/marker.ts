@@ -1,4 +1,4 @@
-import { isPlainObject } from 'es-toolkit/predicate';
+import { isEqual, isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import type { ValueSlot } from '../config-document';
@@ -103,6 +103,18 @@ export function validateMarker(value: unknown, location: CodexLocation): CodexMa
   }
   return parsed as CodexMarker;
 }
+
+// Field and table ownership are keyed by their paths; their serialization order has no meaning.
+function markerOwnership(marker: CodexMarker) {
+  return {
+    ...marker,
+    fields: Object.fromEntries(marker.fields.map((field) => [field.path.join('\u0000'), field])),
+    createdTables: Object.fromEntries(marker.createdTables.map((path) => [path.join('\u0000'), true])),
+  };
+}
+
+export const equalMarkerOwnership = (left: CodexMarker, right: CodexMarker): boolean =>
+  isEqual(markerOwnership(left), markerOwnership(right));
 
 export async function readMarker(location: CodexLocation): Promise<CodexMarker | undefined> {
   const stat = await inspectRegularFile(location.markerPath);
