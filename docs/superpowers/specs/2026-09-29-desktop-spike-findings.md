@@ -208,6 +208,8 @@ Other spec corrections: host entitlements (none under Developer ID), `allow-jit`
 
 Setup for all items: `git switch spike/desktop` (or `git worktree add ../aio-spike spike/desktop`), unlock the Mac, keep the display awake (`caffeinate -d &`), and work from `spike/desktop-host`. Rebuild with `mise exec -- ./bundle.sh && ./sign.sh -` (ad-hoc) unless an item says otherwise; the app is `../out/AIO Proxy Spike.app`, host `Contents/MacOS/aio-proxy-desktop`. `bundle.sh` rebuilds only the host: rebuild the sidecar into `spike/out/aio-proxy` with `bun run build && bun packages/cli/scripts/build-binary.ts darwin-arm64 spike/out/aio-proxy` when an item needs a new one. Record the stderr log for each item.
 
+Items 6, 9 and 11 can now also run on the product pipeline instead of the spike scripts. Use `bun run desktop:bundle --release` (see `desktop/RELEASING.md`): it signs with Developer ID, checks the JIT region, notarizes and staples the `.app` and `.dmg`. Item 10 can use that `.dmg`.
+
 1. **Click elsewhere closes the panel (non-key PopUp).** **PASSED 2026-09-30** (by hand: clicking the desktop and another app's window both close the panel). This could have reopened the UI stack decision.
    - Run the host and click "AIO" in the menu bar.
    - Click the desktop, then repeat by clicking another app's window.
