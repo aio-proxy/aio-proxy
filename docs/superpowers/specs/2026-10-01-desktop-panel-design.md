@@ -100,8 +100,7 @@ Four cards sit in one row: **Requests**, **Failed**, **Tokens**, **Cost**.
    - **Projection line:**
      - `<n>% in reserve · lasts until reset` (muted) when the window is on or ahead of pace.
      - `<n>% over pace · runs out in <duration>` (red) when it is behind pace *and* the projected exhaustion comes before the reset.
-     - Behind pace but still lasting until reset: the reserve line, showing `0% in reserve`.
-4. **Quota state other than `ready`:**
+ 4. **Quota state other than `ready`:**
    - `loading`: `Loading quota…` in place of the windows.
    - `failed`, or a Provider diagnostic: the diagnostic summary in red. When the diagnostic suggests a command (`dashboardProviderSuggestedCommand`), it appears below in monospace.
    - `ready` with `refreshFailed`: the windows render from the last sample, and the meta row reads `Last refresh failed · data from <relative sampledAt>`.
@@ -246,7 +245,7 @@ The panel reuses the Dashboard overview's data paths, so the panel and the Dashb
 | --- | --- |
 | `usage.current`, `usage.buckets`, `usage.byModel` | The overview row source for the window: `spanRows` for `24h`, `dailyRows` (`usage_daily`) for `7d`/`30d`, aggregated as `overview.ts` does. Failures follow the overview's rule (error + interrupted). |
 | `usage.previous` | The same source for the previous window, resolved as `overview.ts` resolves it today (whole local days for `7d`/`30d`) |
-| `usage.byProvider` | Root spans (`parent_span_id is null`) in the window, grouped by `final_provider_id`: the query family behind the Dashboard's Provider health table (`diagnostics.ts`), extended with request, failure and cost sums. For every window, because `usage_daily` has no Provider dimension. |
+| `usage.byProvider` | Root spans (`parent_span_id is null`) in the window, grouped by `final_provider_id`: the query family behind the Dashboard's Provider health table (`diagnostics.ts`), extended with request, failure and cost sums. For every window, because `usage_daily` has no Provider dimension. Read through `trace_span_root_usage_idx`, a partial covering index on `parent_span_id is null`. |
 | `providers[].accountLabel` | `DashboardProviderSummary.accountLabel` |
 | `quota.plan` | The quota snapshot's `plan` (`OAuthQuotaSnapshot.plan`, already validated in `core/src/plugins/quota.ts`) |
 | `diagnostic.suggestedCommand` | `dashboardProviderSuggestedCommand` |
@@ -261,9 +260,10 @@ The `24h` path keeps rev 4's measured cost: 31 ms at 36k requests per 24 h. `byP
 
 - The server memoizes the whole `usage` block for `7d` and `30d`, per range, for **60 s**. `24h` is not memoized.
 - `refresh=true` bypasses and replaces the memo.
-- The plan must measure `30d` `byProvider` on the spike's synthetic 1 GB trace DB, and set the budget then.
-  - The working limit is **250 ms** at 36k requests per day, held at most once a minute and only while some panel shows `30d`.
-  - If it misses, the upgrade is a Provider dimension in the daily rollup (a migration, counting from the upgrade on). That is out of scope here.
+- `30d` `byProvider` was measured on the spike's synthetic 1 GB trace DB, after adding a partial covering index on root spans (`trace_span_root_usage_idx`).
+  - The measured cost is **265 ms** at 36k requests per day. The accepted budget is **≤ 300 ms**, held at most once a minute and only while some panel shows `30d` (user decision, 2026-10-01).
+  - `24h` measures 46 ms.
+  - The upgrade path, if the budget is ever missed, is a Provider dimension in the daily rollup (a migration, counting from the upgrade on). That is out of scope here.
 
 ## Refresh policy changes
 
@@ -290,7 +290,7 @@ Each test guards one concrete failure.
 
 - **Server**
   - `range` validation: `7d` and `30d` return `bucketUnit: 'day'` and the matching number of buckets; `24h` returns 24 hourly buckets; an unknown range returns 400.
-  - `previous` covers the equal-length window ending at `rangeStart`. A request in the previous window counts there and not in `current`, at the boundary millisecond for `24h` and at the local-day boundary for `7d`.
+  - `previous` covers the equal-length window ending at `rangeStart`. A request in the previous window counts there and not in `current`, one minute before `rangeStart` for `24h` (the exact boundary millisecond belongs to both windows, as in the Dashboard overview) and at the local-day boundary for `7d`.
   - `byProvider` groups by final Provider. A request that failed over from A to B counts once, under B. Failures and cost are summed per Provider.
   - `byModel` is capped at 20 and ordered by cost, then requests.
   - **Memo:**
@@ -302,7 +302,6 @@ Each test guards one concrete failure.
 - **Rust**
   - Pace math table:
     - ahead of pace;
-    - behind but lasting until reset;
     - behind and running out;
     - `windowMinutes` null;
     - `resetsAt` null;
