@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 
 import { m } from '@aio-proxy/i18n';
-import type { DashboardProviderSummary } from '@aio-proxy/types';
+import { type DashboardProviderSummary, ProviderKind } from '@aio-proxy/types';
 
 import { plainStyle } from '../style';
 import { formatDeepProviderLines, formatProviderLines } from './provider';
 
 const provider: DashboardProviderSummary = {
   id: 'openai',
-  kind: 'api',
+  kind: ProviderKind.Api,
   enabled: true,
   passthrough: false,
   last_status: 'ok',
