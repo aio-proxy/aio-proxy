@@ -1,5 +1,7 @@
-import { m } from '@aio-proxy/i18n';
+import { getLocale, m } from '@aio-proxy/i18n';
 import { isPlainObject } from 'es-toolkit/predicate';
+
+import { formatCompactTokenCount } from '@/components/token-count';
 
 /** The `ModelMetadataSchema` fields the form reaches. Anything else stays reachable through JSON. */
 export const LIMIT_KEYS = ['context', 'input', 'output'] as const;
@@ -102,15 +104,12 @@ export const withTierSize = (tier: PriceTier, size: number | undefined): PriceTi
   tier: { type: 'context', ...(size === undefined ? {} : { size }) },
 });
 
-const moneyFormatter = new Intl.NumberFormat(undefined, {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 4,
-});
-const tokenFormatter = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
-
-export const formatPrice = (value: number): string => moneyFormatter.format(value);
-export const formatTokens = (value: number): string => tokenFormatter.format(value);
+// Built per call with the UI locale: a module-level `Intl.NumberFormat(undefined)` follows the browser's
+// language instead (and `setLocale` switches without a reload), so an English UI read "US$2.00".
+export const formatPrice = (value: number): string =>
+  new Intl.NumberFormat(getLocale(), { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(value);
+// Token counts read "128K" / "1M" in every locale, as everywhere else in the dashboard.
+export const formatTokens = (value: number): string => formatCompactTokenCount(value);
 
 /**
  * What a group resolves to once the reference model is merged under the model's own overrides,

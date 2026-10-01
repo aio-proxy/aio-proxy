@@ -2,7 +2,6 @@ import { ProviderKind } from '@aio-proxy/types';
 import { cn } from '@aio-proxy/ui/lib/utils';
 import type React from 'react';
 
-import { ProtocolLabel } from '@/components/protocol-label';
 import { ProviderAvatar } from '@/components/provider-avatar';
 import type { ProviderLabelView } from '@/components/provider-label';
 import { ProviderMark } from '@/components/provider-mark';
@@ -12,13 +11,13 @@ interface RoutingProviderIdentityProps {
   readonly view: ProviderLabelView;
   /** Dims the mark and drops the weight, for a Provider that takes no traffic. */
   readonly muted?: boolean;
-  /** Drops the account, protocol or package line where only the name fits. */
+  /** Drops the account or package line where only the name fits. */
   readonly compact?: boolean;
 }
 
 /**
- * OAuth Providers are recognized by service first and account second; API Providers by name and the
- * protocol they speak; AI SDK Providers by name and package.
+ * OAuth Providers are recognized by service first and account second; AI SDK Providers by name and
+ * package. API Providers go by name alone: the protocol is plumbing, not identity.
  */
 const identity = (view: ProviderLabelView): { readonly title: string; readonly detail: React.ReactNode } => {
   const provider = view.provider;
@@ -28,18 +27,6 @@ const identity = (view: ProviderLabelView): { readonly title: string; readonly d
     const title = view.oauthService ?? view.name;
     const detail = provider.name ?? view.accountLabel;
     return { title, detail: detail === title ? undefined : detail };
-  }
-  if (provider?.kind === ProviderKind.Api && provider.protocols[0] !== undefined) {
-    const extra = provider.protocols.length - 1;
-    return {
-      title: view.name,
-      detail: (
-        <>
-          <ProtocolLabel protocol={provider.protocols[0]} />
-          {extra > 0 ? ` +${extra}` : null}
-        </>
-      ),
-    };
   }
   if (provider?.kind === ProviderKind.AiSdk) return { title: view.name, detail: provider.packageName };
   return { title: view.name, detail: undefined };

@@ -821,6 +821,7 @@
       },
       "traffic": {
         "none": "No traffic",
+        "none_description": "No requests to this model were served in the selected range.",
         "success_rate": "{value} success",
         "chart_label": "Requests served per Provider over time",
         "refresh_failed": "Showing the last successful measurement — refreshing traffic failed.",

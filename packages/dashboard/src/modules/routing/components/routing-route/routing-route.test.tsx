@@ -223,6 +223,8 @@ test('identifies OAuth, API and AI SDK Providers by what users recognize them by
   );
 
   expect(screen.getByTestId('routing-route-provider-oauth')).toHaveTextContent(/Cursor.*me@example\.com/u);
-  expect(screen.getByTestId('routing-route-provider-api')).toHaveTextContent(/api.*Anthropic/u);
+  // The protocol an API Provider speaks is plumbing; its name alone identifies it.
+  expect(screen.getByTestId('routing-route-provider-api')).toHaveTextContent('api');
+  expect(screen.getByTestId('routing-route-provider-api')).not.toHaveTextContent('Anthropic');
   expect(screen.getByTestId('routing-route-provider-sdk')).toHaveTextContent(/sdk.*@ai-sdk\/amazon-bedrock/u);
 });
