@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 
@@ -314,6 +314,8 @@ export type ServiceRestartIo = {
   readonly printJob?: () => Promise<number>;
   /** How long `service restart` waits for `bootout` to remove the job. Injected by tests. */
   readonly bootoutTimeoutMs?: number;
+  /** Moves the staged plist over the installed one. Injected by tests. */
+  readonly replaceUnit?: (staged: string, plist: string) => void;
 };
 
 const isDarwinLaunchdJob = (env: NodeJS.ProcessEnv, isTTY: boolean): boolean =>
@@ -359,12 +361,26 @@ export async function serviceRestart(io: ServiceRestartIo = {}): Promise<void> {
       return;
     }
     // bootout + bootstrap re-reads the rewritten plist; kickstart -k would restart the old definition.
-    // The bootout comes first: one that times out leaves the plist as it was, rather than rewritten
-    // while launchd still holds the old definition (the desktop app retries a takeover only while
-    // the plist still names the old binary).
+    // The new plist is staged beside the old one first, so a write that fails (read-only file, ACL,
+    // full disk) fails while the job still runs. The bootout comes before the swap: one that times
+    // out leaves the plist as it was, rather than rewritten while launchd still holds the old
+    // definition (the desktop app retries a takeover only while the plist names the old binary).
     const printJob = io.printJob ?? printLaunchdJob;
-    await bootoutLaunchdJob(run, printJob, io.bootoutTimeoutMs ?? BOOTOUT_TIMEOUT_MS);
-    await write();
+    const staged = `${plist}.new`;
+    await writeUnit(os, io.exec, staged);
+    try {
+      await bootoutLaunchdJob(run, printJob, io.bootoutTimeoutMs ?? BOOTOUT_TIMEOUT_MS);
+    } catch (error) {
+      rmSync(staged, { force: true });
+      throw error;
+    }
+    try {
+      (io.replaceUnit ?? renameSync)(staged, plist);
+    } catch (error) {
+      // Bring the old definition back rather than leave the proxy offline.
+      await startLaunchdJob(plist, run, printJob);
+      throw error;
+    }
     await startLaunchdJob(plist, run, printJob);
     return;
   }

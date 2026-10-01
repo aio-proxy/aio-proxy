@@ -638,6 +638,7 @@ test('Darwin TTY serviceRestart boots the job out and bootstraps the rewritten p
     unitInstalled: () => true,
     unitPath: '/tmp/com.aio-proxy.agent.plist',
     writeManagedUnit: async () => '/tmp/com.aio-proxy.agent.plist',
+    replaceUnit: () => {},
     spawn: ((cmd: string[]) => {
       spawned.push(cmd);
       return { unref() {} };
@@ -657,6 +658,7 @@ const restartInProcess = (
   launchd: ReturnType<typeof fakeLaunchd>,
   bootoutTimeoutMs?: number,
   writeManagedUnit: () => Promise<string> = async () => '/tmp/com.aio-proxy.agent.plist',
+  replaceUnit: (staged: string, plist: string) => void = () => {},
 ) =>
   serviceRestart({
     platform: 'darwin',
@@ -665,6 +667,7 @@ const restartInProcess = (
     unitInstalled: () => true,
     unitPath: '/tmp/com.aio-proxy.agent.plist',
     writeManagedUnit,
+    replaceUnit,
     ...(bootoutTimeoutMs === undefined ? {} : { bootoutTimeoutMs }),
     ...launchd,
   });
@@ -681,14 +684,40 @@ test('serviceRestart waits for a slow bootout before bootstrapping, instead of k
 
 test('serviceRestart fails when bootout never removes the job, and neither rewrites nor starts anything', async () => {
   const launchd = fakeLaunchd(true, { teardownPolls: Number.POSITIVE_INFINITY });
-  const writeManagedUnit = mock(async () => '/tmp/com.aio-proxy.agent.plist');
-  const error = await restartInProcess(launchd, 300, writeManagedUnit).catch((caught: unknown) => caught);
-  // The plist still names the old binary, so the app keeps offering Take over and can retry.
-  expect(writeManagedUnit).not.toHaveBeenCalled();
+  const writeManagedUnit = mock(async (..._args: unknown[]) => '/tmp/com.aio-proxy.agent.plist');
+  const replaceUnit = mock(() => {});
+  const error = await restartInProcess(launchd, 300, writeManagedUnit, replaceUnit).catch((caught: unknown) => caught);
+  // Only the staged copy was written: the plist still names the old binary, so the app keeps
+  // offering Take over and can retry.
+  expect(writeManagedUnit.mock.calls.map((call) => call[2])).toEqual(['/tmp/com.aio-proxy.agent.plist.new']);
+  expect(replaceUnit).not.toHaveBeenCalled();
   expect(error).toBeInstanceOf(CliExit);
   expect((error as CliExit).message).toContain(`launchctl bootout ${launchdJobTarget()}`);
   expect((error as CliExit).message).not.toContain('exit');
   expect(launchd.calls).toEqual([`launchctl bootout ${launchdJobTarget()}`]);
+});
+
+test('serviceRestart leaves a running job alone when the new plist cannot be written', async () => {
+  const launchd = fakeLaunchd(true);
+  const error = await restartInProcess(launchd, undefined, async () => {
+    throw new Error('EROFS: read-only file system');
+  }).catch((caught: unknown) => caught);
+  expect((error as Error).message).toContain('EROFS');
+  expect(launchd.calls).toEqual([]);
+});
+
+test('serviceRestart restarts the old plist when the staged one cannot replace it', async () => {
+  const launchd = fakeLaunchd(true);
+  const writeManagedUnit = async () => '/tmp/com.aio-proxy.agent.plist';
+  const error = await restartInProcess(launchd, undefined, writeManagedUnit, () => {
+    throw new Error('EPERM: operation not permitted');
+  }).catch((caught: unknown) => caught);
+  expect((error as Error).message).toContain('EPERM');
+  expect(launchd.calls).toEqual([
+    `launchctl bootout ${launchdJobTarget()}`,
+    `launchctl enable ${launchdJobTarget()}`,
+    `launchctl bootstrap ${launchdDomain()} /tmp/com.aio-proxy.agent.plist`,
+  ]);
 });
 
 const runWrapper = (exec: string) =>

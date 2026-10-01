@@ -16,6 +16,8 @@ enum Run {
 fn run(model: &AppModel) -> Option<Run> {
     let d = model.discovery.as_ref()?;
     Some(match (model.health.state(), d.instance.reachable) {
+        // A live /health answer wins over a discovery that may be stale (its rediscovery can fail).
+        (HealthState::Up, _) => Run::Running,
         (HealthState::Down, _) | (_, false) if d.job.pid.is_none() => Run::Stopped,
         (HealthState::Down, _) | (_, false) => Run::NotResponding,
         _ => Run::Running,
