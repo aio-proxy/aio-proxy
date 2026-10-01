@@ -121,7 +121,8 @@ export function listenerUids(lsofOutput: string): readonly number[] {
  * the proxy is down and answer `/health`; the token goes only to a listener this user owns. An
  * unprivileged `lsof` does not even see other users' sockets, and a failure counts as not ours.
  */
-async function listenerIsOurs(deps: DesktopConnectDeps, port: number): Promise<boolean> {
+async function listenerIsOurs(deps: DesktopConnectDeps, port: string): Promise<boolean> {
+  if (!/^\d+$/u.test(port)) return false;
   try {
     const { code, stdout } = await deps.run(['/usr/sbin/lsof', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fu']);
     return code === 0 && listenerUids(stdout).includes(deps.uid);
