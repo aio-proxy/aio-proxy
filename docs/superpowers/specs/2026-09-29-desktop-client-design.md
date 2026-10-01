@@ -281,7 +281,7 @@ Only the 24h overview reads spans, at about 0.8 µs per request in the window, s
 
 - A dedicated client for the local instance: no proxy (ignores system and environment proxy settings), no redirects, connect timeout 1s, request timeout 5s.
 - It is the std `TcpStream` HTTP/1.1 client from the Stack table; it speaks only to `127.0.0.1`/`::1` over plain HTTP. The 5s limit is a total deadline raced against the whole request, not a per-read socket timeout. It decodes `Transfer-Encoding: chunked` and caps the response size.
-- The token is attached only when the URL host is a literal loopback IP (`127.0.0.1` or `::1`); never to a hostname, never to a non-loopback address.
+- The token is attached only when the URL host is a literal loopback IP (any of `127.0.0.0/8`, as the CLI and server accept, or `::1`; not an IPv4-mapped IPv6 address); never to a hostname, never to a non-loopback address.
 - The token is never set as a default header on any client.
 
 ## Desktop app structure

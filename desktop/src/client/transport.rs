@@ -5,7 +5,7 @@
 use std::fmt;
 use std::future::Future;
 use std::io::{self, Read, Write};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, TcpStream};
+use std::net::{IpAddr, Shutdown, SocketAddr, TcpStream};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
@@ -52,7 +52,9 @@ impl LocalUrl {
             Some(url::Host::Ipv6(ip)) => IpAddr::V6(ip),
             _ => return Err(HttpError::NotLoopback),
         };
-        if ip != IpAddr::V4(Ipv4Addr::LOCALHOST) && ip != IpAddr::V6(Ipv6Addr::LOCALHOST) {
+        // All of 127.0.0.0/8 and ::1, as the CLI's `localControlHost` and the server accept: a config
+        // may bind 127.0.0.5. An IPv4-mapped IPv6 address is not loopback here.
+        if !ip.is_loopback() {
             return Err(HttpError::NotLoopback);
         }
         if !path.starts_with('/') || path.bytes().any(|b| b.is_ascii_whitespace() || b.is_ascii_control()) {

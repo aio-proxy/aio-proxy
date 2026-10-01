@@ -44,6 +44,7 @@ fn only_a_literal_loopback_ip_over_plain_http_is_addressable() {
         "http://localhost:9317",
         "http://192.168.1.2:9317",
         "http://10.0.0.1:9317",
+        "http://[::ffff:127.0.0.1]:9317",
         "http://127.0.0.1.nip.io:9317",
         "https://127.0.0.1:9317",
         "http://user:pw@127.0.0.1:9317",
@@ -51,8 +52,10 @@ fn only_a_literal_loopback_ip_over_plain_http_is_addressable() {
     ] {
         assert!(matches!(LocalUrl::parse(base, "/health"), Err(HttpError::NotLoopback)), "{base}");
     }
-    assert!(LocalUrl::parse("http://127.0.0.1:9317", "/health").is_ok());
-    assert!(LocalUrl::parse("http://[::1]:9317", "/health").is_ok());
+    // The whole IPv4 loopback range and ::1, as the CLI reports a configured `server.host`.
+    for base in ["http://127.0.0.1:9317", "http://127.0.0.5:9317", "http://[::1]:9317"] {
+        assert!(LocalUrl::parse(base, "/health").is_ok(), "{base}");
+    }
     assert!(matches!(LocalUrl::parse("http://127.0.0.1:9317", "/x\r\nEvil: 1"), Err(HttpError::InvalidPath)));
 }
 
