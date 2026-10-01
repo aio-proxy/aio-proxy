@@ -27,27 +27,31 @@ test('a chunked or plain HTTP/1.1 response is read whole', () => {
   expect(parseResponse('garbage')).toBeUndefined();
 });
 
-test("the bearer is sent to this user's server and withheld when the serving socket is not ours", async () => {
-  const seen: Array<string | null> = [];
-  const server = Bun.serve({
-    hostname: '127.0.0.1',
-    port: 0,
-    fetch: (req) => {
-      seen.push(req.headers.get('authorization'));
-      return Response.json({ server: { version: '1', pid: 7 } });
-    },
-  });
-  try {
-    const port = String(server.port);
-    const uid = process.getuid?.() ?? -1;
-    const ours = await verifiedGet(run, uid, '127.0.0.1', port, '/x', 'secret', 2_000);
-    expect(ours?.status).toBe(200);
-    expect(JSON.parse(ours?.body ?? '{}')).toEqual({ server: { version: '1', pid: 7 } });
-    // Another uid owns nothing here: lsof shows only our sockets, so the check fails and nothing is sent.
-    const foreign = await verifiedGet(run, uid + 1, '127.0.0.1', port, '/x', 'secret', 300);
-    expect(foreign).toBeUndefined();
-    expect(seen).toEqual(['Bearer secret']);
-  } finally {
-    await server.stop(true);
-  }
-});
+// macOS only, like the feature: it needs /usr/sbin/lsof, which Linux CI runners lack.
+test.skipIf(process.platform !== 'darwin')(
+  "the bearer is sent to this user's server and withheld when the serving socket is not ours",
+  async () => {
+    const seen: Array<string | null> = [];
+    const server = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: (req) => {
+        seen.push(req.headers.get('authorization'));
+        return Response.json({ server: { version: '1', pid: 7 } });
+      },
+    });
+    try {
+      const port = String(server.port);
+      const uid = process.getuid?.() ?? -1;
+      const ours = await verifiedGet(run, uid, '127.0.0.1', port, '/x', 'secret', 2_000);
+      expect(ours?.status).toBe(200);
+      expect(JSON.parse(ours?.body ?? '{}')).toEqual({ server: { version: '1', pid: 7 } });
+      // Another uid owns nothing here: lsof shows only our sockets, so the check fails and nothing is sent.
+      const foreign = await verifiedGet(run, uid + 1, '127.0.0.1', port, '/x', 'secret', 300);
+      expect(foreign).toBeUndefined();
+      expect(seen).toEqual(['Bearer secret']);
+    } finally {
+      await server.stop(true);
+    }
+  },
+);
