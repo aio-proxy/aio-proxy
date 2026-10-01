@@ -147,7 +147,7 @@ Only ranks 1 and 2 count toward `need attention`. Being merely over pace sorts a
 ## Group 3 · Last 12 months
 
 - The group header shows the title, plus `<n> active days · <total> tokens`.
-- **Grid:** 53 weekly columns × 7 days, Sunday first. Cells are 10 pt with 2 pt gaps and five token levels (`--heat-0..4`, built from the dashboard's teal ramp). Month labels sit above the column where each month starts; one starting in the last two columns is right-aligned to the grid's end instead, so it is not clipped.
+- **Grid:** 52 weekly columns × 7 days (the source starts 51 weeks before this week, as the Dashboard heatmap does), Sunday first. Cells are 10 pt with 2 pt gaps and five token levels (`--heat-0..4`, built from the dashboard's teal ramp). Month labels sit above the column where each month starts; one starting in the last two columns is right-aligned to the grid's end instead, so it is not clipped.
 - **Scrolling:** the grid is wider than the panel, so it scrolls horizontally on its own. It opens scrolled to the latest week and keeps its offset across refreshes within a panel session.
 - **Interaction:** hovering a day opens a GPUI Kit `HoverCard` at once, above the cell with left edges aligned, matching the Dashboard's day hover: the date (`October 1st, 2026`), `<compact tokens> Token`, and under a `Model breakdown` rule, one row per model (id, its tokens, its share of the day) with a `--primary` share bar. There is no click selection. A Less → More legend sits below the grid.
 - **Data:** `activity`, unchanged from rev 4.

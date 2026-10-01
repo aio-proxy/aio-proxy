@@ -6,7 +6,9 @@ use std::collections::HashMap;
 
 use crate::summary::{ActivityDay, ActivityModel};
 
-pub const WEEKS: usize = 53;
+/// 52 weeks: the source (`overviewDashboardActivity`) starts 51 weeks before this week, as the Dashboard
+/// heatmap does, so a 53rd column would always read empty.
+pub const WEEKS: usize = 52;
 
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const LONG_MONTHS: [&str; 12] = [

@@ -7,7 +7,7 @@ fn day(y: i64, m: u32, d: u32) -> i64 {
 }
 
 #[test]
-fn the_grid_is_53_sunday_first_weeks_ending_in_the_week_of_today() {
+fn the_grid_is_52_sunday_first_weeks_ending_in_the_week_of_today() {
     let today = day(2026, 10, 1); // a Thursday
     let grid = heat_grid(&[], today);
     assert_eq!(grid.weeks.len(), WEEKS);
@@ -48,10 +48,10 @@ fn month_labels_mark_the_column_where_a_month_starts() {
 
 #[test]
 fn a_partial_first_month_gets_no_label() {
-    // The first column opens on Sun 2025-09-28; Sep is partial there, so Oct (the 1st, col 0) is the first label.
+    // The first column opens on Sun 2025-10-05; Oct is partial there, so Nov (the 1st, col 3) is the first label.
     let grid = heat_grid(&[], day(2026, 10, 1));
-    assert_eq!(grid.months.first(), Some(&(0, "Oct")));
-    assert_eq!(grid.months.len(), 13);
+    assert_eq!(grid.months.first(), Some(&(3, "Nov")));
+    assert_eq!(grid.months.len(), 12);
 }
 
 #[test]
