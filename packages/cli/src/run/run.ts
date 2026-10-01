@@ -4,7 +4,8 @@ import { dirname } from 'node:path';
 
 import { AtomicConfigFile, configPath, parseRuntimeConfig } from '@aio-proxy/core';
 import { AppError, ConfigWriteError, m, PortOutOfRangeError } from '@aio-proxy/i18n';
-import { websocket, type AppType } from '@aio-proxy/server';
+import { createLogger } from '@aio-proxy/logger';
+import { websocket, type AppType, type ServerLog } from '@aio-proxy/server';
 
 import { EDITS_MULTIPART_ENCODED_LIMIT } from '../../../core/src/ingress/openai-image/multipart-counters';
 import packageJson from '../../package.json' with { type: 'json' };
@@ -21,21 +22,46 @@ import { createCliAutoUpdateHooks, migratePreMarkerManagedUnit } from './auto-up
 const VERSION = packageJson.version;
 
 // Loaded lazily: the Agent integration code is only needed when local one-click setup is allowed.
-const localAgentHost = async (host: string, port: number) => {
+export const localAgentHost = async (
+  host: string,
+  port: number,
+  gate?: {
+    readonly env: Readonly<Record<string, string | undefined>>;
+    readonly home: () => string;
+    readonly resolveEndpoint: () => Promise<string>;
+  },
+) => {
   const { connectHost, resolveAgentEndpoint } = await import('../agent/control-plane');
   const { createAgentHostPort, shouldEnableAgentHost } = await import('../agent/host-port');
+  let endpoint: string | undefined;
   const enabled = await shouldEnableAgentHost({
-    env: process.env,
+    env: gate?.env ?? process.env,
     // Agent files record the configured endpoint; a --host/--port override would point them elsewhere.
     resolveEndpoint: async () => {
-      const configured = await resolveAgentEndpoint();
+      const configured = await (gate?.resolveEndpoint ?? resolveAgentEndpoint)();
       if (configured !== controlBaseUrl(connectHost(host), String(port)))
         throw new Error('Agent endpoint differs from the bound address');
+      endpoint = configured;
       return configured;
     },
-    home: homedir,
+    home: gate?.home ?? homedir,
   });
-  return enabled ? createAgentHostPort() : undefined;
+  if (!enabled || endpoint === undefined) return undefined;
+  const { configuredLocation } = await import('../agent/codex/runtime');
+  const { createLocalCodexCatalogSync } = await import('../agent/codex/model-catalog');
+  const logger = createLogger(['aio-proxy', 'server']);
+  return {
+    agentHost: createAgentHostPort(),
+    localCodexCatalog: createLocalCodexCatalogSync({
+      location: configuredLocation(),
+      endpoint,
+      onError: (error) =>
+        logger.warn({
+          event: 'codex.catalog_sync_failed',
+          errorType: error instanceof Error ? 'Error' : typeof error,
+        } satisfies ServerLog),
+    }),
+  };
 };
 // The schema ships with @aio-proxy/types (its Rslib build emits it), not the
 // launcher. unpkg (unlike jsdelivr) resolves the package's `exports` map, so the
@@ -230,7 +256,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   assertPortAvailable(host, port);
   await migratePreMarkerManagedUnit();
   const dashboardAssets = deps.dashboardAssets();
-  const agentHost = await localAgentHost(host, port);
+  const localAgents = await localAgentHost(host, port);
   const app = await bootProxyServer({
     config: raw,
     configPath: resolvedConfigPath,
@@ -239,7 +265,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
     port,
     version: VERSION,
     autoUpdate: createCliAutoUpdateHooks(),
-    ...(agentHost === undefined ? {} : { agentHost }),
+    ...localAgents,
   });
   // LLM responses stream with long quiet gaps (slow upstream TTFB, reasoning
   // pauses). Bun's default 10s idle timeout would close the client connection

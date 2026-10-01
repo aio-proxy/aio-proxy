@@ -2,6 +2,7 @@ import { fetchLatestNpmVersion, parseRuntimeConfig } from '@aio-proxy/core';
 
 import type { AgentHostPort } from '../agent-dashboard';
 import { createAutoUpdateController } from '../auto-update';
+import type { CodexCatalogSync, CodexCatalogSyncFactory } from '../codex-catalog-sync';
 import { warnLeftoverOAuthModels } from '../config-leftover-oauth-models';
 import { warnUnenforcedApiKeys } from '../config-unenforced-api-keys';
 import type { DashboardAssets } from '../dashboard-assets';
@@ -15,6 +16,7 @@ import { defaultLogger } from '../server-state/logging';
 import type { InternalServerStateOptions, ServerStateTestHooks } from '../server-state/types';
 import { createRoutes } from './create-routes';
 import { serverDefaults } from './defaults';
+import { codexClientModels } from './list-models';
 
 /** The Bun WebSocket handler the realtime routes' `upgradeWebSocket` needs at the
  *  `Bun.serve` call site. `createServer` returns `Object.assign(routes, { close })`, so this
@@ -39,6 +41,7 @@ export type CreateServerOptions = {
   readonly version?: string;
   /** Local Agent file access for the dashboard Agents page; the CLI injects it only when safe. */
   readonly agentHost?: AgentHostPort;
+  readonly localCodexCatalog?: CodexCatalogSyncFactory;
   readonly autoUpdate?: {
     readonly isManagedService: () => boolean;
     readonly applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>;
@@ -64,7 +67,14 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
   warnLeftoverOAuthModels(prepared.config, options.logger ?? defaultLogger);
   const boundHost = options.host ?? config.server.host;
   warnUnenforcedApiKeys(boundHost, config, options.logger ?? defaultLogger);
+  let catalogSync: CodexCatalogSync | undefined;
+  const scheduleCatalog = (reason: 'startup' | 'models-changed' | 'request'): void => {
+    try {
+      catalogSync?.schedule(reason);
+    } catch {}
+  };
   const stateOptions: InternalServerStateOptions = {
+    onProviderSnapshotChanged: () => scheduleCatalog('models-changed'),
     config,
     host: boundHost,
     __dashboardAuthHealthChanged: (available) => {
@@ -97,6 +107,10 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
   // Cancels in-flight dashboard Agent operations before the state they use is closed.
   const shutdown = new AbortController();
   try {
+    catalogSync = options.localCodexCatalog?.({
+      load: (signal) => codexClientModels(state, { signal, instructionsMode: 'full' }),
+    });
+    scheduleCatalog('startup');
     const routes = (options.__test?.createRoutes ?? createRoutes)(
       state,
       options.dashboardAssets,
@@ -106,6 +120,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       options.host ?? state.currentConfig().server.host,
       controller,
       { ...(options.agentHost === undefined ? {} : { host: options.agentHost }), logger, shutdown: shutdown.signal },
+      () => scheduleCatalog('request'),
     );
     controller.start();
     let closed = false;
@@ -115,10 +130,17 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
         closed = true;
         shutdown.abort();
         controller.stop();
+        try {
+          catalogSync?.close();
+        } catch {}
         state.close();
       },
     });
   } catch (error) {
+    shutdown.abort();
+    try {
+      catalogSync?.close();
+    } catch {}
     try {
       controller.stop();
     } catch {}

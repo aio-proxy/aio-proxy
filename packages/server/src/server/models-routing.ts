@@ -48,7 +48,7 @@ export const parseAgentCatalogNegotiation: MiddlewareHandler<ModelsEnv> = async 
 };
 
 export const listModelsHandler =
-  (state: ServerState): MiddlewareHandler<ModelsEnv> =>
+  (state: ServerState, onCodexCatalogRequest?: () => void): MiddlewareHandler<ModelsEnv> =>
   async (context) => {
     const query = context.get('agentCatalogQuery');
     const grant = context.get('agentGrant');
@@ -69,6 +69,9 @@ export const listModelsHandler =
       if (instructionsMode !== 'compact' && instructionsMode !== 'full') {
         return context.json({ error: { code: 'invalid_request', message: 'Invalid Codex instructions mode.' } }, 400);
       }
+      try {
+        onCodexCatalogRequest?.();
+      } catch {}
       return context.json(await codexClientModels(state, { signal: context.req.raw.signal, instructionsMode }));
     }
     if (grant !== undefined && grant.target !== 'codex') {

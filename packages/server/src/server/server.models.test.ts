@@ -10,6 +10,7 @@ import { openDb } from '@aio-proxy/core/db';
 import { createServer as createBaseServer } from '#server-test-lifecycle';
 
 import { config } from '../../__tests__/server.test-support';
+import type { CodexCatalog, CodexCatalogSource } from '../codex-catalog-sync';
 import { loopbackServer } from '../dashboard-auth/test-support';
 import { renderDefaultInstructions } from './list-models/codex-client-models/codex-assembly';
 
@@ -19,6 +20,10 @@ describe('GET /v1/models client_version routing', () => {
   let originalAioHome: string | undefined;
   let lockedHome: string;
   let codexHome: string;
+  let catalogSource: CodexCatalogSource;
+  let localWork: (() => void) | undefined;
+  let notifications: string[];
+  let throwNotification = false;
   let app: Awaited<ReturnType<typeof createBaseServer>>;
   let lockedApp: Awaited<ReturnType<typeof createBaseServer>>;
   let codexApp: Awaited<ReturnType<typeof createBaseServer>>;
@@ -32,6 +37,9 @@ describe('GET /v1/models client_version routing', () => {
   let closeIdentity: () => void = () => {};
 
   beforeEach(async () => {
+    localWork = undefined;
+    notifications = [];
+    throwNotification = false;
     dir = mkdtempSync(join(tmpdir(), 'aio-proxy-server-'));
     tmpAioHome = mkdtempSync(join(tmpdir(), 'aio-proxy-home-'));
     originalAioHome = process.env.AIO_PROXY_HOME;
@@ -92,6 +100,13 @@ describe('GET /v1/models client_version routing', () => {
     app = await createBaseServer({ config, dbHome: dir, __test: { agentIdentity: identity } });
     lockedHome = mkdtempSync(join(tmpdir(), 'aio-proxy-locked-models-'));
     lockedApp = await createBaseServer({
+      localCodexCatalog: () => ({
+        schedule(reason) {
+          notifications.push(reason);
+          if (throwNotification) throw new Error('injected notification');
+        },
+        close() {},
+      }),
       config: { ...config, server: { ...config.server, apiKeys: [{ key: 'static-key' }] } },
       dbHome: lockedHome,
       __test: { agentIdentity: identity },
@@ -101,6 +116,15 @@ describe('GET /v1/models client_version routing', () => {
     codexHome = mkdtempSync(join(tmpdir(), 'aio-proxy-codex-models-'));
     const textOutput = { metadata: { capabilities: { modalities: { output: ['text'] } } } };
     codexApp = await createBaseServer({
+      localCodexCatalog: (source) => {
+        catalogSource = source;
+        return {
+          schedule() {
+            localWork?.();
+          },
+          close() {},
+        };
+      },
       config: {
         ...config,
         router: { models: { 'gpt-alias': textOutput, compatible: textOutput, 'compatible-test': textOutput } },
@@ -122,6 +146,65 @@ describe('GET /v1/models client_version routing', () => {
     rmSync(lockedHome, { recursive: true, force: true });
     rmSync(codexHome, { recursive: true, force: true });
     rmSync(tmpAioHome, { recursive: true, force: true });
+  });
+
+  test('authenticated Codex requests notify without awaiting local work or sharing HTTP abort', async () => {
+    expect(notifications).toEqual(['startup']);
+    notifications.length = 0;
+    throwNotification = true;
+    const controller = new AbortController();
+    const response = await lockedApp.request('/v1/models?client_version=0.146.0', {
+      headers: { authorization: 'Bearer static-key' },
+      signal: controller.signal,
+    });
+    expect(response.status).toBe(200);
+    controller.abort();
+    expect(notifications).toEqual(['request']);
+    notifications.length = 0;
+    const denied = await lockedApp.request('/v1/models?client_version=0.146.0');
+    expect(denied.status).toBe(401);
+    await lockedApp.request('/v1/models', { headers: { authorization: 'Bearer static-key' } });
+    await lockedApp.request('/v1/models?client_version=0.146.0', {
+      headers: { authorization: `Bearer ${grok.accessToken}` },
+    });
+    await lockedApp.request('/v1/models?client_version=0.146.0', {
+      headers: { authorization: `Bearer ${opencode.accessToken}` },
+    });
+    await lockedApp.request('/v1/models?agent=pi&adapter_version=1.2.3&schema_version=1', {
+      headers: { authorization: `Bearer ${pi.accessToken}` },
+    });
+    expect(notifications).toEqual([]);
+  });
+
+  test('pending local file updates do not block GET and source remains full after HTTP cancellation', async () => {
+    const service = new AbortController();
+    const request = new AbortController();
+    let loaded: CodexCatalog | undefined;
+    let loadError: unknown;
+    const fileUpdate = new Promise<void>(() => {});
+    localWork = () => {
+      void catalogSource
+        .load(service.signal)
+        .then(async (value) => {
+          loaded = value;
+          await fileUpdate;
+        })
+        .catch((error: unknown) => {
+          loadError = error;
+        });
+    };
+    const response = await codexApp.request('/v1/models?client_version=0.146.0', { signal: request.signal });
+    expect(response.status).toBe(200);
+    request.abort();
+    expect(service.signal.aborted).toBe(false);
+    for (let i = 0; i < 100 && loaded === undefined; i++) await Bun.sleep(2);
+    expect(loadError).toBeUndefined();
+    expect(loaded).toBeDefined();
+    const model = loaded!.models.find((row) => row['slug'] === 'gpt-alias');
+    expect((model!['model_messages'] as { instructions_template: string }).instructions_template).toBe(
+      renderDefaultInstructions('gpt-alias', 'full'),
+    );
+    service.abort();
   });
 
   const cases = [
