@@ -18,6 +18,11 @@ permissions:
 
 jobs:
   desktop:
+    # A dispatch picks the ref whose copy of this file runs, so a branch could drop every check below.
+    # The release secrets belong to the desktop-release environment, whose deployment branches allow
+    # only main (repository settings); this guard only stops an honest dispatch from another ref.
+    if: github.ref == 'refs/heads/main'
+    environment: desktop-release
     runs-on: macos-15
     timeout-minutes: 90
     # Every run replaces the same appcast.xml.

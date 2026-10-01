@@ -7,9 +7,16 @@ The app ships from CI. After Changesets publishes a release, `release.yml` dispa
 
 ## One-time setup
 
-The signing and notarization secrets are the organization's `APPLE_*` secrets, shared with the
-rest of the organization; the repository must be in their access list. The workflow maps them to
-the names the scripts read (the same names a local release sets).
+0. **Environment.** Create the `desktop-release` environment (Settings → Environments) with
+   deployment branches limited to `main`. A workflow dispatch runs the chosen ref's copy of the
+   workflow, and organization and repository secrets reach any ref, so only environment secrets
+   keep the signing and update keys away from a branch's edited copy. Store every secret below as
+   an environment secret under the same name (it takes precedence over an organization or
+   repository secret of that name), then take this repository off the organization `APPLE_*`
+   secrets' access list and delete the repository-level `SPARKLE_ED_PRIVATE_KEY`.
+
+The signing and notarization secrets carry the organization's `APPLE_*` names. The workflow maps
+them to the names the scripts read (the same names a local release sets).
 
 1. **Developer ID certificate.** In an Apple Developer Program team, create a "Developer ID
    Application" certificate and export it with its private key as a `.p12`.
