@@ -9,7 +9,7 @@ use super::group_header::group_header;
 use crate::app::{self, AppModel};
 use crate::panel::format::{local_utc_offset, percent};
 use crate::panel::usage::{
-    Metric, Tone, bucket_label, card_value, delta, format_value, metric_total, ranked, slice_value,
+    Metric, Tone, bucket_label, card_delta, card_value, format_value, metric_total, ranked, slice_value,
 };
 use crate::panel::view::PanelView;
 use crate::summary::{BucketUnit, Usage, UsageRange};
@@ -40,10 +40,7 @@ pub fn header(model: &AppModel, cx: &Context<PanelView>) -> Div {
 fn card(view: &PanelView, usage: Option<&Usage>, metric: Metric, cx: &Context<PanelView>) -> impl IntoElement {
     let theme = cx.theme();
     let (value, change) = match usage {
-        Some(u) => (
-            card_value(&u.current, metric),
-            Some(delta(metric_total(&u.current, metric), metric_total(&u.previous, metric), metric)),
-        ),
+        Some(u) => (card_value(&u.current, metric), Some(card_delta(&u.current, &u.previous, metric))),
         None => ("—".to_string(), None),
     };
     let coverage = usage
@@ -102,7 +99,7 @@ fn trend(view: &PanelView, usage: &Usage, now: i64, cx: &Context<PanelView>) -> 
     let max = values.iter().copied().max().unwrap_or(0);
     let last = values.len().checked_sub(1);
     let selected = view.bar.filter(|&i| i < values.len()).or(last);
-    let label = |i: usize| bucket_label(&usage.buckets[i].start, usage.bucket_unit, offset);
+    let label = |i: usize| bucket_label(&usage.buckets[i].start, usage.bucket_unit, usage.range, offset);
     let per = match usage.bucket_unit {
         BucketUnit::Hour => "per hour",
         BucketUnit::Day => "per day",
@@ -191,11 +188,12 @@ pub fn usage(view: &PanelView, model: &AppModel, now: i64, cx: &Context<PanelVie
         return group.child(div().pt_2().text_xs().text_color(theme.muted_foreground).child(text));
     };
     let metric = view.metric;
-    let models = ranked(&usage.by_model, |m| &m.slice, metric, Some(5))
+    let total = metric_total(&usage.current, metric);
+    let models = ranked(&usage.by_model, |m| &m.slice, metric, total, Some(5))
         .into_iter()
         .map(|(m, value, share)| (m.model_id.clone(), value, share))
         .collect();
-    let providers = ranked(&usage.by_provider, |p| &p.slice, metric, None)
+    let providers = ranked(&usage.by_provider, |p| &p.slice, metric, total, None)
         .into_iter()
         .map(|(p, value, share)| (p.name.clone(), value, share))
         .collect();

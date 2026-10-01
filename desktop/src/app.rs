@@ -155,6 +155,19 @@ impl AppModel {
         self.usage_cache.get(&range)
     }
 
+    /// Files a landed summary under the window it is for, which is not necessarily the one on screen.
+    pub(crate) fn accept_summary(&mut self, summary: Box<SummaryV1>) {
+        self.usage_cache.insert(summary.usage.range, summary.usage.clone());
+        self.summary = SummaryState::Ready(summary);
+        self.summary_error = None;
+        self.last_summary_at = Some(Instant::now());
+    }
+
+    /// A different instance has different numbers.
+    pub(crate) fn forget_usage(&mut self) {
+        self.usage_cache.clear();
+    }
+
     /// The failed fetch's reason, when it was for the window on screen.
     pub fn usage_error(&self) -> Option<&str> {
         self.summary_error.as_ref().filter(|(range, _)| *range == self.usage_range).map(|(_, error)| error.as_str())

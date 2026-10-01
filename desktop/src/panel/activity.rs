@@ -28,9 +28,13 @@ fn weekday(day: i64) -> usize {
     (day + 4).rem_euclid(7) as usize
 }
 
+pub fn weekday_name(day: i64) -> &'static str {
+    WEEKDAYS[weekday(day)]
+}
+
 pub fn day_label(day: i64) -> String {
     let (_, month, date) = civil_from_days(day);
-    format!("{} {} {date}", WEEKDAYS[weekday(day)], MONTHS[(month - 1) as usize])
+    format!("{} {} {date}", weekday_name(day), MONTHS[(month - 1) as usize])
 }
 
 pub fn heat_grid(activity: &[ActivityDay], today: i64) -> HeatGrid {
@@ -59,8 +63,10 @@ pub fn heat_grid(activity: &[ActivityDay], today: i64) -> HeatGrid {
         // A month labels the column holding its 1st, so a partial first month gets no label and a
         // month that starts mid-week (Oct 1 on a Thursday) still labels that week.
         let start = first + (week * 7) as i64;
-        if let Some(month) = (start..start + 7).map(civil_from_days).find(|d| d.2 == 1).map(|d| d.1) {
-            months.push((week, MONTHS[(month - 1) as usize]));
+        // A 1st that is still ahead of today would label cells that all belong to the old month.
+        let first_of_month = (start..start + 7).find(|&d| d <= today && civil_from_days(d).2 == 1);
+        if let Some(day) = first_of_month {
+            months.push((week, MONTHS[(civil_from_days(day).1 - 1) as usize]));
         }
         weeks.push(column);
     }

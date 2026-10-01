@@ -54,3 +54,11 @@ fn a_partial_first_month_gets_no_label() {
     assert_eq!(grid.months.first(), Some(&(0, "Oct")));
     assert_eq!(grid.months.len(), 13);
 }
+
+#[test]
+fn a_month_that_starts_tomorrow_is_not_labelled_yet() {
+    // Wed Sep 30: the last column is Sun Sep 27 - Wed Sep 30, and Oct 1 (Thu) has no cell.
+    let grid = heat_grid(&[], day(2026, 9, 30));
+    assert_eq!(grid.months.last().map(|(_, m)| *m), Some("Sep"));
+    assert!(grid.months.iter().all(|&(col, _)| col < WEEKS - 1), "no label over the all-Sep last column");
+}

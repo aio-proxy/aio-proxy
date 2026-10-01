@@ -23,7 +23,6 @@ pub(crate) fn summary_path(range: UsageRange, refresh_quota: bool) -> String {
 pub fn panel_opened(cx: &mut App) {
     let model = cx.global_mut::<AppModel>();
     model.login_item = crate::login_item::status();
-    model.login_item_error = None;
     let order = model.scheduler.open(Instant::now());
     dispatch(cx, order);
     super::check_health(cx);
@@ -37,6 +36,8 @@ pub fn panel_closed(cx: &mut App) {
     model.fetch_task = None;
     model.timer_task = None;
     model.action.clear_outcome();
+    // Read once like the action outcome: a menu toggle's error survives until a panel showed it.
+    model.login_item_error = None;
     changed(cx);
 }
 
@@ -68,8 +69,7 @@ pub(super) fn instance_maybe_changed(cx: &mut App) {
     if key != model.instance {
         model.instance = key;
         model.instance_epoch += 1;
-        // A different instance has different numbers.
-        model.usage_cache.clear();
+        model.forget_usage();
         model.auth_retry_used = false;
         model.refetch_after_discovery = false;
         let order = model.scheduler.set_instance(model.instance_epoch, Instant::now());
@@ -143,10 +143,7 @@ fn finish(cx: &mut App, order: FetchOrder, result: Result<Response, HttpError>) 
     let mut retry_discovery = false;
     match outcome {
         Ok(FetchOutcome::Summary(summary)) => {
-            model.usage_cache.insert(summary.usage.range, summary.usage.clone());
-            model.summary = SummaryState::Ready(summary);
-            model.summary_error = None;
-            model.last_summary_at = Some(Instant::now());
+            model.accept_summary(summary);
             model.auth_retry_used = false;
         }
         Ok(FetchOutcome::Degraded(reason)) => {
@@ -159,7 +156,10 @@ fn finish(cx: &mut App, order: FetchOrder, result: Result<Response, HttpError>) 
             model.refetch_after_discovery = true;
             retry_discovery = true;
         }
-        Ok(FetchOutcome::Unauthorized) => model.summary = SummaryState::AuthFailed,
+        Ok(FetchOutcome::Unauthorized) => {
+            model.summary = SummaryState::AuthFailed;
+            model.summary_error = None;
+        }
         Ok(FetchOutcome::Failed(error)) => show(model, SummaryState::Unavailable(error), order.range),
         Err(error) => show(model, SummaryState::Unavailable(format!("desktop summary: {error}")), order.range),
     }

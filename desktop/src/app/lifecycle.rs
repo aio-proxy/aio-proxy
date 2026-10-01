@@ -24,7 +24,11 @@ pub fn start(cx: &mut App) {
         let install = task.await;
         cx.update(|cx| {
             log::info(format!("install: {install:?}"));
-            cx.global_mut::<AppModel>().install = Some(install);
+            let model = cx.global_mut::<AppModel>();
+            model.install = Some(install);
+            // The menu exists from launch, so its check item needs the real status before any
+            // panel open.
+            model.login_item = crate::login_item::status();
             changed(cx);
             rediscover(cx);
         });

@@ -1,8 +1,9 @@
 //! The Usage group's numbers: which metric is picked, how it compares with the previous window, and
 //! how the breakdowns rank. Pure; the views only lay these out.
 
+use super::activity::weekday_name;
 use super::format::{civil_from_days, compact, parse_utc, usd};
-use crate::summary::{BucketUnit, UsageSlice, UsageTotals};
+use crate::summary::{BucketUnit, UsageRange, UsageSlice, UsageTotals};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Metric {
@@ -97,23 +98,35 @@ pub fn delta(current: u128, previous: u128, metric: Metric) -> (String, Tone) {
     }
     let change = (current as f64 - previous as f64) / previous as f64 * 100.0;
     let arrow = if change >= 0.0 { '↑' } else { '↓' };
-    (format!("{arrow} {:.0}%", change.abs()), tone)
+    let percent = format!("{:.0}", change.abs());
+    // A change that reads 0% is no change worth a color.
+    let tone = if percent == "0" { Tone::Neutral } else { tone };
+    (format!("{arrow} {percent}%"), tone)
 }
 
-/// Sorted by the metric, zeros last; `share` is each item's part of the metric's total (0 when the
-/// total is 0).
+/// The card's delta line. Unknown pricing shows `—` for Cost, so its delta cannot claim a change.
+pub fn card_delta(current: &UsageTotals, previous: &UsageTotals, metric: Metric) -> (String, Tone) {
+    if metric == Metric::Cost && current.pricing_coverage.is_none() {
+        return ("—".into(), Tone::Neutral);
+    }
+    delta(metric_total(current, metric), metric_total(previous, metric), metric)
+}
+
+/// Sorted by the metric, zeros last. `share` is each item's part of `total`, the window's total
+/// for the metric (0 when it is 0): the lists are partial (top-20 models, Providers with traffic
+/// only), so summing the items would overstate every share.
 pub fn ranked<T>(
     items: &[T],
     slice: impl Fn(&T) -> &UsageSlice,
     metric: Metric,
+    total: u128,
     limit: Option<usize>,
 ) -> Vec<(&T, u128, f64)> {
-    let total: u128 = items.iter().map(|item| slice_value(slice(item), metric)).sum();
     let mut rows: Vec<_> = items
         .iter()
         .map(|item| {
             let value = slice_value(slice(item), metric);
-            let share = if total == 0 { 0.0 } else { value as f64 / total as f64 };
+            let share = if total == 0 { 0.0 } else { (value as f64 / total as f64).min(1.0) };
             (item, value, share)
         })
         .collect();
@@ -126,15 +139,22 @@ pub fn ranked<T>(
 
 const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/// `HH:00` for hourly buckets, `Mon D` for daily ones (the server's day bucket starts at local
-/// midnight); empty when the timestamp does not parse.
-pub fn bucket_label(start: &str, unit: BucketUnit, utc_offset: i64) -> String {
+/// The axis and caption label of a bucket, from its UTC start. Hourly buckets are rolling (they
+/// start at now − 24 h + i h), so they read `HH:MM`; `7d` days read as weekdays (`Tue`) and `30d`
+/// days as `Mon D` (the server's day bucket starts at local midnight). Empty when the timestamp
+/// does not parse.
+pub fn bucket_label(start: &str, unit: BucketUnit, range: UsageRange, utc_offset: i64) -> String {
     let Some(unix) = parse_utc(start) else { return String::new() };
     let local = unix + utc_offset;
-    match unit {
-        BucketUnit::Hour => format!("{:02}:00", local.rem_euclid(86_400) / 3_600),
-        BucketUnit::Day => {
-            let (_, month, day) = civil_from_days(local.div_euclid(86_400));
+    let days = local.div_euclid(86_400);
+    match (unit, range) {
+        (BucketUnit::Hour, _) => {
+            let secs = local.rem_euclid(86_400);
+            format!("{:02}:{:02}", secs / 3_600, secs % 3_600 / 60)
+        }
+        (BucketUnit::Day, UsageRange::D7) => weekday_name(days).to_string(),
+        (BucketUnit::Day, _) => {
+            let (_, month, day) = civil_from_days(days);
             format!("{} {day}", MONTHS[(month - 1) as usize])
         }
     }
