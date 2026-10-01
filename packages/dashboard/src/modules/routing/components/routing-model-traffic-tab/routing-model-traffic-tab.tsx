@@ -117,10 +117,10 @@ export const RoutingModelTrafficTab: React.FC<RoutingModelTrafficTabProps> = ({ 
                 labelFormatter={(value) => formatBucket(String(value), true)}
                 formatter={(value, name) => (
                   <div className="flex w-full items-center justify-between gap-4">
-                    {/* Series are keyed by Provider ID; the label names them as the route list does. */}
+                    {/* Named as the route list does, account included: two accounts of one service share a mark. */}
                     <span className="inline-flex min-w-0 items-center gap-1.5">
                       <ProviderLabel providerId={String(name)}>
-                        {(view) => <RoutingProviderIdentity view={view} compact />}
+                        {(view) => <RoutingProviderIdentity view={view} />}
                       </ProviderLabel>
                     </span>
                     <span className="font-mono font-medium tabular-nums">{Number(value)}</span>

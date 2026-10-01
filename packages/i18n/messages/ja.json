@@ -821,7 +821,7 @@
       },
       "traffic": {
         "none": "トラフィックなし",
-        "none_description": "選択した期間にこのモデルへのリクエストはありません。",
+        "none_description": "選択した期間にこのモデルで処理されたリクエストはありません。",
         "success_rate": "成功率 {value}",
         "chart_label": "Provider ごとの処理済みリクエストの推移",
         "refresh_failed": "最後に取得できた測定値を表示しています。トラフィックの再取得に失敗しました。",
