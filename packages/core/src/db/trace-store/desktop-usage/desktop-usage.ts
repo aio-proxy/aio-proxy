@@ -36,6 +36,10 @@ export type DesktopUsageResult = {
   readonly buckets: readonly ({ readonly start: string } & DesktopUsageSlice)[];
   readonly byModel: readonly ({ readonly modelId: string } & DesktopUsageSlice)[];
   readonly byProvider: readonly ({ readonly providerId: string } & DesktopUsageSlice)[];
+  /** One cell per model in `byModel` and bucket with traffic; `bucket` indexes `buckets`. */
+  readonly trendByModel: readonly ({ readonly bucket: number; readonly modelId: string } & DesktopUsageSlice)[];
+  /** One cell per Provider and bucket with traffic; `bucket` indexes `buckets`. */
+  readonly trendByProvider: readonly ({ readonly bucket: number; readonly providerId: string } & DesktopUsageSlice)[];
 };
 
 export const DESKTOP_USAGE_MAX_MODELS = 20;
@@ -135,18 +139,49 @@ const SUMS = `cast(count(*) as text) as requests,
  * Every column read here lives in `trace_span_root_usage_idx`, so the scan never touches the table. The
  * planner prefers the narrower `trace_span_root_ended_idx` on its own, hence `indexed by`; a column added
  * here must be added to the covering index too.
+ *
+ * One range scan per bucket, between the bucket starts (local midnights for day buckets): grouping a
+ * month by a computed bucket would sort every row at once, which measured ~40% slower.
  */
-function providerTotals(db: BunSQLiteDatabase, range: ResolvedRange): Map<string, Totals> {
+function providerBucketTotals(
+  db: BunSQLiteDatabase,
+  range: ResolvedRange,
+  starts: readonly number[],
+): Map<string, Map<number, Totals>> {
   const sql = `select final_provider_id as providerId, ${SUMS}
     from trace_span indexed by trace_span_root_usage_idx
-    where parent_span_id is null and final_provider_id is not null and ended_at >= ? and ended_at <= ?
+    where parent_span_id is null and final_provider_id is not null and ended_at >= ? and ended_at < ?
     group by final_provider_id`;
   const statement = (db as IterableDatabase).$client.query<RawAggregate & { providerId: string }, SQLQueryBindings[]>(
     sql,
   );
-  return new Map(
-    statement.all(range.start.getTime(), range.end.getTime()).map((row) => [row.providerId, toBigTotals(row)]),
-  );
+  const result = new Map<string, Map<number, Totals>>();
+  starts.forEach((start, index) => {
+    // The range end is inclusive; `+ 1` keeps a request ending exactly now.
+    const end = starts[index + 1] ?? range.end.getTime() + 1;
+    for (const row of statement.all(Math.max(start, range.start.getTime()), end)) {
+      const buckets = result.get(row.providerId) ?? new Map<number, Totals>();
+      buckets.set(index, toBigTotals(row));
+      result.set(row.providerId, buckets);
+    }
+  });
+  return result;
+}
+
+function merge(into: Totals, from: Totals): void {
+  into.requests += from.requests;
+  into.failed += from.failed;
+  into.input += from.input;
+  into.output += from.output;
+  into.cost += from.cost;
+  into.priced += from.priced;
+  into.withUsage += from.withUsage;
+}
+
+function sumBuckets(buckets: ReadonlyMap<number, Totals>): Totals {
+  const totals = emptyTotals();
+  for (const bucket of buckets.values()) merge(totals, bucket);
+  return totals;
 }
 
 /**
@@ -174,15 +209,33 @@ export function desktopUsage(db: BunSQLiteDatabase, query: DesktopUsageQuery): D
   const previousRange = shiftRangeBack(range);
 
   const keys = bucketKeys(query.range, range.start, range.end);
-  const byBucket = new Map<string | number, Totals>(keys.map((key) => [key.identity, emptyTotals()]));
-  const byModel = new Map<string, Totals>();
+  const bucketIndex = new Map(keys.map((key, index) => [key.identity, index]));
+  const byBucket = keys.map(() => emptyTotals());
+  const modelBuckets = new Map<string, Map<number, Totals>>();
   for (const row of rows) {
-    const bucket = byBucket.get(row.bucket);
-    if (bucket !== undefined) add(bucket, row);
-    const model = byModel.get(row.dimension) ?? emptyTotals();
-    add(model, row);
-    byModel.set(row.dimension, model);
+    const index = bucketIndex.get(row.bucket);
+    if (index === undefined) continue;
+    add(byBucket[index]!, row);
+    const buckets = modelBuckets.get(row.dimension) ?? new Map<number, Totals>();
+    const cell = buckets.get(index) ?? emptyTotals();
+    add(cell, row);
+    buckets.set(index, cell);
+    modelBuckets.set(row.dimension, buckets);
   }
+  const models = [...modelBuckets]
+    .map(([modelId, buckets]): [string, Totals] => [modelId, sumBuckets(buckets)])
+    .sort(byCostThenRequests)
+    .slice(0, DESKTOP_USAGE_MAX_MODELS);
+  const providerBuckets = providerBucketTotals(
+    db,
+    range,
+    keys.map((key) => new Date(key.key).getTime()),
+  );
+  const providers = [...providerBuckets]
+    .map(([providerId, buckets]): [string, Totals] => [providerId, sumBuckets(buckets)])
+    .sort(byCostThenRequests);
+  const cells = (buckets: ReadonlyMap<number, Totals> | undefined) =>
+    [...(buckets ?? [])].sort(([a], [b]) => a - b).map(([bucket, totals]) => ({ bucket, ...toSlice(totals) }));
 
   return {
     range: query.range,
@@ -193,13 +246,12 @@ export function desktopUsage(db: BunSQLiteDatabase, query: DesktopUsageQuery): D
     previous: toTotals(
       range.bucketUnit === 'hour' ? previousHourTotals(db, previousRange) : totalsOf(rangeRows(db, previousRange)),
     ),
-    buckets: keys.map((key) => ({ start: key.key, ...toSlice(byBucket.get(key.identity) ?? emptyTotals()) })),
-    byModel: [...byModel]
-      .sort(byCostThenRequests)
-      .slice(0, DESKTOP_USAGE_MAX_MODELS)
-      .map(([modelId, totals]) => ({ modelId, ...toSlice(totals) })),
-    byProvider: [...providerTotals(db, range)]
-      .sort(byCostThenRequests)
-      .map(([providerId, totals]) => ({ providerId, ...toSlice(totals) })),
+    buckets: keys.map((key, index) => ({ start: key.key, ...toSlice(byBucket[index]!) })),
+    byModel: models.map(([modelId, totals]) => ({ modelId, ...toSlice(totals) })),
+    byProvider: providers.map(([providerId, totals]) => ({ providerId, ...toSlice(totals) })),
+    trendByModel: models.flatMap(([modelId]) => cells(modelBuckets.get(modelId)).map((cell) => ({ ...cell, modelId }))),
+    trendByProvider: providers.flatMap(([providerId]) =>
+      cells(providerBuckets.get(providerId)).map((cell) => ({ ...cell, providerId })),
+    ),
   };
 }

@@ -298,3 +298,48 @@ test('entries tied on cost and requests are ordered by name', () => {
     expect(usage.byProvider.map((entry) => entry.providerId)).toEqual(['p1', 'p2', 'p3']);
   });
 });
+
+test('trend cells split each bucket by model and by Provider and add up to the bucket', () => {
+  withStore((store) => {
+    seed(store, { id: 1, endedAt: new Date(NOW.getTime() - HOUR), model: 'm1', attempts: [{ provider: 'a' }] });
+    seed(store, { id: 2, endedAt: new Date(NOW.getTime() - HOUR), model: 'm2', attempts: [{ provider: 'b' }] });
+    seed(store, { id: 3, endedAt: new Date(NOW.getTime() - 2 * DAY), model: 'm1', attempts: [{ provider: 'b' }] });
+
+    for (const range of ['24h', '7d', '30d'] as const) {
+      const usage = store.desktopUsage({ range, now: NOW });
+      for (const cells of [usage.trendByModel, usage.trendByProvider]) {
+        const sums = usage.buckets.map((_, index) =>
+          cells.filter((cell) => cell.bucket === index).reduce((sum, cell) => sum + BigInt(cell.requests), 0n),
+        );
+        expect(sums.map(String)).toEqual(usage.buckets.map((bucket) => bucket.requests));
+      }
+    }
+    const week = store.desktopUsage({ range: '7d', now: NOW });
+    expect(week.trendByProvider.map((cell) => [cell.providerId, cell.bucket, cell.requests])).toEqual([
+      ['b', 4, '1'],
+      ['b', 6, '1'],
+      ['a', 6, '1'],
+    ]);
+  });
+});
+
+test('a Provider cell follows local midnight, as the day buckets do', () => {
+  withStore((store) => {
+    const today = new Date(NOW);
+    today.setHours(0, 0, 0, 0);
+    // Ten minutes either side of the local midnight that starts today.
+    seed(store, { id: 1, endedAt: new Date(today.getTime() - 10 * 60_000), attempts: [{ provider: 'a' }] });
+    seed(store, { id: 2, endedAt: new Date(today.getTime() + 10 * 60_000), attempts: [{ provider: 'a' }] });
+
+    const usage = store.desktopUsage({ range: '7d', now: NOW });
+
+    expect(usage.trendByProvider.map((cell) => [cell.bucket, cell.requests])).toEqual([
+      [5, '1'],
+      [6, '1'],
+    ]);
+    expect(usage.trendByModel.map((cell) => [cell.bucket, cell.requests])).toEqual([
+      [5, '1'],
+      [6, '1'],
+    ]);
+  });
+});
