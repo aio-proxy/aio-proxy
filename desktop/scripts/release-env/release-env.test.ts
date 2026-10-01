@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { DEFAULT_FEED_URL } from '../info-plist';
-import { notaryAuth, releaseEnv } from './release-env';
+import { notaryAuth, releaseEnv, teamIdOf } from './release-env';
 
 const publicEdKey = '6tfdkTDFm68kxdxZ4oBJZ625LnOFeVLbWB6UcIsQDW4=';
 const ci = {
@@ -53,4 +53,10 @@ describe('notaryAuth', () => {
   test('no credentials at all is an error naming both options', () => {
     expect(() => notaryAuth({})).toThrow('NOTARY_PROFILE');
   });
+});
+
+test('the Team ID comes from the end of a Developer ID identity', () => {
+  expect(teamIdOf('Developer ID Application: Team (TEAMID1234)')).toBe('TEAMID1234');
+  expect(teamIdOf('Developer ID Application: Team')).toBeUndefined();
+  expect(teamIdOf('')).toBeUndefined();
 });

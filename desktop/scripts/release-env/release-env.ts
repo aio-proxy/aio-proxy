@@ -28,6 +28,11 @@ export function notaryAuth(env: Env): string[] {
   throw new Error('notarization needs APPLE_API_KEY_PATH, APPLE_API_KEY_ID and APPLE_API_ISSUER_ID, or NOTARY_PROFILE');
 }
 
+/** The Team ID in a `Developer ID Application: <Team> (<TEAMID>)` identity. */
+export function teamIdOf(identity: string): string | undefined {
+  return /\(([A-Z0-9]{10})\)\s*$/u.exec(identity)?.[1];
+}
+
 /** Everything `desktop:bundle --release` needs, checked before the long build starts. */
 export function releaseEnv(env: Env): ReleaseEnv {
   const identity = env['DEVELOPER_ID_IDENTITY'];

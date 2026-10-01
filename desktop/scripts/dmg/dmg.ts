@@ -21,7 +21,22 @@ export async function buildDmg(app: string, dmg: string): Promise<void> {
   }
 }
 
-export type MountedApp = { readonly version: string; readonly feedUrl: string; readonly publicEdKey: string };
+export type MountedApp = {
+  readonly version: string;
+  readonly feedUrl: string;
+  readonly publicEdKey: string;
+  /** The signing Team IDs of the .dmg, the app and its bundled CLI, in that order (`undefined` if unsigned). */
+  readonly teamIds: readonly (string | undefined)[];
+};
+
+/** The `TeamIdentifier` that `codesign -dv` reports on stderr; `undefined` for "not set" or none. */
+export function teamIdentifier(codesignOutput: string): string | undefined {
+  const team = /^TeamIdentifier=(\S+)$/mu.exec(codesignOutput)?.[1];
+  return team === undefined || team === 'not' ? undefined : team;
+}
+
+const signingTeam = async (path: string): Promise<string | undefined> =>
+  teamIdentifier((await $`codesign -dv --verbose=2 ${path}`.quiet()).stderr.toString());
 
 /**
  * The Gatekeeper checks a downloaded copy meets: the signed, notarized .dmg, then the app inside it,
@@ -44,6 +59,11 @@ export async function verifyDmg(dmg: string): Promise<MountedApp> {
       version: await read('CFBundleShortVersionString'),
       feedUrl: await read('SUFeedURL'),
       publicEdKey: await read('SUPublicEDKey'),
+      teamIds: [
+        await signingTeam(dmg),
+        await signingTeam(app),
+        await signingTeam(join(app, 'Contents/MacOS/aio-proxy')),
+      ],
     };
   } finally {
     await $`hdiutil detach ${mount}`.nothrow().quiet();

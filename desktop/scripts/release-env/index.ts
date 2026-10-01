@@ -1,1 +1,1 @@
-export { notaryAuth, releaseEnv, type ReleaseEnv } from './release-env';
+export { notaryAuth, releaseEnv, teamIdOf, type ReleaseEnv } from './release-env';

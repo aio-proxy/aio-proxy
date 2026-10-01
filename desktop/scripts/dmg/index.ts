@@ -1,1 +1,1 @@
-export { APP_NAME, buildDmg, dmgName, verifyDmg, type MountedApp } from './dmg';
+export { APP_NAME, buildDmg, dmgName, teamIdentifier, verifyDmg, type MountedApp } from './dmg';

@@ -5,7 +5,8 @@
 //   bun run desktop:publish --version X.Y.Z      (from a checkout of tag vX.Y.Z)
 // Env: GH_TOKEN; SPARKLE_ED_PRIVATE_KEY (only ever written to generate_appcast's stdin) and
 // SPARKLE_PUBLIC_ED_KEY (must be its public key); plus the `desktop:bundle --release` env when the
-// .dmg is not on the Release yet.
+// .dmg is not on the Release yet. DEVELOPER_ID_IDENTITY is always required: its Team ID must sign
+// the .dmg, the app and its CLI, whether built here or reused from the Release.
 import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -25,6 +26,7 @@ import {
 } from './appcast';
 import { dmgName, verifyDmg } from './dmg';
 import { DEFAULT_FEED_URL } from './info-plist';
+import { teamIdOf } from './release-env';
 import { fetchSparkle } from './sparkle';
 
 const REPO = 'aio-proxy/aio-proxy';
@@ -45,6 +47,16 @@ if (checkout !== version) throw new Error(`this checkout is ${checkout}, not ${v
 // The update root of trust and the write token are kept out of child-process environments (the build:
 // cargo build scripts, bun lifecycle scripts); the key only ever goes to generate_appcast's stdin. This
 // is hygiene, not an isolation boundary: a same-user process can still read an ancestor's environment.
+// A reused .dmg is whatever sits on the Release under its name; anyone with asset write access could
+// have put another team's notarized build there, and signing it into the feed would ship it to every
+// install (Sparkle accepts a new code-signing identity under a valid EdDSA signature).
+const team = teamIdOf(process.env['DEVELOPER_ID_IDENTITY'] ?? '');
+if (team === undefined) {
+  throw new Error(
+    'DEVELOPER_ID_IDENTITY must be "Developer ID Application: <Team> (<TEAMID>)" to check the .dmg signer',
+  );
+}
+
 const edKey = process.env['SPARKLE_ED_PRIVATE_KEY'] ?? '';
 if (edKey === '') throw new Error('SPARKLE_ED_PRIVATE_KEY is required');
 // Bun's `$` reads the live process.env, so deleting the key here keeps it out of the default-env calls
@@ -117,6 +129,11 @@ try {
   if (mounted.version !== version) throw new Error(`${name} holds version ${mounted.version}`);
   if (mounted.feedUrl !== DEFAULT_FEED_URL)
     throw new Error(`${name} points at feed ${mounted.feedUrl}, not the product feed`);
+  if (mounted.teamIds.some((id) => id !== team)) {
+    throw new Error(
+      `${name} is not all signed by team ${team} (dmg, app, CLI: ${mounted.teamIds.join(', ')}); refusing to publish`,
+    );
+  }
   if (mounted.publicEdKey !== signingKey) {
     throw new Error(`${name} carries an SUPublicEDKey that does not match SPARKLE_ED_PRIVATE_KEY; refusing to upload`);
   }

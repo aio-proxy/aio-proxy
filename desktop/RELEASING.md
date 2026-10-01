@@ -66,6 +66,8 @@ cancelled (a newer pending dispatch cancels an older pending one) with
 The job runs only for a tag that is a published (non-draft, non-prerelease) Release whose commit
 is on `main`, and it builds that commit; any other tag stops before checkout, so release secrets
 never reach unreviewed code.
+A `.dmg` it reuses from the Release must be signed, like the app and its CLI inside, by the
+Team ID in `DEVELOPER_ID_IDENTITY`; anything else stops the job before the feed is touched.
 If the DMG is already on the Release, the job reuses and re-verifies it: a published version is
 never rebuilt or replaced. If the feed already offers the version, the job re-verifies that
 item. If the feed already offers something newer, the older version is not added.
