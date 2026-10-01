@@ -104,7 +104,7 @@
 ▲ Plugins      none installed
 ```
 
-服务器不可达是 `✗`。没有已安装插件是 `▲`。
+配置文件不存在是 `○`。服务器不可达是 `✗`。没有已安装插件是 `▲`。`TERM=dumb` 视同无颜色。
 
 ### `provider list` / `provider test`
 
@@ -125,14 +125,14 @@
 - 记号：`enabled: false` 为 `○`；`state.status: 'unavailable'` 为 `✗`；`ready` 且（`catalog: 'stale'` 或带诊断）为 `▲`；其余 `●`。
 - `--probe` 时加 PROBE 列，`OK` 为 `success`，`FAIL` 为 `danger`。
 - 行下的缩进子行：先是诊断摘要（`muted`），再是 `dashboardProviderSuggestedCommand` 的 `→` 行。都没有就不打印子行。
-- 恰好一个 provider 时（`--filter` / `provider test`）改为详情视图：标题行 `● <id>`，下面是今天全部 16 个字段（`--probe` 时 17 个），标签 `muted`、左对齐成一列。
+- 恰好一个 provider 时（`--filter` / `provider test`）改为详情视图：标题行 `● <id>`，下面是今天的全部 15 个字段（`--probe` 时 16 个），标签 `muted`、左对齐成一列。
 - 表格里省掉的字段（passthrough、plugin、capability、account、expires at 等）在详情视图和 `--json` 里都有。
 - 没有 provider 时打印现有的本地化空列表说明，退出码 0。
 
 ### `plugin list` / `provider list --installed`
 
 ```text
-  NAME                PACKAGE                              SOURCE
+  NAME                PACKAGE                              STATE
 ● Claude Pro/Max      @aio-proxy/plugin-claude-code        built-in
     Use a Claude Pro or Max account to access models
 ```
