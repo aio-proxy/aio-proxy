@@ -7,6 +7,7 @@ mod footer;
 mod format;
 mod placement;
 mod providers;
+mod quota;
 mod status;
 mod usage;
 mod view;
