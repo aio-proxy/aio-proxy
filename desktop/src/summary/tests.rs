@@ -15,21 +15,47 @@ fn the_golden_fixture_parses() {
     let summary = v1(GOLDEN);
     assert_eq!(summary.server.version, "0.36.0");
     assert_eq!(summary.server.ppid, Some(4310));
-    assert_eq!(summary.usage24h.requests, 257);
-    assert_eq!(summary.usage24h.estimated_cost_nano_usd, 20_521_353_840);
-    assert_eq!(summary.trend7d.len(), 1);
+    let usage = &summary.usage;
+    assert_eq!(usage.range, UsageRange::D7);
+    assert_eq!(usage.bucket_unit, BucketUnit::Day);
+    assert_eq!(usage.current.requests, 257);
+    assert_eq!(usage.current.estimated_cost_nano_usd, 20_521_353_840);
+    assert_eq!(usage.previous.pricing_coverage, Some(0.5));
+    assert_eq!(usage.buckets[0].slice.failed_requests, 53);
+    assert_eq!(usage.by_model[0].model_id, "gpt-5.2-codex");
+    assert_eq!(usage.by_provider[0].name, "Codex");
     assert_eq!(summary.activity[0].date, "2026-09-29");
     let codex = &summary.providers[0];
     assert_eq!(codex.state, ProviderState::Ok);
-    let Quota::Ready { windows, refresh_failed, .. } = &codex.quota else {
+    assert_eq!(codex.account_label.as_deref(), Some("you@example.com"));
+    let Quota::Ready { windows, refresh_failed, plan, .. } = &codex.quota else {
         panic!("codex quota should be ready");
     };
     assert!(!refresh_failed);
+    assert_eq!(plan.as_ref().map(LocalizedText::text), Some("Pro"));
     assert_eq!(windows[0].label.text(), "5 hours");
     assert_eq!(windows[0].remaining_ratio, Some(0.4));
-    assert!(matches!(summary.providers[1].quota, Quota::Loading));
+    let cursor = &summary.providers[1];
+    assert_eq!(cursor.account_label, None);
+    assert_eq!(
+        cursor.diagnostic.as_ref().and_then(|d| d.suggested_command.as_deref()),
+        Some("aio-proxy provider login --provider cursor")
+    );
+    assert!(matches!(cursor.quota, Quota::Loading));
     assert_eq!(summary.alerts[0].kind, AlertKind::Diagnostic);
     assert!(summary.any_quota_loading());
+}
+
+#[test]
+fn an_unknown_usage_range_is_an_invalid_summary() {
+    let mut json: serde_json::Value = serde_json::from_str(GOLDEN).unwrap();
+    json["usage"]["range"] = serde_json::json!("90d");
+    assert!(matches!(parse(json.to_string().as_bytes()), Parsed::Invalid(_)));
+}
+
+#[test]
+fn range_query_values_match_the_server() {
+    assert_eq!(UsageRange::ALL.map(UsageRange::query), ["24h", "7d", "30d"]);
 }
 
 #[test]
@@ -80,6 +106,6 @@ fn unauthorized_and_server_errors_are_distinct_outcomes() {
 #[test]
 fn a_count_beyond_2_pow_53_survives() {
     let mut json: serde_json::Value = serde_json::from_str(GOLDEN).unwrap();
-    json["usage24h"]["inputTokens"] = serde_json::json!("18014398509481985");
-    assert_eq!(v1(&json.to_string()).usage24h.input_tokens, 18_014_398_509_481_985);
+    json["usage"]["current"]["inputTokens"] = serde_json::json!("18014398509481985");
+    assert_eq!(v1(&json.to_string()).usage.current.input_tokens, 18_014_398_509_481_985);
 }

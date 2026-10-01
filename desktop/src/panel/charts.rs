@@ -5,7 +5,7 @@ use gpui_kit::component::*;
 use gpui_kit::*;
 
 use super::format::{local_utc_offset, month_day, parse_date, parse_utc};
-use crate::summary::{ActivityDay, TrendBucket};
+use crate::summary::{ActivityDay, UsageBucket};
 
 pub const HEATMAP_DAYS: usize = 365;
 
@@ -29,17 +29,17 @@ pub struct TrendPoint {
     pub requests: f64,
 }
 
-pub fn trend_points(buckets: &[TrendBucket], utc_offset: i64) -> Vec<TrendPoint> {
+pub fn trend_points(buckets: &[UsageBucket], utc_offset: i64) -> Vec<TrendPoint> {
     buckets
         .iter()
         .filter_map(|b| {
             let start = parse_utc(&b.start)?;
-            Some(TrendPoint { label: month_day(start, utc_offset).into(), requests: b.requests as f64 })
+            Some(TrendPoint { label: month_day(start, utc_offset).into(), requests: b.slice.requests as f64 })
         })
         .collect()
 }
 
-pub fn trend(buckets: &[TrendBucket], now: i64, cx: &App) -> impl IntoElement {
+pub fn trend(buckets: &[UsageBucket], now: i64, cx: &App) -> impl IntoElement {
     let accent = cx.theme().chart_1;
     div().h(px(96.)).child(
         BarChart::new(trend_points(buckets, local_utc_offset(now)))

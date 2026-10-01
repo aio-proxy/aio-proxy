@@ -38,10 +38,10 @@ fn card(label: &'static str, value: String, cx: &App) -> impl IntoElement {
 }
 
 fn cards(summary: &SummaryV1, cx: &App) -> impl IntoElement {
-    let usage = &summary.usage24h;
+    let usage = &summary.usage.current;
     h_flex()
         .gap_2()
-        .child(card("Requests 24h", compact(usage.requests), cx))
+        .child(card("Requests", compact(usage.requests), cx))
         .child(card("Failed", compact(usage.failed_requests), cx))
         .child(card("Tokens", compact(usage.input_tokens + usage.output_tokens), cx))
         .child(card("Cost", usd(usage.estimated_cost_nano_usd), cx))
@@ -55,7 +55,7 @@ fn body(model: &AppModel, now: i64, cx: &App) -> AnyElement {
             .flex_1()
             .gap_2()
             .child(cards(summary, cx))
-            .child(charts::trend(&summary.trend7d, now, cx))
+            .child(charts::trend(&summary.usage.buckets, now, cx))
             .child(charts::heatmap(&summary.activity, now, cx))
             .child(providers::list(&summary.providers, now, cx))
             .into_any_element(),

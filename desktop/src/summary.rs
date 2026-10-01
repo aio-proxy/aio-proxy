@@ -10,9 +10,7 @@ use serde::{Deserialize, Deserializer};
 pub struct SummaryV1 {
     pub generated_at: String,
     pub server: ServerInfo,
-    pub usage24h: Usage24h,
-    #[serde(default)]
-    pub trend7d: Vec<TrendBucket>,
+    pub usage: Usage,
     #[serde(default)]
     pub activity: Vec<ActivityDay>,
     #[serde(default)]
@@ -29,9 +27,60 @@ pub struct ServerInfo {
     pub ppid: Option<u32>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+pub enum UsageRange {
+    #[serde(rename = "24h")]
+    H24,
+    #[serde(rename = "7d")]
+    D7,
+    #[serde(rename = "30d")]
+    D30,
+}
+
+impl UsageRange {
+    pub const ALL: [UsageRange; 3] = [UsageRange::H24, UsageRange::D7, UsageRange::D30];
+
+    /// The `?range=` value; also the segmented control's label.
+    pub fn query(self) -> &'static str {
+        match self {
+            UsageRange::H24 => "24h",
+            UsageRange::D7 => "7d",
+            UsageRange::D30 => "30d",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        self.query()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BucketUnit {
+    Hour,
+    Day,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Usage24h {
+pub struct Usage {
+    pub range: UsageRange,
+    pub bucket_unit: BucketUnit,
+    pub range_start: String,
+    pub range_end: String,
+    pub current: UsageTotals,
+    pub previous: UsageTotals,
+    #[serde(default)]
+    pub buckets: Vec<UsageBucket>,
+    #[serde(default)]
+    pub by_model: Vec<ModelUsage>,
+    #[serde(default)]
+    pub by_provider: Vec<ProviderUsage>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageTotals {
     #[serde(deserialize_with = "decimal")]
     pub requests: u128,
     #[serde(deserialize_with = "decimal")]
@@ -45,16 +94,41 @@ pub struct Usage24h {
     pub pricing_coverage: Option<f64>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TrendBucket {
-    pub start: String,
+pub struct UsageSlice {
     #[serde(deserialize_with = "decimal")]
     pub requests: u128,
+    #[serde(deserialize_with = "decimal")]
+    pub failed_requests: u128,
     #[serde(deserialize_with = "decimal")]
     pub total_tokens: u128,
     #[serde(deserialize_with = "decimal")]
     pub estimated_cost_nano_usd: u128,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UsageBucket {
+    pub start: String,
+    #[serde(flatten)]
+    pub slice: UsageSlice,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelUsage {
+    pub model_id: String,
+    #[serde(flatten)]
+    pub slice: UsageSlice,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderUsage {
+    pub provider_id: String,
+    pub name: String,
+    #[serde(flatten)]
+    pub slice: UsageSlice,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -70,6 +144,8 @@ pub struct Provider {
     pub id: String,
     pub name: String,
     pub enabled: bool,
+    #[serde(default, rename = "accountLabel")]
+    pub account_label: Option<String>,
     pub state: ProviderState,
     pub diagnostic: Option<Diagnostic>,
     pub quota: Quota,
@@ -90,6 +166,8 @@ pub enum ProviderState {
 pub struct Diagnostic {
     pub code: String,
     pub summary: String,
+    #[serde(default, rename = "suggestedCommand")]
+    pub suggested_command: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -104,6 +182,8 @@ pub enum Quota {
         sampled_at: String,
         #[serde(rename = "refreshFailed")]
         refresh_failed: bool,
+        #[serde(default)]
+        plan: Option<LocalizedText>,
         windows: Vec<QuotaWindow>,
     },
     #[serde(other)]

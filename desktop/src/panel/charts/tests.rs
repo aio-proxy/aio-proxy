@@ -1,7 +1,7 @@
 // Not `super::*`: that glob carries gpui's own `test` attribute, which shadows the built-in one.
 use super::{HEATMAP_DAYS, heatmap_levels, trend_points};
 use crate::panel::format::days_from_civil;
-use crate::summary::{ActivityDay, TrendBucket};
+use crate::summary::{ActivityDay, UsageBucket, UsageSlice};
 
 fn day(date: &str, total_tokens: u128) -> ActivityDay {
     ActivityDay { date: date.into(), total_tokens }
@@ -26,11 +26,9 @@ fn days_outside_the_window_and_bad_dates_are_ignored() {
 
 #[test]
 fn trend_points_are_labelled_by_local_day() {
-    let bucket = TrendBucket {
+    let bucket = UsageBucket {
         start: "2026-09-28T16:00:00.000Z".into(),
-        requests: 257,
-        total_tokens: 1,
-        estimated_cost_nano_usd: 1,
+        slice: UsageSlice { requests: 257, ..Default::default() },
     };
     let points = trend_points(&[bucket], 8 * 3_600);
     assert_eq!(points[0].label.as_ref(), "9/29");
