@@ -78,12 +78,15 @@ fn missing_fields_mean_no_projection() {
     }
     let exhausted = view(window(Some(0.0), Some(60), Some(300)));
     assert!(exhausted.low);
-    assert!(exhausted.pace.as_ref().is_some_and(|p| p.behind || p.note.contains("reserve")));
+    let pace = exhausted.pace.expect("exhausted window with a reset and length projects");
+    assert!(pace.behind);
+    assert_eq!(pace.note, "20% over pace · runs out in 0m");
 }
 
 #[test]
 fn only_quota_capable_providers_are_listed_and_ordered_by_attention() {
     let providers = vec![
+        provider("mid", ready(vec![window(Some(0.8), Some(600), Some(1_440))]), None),
         provider("Zed", ready(vec![window(Some(0.9), Some(600), Some(1_440))]), None),
         provider("Over", ready(vec![window(Some(0.41), Some(5_820), Some(10_080))]), None),
         provider("Low", ready(vec![window(Some(0.06), Some(4_560), Some(43_200))]), None),
@@ -94,7 +97,7 @@ fn only_quota_capable_providers_are_listed_and_ordered_by_attention() {
     ];
     let blocks = quota_blocks(&providers, NOW);
     let names: Vec<_> = blocks.iter().map(|b| b.provider.name.as_str()).collect();
-    assert_eq!(names, ["Broken", "Low", "Over", "Loading", "Zed"]);
+    assert_eq!(names, ["Broken", "Low", "Over", "Loading", "mid", "Zed"]);
     assert_eq!(attention_count(&blocks), 2);
     assert_eq!(blocks[0].message.as_deref(), Some("Credentials expired"));
     assert!(blocks[3].loading);
@@ -109,4 +112,39 @@ fn durations_and_relative_times() {
     assert_eq!(relative(NOW, NOW - 240), "4 min ago");
     assert_eq!(relative(NOW, NOW - 3 * 3_600), "3 h ago");
     assert_eq!(relative(NOW, NOW - 2 * 86_400), "2 d ago");
+}
+
+#[test]
+fn quota_window_edges_are_finite_or_absent() {
+    let view = |w| {
+        let providers = [provider("A", ready(vec![w]), None)];
+        quota_blocks(&providers, NOW).remove(0).windows.remove(0)
+    };
+    let past = view(window(Some(0.5), Some(-10), Some(300)));
+    let p = past.pace.expect("a past reset still projects");
+    assert!(p.expected.is_finite());
+    assert_eq!(p.expected, 0.0);
+    assert!(!p.note.contains("NaN") && !p.note.contains("inf"));
+
+    assert!(view(window(Some(0.5), Some(60), Some(0))).pace.is_none());
+    assert_eq!(view(window(Some(1.4), Some(60), Some(300))).remaining, Some(1.0));
+    let negative = view(window(Some(-0.2), Some(60), Some(300)));
+    assert_eq!(negative.remaining, Some(0.0));
+    assert!(negative.low);
+}
+
+#[test]
+fn a_diagnostic_outranks_a_ready_quota_and_failed_without_one_has_a_fallback_message() {
+    let providers = vec![
+        provider("Fine", ready(vec![window(Some(0.9), Some(600), Some(1_440))]), None),
+        provider("Flagged", ready(vec![window(Some(0.9), Some(600), Some(1_440))]), Some("Token expiring")),
+        provider("Down", Quota::Failed, None),
+    ];
+    let blocks = quota_blocks(&providers, NOW);
+    let names: Vec<_> = blocks.iter().map(|b| b.provider.name.as_str()).collect();
+    assert_eq!(names, ["Down", "Flagged", "Fine"]);
+    assert_eq!(blocks[0].message.as_deref(), Some("Quota unavailable"));
+    assert_eq!(blocks[1].message.as_deref(), Some("Token expiring"));
+    assert_eq!(blocks[1].rank, 0);
+    assert_eq!(attention_count(&blocks), 2);
 }

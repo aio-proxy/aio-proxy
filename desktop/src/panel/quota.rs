@@ -61,7 +61,11 @@ pub fn relative(now: i64, at: i64) -> String {
 }
 
 /// The spec's pace math. `left` and `length` are minutes; `remaining` is 0..=1.
-pub fn pace(remaining: f64, left: f64, length: f64) -> Pace {
+pub(crate) fn pace(remaining: f64, left: f64, length: f64) -> Pace {
+    if length <= 0.0 {
+        return Pace { expected: 0.0, behind: false, note: "0% in reserve · lasts until reset".into() };
+    }
+    let (remaining, left) = (remaining.clamp(0.0, 1.0), left.max(0.0));
     let elapsed = (1.0 - left / length).clamp(0.01, 1.0);
     let expected = 1.0 - elapsed;
     let reserve = remaining - expected;
@@ -93,7 +97,7 @@ fn window_view(window: &QuotaWindow, now: i64) -> WindowView {
     }
 }
 
-/// Providers with a quota capability, in attention order (spec ranks), then by name.
+/// Providers with a quota capability, in attention order (spec ranks), then by name (case-insensitive).
 pub fn quota_blocks(providers: &[Provider], now: i64) -> Vec<QuotaBlock<'_>> {
     let mut blocks: Vec<_> = providers
         .iter()
@@ -136,7 +140,12 @@ pub fn quota_blocks(providers: &[Provider], now: i64) -> Vec<QuotaBlock<'_>> {
             }
         })
         .collect();
-    blocks.sort_by(|a, b| a.rank.cmp(&b.rank).then_with(|| a.provider.name.cmp(&b.provider.name)));
+    blocks.sort_by(|a, b| {
+        a.rank
+            .cmp(&b.rank)
+            .then_with(|| a.provider.name.to_lowercase().cmp(&b.provider.name.to_lowercase()))
+            .then_with(|| a.provider.name.cmp(&b.provider.name))
+    });
     blocks
 }
 
