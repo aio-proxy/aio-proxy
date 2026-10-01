@@ -57,7 +57,7 @@ If the DMG is already on the Release, the job reuses and re-verifies it: a publi
 never rebuilt or replaced. If the feed already offers the version, the job re-verifies that
 item. If the feed already offers something newer, the older version is not added.
 
-If `desktop-feed` exists but has no `appcast.xml`, the job stops: restore the file, or delete
+If `desktop-feed` exists but has no `appcast.xml`, or one with no items, the job stops: restore the file, or delete
 the `desktop-feed` Release to deliberately start a fresh feed.
 
 The job refuses to replace the feed when the new item has no valid EdDSA signature. The usual
