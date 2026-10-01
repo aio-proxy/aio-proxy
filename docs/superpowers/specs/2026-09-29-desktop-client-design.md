@@ -318,7 +318,7 @@ Panel details:
 
 `bun run desktop:bundle` (`desktop/scripts/bundle.ts`) is the only entry point for CI and release:
 
-1. Verify tools (`cargo`, `codesign`, `xcrun notarytool`, `xcrun stapler`, `vtool`, pinned Sparkle tools) and fail fast.
+1. Verify tools (`cargo`, `codesign`, `xcrun actool`, `xcrun notarytool`, `xcrun stapler`, `vtool`, pinned Sparkle tools) and fail fast.
 2. `bun run build` (includes the dashboard `dist` the compiled entry embeds).
 3. `build-binary.ts darwin-arm64 <out>`; require `THIRD_PARTY_NOTICES` next to it.
 4. `cargo build --release --target aarch64-apple-darwin` with `MACOSX_DEPLOYMENT_TARGET=13.0`. `build.rs` links `Sparkle.framework` and adds the rpath `@loader_path/../Frameworks`.
@@ -326,7 +326,8 @@ Panel details:
    - `Contents/MacOS/aio-proxy-desktop`, `Contents/MacOS/aio-proxy`
    - `Contents/Frameworks/Sparkle.framework`, from the pinned `Sparkle-2.10.0.tar.xz` (SHA-256 checked on the archive), extracted with `tar -xJf` and copied with `ditto` so symlinks stay intact
    - `Contents/Resources/THIRD_PARTY_NOTICES` (aio-proxy's plus Sparkle's license)
-   - `Info.plist`: `CFBundleIdentifier`, `CFBundleExecutable`, `CFBundleName`, `CFBundleDisplayName`, `CFBundlePackageType` (`APPL`), `CFBundleInfoDictionaryVersion` (`6.0`), `CFBundleShortVersionString`, `CFBundleVersion`, `LSUIElement`, `LSMinimumSystemVersion`, `SUFeedURL`, `SUPublicEDKey`, `SUAllowsAutomaticUpdates` (`false`). `SUAutomaticallyUpdate` is never set: Sparkle's silent install-on-quit does not relaunch the app, which would defer the proxy restart to the next launch
+   - `Contents/Resources/Assets.car` and `AppIcon.icns`, compiled by Xcode 26's `actool` from the Icon Composer document `packages/brand/src/apple-icon.icon` (the `.car` carries the macOS 26 Liquid Glass icon with its dark and tinted variants; the `.icns` serves macOS 13-15). CI selects an Xcode 26 install through `DEVELOPER_DIR`
+   - `Info.plist`: `CFBundleIdentifier`, `CFBundleExecutable`, `CFBundleName`, `CFBundleDisplayName`, `CFBundlePackageType` (`APPL`), `CFBundleInfoDictionaryVersion` (`6.0`), `CFBundleShortVersionString`, `CFBundleVersion`, `CFBundleIconName` and `CFBundleIconFile` (`AppIcon`), `LSUIElement`, `LSMinimumSystemVersion`, `SUFeedURL`, `SUPublicEDKey`, `SUAllowsAutomaticUpdates` (`false`). `SUAutomaticallyUpdate` is never set: Sparkle's silent install-on-quit does not relaunch the app, which would defer the proxy restart to the next launch
 6. Checks: `lipo -archs` is exactly `arm64` for the host and the sidecar, and includes `arm64` for Sparkle's Mach-Os (2.10.0 ships them universal and they are kept as shipped); `vtool -show-build` `minos` ≤ 13.0 for every Mach-O (measured: sidecar 13.0, Sparkle 12.0); `aio-proxy-desktop --version` runs (proves dyld resolves Sparkle through the rpath).
 7. Runtime smoke (below).
 8. `--unsigned` stops here with an ad-hoc signature; `--release` continues to Developer ID signing and notarization. Both re-run the runtime smoke on the signed bundle and require the `JS JIT Generated Code` region in `vmmap` (falling back to `sudo -n vmmap`). The `.dmg` holds the app and a link to `/Applications`.

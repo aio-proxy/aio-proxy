@@ -50,16 +50,13 @@ if (release !== undefined && release.feedUrl !== DEFAULT_FEED_URL) {
 const step = (name: string): void => console.error(`\n==> ${name}`);
 
 step('1. verify tools');
-const tools = ['cargo', 'codesign', 'vtool', 'lipo', 'ditto', 'tar', 'plutil'];
-if (release !== undefined) tools.push('hdiutil', 'spctl', 'syspolicy_check', 'xcrun');
+const tools = ['cargo', 'codesign', 'vtool', 'lipo', 'ditto', 'tar', 'plutil', 'xcrun'];
+if (release !== undefined) tools.push('hdiutil', 'spctl', 'syspolicy_check');
 for (const tool of tools) {
   if (Bun.which(tool) === null) throw new Error(`missing tool: ${tool}`);
 }
-if (release !== undefined) {
-  for (const tool of ['notarytool', 'stapler']) {
-    if ((await $`xcrun --find ${tool}`.nothrow().quiet()).exitCode !== 0)
-      throw new Error(`missing tool: xcrun ${tool}`);
-  }
+for (const tool of ['actool', ...(release === undefined ? [] : ['notarytool', 'stapler'])]) {
+  if ((await $`xcrun --find ${tool}`.nothrow().quiet()).exitCode !== 0) throw new Error(`missing tool: xcrun ${tool}`);
 }
 const sparkle = await fetchSparkle(join(desktop, 'vendor'));
 const version = ((await Bun.file(join(root, 'npm/aio-proxy/package.json')).json()) as { version: string }).version;
@@ -96,6 +93,16 @@ await Bun.write(
   join(app, 'Contents/Resources/THIRD_PARTY_NOTICES'),
   `${await Bun.file(notices).text()}\n\n--- Sparkle ---\n\n${await Bun.file(join(sparkle, 'LICENSE')).text()}`,
 );
+// The Icon Composer document needs Xcode 26's actool. It writes Assets.car (the Liquid Glass icon,
+// macOS 26+) and AppIcon.icns (earlier macOS), named after the document.
+const iconSource = join(out, 'icon', 'AppIcon.icon');
+rmSync(dirname(iconSource), { recursive: true, force: true });
+cpSync(join(root, 'packages/brand/src/apple-icon.icon'), iconSource, { recursive: true });
+await $`xcrun actool ${iconSource} --compile ${join(app, 'Contents/Resources')} --app-icon AppIcon --platform macosx --target-device mac --minimum-deployment-target ${MINIMUM_MACOS} --output-partial-info-plist ${join(dirname(iconSource), 'partial.plist')}`.quiet();
+// An older actool skips a `.icon` it cannot read without failing.
+for (const file of ['Assets.car', 'AppIcon.icns']) {
+  if (!existsSync(join(app, 'Contents/Resources', file))) throw new Error(`actool wrote no ${file}: needs Xcode 26`);
+}
 const devPublicEdKey = process.env['SPARKLE_PUBLIC_ED_KEY'];
 const sparkleKeys =
   release !== undefined

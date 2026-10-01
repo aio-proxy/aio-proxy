@@ -28,6 +28,9 @@ export function renderInfoPlist({ version, sparkle }: InfoPlistOptions): string 
     ['CFBundleInfoDictionaryVersion', '6.0'],
     ['CFBundleShortVersionString', version],
     ['CFBundleVersion', version],
+    // bundle.ts compiles these with actool: Assets.car on macOS 26+, AppIcon.icns before.
+    ['CFBundleIconName', 'AppIcon'],
+    ['CFBundleIconFile', 'AppIcon'],
     ['LSUIElement', true],
     ['LSMinimumSystemVersion', MINIMUM_MACOS],
     ['SUAllowsAutomaticUpdates', false],
