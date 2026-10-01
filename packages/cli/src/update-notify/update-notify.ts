@@ -5,6 +5,7 @@ import { readUpdateCheckState, withUpdateCheckLock, writeUpdateCheckState } from
 import { m } from '@aio-proxy/i18n';
 import { isRecord } from '@aio-proxy/shared';
 
+import { createStyle } from '../ui';
 import { isDesktopManagedInstall } from '../upgrade/upgrade';
 
 export const shouldPrintUpdateBanner = (
@@ -35,7 +36,10 @@ export const printUpdateBanner = (
   } catch {
     return;
   }
-  print(m['cli.update.available']({ version: state.latest }));
+  const style = createStyle(process.stderr);
+  print(
+    `${style.mark('warn')} ${m['cli.update.banner']({ current, latest: state.latest })}  ${style.mark('hint')} ${style.muted('aio-proxy upgrade')}`,
+  );
 };
 
 export type NotifySpawn = (command: readonly string[]) => Promise<void>;

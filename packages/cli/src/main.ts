@@ -24,7 +24,7 @@ import { reloadCommand } from './reload';
 import { run, validatePortArgv } from './run';
 import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceStop, serviceUninstall } from './service';
 import { statusCommand } from './status';
-import { applyHelpStyle, createStyle, PromptCancelledError } from './ui';
+import { applyHelpStyle, createStyle, formatErrorLines, PromptCancelledError } from './ui';
 import { printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
 import { runUpgradeCommand } from './upgrade/upgrade';
 
@@ -353,7 +353,9 @@ export const main = async (deps: CliDeps = defaultCliDeps) => {
     const formatted = formatCliError(err, getLocale());
     // A signal-only error (e.g. `status` on a down daemon) already printed its result
     // and carries an empty message; only its exit code matters, so skip the blank line.
-    if (formatted.message !== '') console.error(formatted.message);
+    if (formatted.message !== '') {
+      console.error(formatErrorLines(createStyle(process.stderr), formatted.message).join('\n'));
+    }
     process.exitCode = toExitCode(err);
   }
 };

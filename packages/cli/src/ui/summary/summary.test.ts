@@ -5,6 +5,7 @@ import { m } from '@aio-proxy/i18n';
 import { plainStyle } from '../style';
 import {
   formatDoctorLines,
+  formatErrorLines,
   formatInstalledLines,
   formatPluginTable,
   formatRunSummary,
@@ -116,5 +117,14 @@ describe('formatRunSummary', () => {
     expect(lines[1]).toContain('http://127.0.0.1:9317');
     expect(lines[2]).toContain('http://127.0.0.1:9317/dashboard');
     expect(lines.join('\n')).not.toContain('\u001b');
+  });
+});
+
+describe('formatErrorLines', () => {
+  test('marks the first line and indents the rest', () => {
+    expect(formatErrorLines(plainStyle, 'Server is not running\nStart it first')).toEqual([
+      '✗ Server is not running',
+      '  Start it first',
+    ]);
   });
 });

@@ -1,6 +1,7 @@
 export { formatDeepProviderLines, formatProviderLines } from './provider';
 export {
   formatDoctorLines,
+  formatErrorLines,
   formatInstalledLines,
   formatPluginTable,
   type PluginListItem,

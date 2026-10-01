@@ -89,3 +89,8 @@ export function formatRunSummary(style: Style, apiUrl: string, dashboardUrl: str
     ],
   });
 }
+
+export function formatErrorLines(style: Style, message: string): readonly string[] {
+  const [first = '', ...rest] = message.split('\n');
+  return [`${style.mark('fail')} ${first}`, ...rest.map((line) => `  ${line}`)];
+}

@@ -24,6 +24,7 @@ export {
 export {
   formatDeepProviderLines,
   formatDoctorLines,
+  formatErrorLines,
   formatInstalledLines,
   formatPluginTable,
   type PluginListItem,

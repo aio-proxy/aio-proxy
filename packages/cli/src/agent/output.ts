@@ -12,27 +12,34 @@ import type {
 } from './agent';
 import type { CodexConfigureOptions, CodexConfigureResult, CodexListResult, CodexRemoveResult } from './codex';
 
-const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
+const renderCodexConfigure = (result: CodexConfigureResult, style: Style): string[] => {
   if (result.status === 'cancelled')
     return [
-      result.reason === 'non_interactive'
-        ? m['cli.agent.codex.non_interactive']()
-        : result.reason === 'authorization_incomplete'
-          ? m['cli.agent.codex.authorization_incomplete']()
-          : m['cli.agent.codex.cancelled'](),
+      `${style.mark('off')} ${
+        result.reason === 'non_interactive'
+          ? m['cli.agent.codex.non_interactive']()
+          : result.reason === 'authorization_incomplete'
+            ? m['cli.agent.codex.authorization_incomplete']()
+            : m['cli.agent.codex.cancelled']()
+      }`,
     ];
+  const restoreIncomplete =
+    result.migrationAction === 'restore' &&
+    (result.migration.status === 'blocked' || result.migration.status === 'partial');
   const lines = [
-    result.migrationAction === 'restore'
-      ? result.migration.status === 'blocked'
-        ? m['cli.agent.codex.migration_blocked']()
-        : result.migration.status === 'partial'
-          ? m['cli.agent.codex.migration_partial']()
-          : m['cli.agent.codex.restore']()
-      : m['cli.agent.codex.configured']({
-          status: result.status,
-          providerId: result.providerId ?? '-',
-          configPath: result.configPath,
-        }),
+    `${style.mark(restoreIncomplete ? 'warn' : 'ok')} ${
+      result.migrationAction === 'restore'
+        ? result.migration.status === 'blocked'
+          ? m['cli.agent.codex.migration_blocked']()
+          : result.migration.status === 'partial'
+            ? m['cli.agent.codex.migration_partial']()
+            : m['cli.agent.codex.restore']()
+        : m['cli.agent.codex.configured']({
+            status: result.status,
+            providerId: result.providerId ?? '-',
+            configPath: result.configPath,
+          })
+    }`,
   ];
   if (result.version !== undefined && result.versionCompatibility === 'unverified')
     lines.push(m['cli.agent.codex.version_unverified']({ version: result.version }));
@@ -55,8 +62,8 @@ const renderCodexConfigure = (result: CodexConfigureResult): string[] => {
   return lines;
 };
 
-const renderCodexRemove = (result: CodexRemoveResult): string[] => [
-  m['cli.agent.codex.removed']({ configPath: result.configPath, status: result.status }),
+const renderCodexRemove = (result: CodexRemoveResult, style: Style): string[] => [
+  `${style.mark(result.status === 'blocked' ? 'warn' : 'ok')} ${m['cli.agent.codex.removed']({ configPath: result.configPath, status: result.status })}`,
   ...(result.status === 'blocked' ? [m['cli.agent.codex.remove_blocked']()] : []),
   m['cli.agent.codex.keys_retained'](),
 ];
@@ -202,12 +209,12 @@ export function renderAgentList(result: AgentListResult, json: boolean, style: S
   return lines;
 }
 
-export function renderAgentConfigure(result: AgentConfigureResult): string[] {
-  if (result.target === 'codex') return renderCodexConfigure(result);
+export function renderAgentConfigure(result: AgentConfigureResult, style: Style = plainStyle): string[] {
+  if (result.target === 'codex') return renderCodexConfigure(result, style);
   const lines = [
     result.status === 'newer'
-      ? m['cli.agent.configure.newer']({ target: result.target })
-      : m['cli.agent.configure.result']({ target: result.target, status: result.status }),
+      ? `${style.mark('warn')} ${m['cli.agent.configure.newer']({ target: result.target })}`
+      : `${style.mark('ok')} ${m['cli.agent.configure.result']({ target: result.target, status: result.status })}`,
   ];
   if (result.host.support === 'unsupported') {
     lines.push(
@@ -233,9 +240,11 @@ export function renderAgentConfigure(result: AgentConfigureResult): string[] {
   return lines;
 }
 
-export const renderAgentRemove = (result: AgentRemoveResult): string[] => {
-  if (result.target === 'codex') return renderCodexRemove(result);
-  const lines = [m['cli.agent.remove.success']({ target: result.target, installationId: result.installationId })];
+export const renderAgentRemove = (result: AgentRemoveResult, style: Style = plainStyle): string[] => {
+  if (result.target === 'codex') return renderCodexRemove(result, style);
+  const lines = [
+    `${style.mark('ok')} ${m['cli.agent.remove.success']({ target: result.target, installationId: result.installationId })}`,
+  ];
   if (result.target === 'grok' && result.skippedFields !== undefined && result.skippedFields.length > 0) {
     lines.push(m['cli.agent.grok_skipped_fields']({ fields: result.skippedFields.join(', ') }));
   }
@@ -244,8 +253,8 @@ export const renderAgentRemove = (result: AgentRemoveResult): string[] => {
   }
   return lines;
 };
-export const renderAgentRevoke = (result: AgentRevokeResult): string[] => [
-  m['cli.agent.revoke.success']({ installationId: result.installationId, status: result.status }),
+export const renderAgentRevoke = (result: AgentRevokeResult, style: Style = plainStyle): string[] => [
+  `${style.mark('ok')} ${m['cli.agent.revoke.success']({ installationId: result.installationId, status: result.status })}`,
 ];
 
 export type AgentCliActions = {
@@ -265,6 +274,7 @@ export function registerAgentCommands(
   program: Command,
   input: { readonly actions: AgentCliActions; readonly print: (line: string) => void },
 ): void {
+  const style = createStyle(process.stdout);
   const emit = (lines: readonly string[]): void => {
     for (const line of lines) input.print(line);
   };
@@ -283,7 +293,7 @@ export function registerAgentCommands(
         authorizations: options.authorizations === true,
         json: options.json === true,
       };
-      emit(renderAgentList(await input.actions.list(normalized), normalized.json, createStyle(process.stdout)));
+      emit(renderAgentList(await input.actions.list(normalized), normalized.json, style));
     });
   agent
     .command('configure <opencode|pi|omp|codex|grok>')
@@ -296,14 +306,15 @@ export function registerAgentCommands(
           await input.actions.configure(target, {
             ...(options.restoreMigration === undefined ? {} : { restoreMigration: options.restoreMigration }),
           }),
+          style,
         ),
       );
     });
   agent.command('remove <opencode|pi|omp|codex|grok>').action(async (target) => {
-    emit(renderAgentRemove(await input.actions.remove(target)));
+    emit(renderAgentRemove(await input.actions.remove(target), style));
   });
   agent.command('revoke <installation-id>').action(async (installationId) => {
-    emit(renderAgentRevoke(await input.actions.revoke(installationId)));
+    emit(renderAgentRevoke(await input.actions.revoke(installationId), style));
   });
   agent
     .command('auth <codex|grok>')

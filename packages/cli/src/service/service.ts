@@ -9,6 +9,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import { resolveAgentExecutable } from '../executable';
 import { CliExit, EXIT } from '../exit';
 import { serviceEnvFile } from '../service-env';
+import { createStyle } from '../ui';
 import { isPlatformCliBinary, resolveUpgradeTargetFrom } from '../upgrade/detect';
 import {
   LAUNCHD_LABEL,
@@ -242,7 +243,7 @@ export async function serviceInstall(options: ServiceInstallOptions = {}, print:
   const os = requirePlatform();
   const target = await writeManagedUnit(os);
   if (os === 'linux') await runManager(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
-  print(m['cli.service.installed']({ path: target }));
+  print(`${createStyle(process.stdout).mark('ok')} ${m['cli.service.installed']({ path: target })}`);
   print(m['cli.service.env_hint']({ path: serviceEnvFile(configPath()) }));
 }
 
@@ -252,14 +253,14 @@ export async function serviceUninstall(print: Printer = console.log): Promise<vo
     const target = launchdPlistPath();
     await runManager(['launchctl', 'unload', '-w', target], true);
     rmSync(target, { force: true });
-    print(m['cli.service.uninstalled']({ path: target }));
+    print(`${createStyle(process.stdout).mark('ok')} ${m['cli.service.uninstalled']({ path: target })}`);
     return;
   }
   const target = systemdUnitPath();
   await runManager(['systemctl', '--user', 'disable', '--now', SYSTEMD_UNIT_NAME], true);
   rmSync(target, { force: true });
   await runManager(['systemctl', '--user', 'daemon-reload']);
-  print(m['cli.service.uninstalled']({ path: target }));
+  print(`${createStyle(process.stdout).mark('ok')} ${m['cli.service.uninstalled']({ path: target })}`);
 }
 
 type ServiceStartIo = Pick<
