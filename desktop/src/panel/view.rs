@@ -6,7 +6,7 @@ use gpui_kit::component::*;
 use gpui_kit::*;
 
 use super::format::{compact, usd};
-use super::{actions, charts, degraded, footer, providers, status};
+use super::{charts, degraded, footer, providers, status};
 use crate::app::{AppModel, SummaryState};
 use crate::summary::SummaryV1;
 
@@ -85,7 +85,6 @@ impl Render for PanelView {
             .bg(cx.theme().background)
             .child(header)
             .child(body(model, now, cx))
-            .child(actions::row(model))
             .children(footer::footer(model, cx))
     }
 }

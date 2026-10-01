@@ -6,6 +6,7 @@ use std::ptr::NonNull;
 use aio_proxy_desktop::app::{self, AppEvent, AppModel, changed};
 use aio_proxy_desktop::install::{self, Paths};
 use aio_proxy_desktop::panel::{self, PanelWindow};
+use aio_proxy_desktop::tray::MenuCommand;
 use aio_proxy_desktop::version::APP_VERSION;
 use aio_proxy_desktop::{log, tray, updater};
 use block2::RcBlock;
@@ -70,10 +71,15 @@ fn handle(cx: &mut App, event: AppEvent) {
     match event {
         AppEvent::TogglePanel => panel::toggle(cx),
         AppEvent::ClosePanel => panel::close_open(cx),
-        AppEvent::OpenDashboard => app::open_dashboard(cx),
-        AppEvent::CheckForUpdates => updater::check_now(),
-        // Quitting leaves the proxy running: launchd owns it.
-        AppEvent::Quit => cx.quit(),
+        AppEvent::Menu(command) => match command {
+            MenuCommand::OpenDashboard => app::open_dashboard(cx),
+            MenuCommand::Run(action) => app::run_user_action(cx, action),
+            MenuCommand::OpenLogs => app::open_logs(cx),
+            MenuCommand::ToggleLogin => app::toggle_login_item(cx),
+            MenuCommand::CheckForUpdates => updater::check_now(),
+            // Quitting leaves the proxy running: launchd owns it.
+            MenuCommand::Quit => cx.quit(),
+        },
         AppEvent::Wake => app::check_health(cx),
         AppEvent::UpdateAvailable(version) => {
             cx.global_mut::<AppModel>().update_pending = Some(version);

@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use gpui_kit::{App, Global, Task};
 
 pub use health::{check_now as check_health, start_timer as start_health_timer};
-pub use lifecycle::{open_dashboard, open_logs, rediscover, run_user_action, set_login_item, start};
+pub use lifecycle::{open_dashboard, open_logs, rediscover, run_user_action, set_login_item, start, toggle_login_item};
 pub use refresh::{manual_refresh, panel_closed, panel_opened, set_usage_range};
 
 use order::DiscoveryOrder;
@@ -31,9 +31,7 @@ use crate::summary::{DegradedReason, SummaryV1, Usage, UsageRange};
 pub enum AppEvent {
     TogglePanel,
     ClosePanel,
-    OpenDashboard,
-    CheckForUpdates,
-    Quit,
+    Menu(crate::tray::MenuCommand),
     Wake,
     UpdateAvailable(String),
     UpdateAttended,

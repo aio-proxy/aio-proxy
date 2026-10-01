@@ -256,3 +256,13 @@ pub fn set_login_item(cx: &mut App, enabled: bool) {
     model.login_item = crate::login_item::status();
     changed(cx);
 }
+
+/// The menu's check item. Approval pending → System Settings; otherwise flip the registration.
+pub fn toggle_login_item(cx: &mut App) {
+    let status = cx.global::<AppModel>().login_item;
+    if status == crate::login_item::LoginItemStatus::RequiresApproval {
+        crate::login_item::open_settings();
+        return;
+    }
+    set_login_item(cx, status != crate::login_item::LoginItemStatus::Enabled);
+}
