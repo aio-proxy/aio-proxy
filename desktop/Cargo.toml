@@ -8,7 +8,7 @@ publish = false
 [dependencies]
 # GPUI Kit pins an exact gpui-pre snapshot; bump this deliberately.
 gpui-kit = "=0.7.0"
-tray-icon = "0.21.3"
+tray-icon = "0.25.1"
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", features = [
   "NSApplication",

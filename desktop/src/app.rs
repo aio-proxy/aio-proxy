@@ -29,6 +29,7 @@ use crate::summary::{DegradedReason, SummaryV1};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppEvent {
     TogglePanel,
+    ClosePanel,
     OpenDashboard,
     CheckForUpdates,
     Quit,

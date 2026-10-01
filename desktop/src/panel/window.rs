@@ -80,6 +80,16 @@ pub fn toggle(cx: &mut App) {
     }
 }
 
+/// Closes the panel if it is open; a no-op otherwise.
+pub fn close_open(cx: &mut App) {
+    let Some(handle) = cx.global::<PanelWindow>().handle else {
+        return;
+    };
+    if handle.update(cx, |_, window, cx| close(window, cx)).is_err() {
+        cx.global_mut::<PanelWindow>().handle = None;
+    }
+}
+
 /// Shared by the toggle and the deactivation observer.
 pub fn close(window: &mut Window, cx: &mut App) {
     let state = cx.global_mut::<PanelWindow>();

@@ -19,3 +19,12 @@ fn the_three_states_have_distinct_icons() {
     assert_ne!(icons[0], icons[2]);
     assert_ne!(icons[1], icons[2]);
 }
+
+#[test]
+fn left_release_toggles_the_panel_and_a_right_press_closes_it_before_the_menu() {
+    assert_eq!(click_event(MouseButton::Left, MouseButtonState::Up), Some(AppEvent::TogglePanel));
+    // The menu is our own app's, so the panel never deactivates: the press must close it.
+    assert_eq!(click_event(MouseButton::Right, MouseButtonState::Down), Some(AppEvent::ClosePanel));
+    assert_eq!(click_event(MouseButton::Left, MouseButtonState::Down), None);
+    assert_eq!(click_event(MouseButton::Right, MouseButtonState::Up), None);
+}

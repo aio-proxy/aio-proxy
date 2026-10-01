@@ -69,6 +69,7 @@ fn main() {
 fn handle(cx: &mut App, event: AppEvent) {
     match event {
         AppEvent::TogglePanel => panel::toggle(cx),
+        AppEvent::ClosePanel => panel::close_open(cx),
         AppEvent::OpenDashboard => app::open_dashboard(cx),
         AppEvent::CheckForUpdates => updater::check_now(),
         // Quitting leaves the proxy running: launchd owns it.

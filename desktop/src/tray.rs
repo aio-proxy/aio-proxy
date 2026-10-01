@@ -62,6 +62,16 @@ const OPEN_DASHBOARD: &str = "open-dashboard";
 const CHECK_UPDATES: &str = "check-updates";
 const QUIT: &str = "quit";
 
+/// The context menu belongs to this app, so opening it never deactivates the panel: a right press
+/// closes the panel itself before the menu shows.
+pub fn click_event(button: MouseButton, state: MouseButtonState) -> Option<AppEvent> {
+    match (button, state) {
+        (MouseButton::Left, MouseButtonState::Up) => Some(AppEvent::TogglePanel),
+        (MouseButton::Right, MouseButtonState::Down) => Some(AppEvent::ClosePanel),
+        _ => None,
+    }
+}
+
 /// Must run on the main thread inside the GPUI `run` callback.
 pub fn build(events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
     let menu = Menu::with_items(&[
@@ -81,8 +91,10 @@ pub fn build(events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
         .map_err(|error| error.to_string())?;
     let clicks = events.clone();
     TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
-        if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
-            let _ = clicks.unbounded_send(AppEvent::TogglePanel);
+        if let TrayIconEvent::Click { button, button_state, .. } = event
+            && let Some(message) = click_event(button, button_state)
+        {
+            let _ = clicks.unbounded_send(message);
         }
     }));
     MenuEvent::set_event_handler(Some(move |event: MenuEvent| {

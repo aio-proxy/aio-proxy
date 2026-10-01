@@ -11,4 +11,4 @@ mod status;
 mod view;
 mod window;
 
-pub use window::{PanelWindow, toggle};
+pub use window::{PanelWindow, close_open, toggle};
