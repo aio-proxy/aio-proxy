@@ -1,6 +1,7 @@
 import type { DesktopUsageResult, TraceStore } from '@aio-proxy/core/db';
 import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 import {
+  DashboardLocalizedTextSchema,
   DesktopQuotaSchema,
   dashboardProviderSuggestedCommand,
   type DashboardProviderSummary,
@@ -37,7 +38,8 @@ export type UsageMemo = {
 export const createUsageMemo = (): UsageMemo => ({ entries: new Map() });
 
 // 7d/30d split usage by Provider by scanning a month of root spans; once a minute is affordable,
-// once per 15 s tick per open panel is not. 24h stays live, as rev 4 measured it.
+// once per 15 s tick per open panel is not. 24h stays live: its query is measured at ≈46 ms for 36k requests/day; see
+// docs/superpowers/specs/2026-10-01-desktop-panel-design.md, Cost and the usage memo.
 function usageFor(
   source: DesktopSummarySource,
   input: DesktopSummaryInput,
@@ -46,7 +48,9 @@ function usageFor(
   const compute = () => source.traceStore.desktopUsage({ range: input.range, now: input.now });
   if (input.range === '24h' || memo === undefined) return compute();
   const hit = memo.entries.get(input.range);
-  if (!input.refresh && hit !== undefined && input.now.getTime() - hit.at < USAGE_MEMO_MS) return hit.usage;
+  // A clock that steps backwards (negative age) must not keep the entry alive.
+  const age = hit === undefined ? -1 : input.now.getTime() - hit.at;
+  if (!input.refresh && hit !== undefined && age >= 0 && age < USAGE_MEMO_MS) return hit.usage;
   const usage = compute();
   memo.entries.set(input.range, { at: input.now.getTime(), usage });
   return usage;
@@ -81,11 +85,13 @@ function quotaFor(
 // reports `failed` for its own Provider instead of failing the whole summary.
 function readyQuota(entry: OAuthQuotaCacheEntry): DesktopQuota {
   try {
+    // A malformed plan label only loses the plan, not the windows the user came for.
+    const plan = DashboardLocalizedTextSchema.safeParse(entry.snapshot.plan);
     const quota = DesktopQuotaSchema.safeParse({
       status: 'ready',
       sampledAt: new Date(entry.sampledAt).toISOString(),
       refreshFailed: entry.stale,
-      plan: entry.snapshot.plan ?? null,
+      plan: plan.success ? plan.data : null,
       windows: quotaWindows(entry.snapshot),
     });
     return quota.success ? quota.data : { status: 'failed' };
@@ -99,6 +105,10 @@ function providerState(summary: DashboardProviderSummary): DesktopProvider['stat
   if (summary.state.status === 'unavailable') return 'unavailable';
   return summary.state.diagnostic === undefined ? 'ok' : 'degraded';
 }
+
+// `name: ""` is valid config but the DTO requires a non-empty name.
+const displayName = (summary: DashboardProviderSummary): string =>
+  summary.name === undefined || summary.name === '' ? summary.id : summary.name;
 
 function toDesktopProvider(summary: DashboardProviderSummary, quota: DesktopQuota): DesktopProvider {
   const diagnostic = summary.state.diagnostic;
@@ -119,10 +129,6 @@ function toDesktopProvider(summary: DashboardProviderSummary, quota: DesktopQuot
     quota,
   };
 }
-
-// `name: ""` is valid config but the DTO requires a non-empty name.
-const displayName = (summary: DashboardProviderSummary): string =>
-  summary.name === undefined || summary.name === '' ? summary.id : summary.name;
 
 function alertsFor(providers: readonly DesktopProvider[]): DesktopSummaryV1['alerts'] {
   const alerts: DesktopSummaryV1['alerts'][number][] = [];

@@ -86,7 +86,7 @@
       "diagnostic": {
         "code": "CREDENTIAL_REFRESH_FAILED",
         "summary": "Refresh token expired",
-        "suggestedCommand": "aio-proxy provider login cursor"
+        "suggestedCommand": "aio-proxy provider login --provider cursor"
       },
       "quota": { "status": "loading" }
     }
