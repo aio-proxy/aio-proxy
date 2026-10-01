@@ -37,9 +37,34 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      # The later steps run this tag's scripts with the signing identity, the notary key and the
+      # Sparkle key, so only a tag the release job published runs: a non-draft, non-prerelease
+      # Release whose commit is on main. The checkout pins that commit, not the movable tag.
+      - name: Verify the tag is a published release on main
+        id: commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.version.outputs.version }}
+        run: |
+          release=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"') || {
+            echo "no Release for $TAG" >&2
+            exit 1
+          }
+          if [[ "$release" != "false false" ]]; then
+            echo "$TAG is a draft or prerelease ($release)" >&2
+            exit 1
+          fi
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/$sha...main" --jq .status)
+          if [[ "$status" != "ahead" && "$status" != "identical" ]]; then
+            echo "$TAG ($sha) is not on main (compare status: $status)" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v7
         with:
-          ref: v${{ steps.version.outputs.version }}
+          ref: ${{ steps.commit.outputs.sha }}
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@v2

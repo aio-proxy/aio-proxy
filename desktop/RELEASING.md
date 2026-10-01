@@ -63,6 +63,9 @@ After each release, check Actions → "Desktop release". It is a separate run, s
 does not fail the release run and may notify no one. Re-dispatch any tag whose run failed or was
 cancelled (a newer pending dispatch cancels an older pending one) with
 `gh workflow run desktop-release.yml -f tag=v<version>`.
+The job runs only for a tag that is a published (non-draft, non-prerelease) Release whose commit
+is on `main`, and it builds that commit; any other tag stops before checkout, so release secrets
+never reach unreviewed code.
 If the DMG is already on the Release, the job reuses and re-verifies it: a published version is
 never rebuilt or replaced. If the feed already offers the version, the job re-verifies that
 item. If the feed already offers something newer, the older version is not added.
