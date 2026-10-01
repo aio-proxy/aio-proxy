@@ -1,4 +1,5 @@
 export {
+  DESKTOP_ACTIVITY_MAX_MODELS,
   DesktopProviderSchema,
   DesktopQuotaSchema,
   DesktopSummaryV1Schema,

@@ -4,6 +4,7 @@ import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 import {
   DesktopSummaryV1Schema,
   type DashboardOverviewActivityResponse,
+  type DashboardPluginSummary,
   type DashboardProviderSummary,
 } from '@aio-proxy/types';
 
@@ -48,6 +49,8 @@ const usage = (range: '24h' | '7d' | '30d') => ({
     { providerId: 'codex', requests: '9', failedRequests: '3', totalTokens: '900', estimatedCostNanoUsd: '20' },
     { providerId: 'gone', requests: '1', failedRequests: '0', totalTokens: '100', estimatedCostNanoUsd: '0' },
   ],
+  trendByModel: [],
+  trendByProvider: [],
 });
 
 const traceStore: DesktopSummarySource['traceStore'] = {
@@ -85,6 +88,7 @@ const source = (
   traceStore,
   providerSummaries: async () => providers,
   quotaCache: createOAuthQuotaCache({ read }),
+  pluginControlPlane: { summaries: () => [] },
 });
 
 const input = { version: '0.36.0', pid: 4312, ppid: 4310, now, refresh: false, range: '24h' as const };
@@ -127,6 +131,7 @@ test('maps usage, activity, and providers into the strict v1 shape', async () =>
         }),
       ],
       quotaCache: cache,
+      pluginControlPlane: { summaries: () => [] },
     },
     input,
   );
@@ -135,6 +140,8 @@ test('maps usage, activity, and providers into the strict v1 shape', async () =>
     {
       id: 'codex',
       name: 'Codex',
+      service: null,
+      icon: null,
       enabled: true,
       accountLabel: 'you@example.com',
       state: 'degraded',
@@ -177,7 +184,9 @@ test('maps usage, activity, and providers into the strict v1 shape', async () =>
       estimatedCostNanoUsd: '20',
     },
   ]);
-  expect(summary.activity).toEqual([{ date: '2026-09-29', totalTokens: '1000' }]);
+  expect(summary.activity).toEqual([
+    { date: '2026-09-29', totalTokens: '1000', models: [{ modelId: 'gpt', totalTokens: '1000' }] },
+  ]);
   expect(summary.server).toEqual({ version: '0.36.0', pid: 4312, ppid: 4310 });
 });
 
@@ -218,6 +227,7 @@ test('one provider failing its quota read does not fail the summary', async () =
         provider({ id: 'good', hasQuota: true }),
       ],
       quotaCache: cache,
+      pluginControlPlane: { summaries: () => [] },
     },
     input,
   );
@@ -242,7 +252,12 @@ test('an exhausted window with a localized label alerts with its default text', 
   });
   await cache.read('p');
   const summary = await buildDesktopSummary(
-    { traceStore, providerSummaries: async () => [provider({ hasQuota: true })], quotaCache: cache },
+    {
+      traceStore,
+      providerSummaries: async () => [provider({ hasQuota: true })],
+      quotaCache: cache,
+      pluginControlPlane: { summaries: () => [] },
+    },
     input,
   );
   expect(summary.alerts).toEqual([{ providerId: 'p', kind: 'quota_exhausted', message: 'Weekly' }]);
@@ -263,6 +278,7 @@ test('a plugin returning an invalid quota window fails only that provider', asyn
       traceStore,
       providerSummaries: async () => Object.keys(items).map((id) => provider({ id, hasQuota: true })),
       quotaCache: cache,
+      pluginControlPlane: { summaries: () => [] },
     },
     input,
   );
@@ -278,7 +294,12 @@ test('a permanently unsupported quota capability reports unsupported, not loadin
   });
   await cache.read('p').catch(() => {});
   const summary = await buildDesktopSummary(
-    { traceStore, providerSummaries: async () => [provider({ hasQuota: true })], quotaCache: cache },
+    {
+      traceStore,
+      providerSummaries: async () => [provider({ hasQuota: true })],
+      quotaCache: cache,
+      pluginControlPlane: { summaries: () => [] },
+    },
     input,
   );
   expect(summary.providers[0]?.quota).toEqual({ status: 'unsupported' });
@@ -328,7 +349,12 @@ test('refresh starts a background read even inside the cooldown and does not wai
   });
   await cache.read('p');
   const summary = await buildDesktopSummary(
-    { traceStore, providerSummaries: async () => [provider({ hasQuota: true })], quotaCache: cache },
+    {
+      traceStore,
+      providerSummaries: async () => [provider({ hasQuota: true })],
+      quotaCache: cache,
+      pluginControlPlane: { summaries: () => [] },
+    },
     { ...input, refresh: true },
   );
   expect(calls).toBe(2);
@@ -393,7 +419,12 @@ test('an invalid plan label loses only the plan, not the quota windows', async (
   });
   await cache.read('p');
   const summary = await buildDesktopSummary(
-    { traceStore, providerSummaries: async () => [provider({ hasQuota: true })], quotaCache: cache },
+    {
+      traceStore,
+      providerSummaries: async () => [provider({ hasQuota: true })],
+      quotaCache: cache,
+      pluginControlPlane: { summaries: () => [] },
+    },
     input,
   );
   expect(summary.providers[0]?.quota).toMatchObject({
@@ -417,6 +448,7 @@ test('accountLabel, quota plan and the suggested command pass through as null wh
       traceStore,
       providerSummaries: async () => [provider({ hasQuota: true, state: { status: 'ready', diagnostic } })],
       quotaCache: cache,
+      pluginControlPlane: { summaries: () => [] },
     },
     input,
   );
@@ -425,4 +457,41 @@ test('accountLabel, quota plan and the suggested command pass through as null wh
     diagnostic: { suggestedCommand: null },
     quota: { status: 'ready', plan: null },
   });
+});
+
+test('names and marks an OAuth Provider by its plugin so accounts of different services do not look alike', async () => {
+  const plugin = (packageName: string, displayName: DashboardPluginSummary['displayName']): DashboardPluginSummary => ({
+    packageName,
+    displayName,
+    icon: packageName.endsWith('cursor') ? 'cursor' : 'https://example.com/openai.png',
+    builtin: true,
+    enabled: true,
+    state: { status: 'ready' },
+    hasOptions: false,
+  });
+  const plugins = [
+    plugin('@aio-proxy/plugin-cursor', 'Cursor'),
+    plugin('@aio-proxy/plugin-openai', { default: 'OpenAI', 'zh-Hans': 'OpenAI 中文' }),
+  ];
+  const summary = await buildDesktopSummary(
+    {
+      ...source(
+        [
+          provider({ id: 'cursor', name: 'me@example.com', plugin: '@aio-proxy/plugin-cursor', capability: 'default' }),
+          provider({ id: 'codex', plugin: '@aio-proxy/plugin-openai', capability: 'codex' }),
+          provider({ id: 'gone', plugin: '@acme/plugin-gone' }),
+          provider({ id: 'api', kind: 'api', plugin: '@aio-proxy/plugin-cursor' }),
+        ],
+        async () => ({ items: [] }),
+      ),
+      pluginControlPlane: { summaries: () => plugins },
+    },
+    input,
+  );
+  expect(summary.providers.map((entry) => [entry.id, entry.service, entry.icon])).toEqual([
+    ['cursor', 'Cursor', 'cursor'],
+    ['codex', { default: 'OpenAI / codex', 'zh-Hans': 'OpenAI 中文 / codex' }, 'https://example.com/openai.png'],
+    ['gone', 'plugin-gone', null],
+    ['api', null, null],
+  ]);
 });

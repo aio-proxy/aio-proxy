@@ -1,6 +1,8 @@
 import type { DesktopUsageResult, TraceStore } from '@aio-proxy/core/db';
 import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 import {
+  DESKTOP_ACTIVITY_MAX_MODELS,
+  type DashboardPluginSummary,
   DashboardLocalizedTextSchema,
   DesktopQuotaSchema,
   dashboardProviderSuggestedCommand,
@@ -11,6 +13,7 @@ import {
   type DesktopUsageRange,
 } from '@aio-proxy/types';
 
+import type { PluginControlPlane } from '../../plugin-control-plane';
 import type { OAuthQuotaCache, OAuthQuotaCacheEntry } from '../../plugin-quota';
 import type { ServerState } from '../../server-state';
 
@@ -18,6 +21,7 @@ export type DesktopSummarySource = {
   readonly traceStore: Pick<TraceStore, 'desktopUsage' | 'overviewDashboardActivity'>;
   readonly providerSummaries: ServerState['providerSummaries'];
   readonly quotaCache: Pick<OAuthQuotaCache, 'status' | 'warm' | 'refresh'>;
+  readonly pluginControlPlane: Pick<PluginControlPlane, 'summaries'>;
 };
 
 export type DesktopSummaryInput = {
@@ -113,11 +117,34 @@ function providerState(summary: DashboardProviderSummary): DesktopProvider['stat
 const displayName = (summary: DashboardProviderSummary): string =>
   summary.name === undefined || summary.name === '' ? summary.id : summary.name;
 
-function toDesktopProvider(summary: DashboardProviderSummary, quota: DesktopQuota): DesktopProvider {
+// The Dashboard's `providerOAuthService`, left unresolved: the client picks the language.
+function serviceName(
+  summary: DashboardProviderSummary,
+  plugin: DashboardPluginSummary | undefined,
+): DesktopProvider['service'] {
+  if (summary.kind !== 'oauth' || summary.plugin === undefined) return null;
+  const packageName = summary.plugin;
+  const service = plugin?.displayName ?? packageName.slice(packageName.lastIndexOf('/') + 1);
+  const capability = summary.capability;
+  if (capability === undefined || capability === 'default') return service;
+  const suffix = (text: string) => `${text} / ${capability}`;
+  return typeof service === 'string'
+    ? suffix(service)
+    : Object.fromEntries(Object.entries(service).map(([language, text]) => [language, suffix(text)]));
+}
+
+function toDesktopProvider(
+  summary: DashboardProviderSummary,
+  quota: DesktopQuota,
+  plugins: readonly DashboardPluginSummary[],
+): DesktopProvider {
   const diagnostic = summary.state.diagnostic;
+  const plugin = summary.plugin === undefined ? undefined : plugins.find((p) => p.packageName === summary.plugin);
   return {
     id: summary.id,
     name: displayName(summary),
+    service: serviceName(summary, plugin),
+    icon: summary.kind === 'oauth' ? (plugin?.icon ?? null) : null,
     enabled: summary.enabled,
     accountLabel: summary.accountLabel === undefined || summary.accountLabel === '' ? null : summary.accountLabel,
     state: providerState(summary),
@@ -159,8 +186,9 @@ export async function buildDesktopSummary(
   const activity = source.traceStore.overviewDashboardActivity({ now: input.now });
   const summaries = await source.providerSummaries({ probe: false });
   const names = new Map(summaries.map((summary) => [summary.id, displayName(summary)]));
+  const plugins = source.pluginControlPlane.summaries();
   const providers = summaries.map((summary) =>
-    toDesktopProvider(summary, quotaFor(source.quotaCache, summary, input.refresh)),
+    toDesktopProvider(summary, quotaFor(source.quotaCache, summary, input.refresh), plugins),
   );
   return {
     protocolVersion: 1,
@@ -171,13 +199,19 @@ export async function buildDesktopSummary(
       // The query result is readonly; the DTO type is the mutable output of the schema.
       buckets: [...usage.buckets],
       byModel: [...usage.byModel],
+      trendByModel: [...usage.trendByModel],
+      trendByProvider: [...usage.trendByProvider],
       // A Provider removed from config still has history: it keeps its id as its name.
       byProvider: usage.byProvider.map((entry) => ({
         ...entry,
         name: names.get(entry.providerId) ?? entry.providerId,
       })),
     },
-    activity: activity.items.map((item) => ({ date: item.date, totalTokens: item.totalTokens })),
+    activity: activity.items.map((item) => ({
+      date: item.date,
+      totalTokens: item.totalTokens,
+      models: item.models.slice(0, DESKTOP_ACTIVITY_MAX_MODELS),
+    })),
     providers,
     alerts: alertsFor(providers),
   };

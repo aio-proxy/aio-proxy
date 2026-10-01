@@ -50,13 +50,41 @@
         "totalTokens": "14859707",
         "estimatedCostNanoUsd": "20521353840"
       }
+    ],
+    "trendByModel": [
+      {
+        "bucket": 0,
+        "modelId": "gpt-5.2-codex",
+        "requests": "257",
+        "failedRequests": "53",
+        "totalTokens": "14859707",
+        "estimatedCostNanoUsd": "20521353840"
+      }
+    ],
+    "trendByProvider": [
+      {
+        "bucket": 0,
+        "providerId": "codex",
+        "requests": "257",
+        "failedRequests": "53",
+        "totalTokens": "14859707",
+        "estimatedCostNanoUsd": "20521353840"
+      }
     ]
   },
-  "activity": [{ "date": "2026-09-29", "totalTokens": "14859707" }],
+  "activity": [
+    {
+      "date": "2026-09-29",
+      "totalTokens": "14859707",
+      "models": [{ "modelId": "gpt-5.2-codex", "totalTokens": "14859707" }]
+    }
+  ],
   "providers": [
     {
       "id": "codex",
       "name": "Codex",
+      "service": { "default": "OpenAI ChatGPT", "zh-Hans": "OpenAI ChatGPT" },
+      "icon": "openai",
       "enabled": true,
       "accountLabel": "you@example.com",
       "state": "ok",
@@ -80,6 +108,8 @@
     {
       "id": "cursor",
       "name": "cursor",
+      "service": "Cursor",
+      "icon": null,
       "enabled": true,
       "accountLabel": null,
       "state": "degraded",

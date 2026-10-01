@@ -39,6 +39,11 @@ export const DesktopProviderSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
+    // The OAuth plugin's display name, with ` / <capability>` for a non-default capability; null for
+    // API and AI SDK Providers. Several accounts of one plugin share it, so it names the service.
+    service: DashboardLocalizedTextSchema.nullable(),
+    // The plugin's icon as it declares it: a Lobe Icons slug, an http(s) URL or a `data:image/` URI.
+    icon: z.string().min(1).nullable(),
     enabled: z.boolean(),
     accountLabel: z.string().min(1).nullable(),
     state: z.enum(['ok', 'degraded', 'unavailable', 'disabled']),
@@ -68,6 +73,9 @@ const sliceShape = {
   estimatedCostNanoUsd: NonNegativeIntegerStringSchema,
 };
 
+/** Models per heatmap day: enough for a hover card, without shipping a year of every model. */
+export const DESKTOP_ACTIVITY_MAX_MODELS = 5;
+
 export const DesktopUsageSchema = z
   .object({
     range: DesktopUsageRangeSchema,
@@ -79,6 +87,15 @@ export const DesktopUsageSchema = z
     buckets: z.array(z.object({ start: z.iso.datetime(), ...sliceShape }).strict()),
     byModel: z.array(z.object({ modelId: z.string().min(1), ...sliceShape }).strict()).max(20),
     byProvider: z.array(z.object({ providerId: z.string().min(1), name: z.string().min(1), ...sliceShape }).strict()),
+    // Sparse per-bucket splits for the stacked trend: `bucket` indexes `buckets`; buckets without
+    // traffic for a series are omitted. Models are those in `byModel`, so a bucket's cells may sum
+    // below the bucket; the client draws the rest as Other.
+    trendByModel: z.array(
+      z.object({ bucket: z.number().int().nonnegative(), modelId: z.string().min(1), ...sliceShape }).strict(),
+    ),
+    trendByProvider: z.array(
+      z.object({ bucket: z.number().int().nonnegative(), providerId: z.string().min(1), ...sliceShape }).strict(),
+    ),
   })
   .strict();
 
@@ -91,7 +108,18 @@ export const DesktopSummaryV1Schema = z
       .object({ version: z.string().min(1), pid: z.number().int().positive(), ppid: z.number().int().nonnegative() })
       .strict(),
     usage: DesktopUsageSchema,
-    activity: z.array(z.object({ date: z.iso.date(), totalTokens: NonNegativeIntegerStringSchema }).strict()),
+    activity: z.array(
+      z
+        .object({
+          date: z.iso.date(),
+          totalTokens: NonNegativeIntegerStringSchema,
+          // The day's largest models by tokens, for the heatmap's hover card.
+          models: z
+            .array(z.object({ modelId: z.string().min(1), totalTokens: NonNegativeIntegerStringSchema }).strict())
+            .max(DESKTOP_ACTIVITY_MAX_MODELS),
+        })
+        .strict(),
+    ),
     providers: z.array(DesktopProviderSchema),
     alerts: z.array(
       z
