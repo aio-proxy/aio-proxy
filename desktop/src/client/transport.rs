@@ -95,6 +95,8 @@ pub enum HttpError {
     Cancelled,
     /// The bearer holds a byte that is not visible ASCII, which could inject header lines.
     InvalidToken,
+    /// No listener of this user serves the address, so the bearer is not sent.
+    UntrustedListener,
 }
 
 impl fmt::Display for HttpError {
@@ -109,6 +111,9 @@ impl fmt::Display for HttpError {
             HttpError::TooLarge => f.write_str("response too large"),
             HttpError::Cancelled => f.write_str("cancelled"),
             HttpError::InvalidToken => f.write_str("the token is not a valid header value"),
+            HttpError::UntrustedListener => {
+                f.write_str("the proxy's port is not served by this user's process; usage is not requested")
+            }
         }
     }
 }
@@ -177,6 +182,11 @@ fn exchange(request: &Request, limits: Limits, deadline: Instant, cancel: &Cance
         }
     })?;
     cancel.register(&stream)?;
+    // Checked on the connection that would carry the token: the proxy may have exited since
+    // discovery, and another account's listener may now hold the port.
+    if request.bearer.is_some() && !super::listener::owned_by_this_user(request.url.addr, deadline) {
+        return Err(HttpError::UntrustedListener);
+    }
     stream.set_write_timeout(Some(remaining(deadline)?)).map_err(HttpError::Io)?;
     stream.write_all(head.as_bytes()).map_err(io_error)?;
     let mut reader = Reader { stream, buf: Vec::new(), pos: 0, deadline };
