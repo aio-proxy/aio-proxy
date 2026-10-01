@@ -24,3 +24,13 @@ fn closing_the_panel_clears_done_and_failed_but_not_work_in_flight() {
         assert_eq!(state, after);
     }
 }
+
+#[test]
+fn a_failed_fetch_is_reported_only_for_the_window_it_was_for() {
+    use crate::summary::UsageRange;
+    let mut model = super::AppModel::new(crate::install::Paths::for_home(std::path::Path::new("/Users/me")), None);
+    model.summary_error = Some((UsageRange::H24, "timed out".into()));
+    assert_eq!(model.usage_error(), Some("timed out"));
+    model.usage_range = UsageRange::D7;
+    assert_eq!(model.usage_error(), None);
+}

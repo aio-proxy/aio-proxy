@@ -6,7 +6,7 @@ use std::time::Instant;
 use gpui_kit::App;
 
 use super::{AppModel, SummaryState, changed};
-use crate::client::refresh::{FetchOrder, Finished, Tag, Trigger};
+use crate::client::refresh::{FetchOrder, Finished, Trigger};
 use crate::client::transport::{self, HttpError, Limits, LocalUrl, Method, Request, Response};
 use crate::summary::{DegradedReason, FetchOutcome, UsageRange, classify};
 
@@ -108,35 +108,35 @@ fn start_fetch(cx: &mut App, order: FetchOrder) {
             let pending = transport::spawn(request, Limits::default());
             let task = cx.spawn(async move |cx| {
                 let result = pending.await;
-                cx.update(|cx| finish(cx, order.tag, result));
+                cx.update(|cx| finish(cx, order, result));
             });
             cx.global_mut::<AppModel>().fetch_task = Some(task);
         }
         Err(state) => {
             let model = cx.global_mut::<AppModel>();
             model.scheduler.finished(order.tag, Finished::Failed, Instant::now());
-            show(model, state);
+            show(model, state, order.range);
             changed(cx);
         }
     }
 }
 
-/// Keeps the last good summary on screen and reports the problem next to it.
-fn show(model: &mut AppModel, state: SummaryState) {
+/// Keeps the last good summary on screen and reports the problem next to it, for `range`.
+fn show(model: &mut AppModel, state: SummaryState, range: UsageRange) {
     match (&model.summary, state) {
-        (SummaryState::Ready(_), SummaryState::Unavailable(error)) => model.summary_error = Some(error),
+        (SummaryState::Ready(_), SummaryState::Unavailable(error)) => model.summary_error = Some((range, error)),
         (_, state) => model.summary = state,
     }
 }
 
-fn finish(cx: &mut App, tag: Tag, result: Result<Response, HttpError>) {
+fn finish(cx: &mut App, order: FetchOrder, result: Result<Response, HttpError>) {
     let outcome = result.map(|response| classify(response.status, &response.body));
     let finished = match &outcome {
         Ok(FetchOutcome::Summary(summary)) => Finished::Summary { any_loading: summary.any_quota_loading() },
         _ => Finished::Failed,
     };
     let model = cx.global_mut::<AppModel>();
-    let (accepted, follow) = model.scheduler.finished(tag, finished, Instant::now());
+    let (accepted, follow) = model.scheduler.finished(order.tag, finished, Instant::now());
     if !accepted {
         return;
     }
@@ -160,8 +160,8 @@ fn finish(cx: &mut App, tag: Tag, result: Result<Response, HttpError>) {
             retry_discovery = true;
         }
         Ok(FetchOutcome::Unauthorized) => model.summary = SummaryState::AuthFailed,
-        Ok(FetchOutcome::Failed(error)) => show(model, SummaryState::Unavailable(error)),
-        Err(error) => show(model, SummaryState::Unavailable(format!("desktop summary: {error}"))),
+        Ok(FetchOutcome::Failed(error)) => show(model, SummaryState::Unavailable(error), order.range),
+        Err(error) => show(model, SummaryState::Unavailable(format!("desktop summary: {error}")), order.range),
     }
     dispatch(cx, follow);
     changed(cx);

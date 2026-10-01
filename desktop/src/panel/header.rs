@@ -53,9 +53,9 @@ pub fn header(
                 .child(endpoint),
         );
     }
-    // A stopped proxy's last summary is stale: its alerts are not shown.
+    // A down proxy's last summary is stale: its alerts are not shown.
     if let SummaryState::Ready(summary) = &model.summary
-        && !status::is_stopped(model)
+        && !status::is_down(model)
         && let Some(first) = summary.alerts.first()
     {
         let more = summary.alerts.len() - 1;

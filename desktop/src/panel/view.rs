@@ -62,7 +62,7 @@ impl Render for PanelView {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
         let model = cx.global::<AppModel>();
         let summary = match &model.summary {
-            SummaryState::Ready(summary) if !status::is_stopped(model) => Some(summary.as_ref()),
+            SummaryState::Ready(summary) if !status::is_down(model) => Some(summary.as_ref()),
             _ => None,
         };
         let blocks = summary.map(|s| quota_blocks(&s.providers, now)).unwrap_or_default();
@@ -98,6 +98,9 @@ impl Render for PanelView {
                         .top_0()
                         .left_0()
                         .right_0()
+                        // Clicks stop here instead of reaching the hidden header below; wheel
+                        // events still scroll the body.
+                        .block_mouse_except_scroll()
                         .px_3()
                         .bg(cx.theme().background)
                         .border_b_1()

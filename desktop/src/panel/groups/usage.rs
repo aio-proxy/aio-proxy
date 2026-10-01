@@ -187,7 +187,7 @@ pub fn usage(view: &PanelView, model: &AppModel, now: i64, cx: &Context<PanelVie
     let group = v_flex().pb_3().child(header(model, cx)).child(cards);
     let Some(usage) = usage else {
         // No response for this window yet: the skeleton, or why the first fetch failed.
-        let text = model.summary_error.clone().unwrap_or_else(|| "Loading…".into());
+        let text = model.usage_error().unwrap_or("Loading…").to_string();
         return group.child(div().pt_2().text_xs().text_color(theme.muted_foreground).child(text));
     };
     let metric = view.metric;

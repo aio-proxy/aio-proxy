@@ -88,8 +88,9 @@ pub struct AppModel {
     pub discovery_error: Option<String>,
     pub health: HealthTracker,
     pub summary: SummaryState,
-    /// Set when a fetch fails while the last good summary stays on screen.
-    pub summary_error: Option<String>,
+    /// Set when a fetch fails while the last good summary stays on screen, with the window it
+    /// was for: only that window's Usage group and notice report it.
+    pub summary_error: Option<(UsageRange, String)>,
     /// When the last summary landed, for the footer's "Updated …".
     pub last_summary_at: Option<Instant>,
     pub action: ActionState,
@@ -154,11 +155,14 @@ impl AppModel {
         self.usage_cache.get(&range)
     }
 
-    pub fn updated_text(&self) -> String {
-        match self.last_summary_at.map(|at| at.elapsed().as_secs() / 60) {
-            None | Some(0) => "Updated just now".into(),
-            Some(minutes) => format!("Updated {minutes} min ago"),
-        }
+    /// The failed fetch's reason, when it was for the window on screen.
+    pub fn usage_error(&self) -> Option<&str> {
+        self.summary_error.as_ref().filter(|(range, _)| *range == self.usage_range).map(|(_, error)| error.as_str())
+    }
+
+    pub fn updated_text(&self) -> Option<String> {
+        let minutes = self.last_summary_at?.elapsed().as_secs() / 60;
+        Some(if minutes == 0 { "Updated just now".into() } else { format!("Updated {minutes} min ago") })
     }
 
     pub fn persistent(&self) -> bool {

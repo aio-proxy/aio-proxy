@@ -41,6 +41,11 @@ pub fn is_stopped(model: &AppModel) -> bool {
     matches!(run(model), Some(Run::Stopped))
 }
 
+/// Stopped or not responding: a held summary is stale, so the panel shows a message instead.
+pub fn is_down(model: &AppModel) -> bool {
+    matches!(run(model), Some(Run::Stopped | Run::NotResponding))
+}
+
 /// The status dot: amber when running with alerts.
 pub fn dot(model: &AppModel, cx: &App) -> Hsla {
     let theme = cx.theme();
@@ -106,7 +111,9 @@ pub fn notice(model: &AppModel) -> Option<String> {
         ActionState::Done(note) => Some(note.clone()),
         ActionState::Running(action) => Some(format!("{}…", action.label())),
         ActionState::Automatic(action) => Some(format!("{}…", action.label())),
-        _ => model.summary_error.as_ref().map(|error| format!("Couldn't refresh usage · {error}")),
+        // A down proxy is expected to fail its refresh; the body already says why.
+        _ if is_down(model) => None,
+        _ => model.usage_error().map(|error| format!("Couldn't refresh usage · {error}")),
     }
 }
 

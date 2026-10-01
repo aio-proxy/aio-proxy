@@ -238,21 +238,23 @@ pub fn open_dashboard_provider(cx: &mut App, id: &str) {
     open_dashboard_at(cx, &["providers", id, "edit"]);
 }
 
-/// `segments` are percent-encoded onto the dashboard path; `""` last leaves a trailing slash.
 fn open_dashboard_at(cx: &mut App, segments: &[&str]) {
     let Some(base) = cx.global::<AppModel>().discovery.as_ref().and_then(|d| d.instance.dashboard_url.clone()) else {
         return;
     };
-    let Ok(mut url) = url::Url::parse(&base) else {
-        return;
-    };
+    // An unparsable base still opens as it is, as the plain Open Dashboard always did.
+    let url = dashboard_url(&base, segments).unwrap_or(base);
+    cx.open_url(&url);
+}
+
+/// `segments` are percent-encoded onto the dashboard path (a `/` inside one included); `""` last
+/// leaves a trailing slash. `None` when `base` is not an absolute URL with a path.
+pub(crate) fn dashboard_url(base: &str, segments: &[&str]) -> Option<String> {
+    let mut url = url::Url::parse(base).ok()?;
     if !segments.is_empty() {
-        let Ok(mut path) = url.path_segments_mut() else {
-            return;
-        };
-        path.pop_if_empty().extend(segments);
+        url.path_segments_mut().ok()?.pop_if_empty().extend(segments);
     }
-    cx.open_url(url.as_str());
+    Some(url.into())
 }
 
 /// Reveals `$AIO_PROXY_HOME/logs`, the service's own home when the plist names one.
@@ -293,3 +295,6 @@ pub fn toggle_login_item(cx: &mut App) {
     crate::tray::invalidate_menu(cx);
     changed(cx);
 }
+
+#[cfg(test)]
+mod tests;

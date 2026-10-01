@@ -20,8 +20,8 @@ pub fn footer(model: &AppModel, cx: &App) -> impl IntoElement {
                 .on_click(|_, _, _| crate::updater::check_now()),
         );
     }
-    let shown = matches!(model.summary, SummaryState::Ready(_)) && !status::is_stopped(model);
-    let updated = shown.then(|| model.updated_text());
+    let shown = matches!(model.summary, SummaryState::Ready(_)) && !status::is_down(model);
+    let updated = shown.then(|| model.updated_text()).flatten();
     row.child(div().flex_1()).children(updated.map(|text| {
         div()
             .id("refresh")
