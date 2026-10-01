@@ -108,7 +108,8 @@ jobs:
   bundle-smoke:
     needs: desktop-changes
     if: needs.desktop-changes.outputs.bundle == 'true'
-    runs-on: macos-15
+    # actool compiles the app icon from its Icon Composer document only with Xcode 26 on macOS 26.
+    runs-on: macos-26
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -144,13 +145,6 @@ jobs:
           key: ${{ runner.os }}-desktop-bundle-${{ hashFiles('desktop/rust-toolchain.toml', 'desktop/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-desktop-bundle-
-
-      # actool compiles the app icon from an Icon Composer document, which needs Xcode 26.
-      - name: Select Xcode 26
-        run: |
-          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
-          [[ -n "$xcode" ]] || { echo "no Xcode 26 on this runner" >&2; exit 1; }
-          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
 
       # Build, Mach-O checks, runtime smoke, ad-hoc hardened signature, then the signed smoke with
       # the JIT check.

@@ -23,7 +23,8 @@ jobs:
     # only main (repository settings); this guard only stops an honest dispatch from another ref.
     if: github.ref == 'refs/heads/main'
     environment: desktop-release
-    runs-on: macos-15
+    # actool compiles the app icon from its Icon Composer document only with Xcode 26 on macOS 26.
+    runs-on: macos-26
     timeout-minutes: 90
     # Every run replaces the same appcast.xml.
     concurrency:
@@ -73,13 +74,6 @@ jobs:
         with:
           ref: ${{ steps.commit.outputs.sha }}
           persist-credentials: false
-
-      # actool compiles the app icon from an Icon Composer document, which needs Xcode 26.
-      - name: Select Xcode 26
-        run: |
-          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
-          [[ -n "$xcode" ]] || { echo "no Xcode 26 on this runner" >&2; exit 1; }
-          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:

@@ -50,8 +50,8 @@ them to the names the scripts read (the same names a local release sets).
 
 ## Local rehearsal (no publishing)
 
-Bundling needs Xcode 26 (its `actool` compiles the app icon); select it with `xcode-select` or
-`DEVELOPER_DIR`. Store the notary credentials once, with
+Bundling needs Xcode 26 on macOS 26 (its `actool` compiles the app icon); select it with
+`xcode-select` or `DEVELOPER_DIR`. Store the notary credentials once, with
 `xcrun notarytool store-credentials aio-proxy-notary --apple-id <id> --team-id <TEAMID>`, then run:
 
 ```bash
