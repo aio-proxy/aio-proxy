@@ -2,14 +2,10 @@ name: Desktop release
 
 # Builds, signs, notarizes and publishes the macOS app for one released version, then replaces the
 # Sparkle feed on the desktop-feed prerelease (docs/superpowers/specs/2026-09-29-desktop-client-design.md,
-# "Release job and feed"). release.yml calls it after a publish. Dispatch it by hand with the tag to
+# "Release job and feed"). release.yml dispatches it after a publish, so it runs as its own workflow
+# run and never holds the release concurrency group. A maintainer can dispatch it with the tag to
 # resume a failed desktop publish for the same immutable version; it never re-runs the npm publish.
 on:
-  workflow_call:
-    inputs:
-      version:
-        type: string
-        required: true
   workflow_dispatch:
     inputs:
       tag:
@@ -33,10 +29,9 @@ jobs:
         id: version
         env:
           TAG: ${{ inputs.tag }}
-          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${INPUT_VERSION:-${TAG#v}}"
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          VERSION="${TAG#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "not a stable X.Y.Z release: '$VERSION'" >&2
             exit 1
           fi
@@ -84,6 +79,7 @@ jobs:
 
       - name: Build, verify and publish
         env:
+          VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEVELOPER_ID_IDENTITY: ${{ vars.DEVELOPER_ID_IDENTITY }}
           APPLE_API_KEY_PATH: ${{ runner.temp }}/notary.p8
@@ -91,7 +87,7 @@ jobs:
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
-        run: bun run desktop:publish --version "${{ steps.version.outputs.version }}"
+        run: bun run desktop:publish --version "$VERSION"
 
       - name: Remove signing material
         if: always()
