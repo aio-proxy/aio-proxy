@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { DashboardLocalizedTextSchema } from '../dashboard-localized-text';
 import { NonNegativeIntegerStringSchema } from '../dashboard/index';
 
+// The panel's usage windows: a subset of the Dashboard overview ranges with the same boundaries.
+export const DesktopUsageRangeSchema = z.enum(['24h', '7d', '30d']);
+export type DesktopUsageRange = z.output<typeof DesktopUsageRangeSchema>;
+
 // Every object is strict: this DTO is a cross-version contract with a native client, so an internal
 // field leaking into it must fail the server's tests instead of silently becoming API.
 const DesktopQuotaWindowSchema = z

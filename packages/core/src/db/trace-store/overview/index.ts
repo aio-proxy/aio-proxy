@@ -1,3 +1,5 @@
 export { overviewDashboardActivity } from './activity';
 export { overviewDashboardDiagnostics } from './diagnostics';
-export { overviewDashboard } from './overview';
+export { bucketKeys, overviewDashboard, rangeRows, shiftRangeBack } from './overview';
+export { resolveRange, type ResolvedRange } from './range';
+export type { RootRow } from './span-rows';

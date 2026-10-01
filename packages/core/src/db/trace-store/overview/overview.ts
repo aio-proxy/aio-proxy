@@ -46,7 +46,7 @@ export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOvervie
  * range can read it. Day ranges come from the `usage_daily` rollup, which is never
  * pruned and is the only source that reaches the longest range.
  */
-function rangeRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly RootRow[] {
+export function rangeRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly RootRow[] {
   return range.bucketUnit === 'hour' ? spanRows(db, range) : dailyRows(db, range);
 }
 
@@ -124,7 +124,7 @@ function bucketPeaks(rows: readonly RootRow[]): {
  * round it back up to a whole day, double-counting the boundary. Step whole
  * calendar days instead so the two windows are disjoint and equally sized.
  */
-function shiftRangeBack(range: ResolvedRange): ResolvedRange {
+export function shiftRangeBack(range: ResolvedRange): ResolvedRange {
   if (range.bucketUnit === 'hour') {
     const span = range.end.getTime() - range.start.getTime();
     return { start: new Date(range.start.getTime() - span), end: new Date(range.start.getTime()), bucketUnit: 'hour' };
@@ -158,7 +158,7 @@ function modelTrend(overview: ReturnType<typeof aggregateRows>) {
   };
 }
 
-function bucketKeys(range: DashboardOverviewRange, start: Date, end: Date): readonly ChartBucket[] {
+export function bucketKeys(range: DashboardOverviewRange, start: Date, end: Date): readonly ChartBucket[] {
   if (range === '24h') {
     return Array.from({ length: 24 }, (_, index) => ({
       identity: index,

@@ -1,5 +1,6 @@
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
+import { desktopUsage } from './desktop-usage';
 import { overviewDashboard, overviewDashboardActivity, overviewDashboardDiagnostics } from './overview';
 import { providerWindowCost } from './provider-window-cost';
 import { routingTraffic, routingTrafficBuckets } from './routing-traffic';
@@ -26,6 +27,7 @@ export function createTraceStore(db: BunSQLiteDatabase): TraceStore {
     overviewDashboard: (query) => overviewDashboard(db, query),
     overviewDashboardDiagnostics: (query) => overviewDashboardDiagnostics(db, query),
     overviewDashboardActivity: (options) => overviewDashboardActivity(db, options),
+    desktopUsage: (query) => desktopUsage(db, query),
     resolveResponse: (responseId, now) => resolveResponse(db, responseId, now),
     markResponseAmbiguous: (responseId, now) => markResponseAmbiguous(db, responseId, now),
     findAffinity: (identity, requestedModelId, now) => findAffinity(db, identity, requestedModelId, now),
