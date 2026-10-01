@@ -8,9 +8,17 @@ use gpui_kit::App;
 use super::{AppModel, SummaryState, changed};
 use crate::client::refresh::{FetchOrder, Finished, Tag, Trigger};
 use crate::client::transport::{self, HttpError, Limits, LocalUrl, Method, Request, Response};
-use crate::summary::{DegradedReason, FetchOutcome, classify};
+use crate::summary::{DegradedReason, FetchOutcome, UsageRange, classify};
 
 const SUMMARY_PATH: &str = "/dashboard/api/desktop-summary";
+
+pub(crate) fn summary_path(range: UsageRange, refresh_quota: bool) -> String {
+    let mut path = format!("{SUMMARY_PATH}?range={}", range.query());
+    if refresh_quota {
+        path.push_str("&refresh=true");
+    }
+    path
+}
 
 pub fn panel_opened(cx: &mut App) {
     let model = cx.global_mut::<AppModel>();
@@ -36,6 +44,14 @@ pub fn manual_refresh(cx: &mut App) {
     trigger(cx, Trigger::Manual);
 }
 
+pub fn set_usage_range(cx: &mut App, range: UsageRange) {
+    let model = cx.global_mut::<AppModel>();
+    model.usage_range = range;
+    let order = model.scheduler.set_range(range, Instant::now());
+    dispatch(cx, order);
+    changed(cx);
+}
+
 pub(super) fn after_action(cx: &mut App) {
     trigger(cx, Trigger::ActionDone);
 }
@@ -52,6 +68,8 @@ pub(super) fn instance_maybe_changed(cx: &mut App) {
     if key != model.instance {
         model.instance = key;
         model.instance_epoch += 1;
+        // A different instance has different numbers.
+        model.usage_cache.clear();
         model.auth_retry_used = false;
         model.refetch_after_discovery = false;
         let order = model.scheduler.set_instance(model.instance_epoch, Instant::now());
@@ -68,7 +86,7 @@ fn dispatch(cx: &mut App, order: Option<FetchOrder>) {
     arm_timer(cx);
 }
 
-fn summary_request(model: &AppModel, refresh_quota: bool) -> Result<Request, SummaryState> {
+fn summary_request(model: &AppModel, order: FetchOrder) -> Result<Request, SummaryState> {
     let Some(discovery) = &model.discovery else {
         return Err(SummaryState::Waiting);
     };
@@ -79,13 +97,13 @@ fn summary_request(model: &AppModel, refresh_quota: bool) -> Result<Request, Sum
         // An older proxy never writes a token: nothing was rejected, so this is the degraded panel.
         return Err(SummaryState::Degraded(DegradedReason::NoToken));
     };
-    let path = if refresh_quota { format!("{SUMMARY_PATH}?refresh=true") } else { SUMMARY_PATH.to_string() };
-    let url = LocalUrl::parse(base, &path).map_err(|error| SummaryState::Unavailable(error.to_string()))?;
+    let url = LocalUrl::parse(base, &summary_path(order.range, order.refresh_quota))
+        .map_err(|error| SummaryState::Unavailable(error.to_string()))?;
     Ok(Request { method: Method::Get, url, bearer: Some(token) })
 }
 
 fn start_fetch(cx: &mut App, order: FetchOrder) {
-    match summary_request(cx.global::<AppModel>(), order.refresh_quota) {
+    match summary_request(cx.global::<AppModel>(), order) {
         Ok(request) => {
             let pending = transport::spawn(request, Limits::default());
             let task = cx.spawn(async move |cx| {
@@ -125,6 +143,7 @@ fn finish(cx: &mut App, tag: Tag, result: Result<Response, HttpError>) {
     let mut retry_discovery = false;
     match outcome {
         Ok(FetchOutcome::Summary(summary)) => {
+            model.usage_cache.insert(summary.usage.range, summary.usage.clone());
             model.summary = SummaryState::Ready(summary);
             model.summary_error = None;
             model.auth_retry_used = false;

@@ -3,6 +3,8 @@
 
 use std::time::{Duration, Instant};
 
+use crate::summary::UsageRange;
+
 pub const REFRESH_INTERVAL: Duration = Duration::from_secs(15);
 pub const LOADING_RETRY: Duration = Duration::from_secs(2);
 
@@ -19,6 +21,8 @@ pub struct FetchOrder {
     pub tag: Tag,
     /// `?refresh=true`: only for a manual refresh.
     pub refresh_quota: bool,
+    /// The usage window this response is for.
+    pub range: UsageRange,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,6 +60,7 @@ pub struct Scheduler {
     dirty: Option<Dirty>,
     last_start: Option<Instant>,
     retry_at: Option<Instant>,
+    range: UsageRange,
 }
 
 impl Scheduler {
@@ -78,6 +83,24 @@ impl Scheduler {
         self.dirty = None;
         self.last_start = None;
         self.retry_at = None;
+    }
+
+    pub fn range(&self) -> UsageRange {
+        self.range
+    }
+
+    /// The usage window changed: the in-flight request (for the old window) stops counting and an
+    /// open panel fetches the new one at once, ignoring the 15 s floor. A closed panel only remembers.
+    pub fn set_range(&mut self, range: UsageRange, now: Instant) -> Option<FetchOrder> {
+        if range == self.range {
+            return None;
+        }
+        self.range = range;
+        self.session?;
+        self.in_flight = None;
+        self.dirty = None;
+        self.retry_at = None;
+        self.issue(now, false, false)
     }
 
     /// Discovery found a different instance: stale responses stop counting, and an open panel refetches.
@@ -169,7 +192,7 @@ impl Scheduler {
             // The response re-arms the retry if quota is still loading.
             self.retry_at = None;
         }
-        Some(FetchOrder { tag, refresh_quota })
+        Some(FetchOrder { tag, refresh_quota, range: self.range })
     }
 }
 

@@ -27,8 +27,9 @@ pub struct ServerInfo {
     pub ppid: Option<u32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize)]
 pub enum UsageRange {
+    #[default]
     #[serde(rename = "24h")]
     H24,
     #[serde(rename = "7d")]

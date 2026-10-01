@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use super::*;
+use crate::summary::UsageRange;
 
 const DONE: Finished = Finished::Summary { any_loading: false };
 const LOADING: Finished = Finished::Summary { any_loading: true };
@@ -126,4 +127,30 @@ fn closing_cancels_everything() {
     assert_eq!(s.wake(t0 + secs(60)), None);
     assert_eq!(s.trigger(Trigger::Manual, t0 + secs(60)), None);
     assert_eq!(s.set_instance(9, t0 + secs(60)), None);
+}
+
+#[test]
+fn switching_range_fetches_at_once_and_drops_the_old_request() {
+    let start = Instant::now();
+    let mut s = Scheduler::default();
+    let first = s.open(start).unwrap();
+    assert_eq!(first.range, UsageRange::H24);
+    // A switch inside the 15 s floor still fetches, and the 24h response no longer counts.
+    let second = s.set_range(UsageRange::D30, start + secs(1)).unwrap();
+    assert_eq!(second.range, UsageRange::D30);
+    let (accepted, _) = s.finished(first.tag, DONE, start + secs(2));
+    assert!(!accepted);
+    let (accepted, _) = s.finished(second.tag, DONE, start + secs(2));
+    assert!(accepted);
+}
+
+#[test]
+fn the_same_range_is_a_no_op_and_a_closed_panel_only_remembers() {
+    let start = Instant::now();
+    let mut s = Scheduler::default();
+    assert!(s.set_range(UsageRange::D7, start).is_none());
+    assert_eq!(s.range(), UsageRange::D7);
+    let order = s.open(start).unwrap();
+    assert_eq!(order.range, UsageRange::D7);
+    assert!(s.set_range(UsageRange::D7, start).is_none());
 }

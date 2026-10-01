@@ -6,13 +6,14 @@ mod lifecycle;
 mod order;
 mod refresh;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use gpui_kit::{App, Global, Task};
 
 pub use health::{check_now as check_health, start_timer as start_health_timer};
 pub use lifecycle::{open_dashboard, open_logs, rediscover, run_user_action, set_login_item, start};
-pub use refresh::{manual_refresh, panel_closed, panel_opened};
+pub use refresh::{manual_refresh, panel_closed, panel_opened, set_usage_range};
 
 use order::DiscoveryOrder;
 
@@ -23,7 +24,7 @@ use crate::connect::policy::{AutoAction, AutoAttempts, UserAction};
 use crate::connect::run::RunError;
 use crate::install::{InstallState, Paths};
 use crate::login_item::LoginItemStatus;
-use crate::summary::{DegradedReason, SummaryV1};
+use crate::summary::{DegradedReason, SummaryV1, Usage, UsageRange};
 
 /// Everything that reaches the GPUI loop from AppKit callbacks, delivered over one channel.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +94,10 @@ pub struct AppModel {
     /// Last register/unregister failure, shown under the switch; kept out of `action`, which is
     /// the service-action state machine.
     pub login_item_error: Option<String>,
+    /// The Usage group's window. Remembered across panel closes; `24h` at launch.
+    pub usage_range: UsageRange,
+    /// The last usage per window, so a switch back renders at once while a fetch runs.
+    usage_cache: HashMap<UsageRange, Usage>,
     attempts: AutoAttempts,
     /// True from spawn to landing of the one in-flight discovery; only that task clears it.
     discovering: bool,
@@ -124,6 +129,8 @@ impl AppModel {
             update_pending: None,
             login_item: LoginItemStatus::Unavailable,
             login_item_error: None,
+            usage_range: UsageRange::H24,
+            usage_cache: HashMap::new(),
             attempts: AutoAttempts::default(),
             discovering: false,
             discovery_order: DiscoveryOrder::default(),
@@ -136,6 +143,10 @@ impl AppModel {
             fetch_task: None,
             timer_task: None,
         }
+    }
+
+    pub fn usage_for(&self, range: UsageRange) -> Option<&Usage> {
+        self.usage_cache.get(&range)
     }
 
     pub fn persistent(&self) -> bool {
