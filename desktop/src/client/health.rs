@@ -20,11 +20,29 @@ pub enum HealthState {
 pub struct HealthTracker {
     state: HealthState,
     failures: u32,
+    /// The latest probe issued; an older one's answer is stale (see [`HealthTracker::finish`]).
+    issued: u64,
 }
 
 impl HealthTracker {
     pub fn state(&self) -> HealthState {
         self.state
+    }
+
+    /// Starts a probe and returns its number. Panel open, wake, the timer and a finished action can
+    /// each start one, so several may be in flight at once.
+    pub fn begin(&mut self) -> u64 {
+        self.issued += 1;
+        self.issued
+    }
+
+    /// Records probe `probe`'s answer if it is still the latest. An older probe may have reached the
+    /// instance a restart replaced, and its late failure must not mark the new one down.
+    pub fn finish(&mut self, probe: u64, ok: bool) -> Option<HealthState> {
+        if probe != self.issued {
+            return None;
+        }
+        self.record(ok)
     }
 
     /// Records one probe; returns the new state only when it changed.
@@ -47,6 +65,8 @@ impl HealthTracker {
 
     /// A completed Stop already proved the proxy unreachable; no need to wait for two probes.
     pub fn mark_down(&mut self) {
+        // A probe already in flight predates the Stop: its success must not bring the proxy back.
+        self.issued += 1;
         self.failures = self.failures.max(2);
         self.state = HealthState::Down;
     }

@@ -38,3 +38,28 @@ fn a_completed_stop_is_down_at_once_and_a_later_success_brings_it_back() {
     assert_eq!(h.record(false), None, "the next failed probe is no new transition");
     assert_eq!(h.record(true), Some(HealthState::Up));
 }
+
+#[test]
+fn only_the_latest_probe_counts() {
+    let mut h = HealthTracker::default();
+    let first = h.begin();
+    assert_eq!(h.finish(first, true), Some(HealthState::Up));
+    // Two probes overlap; the newer one answers first and the older one's failures land late.
+    let old = h.begin();
+    let new = h.begin();
+    assert_eq!(h.finish(new, true), None);
+    assert_eq!(h.finish(old, false), None);
+    assert_eq!(h.finish(old, false), None, "stale failures never count toward Down");
+    assert_eq!(h.state(), HealthState::Up);
+}
+
+#[test]
+fn a_probe_in_flight_before_a_stop_cannot_bring_the_proxy_back() {
+    let mut h = HealthTracker::default();
+    let up = h.begin();
+    h.finish(up, true);
+    let in_flight = h.begin();
+    h.mark_down();
+    assert_eq!(h.finish(in_flight, true), None);
+    assert_eq!(h.state(), HealthState::Down);
+}

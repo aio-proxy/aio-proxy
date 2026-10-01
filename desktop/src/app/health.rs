@@ -23,21 +23,23 @@ pub fn check_now(cx: &mut App) {
         return;
     };
     let url = discovery.instance.control_url.as_deref().and_then(|base| LocalUrl::parse(base, "/health").ok());
+    let probe = cx.global_mut::<AppModel>().health.begin();
     let Some(url) = url else {
-        record(cx, false);
+        record(cx, probe, false);
         return;
     };
     let limits = Limits { total: HEALTH_TIMEOUT, ..Limits::default() };
     let pending = transport::spawn(Request { method: Method::Get, url, bearer: None }, limits);
     cx.spawn(async move |cx| {
         let ok = pending.await.ok().and_then(|r| parse_health(r.status, &r.body)).is_some();
-        cx.update(|cx| record(cx, ok));
+        cx.update(|cx| record(cx, probe, ok));
     })
     .detach();
 }
 
-fn record(cx: &mut App, ok: bool) {
-    let transition = cx.global_mut::<AppModel>().health.record(ok);
+/// Only the latest probe counts: one superseded by a newer probe (or by a Stop) is dropped.
+fn record(cx: &mut App, probe: u64, ok: bool) {
+    let transition = cx.global_mut::<AppModel>().health.finish(probe, ok);
     if transition.is_some() {
         changed(cx);
         super::rediscover(cx);
