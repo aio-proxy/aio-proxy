@@ -43,7 +43,11 @@
       "outro_provider_login": "登录完成",
       "outro_codex_configure": "Codex 配置完成",
       "provider_list_empty": "没有 Provider",
-      "status_deep_unexpected": "无法显示 Provider 健康数据"
+      "status_deep_unexpected": "无法显示 Provider 健康数据",
+      "header_name": "名称",
+      "header_package": "包",
+      "header_version": "版本",
+      "header_directory": "目录"
     },
     "root": {
       "description": "AIO Proxy 命令行界面"
@@ -59,7 +63,10 @@
       "option_host_description": "绑定的主机",
       "option_port_description": "绑定的端口",
       "option_open_description": "TODO(i18n): Open the dashboard in the default browser after startup",
-      "started": "AIO Proxy 正在监听 {apiUrl}。控制台：{dashboardUrl}"
+      "started": "AIO Proxy 正在监听 {apiUrl}。控制台：{dashboardUrl}",
+      "running": "AIO Proxy 正在运行",
+      "label_api": "API",
+      "label_dashboard": "Dashboard"
     },
     "dashboard": {
       "description": "打开 AIO Proxy 控制台",
@@ -209,7 +216,8 @@
       "diagnostic_authorization_failed": "提供商 {provider} 授权失败",
       "diagnostic_catalog_unavailable": "提供商 {provider} 的模型目录不可用",
       "diagnostic_proxy_unsupported": "提供商 {provider} 不支持当前配置的代理",
-      "diagnostic_runtime_create_failed": "无法为提供商 {provider} 创建运行时"
+      "diagnostic_runtime_create_failed": "无法为提供商 {provider} 创建运行时",
+      "state_failed": "加载失败"
     },
     "error": {
       "port_out_of_range": "端口 {port} 超出范围 (1-65535)",
@@ -230,7 +238,9 @@
       "running": "AIO Proxy 正在 {url} 运行（版本 {version}）",
       "not_running": "无法在 {url} 连接到 AIO Proxy",
       "deep_unavailable": "无法探测 provider 健康状态（此版本的控制台需要密码）",
-      "deep_probe_failed": "探测 provider 健康状态失败（{status}）"
+      "deep_probe_failed": "探测 provider 健康状态失败（{status}）",
+      "state_running": "运行中",
+      "state_not_running": "未运行"
     },
     "config": {
       "description": "查看 AIO Proxy 配置文件",
@@ -267,7 +277,13 @@
       "config_path": "配置文件：{path}",
       "server_reachable": "服务可访问：{url}（版本 {version}）",
       "server_unreachable": "服务不可访问：{url}",
-      "plugin_count": "已安装插件数：{count}"
+      "plugin_count": "已安装插件数：{count}",
+      "label_config": "配置文件",
+      "label_server": "服务器",
+      "label_plugins": "插件",
+      "server_not_reachable": "无法访问",
+      "plugins_none": "未安装",
+      "plugins_installed": "已安装 {count} 个"
     },
     "completion": {
       "description": "输出 shell 自动补全脚本（bash、zsh 或 fish）",
@@ -295,7 +311,8 @@
     "update": {
       "available": "aio-proxy {version} 可用。运行 aio-proxy upgrade 或打开控制台。",
       "notify_title": "aio-proxy {version} 可用",
-      "notify_body": "打开控制台或运行 aio-proxy upgrade。"
+      "notify_body": "打开控制台或运行 aio-proxy upgrade。",
+      "banner": "有可用更新 {current} → {latest}"
     },
     "agent": {
       "description": "管理 Agent 集成",
@@ -306,7 +323,30 @@
         "target": "{target}：主机 {hostVersion}（最低 {minimumVersion}，{support}）；集成 {integration}；安装 {installationId}；适配器 {adapterVersion}；端点 {endpoint}（{endpointMatch}）；目录 {catalog}（上次成功 {lastSuccessfulAt}）；授权 {authorization}；架构 {schemaCompatibility}",
         "server": "aio-proxy：{status}",
         "capabilities": "设备授权 {deviceAuthorization}；目录架构 {catalogSchemaVersions}",
-        "authorization": "{installationId}：{target}，{authorization}，{local}"
+        "authorization": "{installationId}：{target}，{authorization}，{local}",
+        "label_host": "主机",
+        "label_installation": "安装",
+        "label_adapter": "适配器",
+        "label_endpoint": "端点",
+        "label_catalog": "目录",
+        "label_authorization": "授权",
+        "label_schema": "schema",
+        "label_reason": "原因",
+        "label_target": "目标",
+        "label_local": "本地",
+        "label_config": "配置",
+        "label_provider": "Provider",
+        "label_active_provider": "当前 Provider",
+        "label_base_url": "基础 URL",
+        "label_connection": "连接",
+        "label_changed_paths": "已修改路径",
+        "label_auth_mode": "认证模式",
+        "label_lifecycle": "生命周期",
+        "label_credential": "凭据",
+        "host_value": "{version}（最低 {minimum}，{support}）",
+        "catalog_value": "{catalog}（上次成功 {lastSuccessfulAt}）",
+        "section_control_plane": "控制面",
+        "section_authorizations": "授权"
       },
       "configure": {
         "host_missing": "{target} 未安装；aio-proxy 未更改任何文件。",
@@ -420,6 +460,18 @@
       "grok_endpoint_changed": "Grok 已配置为使用其他代理端点。请先移除该集成，然后再配置。",
       "grok_retained_files": "保留的文件：{files}。",
       "grok_skipped_fields": "跳过的字段：{fields}。"
+    },
+    "help": {
+      "usage": "用法",
+      "options": "选项",
+      "commands": "命令",
+      "arguments": "参数",
+      "group_server": "服务",
+      "group_providers": "Provider",
+      "group_agents": "Agent",
+      "group_setup": "设置",
+      "option_description": "显示帮助",
+      "command_description": "显示命令的帮助"
     }
   },
   "oauth": {

@@ -43,7 +43,11 @@
       "outro_provider_login": "ログインしました",
       "outro_codex_configure": "Codex の設定が完了しました",
       "provider_list_empty": "Provider はありません",
-      "status_deep_unexpected": "Provider の健全性データを表示できません"
+      "status_deep_unexpected": "Provider の健全性データを表示できません",
+      "header_name": "名前",
+      "header_package": "パッケージ",
+      "header_version": "バージョン",
+      "header_directory": "ディレクトリ"
     },
     "root": {
       "description": "AIO Proxy コマンドラインインターフェース"
@@ -59,7 +63,10 @@
       "option_host_description": "バインドするホスト",
       "option_port_description": "バインドするポート",
       "option_open_description": "起動後に既定のブラウザーでダッシュボードを開きます",
-      "started": "AIO Proxy は {apiUrl} でリッスンしています。ダッシュボード: {dashboardUrl}"
+      "started": "AIO Proxy は {apiUrl} でリッスンしています。ダッシュボード: {dashboardUrl}",
+      "running": "AIO Proxy は実行中です",
+      "label_api": "API",
+      "label_dashboard": "Dashboard"
     },
     "dashboard": {
       "description": "AIO Proxy ダッシュボードを開きます",
@@ -209,7 +216,8 @@
       "diagnostic_authorization_failed": "プロバイダー {provider} の認可に失敗しました",
       "diagnostic_catalog_unavailable": "プロバイダー {provider} のモデルカタログが利用できません",
       "diagnostic_proxy_unsupported": "プロバイダー {provider} は設定されたプロキシをサポートしていません",
-      "diagnostic_runtime_create_failed": "プロバイダー {provider} のランタイムを作成できませんでした"
+      "diagnostic_runtime_create_failed": "プロバイダー {provider} のランタイムを作成できませんでした",
+      "state_failed": "読み込み失敗"
     },
     "error": {
       "port_out_of_range": "ポート {port} は範囲外です (1-65535)",
@@ -230,7 +238,9 @@
       "running": "AIO Proxy は {url} で実行中です (バージョン {version})",
       "not_running": "{url} で AIO Proxy に接続できません",
       "deep_unavailable": "プロバイダーのヘルスプローブは利用できません (このビルドのダッシュボードにはパスワードが必要です)",
-      "deep_probe_failed": "プロバイダーのヘルスプローブに失敗しました ({status})"
+      "deep_probe_failed": "プロバイダーのヘルスプローブに失敗しました ({status})",
+      "state_running": "実行中",
+      "state_not_running": "停止中"
     },
     "config": {
       "description": "AIO Proxy の設定ファイルを確認します",
@@ -267,7 +277,13 @@
       "config_path": "設定ファイル: {path}",
       "server_reachable": "{url} でサーバーに接続できます (バージョン {version})",
       "server_unreachable": "{url} でサーバーに接続できません",
-      "plugin_count": "インストール済みプラグイン: {count}"
+      "plugin_count": "インストール済みプラグイン: {count}",
+      "label_config": "設定ファイル",
+      "label_server": "サーバー",
+      "label_plugins": "プラグイン",
+      "server_not_reachable": "到達できません",
+      "plugins_none": "インストールなし",
+      "plugins_installed": "{count} 個インストール済み"
     },
     "completion": {
       "description": "シェル補完スクリプトを出力します (bash、zsh、または fish)",
@@ -295,7 +311,8 @@
     "update": {
       "available": "aio-proxy {version} が利用できます。aio-proxy upgrade を実行するか、ダッシュボードを開いてください。",
       "notify_title": "aio-proxy {version} が利用できます",
-      "notify_body": "ダッシュボードを開くか、aio-proxy upgrade を実行してください。"
+      "notify_body": "ダッシュボードを開くか、aio-proxy upgrade を実行してください。",
+      "banner": "アップデートがあります {current} → {latest}"
     },
     "agent": {
       "description": "Agent 連携を管理します",
@@ -306,7 +323,30 @@
         "target": "{target}: ホスト {hostVersion}（最低 {minimumVersion}、{support}）；連携 {integration}；インストール {installationId}；アダプター {adapterVersion}；エンドポイント {endpoint}（{endpointMatch}）；カタログ {catalog}（前回の成功 {lastSuccessfulAt}）；認可 {authorization}；スキーマ {schemaCompatibility}",
         "server": "aio-proxy: {status}",
         "capabilities": "デバイス認可 {deviceAuthorization}；カタログスキーマ {catalogSchemaVersions}",
-        "authorization": "{installationId}: {target}、{authorization}、{local}"
+        "authorization": "{installationId}: {target}、{authorization}、{local}",
+        "label_host": "ホスト",
+        "label_installation": "インストール",
+        "label_adapter": "アダプター",
+        "label_endpoint": "エンドポイント",
+        "label_catalog": "カタログ",
+        "label_authorization": "認可",
+        "label_schema": "スキーマ",
+        "label_reason": "理由",
+        "label_target": "対象",
+        "label_local": "ローカル",
+        "label_config": "設定",
+        "label_provider": "Provider",
+        "label_active_provider": "使用中の Provider",
+        "label_base_url": "ベース URL",
+        "label_connection": "接続",
+        "label_changed_paths": "変更されたパス",
+        "label_auth_mode": "認証モード",
+        "label_lifecycle": "ライフサイクル",
+        "label_credential": "認証情報",
+        "host_value": "{version}（最低 {minimum}、{support}）",
+        "catalog_value": "{catalog}（最終成功 {lastSuccessfulAt}）",
+        "section_control_plane": "コントロールプレーン",
+        "section_authorizations": "認可"
       },
       "configure": {
         "host_missing": "{target} はインストールされていません。aio-proxy はファイルを変更していません。",
@@ -420,6 +460,18 @@
       "grok_endpoint_changed": "Grok は別のプロキシエンドポイント向けに構成済みです。統合を削除してから再構成してください。",
       "grok_retained_files": "保持したファイル: {files}。",
       "grok_skipped_fields": "スキップしたフィールド: {fields}。"
+    },
+    "help": {
+      "usage": "使い方",
+      "options": "オプション",
+      "commands": "コマンド",
+      "arguments": "引数",
+      "group_server": "サーバー",
+      "group_providers": "Provider",
+      "group_agents": "Agent",
+      "group_setup": "セットアップ",
+      "option_description": "ヘルプを表示",
+      "command_description": "コマンドのヘルプを表示"
     }
   },
   "oauth": {

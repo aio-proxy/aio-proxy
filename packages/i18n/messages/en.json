@@ -43,7 +43,11 @@
       "outro_provider_login": "Signed in",
       "outro_codex_configure": "Codex configuration finished",
       "provider_list_empty": "No providers",
-      "status_deep_unexpected": "Provider health data could not be displayed"
+      "status_deep_unexpected": "Provider health data could not be displayed",
+      "header_name": "name",
+      "header_package": "package",
+      "header_version": "version",
+      "header_directory": "directory"
     },
     "root": {
       "description": "AIO Proxy command line interface"
@@ -59,7 +63,10 @@
       "option_host_description": "Host to bind",
       "option_port_description": "Port to bind",
       "option_open_description": "Open the dashboard in the default browser after startup",
-      "started": "AIO Proxy listening at {apiUrl}. Dashboard: {dashboardUrl}"
+      "started": "AIO Proxy listening at {apiUrl}. Dashboard: {dashboardUrl}",
+      "running": "AIO Proxy is running",
+      "label_api": "API",
+      "label_dashboard": "Dashboard"
     },
     "dashboard": {
       "description": "Open the AIO Proxy dashboard",
@@ -209,7 +216,8 @@
       "diagnostic_authorization_failed": "Authorization failed for provider {provider}",
       "diagnostic_catalog_unavailable": "The model catalog is unavailable for provider {provider}",
       "diagnostic_proxy_unsupported": "Provider {provider} does not support the configured proxy",
-      "diagnostic_runtime_create_failed": "The runtime could not be created for provider {provider}"
+      "diagnostic_runtime_create_failed": "The runtime could not be created for provider {provider}",
+      "state_failed": "failed"
     },
     "error": {
       "port_out_of_range": "Port {port} is out of range (1-65535)",
@@ -230,7 +238,9 @@
       "running": "AIO Proxy is running at {url} (version {version})",
       "not_running": "AIO Proxy is not reachable at {url}",
       "deep_unavailable": "Provider health probe is unavailable (the dashboard requires a password on this build)",
-      "deep_probe_failed": "Provider health probe failed ({status})"
+      "deep_probe_failed": "Provider health probe failed ({status})",
+      "state_running": "Running",
+      "state_not_running": "Not running"
     },
     "config": {
       "description": "Inspect the AIO Proxy configuration file",
@@ -267,7 +277,13 @@
       "config_path": "Config file: {path}",
       "server_reachable": "Server reachable at {url} (version {version})",
       "server_unreachable": "Server not reachable at {url}",
-      "plugin_count": "Installed plugins: {count}"
+      "plugin_count": "Installed plugins: {count}",
+      "label_config": "Config file",
+      "label_server": "Server",
+      "label_plugins": "Plugins",
+      "server_not_reachable": "not reachable",
+      "plugins_none": "none installed",
+      "plugins_installed": "{count} installed"
     },
     "completion": {
       "description": "Print a shell completion script (bash, zsh, or fish)",
@@ -295,7 +311,8 @@
     "update": {
       "available": "aio-proxy {version} is available. Run aio-proxy upgrade or open the Dashboard.",
       "notify_title": "aio-proxy {version} is available",
-      "notify_body": "Open the Dashboard or run aio-proxy upgrade."
+      "notify_body": "Open the Dashboard or run aio-proxy upgrade.",
+      "banner": "Update available {current} → {latest}"
     },
     "agent": {
       "description": "Manage Agent integrations",
@@ -306,7 +323,30 @@
         "target": "{target}: host {hostVersion} (minimum {minimumVersion}, {support}); integration {integration}; installation {installationId}; adapter {adapterVersion}; endpoint {endpoint} ({endpointMatch}); catalog {catalog} (last success {lastSuccessfulAt}); authorization {authorization}; schema {schemaCompatibility}",
         "server": "aio-proxy: {status}",
         "capabilities": "Device authorization {deviceAuthorization}; catalog schemas {catalogSchemaVersions}",
-        "authorization": "{installationId}: {target}, {authorization}, {local}"
+        "authorization": "{installationId}: {target}, {authorization}, {local}",
+        "label_host": "host",
+        "label_installation": "installation",
+        "label_adapter": "adapter",
+        "label_endpoint": "endpoint",
+        "label_catalog": "catalog",
+        "label_authorization": "authorization",
+        "label_schema": "schema",
+        "label_reason": "reason",
+        "label_target": "target",
+        "label_local": "local",
+        "label_config": "config",
+        "label_provider": "provider",
+        "label_active_provider": "active provider",
+        "label_base_url": "base URL",
+        "label_connection": "connection",
+        "label_changed_paths": "changed paths",
+        "label_auth_mode": "auth mode",
+        "label_lifecycle": "lifecycle",
+        "label_credential": "credential",
+        "host_value": "{version} (minimum {minimum}, {support})",
+        "catalog_value": "{catalog} (last success {lastSuccessfulAt})",
+        "section_control_plane": "Control plane",
+        "section_authorizations": "Authorizations"
       },
       "configure": {
         "host_missing": "{target} is not installed; aio-proxy did not change any files.",
@@ -420,6 +460,18 @@
       "grok_endpoint_changed": "Grok is already configured for a different proxy endpoint. Remove the integration, then configure it again.",
       "grok_retained_files": "Retained files: {files}.",
       "grok_skipped_fields": "Skipped fields: {fields}."
+    },
+    "help": {
+      "usage": "Usage",
+      "options": "Options",
+      "commands": "Commands",
+      "arguments": "Arguments",
+      "group_server": "Server",
+      "group_providers": "Providers",
+      "group_agents": "Agents",
+      "group_setup": "Setup",
+      "option_description": "Show help",
+      "command_description": "Show help for a command"
     }
   },
   "oauth": {
