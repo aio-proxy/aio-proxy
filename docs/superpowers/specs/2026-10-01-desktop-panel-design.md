@@ -43,7 +43,7 @@ The organizing rule is time scope: **only the Usage group follows the time windo
 
 ### Footer
 
-- The **Open Dashboard** primary button, while the proxy is up. A stopped or unresponsive proxy serves no Dashboard, so the button is gone, and the menus' Open Dashboard is disabled while nothing answers.
+- The **Open Dashboard** primary button, while the proxy is up. A stopped or unresponsive proxy serves no Dashboard, so the button is gone, and the menus' Open Dashboard is disabled by the same down state (live health, not only the last discovery).
 - **Update to <version>…** when `update_pending` is set (rev 4 Task 14), placed next to Open Dashboard.
 - A **⋯** button at the right opens a GPUI Kit dropdown menu, upward, with exactly the right-click menu's entries (`tray::entries`) and the same commands (`tray::run`), so the menu is reachable without leaving the panel. The open-at-login check appears there as in the right-click menu.
 

@@ -59,9 +59,15 @@ fn item(command: MenuCommand, label: &str, enabled: bool) -> MenuEntry {
     MenuEntry::Item { command, label: label.into(), enabled }
 }
 
-pub fn menu_entries(offered: Offered, busy: bool, persistent: bool, login: LoginItemStatus) -> Vec<MenuEntry> {
-    // Reload is offered exactly when an instance answers, which is what the Dashboard needs.
-    let mut entries = vec![item(MenuCommand::OpenDashboard, "Open Dashboard", offered.reload), MenuEntry::Separator];
+/// `dashboard` is false while the proxy is down: from live health, not only the last discovery.
+pub fn menu_entries(
+    offered: Offered,
+    dashboard: bool,
+    busy: bool,
+    persistent: bool,
+    login: LoginItemStatus,
+) -> Vec<MenuEntry> {
+    let mut entries = vec![item(MenuCommand::OpenDashboard, "Open Dashboard", dashboard), MenuEntry::Separator];
     let services = [
         (offered.install, UserAction::InstallAndStart, "Install and start"),
         (offered.take_over, UserAction::TakeOver, "Take over and start"),

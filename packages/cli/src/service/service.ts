@@ -350,20 +350,25 @@ export async function serviceRestart(io: ServiceRestartIo = {}): Promise<void> {
   // launcher symlink) can hold a stale ExecStart pointing at a deleted binary; on
   // darwin a plain stop/start would then relaunch nothing, so restart must migrate
   // it. Missing units use the full install/start path above, including enable.
-  if (io.exec === undefined) await writeUnit(os);
-  else await writeUnit(os, io.exec);
+  const write = () => (io.exec === undefined ? writeUnit(os) : writeUnit(os, io.exec));
   if (os === 'darwin') {
     const plist = io.unitPath ?? launchdPlistPath();
     if (isDarwinLaunchdJob(env, isTTY)) {
+      await write();
       spawnDarwinRestartHelper(plist, io.spawn ?? Bun.spawn);
       return;
     }
-    // bootout + bootstrap re-reads the plist just rewritten; kickstart -k would restart the old definition.
+    // bootout + bootstrap re-reads the rewritten plist; kickstart -k would restart the old definition.
+    // The bootout comes first: one that times out leaves the plist as it was, rather than rewritten
+    // while launchd still holds the old definition (the desktop app retries a takeover only while
+    // the plist still names the old binary).
     const printJob = io.printJob ?? printLaunchdJob;
     await bootoutLaunchdJob(run, printJob, io.bootoutTimeoutMs ?? BOOTOUT_TIMEOUT_MS);
+    await write();
     await startLaunchdJob(plist, run, printJob);
     return;
   }
+  await write();
   await run(['systemctl', '--user', 'restart', SYSTEMD_UNIT_NAME]);
 }
 

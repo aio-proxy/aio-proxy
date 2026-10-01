@@ -653,14 +653,18 @@ test('Darwin TTY serviceRestart boots the job out and bootstraps the rewritten p
   ]);
 });
 
-const restartInProcess = (launchd: ReturnType<typeof fakeLaunchd>, bootoutTimeoutMs?: number) =>
+const restartInProcess = (
+  launchd: ReturnType<typeof fakeLaunchd>,
+  bootoutTimeoutMs?: number,
+  writeManagedUnit: () => Promise<string> = async () => '/tmp/com.aio-proxy.agent.plist',
+) =>
   serviceRestart({
     platform: 'darwin',
     env: {},
     isTTY: true,
     unitInstalled: () => true,
     unitPath: '/tmp/com.aio-proxy.agent.plist',
-    writeManagedUnit: async () => '/tmp/com.aio-proxy.agent.plist',
+    writeManagedUnit,
     ...(bootoutTimeoutMs === undefined ? {} : { bootoutTimeoutMs }),
     ...launchd,
   });
@@ -675,9 +679,12 @@ test('serviceRestart waits for a slow bootout before bootstrapping, instead of k
   ]);
 });
 
-test('serviceRestart fails when bootout never removes the job, and starts nothing', async () => {
+test('serviceRestart fails when bootout never removes the job, and neither rewrites nor starts anything', async () => {
   const launchd = fakeLaunchd(true, { teardownPolls: Number.POSITIVE_INFINITY });
-  const error = await restartInProcess(launchd, 300).catch((caught: unknown) => caught);
+  const writeManagedUnit = mock(async () => '/tmp/com.aio-proxy.agent.plist');
+  const error = await restartInProcess(launchd, 300, writeManagedUnit).catch((caught: unknown) => caught);
+  // The plist still names the old binary, so the app keeps offering Take over and can retry.
+  expect(writeManagedUnit).not.toHaveBeenCalled();
   expect(error).toBeInstanceOf(CliExit);
   expect((error as CliExit).message).toContain(`launchctl bootout ${launchdJobTarget()}`);
   expect((error as CliExit).message).not.toContain('exit');
