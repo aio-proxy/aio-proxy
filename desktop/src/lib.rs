@@ -4,6 +4,7 @@
 pub mod app;
 pub mod client;
 pub mod connect;
+pub mod http;
 pub mod install;
 pub mod log;
 pub mod login_item;

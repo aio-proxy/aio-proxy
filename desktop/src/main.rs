@@ -8,7 +8,7 @@ use aio_proxy_desktop::install::{self, Paths};
 use aio_proxy_desktop::panel::{self, PanelWindow};
 use aio_proxy_desktop::tray::MenuCommand;
 use aio_proxy_desktop::version::APP_VERSION;
-use aio_proxy_desktop::{log, tray, updater};
+use aio_proxy_desktop::{http, log, tray, updater};
 use block2::RcBlock;
 use futures::StreamExt;
 use futures::channel::mpsc::{self, UnboundedSender};
@@ -46,6 +46,7 @@ fn main() {
 
     gpui_kit::application().run(move |cx| {
         gpui_kit::init(cx);
+        cx.set_http_client(std::sync::Arc::new(http::UrlSession));
         // GPUI forces the Regular policy in applicationDidFinishLaunching; LSUIElement covers launch.
         let mtm = MainThreadMarker::new().expect("GPUI runs this callback on the main thread");
         NSApplication::sharedApplication(mtm).setActivationPolicy(NSApplicationActivationPolicy::Accessory);
