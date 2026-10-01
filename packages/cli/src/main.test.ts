@@ -211,7 +211,7 @@ describe('cli', () => {
   test('help uses the invoked short name', () => {
     const program = buildProgram(defaultCliDeps, 'aiop');
     expect(program.name()).toBe('aiop');
-    expect(program.helpInformation()).toContain('Usage: aiop');
+    expect(program.helpInformation()).toContain('Usage aiop');
   });
 });
 

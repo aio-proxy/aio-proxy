@@ -239,7 +239,10 @@ export function registerAgentCommands(
   const emit = (lines: readonly string[]): void => {
     for (const line of lines) input.print(line);
   };
-  const agent = program.command('agent').description(m['cli.agent.description']());
+  const agent = program
+    .command('agent')
+    .helpGroup(m['cli.help.group_agents']())
+    .description(m['cli.agent.description']());
   agent
     .command('list')
     .option('--check', m['cli.agent.list.option_check']())

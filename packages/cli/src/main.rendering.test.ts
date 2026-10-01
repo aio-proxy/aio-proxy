@@ -13,6 +13,18 @@ import { ProviderCapabilityNotFoundError } from './plugin-commands/provider-logi
 import { createCommandSession, PromptCancelledError } from './ui';
 
 describe('cli rendering', () => {
+  test('root help is grouped and plain when piped', () => {
+    const help = runCli(['--help']).stdout.toString();
+    expect(help).not.toContain('\u001b');
+    const order = ['\nServer\n', '\nProviders\n', '\nAgents\n', '\nSetup\n'].map((heading) => help.indexOf(heading));
+    expect(order.every((index) => index > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    const server = help.slice(order[0], order[1]);
+    for (const name of ['run', 'reload', 'status', 'dashboard', 'service']) expect(server).toContain(`  ${name}`);
+    const setup = help.slice(order[3]);
+    for (const name of ['config', 'doctor', 'completion', 'upgrade', 'help']) expect(setup).toContain(`  ${name}`);
+  }, 60_000);
+
   test('provider subcommands expose unified argument placeholders', () => {
     // Given / When
     const login = runCli(['provider', 'login', '--help']).stdout.toString();

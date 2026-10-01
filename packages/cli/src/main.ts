@@ -24,7 +24,7 @@ import { reloadCommand } from './reload';
 import { run, validatePortArgv } from './run';
 import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceStop, serviceUninstall } from './service';
 import { statusCommand } from './status';
-import { PromptCancelledError } from './ui';
+import { applyHelpStyle, createStyle, PromptCancelledError } from './ui';
 import { printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
 import { runUpgradeCommand } from './upgrade/upgrade';
 
@@ -61,7 +61,10 @@ const commandChain = (command: Command): string[] => {
 };
 
 const registerServiceCommands = (program: Command): void => {
-  const service = program.command('service').description(m['cli.service.description']());
+  const service = program
+    .command('service')
+    .helpGroup(m['cli.help.group_server']())
+    .description(m['cli.service.description']());
   service
     .command('install')
     .description(m['cli.service.install_description']())
@@ -188,6 +191,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
 
   program
     .command('run')
+    .helpGroup(m['cli.help.group_server']())
     .description(m['cli.run.description']())
     .option('--host <host>', m['cli.run.option_host_description']())
     .option('--port <port>', m['cli.run.option_port_description']())
@@ -196,6 +200,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
 
   program
     .command('reload')
+    .helpGroup(m['cli.help.group_server']())
     .description(m['cli.reload.description']())
     .option('--host <host>', m['cli.run.option_host_description']())
     .option('--port <port>', m['cli.run.option_port_description']())
@@ -203,6 +208,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
 
   program
     .command('status')
+    .helpGroup(m['cli.help.group_server']())
     .description(m['cli.status.description']())
     .option('--host <host>', m['cli.run.option_host_description']())
     .option('--port <port>', m['cli.run.option_port_description']())
@@ -210,32 +216,19 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
     .option('--json')
     .action((options) => statusCommand(options));
 
-  const config = program.command('config').description(m['cli.config.description']());
-  config
-    .command('show')
-    .description(m['cli.config.show_description']())
-    .option('--json')
-    .action((options) => configShow(options));
-  config
-    .command('edit')
-    .description(m['cli.config.edit_description']())
-    .action(async () => await configEdit());
-  config
-    .command('validate [path]')
-    .description(m['cli.config.validate_description']())
-    .action((path) => configValidate(path));
-  config
-    .command('path')
-    .description(m['cli.config.path_description']())
-    .action(() => configPathCommand());
-
   program
     .command('dashboard')
+    .helpGroup(m['cli.help.group_server']())
     .description(m['cli.dashboard.description']())
     .option('--host <host>', m['cli.run.option_host_description']())
     .option('--port <port>', m['cli.run.option_port_description']())
     .action((options) => dashboardCommand(options));
-  const provider = program.command('provider').description(m['cli.provider.description']());
+  registerServiceCommands(program);
+
+  const provider = program
+    .command('provider')
+    .helpGroup(m['cli.help.group_providers']())
+    .description(m['cli.provider.description']());
   provider
     .command('list')
     .description(m['cli.provider.list.description']())
@@ -258,7 +251,10 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
     .description(m['cli.provider.test.description']())
     .option('--url <url>', m['cli.provider.test.option_url_description']())
     .action(providerTest);
-  const plugin = program.command('plugin').description(m['cli.plugin.description']());
+  const plugin = program
+    .command('plugin')
+    .helpGroup(m['cli.help.group_providers']())
+    .description(m['cli.plugin.description']());
   plugin
     .command('add <package>')
     .description(m['cli.plugin.add_description']())
@@ -285,10 +281,34 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
     .description(m['cli.plugin.prune_description']())
     .option('--yes', m['cli.plugin.prune_option_yes_description']())
     .action((options) => pluginPrune(options));
-  registerServiceCommands(program);
+
+  bindAgentCommands(program, deps);
+
+  const config = program
+    .command('config')
+    .helpGroup(m['cli.help.group_setup']())
+    .description(m['cli.config.description']());
+  config
+    .command('show')
+    .description(m['cli.config.show_description']())
+    .option('--json')
+    .action((options) => configShow(options));
+  config
+    .command('edit')
+    .description(m['cli.config.edit_description']())
+    .action(async () => await configEdit());
+  config
+    .command('validate [path]')
+    .description(m['cli.config.validate_description']())
+    .action((path) => configValidate(path));
+  config
+    .command('path')
+    .description(m['cli.config.path_description']())
+    .action(() => configPathCommand());
 
   program
     .command('doctor')
+    .helpGroup(m['cli.help.group_setup']())
     .description(m['cli.doctor.description']())
     .option('--host <host>', m['cli.run.option_host_description']())
     .option('--port <port>', m['cli.run.option_port_description']())
@@ -296,11 +316,13 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
 
   program
     .command('completion <shell>')
+    .helpGroup(m['cli.help.group_setup']())
     .description(m['cli.completion.description']())
     .action((shell) => completionCommand(shell));
 
   program
     .command('upgrade')
+    .helpGroup(m['cli.help.group_setup']())
     .alias('update')
     .description(m['cli.upgrade.description']())
     .option('--check', m['cli.upgrade.option_check_description']())
@@ -310,9 +332,9 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
       await runUpgradeCommand(options);
     });
 
-  bindAgentCommands(program, deps);
   registerHiddenPostUpgrade(program, deps);
   registerHiddenDesktopConnect(program);
+  applyHelpStyle(program, createStyle(process.stdout));
 
   return program;
 };
