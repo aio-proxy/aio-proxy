@@ -60,7 +60,8 @@ fn item(command: MenuCommand, label: &str, enabled: bool) -> MenuEntry {
 }
 
 pub fn menu_entries(offered: Offered, busy: bool, persistent: bool, login: LoginItemStatus) -> Vec<MenuEntry> {
-    let mut entries = vec![item(MenuCommand::OpenDashboard, "Open Dashboard", true), MenuEntry::Separator];
+    // Reload is offered exactly when an instance answers, which is what the Dashboard needs.
+    let mut entries = vec![item(MenuCommand::OpenDashboard, "Open Dashboard", offered.reload), MenuEntry::Separator];
     let services = [
         (offered.install, UserAction::InstallAndStart, "Install and start"),
         (offered.take_over, UserAction::TakeOver, "Take over and start"),

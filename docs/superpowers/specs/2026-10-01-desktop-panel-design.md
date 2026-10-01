@@ -40,11 +40,10 @@ The organizing rule is time scope: **only the Usage group follows the time windo
   - When the alerting Provider is in the Quota group, **Show** scrolls the body to that group.
   - Otherwise **Show** opens the Dashboard's Providers page.
 - **Notice line** (muted): the outcome of the last user action, e.g. `Restarted · /health answered` or an action's error. It clears when the panel closes, as rev 4's F4 fix does today.
-- **Promoted action button:** only the state-relevant action from rev 4's offer table, and at most one: **Start** when stopped, **Install and start** when a fresh install is offered, **Take over** when the service's CLI was uninstalled (an orphaned plist). Every other action lives in the right-click menu.
 
 ### Footer
 
-- The **Open Dashboard** primary button.
+- The **Open Dashboard** primary button, while the proxy is up. A stopped or unresponsive proxy serves no Dashboard, so the button is gone, and the menus' Open Dashboard is disabled while nothing answers.
 - **Update to <version>…** when `update_pending` is set (rev 4 Task 14), placed next to Open Dashboard.
 - A **⋯** button at the right opens a GPUI Kit dropdown menu, upward, with exactly the right-click menu's entries (`tray::entries`) and the same commands (`tray::run`), so the menu is reachable without leaving the panel. The open-at-login check appears there as in the right-click menu.
 
@@ -177,8 +176,9 @@ The menu is rebuilt (`set_menu`) whenever the offer set changes: after each disc
 | State | Header | Body | Footer |
 | --- | --- | --- | --- |
 | Running, summary ready | Running, version, refresh, endpoint, alerts | The three groups | Open Dashboard, ⋯ |
-| Stopped (desktop-owned, user-stopped) | Stopped + **Start** | "The proxy is not running. It stays stopped until you start it." | Open Dashboard, ⋯ |
-| Not responding | Not responding | rev 4 message; the right-click menu offers Restart/Start | Open Dashboard, ⋯ |
+| Stopped | Stopped | GPUI Kit `Empty`: power-off icon, `The proxy is not running`, `It stays stopped until you start it.`, and the one action that starts it: **Start**, or **Install and start** when a fresh install is offered | ⋯ |
+| Stopped, CLI uninstalled (orphaned plist) | Stopped | `Empty`: unplug icon, `Its CLI was uninstalled`, and **Take over and start** | ⋯ |
+| Not responding | Not responding | `Empty`: server-off icon and a pointer to Restart in the ⋯ and right-click menus | ⋯ |
 | Degraded: missing route, no token, unsupported version | Running, version, endpoint | rev 4 degraded text ("older than the app") | Open Dashboard, ⋯ |
 | Auth failed | Running | rev 4 auth-failed text | Open Dashboard, ⋯ |
 
