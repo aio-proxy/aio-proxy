@@ -4,7 +4,9 @@ export type UnitOptions = {
   readonly exec: string;
   readonly configPath: string;
   readonly path?: string;
-  readonly upgradeMethod?: 'brew' | 'bun' | 'npm' | 'pnpm';
+  readonly upgradeMethod?: 'brew' | 'bun' | 'npm' | 'pnpm' | 'desktop';
+  /** Set only for a desktop-owned unit; the daemon inherits it so any later rewrite keeps the symlink. */
+  readonly desktopExec?: string;
 };
 
 export const LAUNCHD_LABEL = 'com.aio-proxy.agent';
@@ -51,13 +53,22 @@ WantedBy=default.target
 // mirrors the systemd unit's RestartPreventExitStatus=1. RunAtLoad starts it on
 // load. The wrapper only remaps the exit code; it never sources the env file
 // (the daemon loads service.env itself), so no shell touches provider secrets.
-const LAUNCHD_EXEC_WRAPPER = '"$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"';
+//
+// `[ -x "$0" ] || exit 0` turns a vanished executable (desktop app deleted, brew uninstalled) into a
+// clean exit, which SuccessfulExit=false does not relaunch; otherwise launchd respawns it forever.
+export const LAUNCHD_EXEC_WRAPPER =
+  '[ -x "$0" ] || exit 0; "$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"';
+
+/** Wrappers written by earlier releases; still recognized as ours when inspecting an installed plist. */
+export const LEGACY_LAUNCHD_EXEC_WRAPPERS: readonly string[] = [
+  '"$0" run; status=$?; if [ "$status" -eq 1 ]; then exit 0; fi; exit "$status"',
+];
 
 const launchdText = (name: string, value: string): Bun.XML.NodeInput => ({ name, children: [value] });
 const launchdEmpty = (name: string): Bun.XML.NodeInput => ({ name, children: [] });
 const launchdDict = (children: Bun.XML.NodeInput[]): Bun.XML.NodeInput => ({ name: 'dict', children });
 
-export function renderLaunchdPlist({ exec, configPath, path, upgradeMethod }: UnitOptions): string {
+export function renderLaunchdPlist({ exec, configPath, path, upgradeMethod, desktopExec }: UnitOptions): string {
   const environmentVariables = [
     launchdText('key', 'AIO_PROXY_HOME'),
     launchdText('string', dirname(configPath)),
@@ -67,6 +78,9 @@ export function renderLaunchdPlist({ exec, configPath, path, upgradeMethod }: Un
     ...(upgradeMethod === undefined
       ? []
       : [launchdText('key', 'AIO_PROXY_UPGRADE_METHOD'), launchdText('string', upgradeMethod)]),
+    ...(desktopExec === undefined
+      ? []
+      : [launchdText('key', 'AIO_PROXY_DESKTOP_EXEC'), launchdText('string', desktopExec)]),
   ];
   const plist: Bun.XML.NodeInput = {
     name: 'plist',

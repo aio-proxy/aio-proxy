@@ -56,18 +56,20 @@ test('applyUpdate pins the checked version and upgrades via the launched exec pa
     },
   );
   const hooks = createCliAutoUpdateHooks({
+    isDesktopManaged: () => false,
     isManagedService: () => true,
     upgrade: upgrade as never,
     resolveExec: () => '/opt/aio-proxy',
     resolveTargetFrom: async (binPath) => ({ method: 'binary', path: binPath }),
   });
-  expect(await hooks.applyUpdate('1.10.0')).toBe('installed');
+  expect(await hooks.applyUpdate?.('1.10.0')).toBe('installed');
   expect(upgrade).toHaveBeenCalledTimes(1);
 });
 
 test('unmanaged applyUpdate relaunches this process after install', async () => {
   let relaunched = 0;
   const hooks = createCliAutoUpdateHooks({
+    isDesktopManaged: () => false,
     isManagedService: () => false,
     upgrade: mock(async () => 'installed' as const) as never,
     resolveExec: () => '/opt/aio-proxy',
@@ -76,13 +78,14 @@ test('unmanaged applyUpdate relaunches this process after install', async () => 
       relaunched += 1;
     },
   });
-  expect(await hooks.applyUpdate('1.10.0')).toBe('installed');
+  expect(await hooks.applyUpdate?.('1.10.0')).toBe('installed');
   expect(relaunched).toBe(1);
 });
 
 test('managed applyUpdate leaves restart to the service manager', async () => {
   let relaunched = 0;
   const hooks = createCliAutoUpdateHooks({
+    isDesktopManaged: () => false,
     isManagedService: () => true,
     upgrade: mock(async () => 'installed' as const) as never,
     resolveExec: () => '/opt/aio-proxy',
@@ -91,7 +94,7 @@ test('managed applyUpdate leaves restart to the service manager', async () => {
       relaunched += 1;
     },
   });
-  expect(await hooks.applyUpdate('1.10.0')).toBe('installed');
+  expect(await hooks.applyUpdate?.('1.10.0')).toBe('installed');
   expect(relaunched).toBe(0);
 });
 
@@ -103,18 +106,20 @@ test('applyUpdate reports the daemon running so the managed restart is never ski
     },
   );
   const hooks = createCliAutoUpdateHooks({
+    isDesktopManaged: () => false,
     isManagedService: () => true,
     upgrade: upgrade as never,
     resolveExec: () => '/opt/aio-proxy',
     resolveTargetFrom: async (binPath) => ({ method: 'binary', path: binPath }),
   });
-  expect(await hooks.applyUpdate('1.10.0')).toBe('installed');
+  expect(await hooks.applyUpdate?.('1.10.0')).toBe('installed');
   expect(upgrade).toHaveBeenCalledTimes(1);
 });
 
 test('unmanaged applyUpdate does not print the manual restart hint', async () => {
   const printed: string[] = [];
   const hooks = createCliAutoUpdateHooks({
+    isDesktopManaged: () => false,
     isManagedService: () => false,
     upgrade: mock(async (_options, print: (line: string) => void) => {
       print(m['cli.upgrade.manual_restart_hint']());
@@ -128,7 +133,7 @@ test('unmanaged applyUpdate does not print the manual restart hint', async () =>
       printed.push(line);
     },
   });
-  expect(await hooks.applyUpdate('1.10.0')).toBe('installed');
+  expect(await hooks.applyUpdate?.('1.10.0')).toBe('installed');
   expect(printed).toEqual(['installed 1.10.0']);
   expect(printed.join('\n')).not.toContain(
     'The daemon was started manually; there is no managed service to restart. Restart it yourself to apply the upgrade',
@@ -138,6 +143,7 @@ test('unmanaged applyUpdate does not print the manual restart hint', async () =>
 test('unchanged applyUpdate does not relaunch', async () => {
   let relaunched = 0;
   const hooks = createCliAutoUpdateHooks({
+    isDesktopManaged: () => false,
     isManagedService: () => false,
     upgrade: mock(async () => 'unchanged' as const) as never,
     resolveExec: () => '/opt/aio-proxy',
@@ -146,7 +152,7 @@ test('unchanged applyUpdate does not relaunch', async () => {
       relaunched += 1;
     },
   });
-  expect(await hooks.applyUpdate('1.10.0')).toBe('unchanged');
+  expect(await hooks.applyUpdate?.('1.10.0')).toBe('unchanged');
   expect(relaunched).toBe(0);
 });
 
@@ -254,4 +260,13 @@ test('a unit that already has the marker is not rewritten', async () => {
     },
   });
   expect(writes).toBe(0);
+});
+
+// The Dashboard maps a missing applyUpdate to `unavailable` (server auto-update tests); a desktop
+// sidecar is updated by Sparkle, so it must neither offer a CLI apply nor announce a CLI upgrade.
+test('a desktop-managed sidecar offers no update apply and sends no update notification', () => {
+  const hooks = createCliAutoUpdateHooks({ isManagedService: () => true, isDesktopManaged: () => true });
+  expect(hooks.applyUpdate).toBeUndefined();
+  expect(hooks.notifyAvailable).toBeUndefined();
+  expect(hooks.isManagedService()).toBe(true);
 });

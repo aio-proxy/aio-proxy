@@ -110,8 +110,22 @@ test('createServer reports managedService from the injected auto-update hooks', 
     current: '1.0.0',
     outdated: false,
     managedService: true,
+    applyAvailable: true,
     update: { status: 'idle' },
   });
+  app.close();
+});
+
+test('createServer reports applyAvailable false when the hooks carry no applyUpdate', async () => {
+  const home = isolateHome('aio-proxy-auto-update-no-apply-');
+  const app = await createServer({
+    config: { providers: {} },
+    dbHome: home,
+    version: '1.0.0',
+    autoUpdate: { isManagedService: () => true, fetchLatest: () => new Promise(() => {}) },
+  });
+  const response = await app.request('/dashboard/api/release', undefined, loopbackServer);
+  expect(await response.json()).toMatchObject({ applyAvailable: false });
   app.close();
 });
 

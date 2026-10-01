@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { aioHome, configPath, dbPath, packagesDir, tmpDir, updateCheckPath } from '.';
+import { aioHome, configPath, configPathIn, dbPath, packagesDir, tmpDir, updateCheckPath } from '.';
 
 const original = process.env.AIO_PROXY_HOME;
 
@@ -73,4 +73,14 @@ describe('paths', () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+});
+
+test('configPathIn finds the existing config file inside an explicit home', () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-home-'));
+  try {
+    writeFileSync(join(home, 'config.yaml'), 'providers: {}\n');
+    expect(configPathIn(home)).toBe(join(home, 'config.yaml'));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });

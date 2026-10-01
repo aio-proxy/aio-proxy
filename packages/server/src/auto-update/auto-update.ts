@@ -45,6 +45,7 @@ export type AutoUpdateControllerOptions = {
 
 export type AutoUpdateController = {
   readonly isManagedService: () => boolean;
+  readonly applyAvailable: boolean;
   readonly snapshot: () => AutoUpdateSnapshot;
   readonly check: () => Promise<AutoUpdateCheckResult>;
   readonly apply: () => Promise<AutoUpdateApplyResult>;
@@ -224,6 +225,7 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
 
   return {
     isManagedService: options.isManagedService,
+    applyAvailable: options.applyUpdate !== undefined,
     snapshot,
     check,
     apply,

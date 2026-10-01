@@ -6,7 +6,7 @@ import { managedUnitPath, resolveExec, writeManagedUnit } from '../../service/se
 import { SYSTEMD_UNIT_NAME } from '../../service/unit-templates';
 import { notifyUpdateAvailable } from '../../update-notify';
 import { resolveStableManagedExec, resolveUpgradeTargetFrom } from '../../upgrade/detect';
-import { runUpgradeCommand } from '../../upgrade/upgrade';
+import { isDesktopManagedInstall, runUpgradeCommand } from '../../upgrade/upgrade';
 import { scheduleUnmanagedRelaunch } from './unmanaged-relaunch';
 
 export type ManagedProcessIo = {
@@ -55,52 +55,66 @@ export const isManagedAutoUpdateProcess = (env: NodeJS.ProcessEnv = process.env,
   return false;
 };
 
+export type CliAutoUpdateHooks = {
+  readonly isManagedService: () => boolean;
+  readonly notifyAvailable?: (latest: string) => void | Promise<void>;
+  readonly applyUpdate?: (version: string) => Promise<'installed' | 'unchanged'>;
+};
+
 export const createCliAutoUpdateHooks = (deps?: {
   readonly isManagedService?: () => boolean;
+  readonly isDesktopManaged?: () => boolean;
   readonly upgrade?: typeof runUpgradeCommand;
   readonly resolveExec?: typeof resolveExec;
   readonly resolveTargetFrom?: typeof resolveUpgradeTargetFrom;
   readonly relaunchUnmanaged?: () => void;
   readonly print?: (line: string) => void;
-}) => ({
-  isManagedService: deps?.isManagedService ?? isManagedAutoUpdateProcess,
-  notifyAvailable: (latest: string) => notifyUpdateAvailable(latest),
-  applyUpdate: async (version: string) => {
-    const isManaged = deps?.isManagedService ?? isManagedAutoUpdateProcess;
-    const exec = (deps?.resolveExec ?? resolveExec)();
-    const resolveTarget = async () => (deps?.resolveTargetFrom ?? resolveUpgradeTargetFrom)(exec);
-    const print = deps?.print ?? ((line: string) => console.log(line));
-    const result = await (deps?.upgrade ?? runUpgradeCommand)(
-      { version },
-      (line) => {
-        // `runUpgradeCommand` still emits the unmanaged manual-restart hint.
-        // Dashboard apply then relaunches this process, so that line is stale.
-        if (line === m['cli.upgrade.manual_restart_hint']()) return;
-        print(line);
-      },
-      {
-        resolveTarget,
-        fetchLatest: async () => version,
-        isServiceManaged: isManaged,
-        // Dashboard apply runs inside the daemon, so the default HTTP self-probe can
-        // only be wrong: a busy server, its 3s timeout, or a `server.host` that is not
-        // locally connectable answers "not running", and `runUpgradeCommand` then
-        // returns before its restart branch. Managed skips relaunch too, so the
-        // install lands with nothing restarted and no error to show for it.
-        isDaemonRunning: async () => true,
-      },
-    );
-    if (result === 'installed' && !isManaged()) {
-      try {
-        (deps?.relaunchUnmanaged ?? scheduleUnmanagedRelaunch)();
-      } catch {
-        // Install already succeeded. The dashboard stays on restart_required until
-        // this process is replaced, then falls back to the manual restart hint.
+}): CliAutoUpdateHooks => {
+  const isManagedService = deps?.isManagedService ?? isManagedAutoUpdateProcess;
+  // Sparkle updates a desktop sidecar. Without applyUpdate the release view reports
+  // `applyAvailable: false`, so the Dashboard hides its update card and button (POST apply would
+  // answer `unavailable`), and no notification tells the user to upgrade through a CLI they may not have.
+  if ((deps?.isDesktopManaged ?? isDesktopManagedInstall)()) return { isManagedService };
+  return {
+    isManagedService,
+    notifyAvailable: (latest: string) => notifyUpdateAvailable(latest),
+    applyUpdate: async (version: string) => {
+      const isManaged = isManagedService;
+      const exec = (deps?.resolveExec ?? resolveExec)();
+      const resolveTarget = async () => (deps?.resolveTargetFrom ?? resolveUpgradeTargetFrom)(exec);
+      const print = deps?.print ?? ((line: string) => console.log(line));
+      const result = await (deps?.upgrade ?? runUpgradeCommand)(
+        { version },
+        (line) => {
+          // `runUpgradeCommand` still emits the unmanaged manual-restart hint.
+          // Dashboard apply then relaunches this process, so that line is stale.
+          if (line === m['cli.upgrade.manual_restart_hint']()) return;
+          print(line);
+        },
+        {
+          resolveTarget,
+          fetchLatest: async () => version,
+          isServiceManaged: isManaged,
+          // Dashboard apply runs inside the daemon, so the default HTTP self-probe can
+          // only be wrong: a busy server, its 3s timeout, or a `server.host` that is not
+          // locally connectable answers "not running", and `runUpgradeCommand` then
+          // returns before its restart branch. Managed skips relaunch too, so the
+          // install lands with nothing restarted and no error to show for it.
+          isDaemonRunning: async () => true,
+        },
+      );
+      if (result === 'installed' && !isManaged()) {
+        try {
+          (deps?.relaunchUnmanaged ?? scheduleUnmanagedRelaunch)();
+        } catch {
+          // Install already succeeded. The dashboard stays on restart_required until
+          // this process is replaced, then falls back to the manual restart hint.
+        }
       }
-    }
-    return result;
-  },
-});
+      return result;
+    },
+  };
+};
 
 export type MigratePreMarkerIo = ManagedProcessIo & {
   readonly env?: NodeJS.ProcessEnv;

@@ -9,6 +9,11 @@ export const ignorePatterns = [
   'packages/plugins/cursor/src/gen/**',
   // shadcn-generated primitives are maintained upstream rather than by this repository.
   'packages/ui/src/components/**',
+  // Cargo output and the downloaded Sparkle archive.
+  'desktop/target/**',
+  'desktop/vendor/**',
+  // Icon Composer owns this document's format.
+  '**/*.icon/**',
   'docs/superpowers/**',
   // Verbatim upstream codex instructions snapshot imported as text; must not be reformatted.
   'packages/server/src/server/list-models/codex-client-models/default-instructions.md',

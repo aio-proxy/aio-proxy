@@ -24,6 +24,7 @@ const isolateHome = () => {
 
 const idleController = (overrides: Partial<AutoUpdateController> = {}): AutoUpdateController => ({
   isManagedService: () => false,
+  applyAvailable: true,
   snapshot: () => ({ status: 'idle', outdated: false }),
   check: async () => ({ status: 'check_failed' }),
   apply: async () => ({ status: 'unavailable' }),
@@ -42,7 +43,13 @@ test('reports the running version without touching the registry', async () => {
   const { body, status } = await get('/', () => Promise.reject(new Error('must not be called')));
 
   expect(status).toBe(200);
-  expect(body).toEqual({ current: '1.2.0', outdated: false, managedService: false, update: { status: 'idle' } });
+  expect(body).toEqual({
+    current: '1.2.0',
+    outdated: false,
+    managedService: false,
+    applyAvailable: false,
+    update: { status: 'idle' },
+  });
 });
 
 test('GET / exposes persisted latest from the controller snapshot', async () => {
@@ -62,8 +69,21 @@ test('GET / exposes persisted latest from the controller snapshot', async () => 
     latest: '1.10.0',
     outdated: true,
     managedService: true,
+    applyAvailable: true,
     update: { status: 'idle' },
   });
+});
+
+test('GET / reports applyAvailable false while still reporting outdated', async () => {
+  const routes = createDashboardReleaseRoute(
+    '1.2.0',
+    async () => {
+      throw new Error('must not be called');
+    },
+    idleController({ applyAvailable: false, snapshot: () => ({ status: 'idle', latest: '1.10.0', outdated: true }) }),
+  );
+  const body = await (await routes.request('/')).json();
+  expect(body).toMatchObject({ outdated: true, applyAvailable: false });
 });
 
 test('POST /apply maps controller results to HTTP statuses', async () => {

@@ -13,6 +13,10 @@ export { createTraceStore, decodeTraceCursor, encodeTraceCursor } from './trace-
 export { projectAttributes } from './trace-store/span-projection';
 export type {
   DashboardOverviewQuery,
+  DesktopUsageQuery,
+  DesktopUsageResult,
+  DesktopUsageSlice,
+  DesktopUsageTotals,
   SessionAffinityObservation,
   SessionIdentity,
   SessionResponseOwner,

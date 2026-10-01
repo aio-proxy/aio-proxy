@@ -13,6 +13,8 @@ function recordingCache(): OAuthQuotaCache & { readonly invalidated: string[] } 
       throw new Error('not called');
     },
     warm: () => {},
+    status: () => ({ kind: 'none' }),
+    refresh: () => {},
     invalidate: (providerId) => {
       invalidated.push(providerId);
     },

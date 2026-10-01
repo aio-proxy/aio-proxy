@@ -142,6 +142,7 @@ export function reloadNow(
 export type ServerStateParts = Pick<
   ServerState,
   | 'agentIdentity'
+  | 'desktopToken'
   | 'configStore'
   | 'events'
   | 'logicalSessionStore'
@@ -211,6 +212,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
       if (failures[0] !== undefined) throw failures[0];
     },
     configPath: options.configPath,
+    ...(parts.desktopToken === undefined ? {} : { desktopToken: parts.desktopToken }),
     configStore: parts.configStore,
     currentProviderSnapshot: manager.current,
     debugLogging: options.config.server.logging?.level === 'debug',

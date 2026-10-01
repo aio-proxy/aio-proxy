@@ -15,10 +15,18 @@ export type OAuthQuotaCacheEntry = {
   readonly error?: string;
 };
 
+export type OAuthQuotaCacheStatus =
+  | { readonly kind: 'none' | 'unsupported' | 'loading' | 'failed' }
+  | { readonly kind: 'ready'; readonly entry: OAuthQuotaCacheEntry };
+
 export type OAuthQuotaCache = {
   readonly read: (providerId: string, refresh?: boolean) => Promise<OAuthQuotaCacheEntry>;
   readonly warm: (providerId: string) => void;
   readonly invalidate: (providerId: string) => void;
+  /** A synchronous view of what the cache holds, for callers that must never wait on upstream. */
+  readonly status: (providerId: string) => OAuthQuotaCacheStatus;
+  /** Starts a read that ignores the cooldown, sharing any read already in flight; never awaited. */
+  readonly refresh: (providerId: string) => void;
 };
 
 /**
@@ -122,6 +130,18 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
     read,
     warm: (providerId) => {
       if (unsupported.has(providerId) || cooldown.has(providerId)) return;
+      void start(providerId).catch(() => {});
+    },
+    status: (providerId) => {
+      if (unsupported.has(providerId)) return { kind: 'unsupported' };
+      const entry = entries.get(providerId);
+      if (entry !== undefined) return { kind: 'ready', entry };
+      if (inFlight.has(providerId)) return { kind: 'loading' };
+      if (failures.has(providerId)) return { kind: 'failed' };
+      return { kind: 'none' };
+    },
+    refresh: (providerId) => {
+      if (unsupported.has(providerId)) return;
       void start(providerId).catch(() => {});
     },
     // A Provider ID is reusable: reconfiguration can point it at a different account or plugin, and

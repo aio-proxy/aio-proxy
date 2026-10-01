@@ -1,4 +1,4 @@
-import { AtomicConfigFile, configPath, parseRuntimeConfig } from '@aio-proxy/core';
+import { AtomicConfigFile, canonicalizeLoopbackHost, configPath, parseRuntimeConfig } from '@aio-proxy/core';
 
 import { readServiceEnvironment } from '../service-env';
 
@@ -14,7 +14,10 @@ export const DEFAULT_CONTROL_PORT = '9317';
 // these are read-only probes, so we fall back to the loopback defaults instead of
 // throwing. service.env is loaded first (like `run`) so a host template resolving
 // against a var defined only there still applies.
-export async function resolveControlAddress(options: { readonly host?: string; readonly port?: string }): Promise<{
+export async function resolveControlAddress(
+  options: { readonly host?: string; readonly port?: string },
+  path: string = configPath(),
+): Promise<{
   readonly host: string;
   readonly port: string;
 }> {
@@ -23,7 +26,6 @@ export async function resolveControlAddress(options: { readonly host?: string; r
   }
   let configured: { host?: string; port?: number } = {};
   try {
-    const path = configPath();
     const config = parseRuntimeConfig(await new AtomicConfigFile(path).read(), readServiceEnvironment(path));
     configured = { host: config.server.host, port: config.server.port };
   } catch {
@@ -34,6 +36,15 @@ export async function resolveControlAddress(options: { readonly host?: string; r
     port: options.port ?? (configured.port === undefined ? DEFAULT_CONTROL_PORT : String(configured.port)),
   };
 }
+
+// A local client must connect to a literal loopback address: a wildcard bind is not a destination,
+// and a hostname or LAN address could route a bearer token off this machine. `localhost` is mapped
+// to a literal too, because the desktop client attaches the token only to a literal loopback IP.
+export const localControlHost = (host: string): string | undefined => {
+  if (host === '' || host === '0.0.0.0' || host === '*' || host === 'localhost') return '127.0.0.1';
+  if (host === '::' || host === '[::]') return '::1';
+  return canonicalizeLoopbackHost(host);
+};
 
 // Bracket an IPv6 authority so `--host ::1` yields http://[::1]:9317 instead of
 // the invalid http://::1:9317 (which would make every control-plane probe fail).
@@ -46,9 +57,13 @@ export const codexBaseUrl = (endpoint: string): string => `${endpoint.replace(/\
 // own `status: "ok"` marker, so an unrelated service answering /health on the
 // same port is not mistaken for a running proxy. A non-2xx, non-JSON, or
 // unmarked body — like a network error — reports "not running" (null).
-export const probeHealth = async (base: string): Promise<Health | null> => {
+export const probeHealth = async (
+  base: string,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 3_000,
+): Promise<Health | null> => {
   try {
-    const res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(3_000) });
+    const res = await fetchImpl(`${base}/health`, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
     const data: unknown = await res.json();
     if (typeof data !== 'object' || data === null) return null;

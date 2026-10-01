@@ -1,0 +1,125 @@
+{
+  "protocolVersion": 1,
+  "generatedAt": "2026-09-29T08:00:00.000Z",
+  "server": { "version": "0.36.0", "pid": 4312, "ppid": 4310 },
+  "usage": {
+    "range": "7d",
+    "bucketUnit": "day",
+    "rangeStart": "2026-09-22T16:00:00.000Z",
+    "rangeEnd": "2026-09-29T08:00:00.000Z",
+    "current": {
+      "requests": "257",
+      "failedRequests": "53",
+      "inputTokens": "14815402",
+      "outputTokens": "44305",
+      "estimatedCostNanoUsd": "20521353840",
+      "pricingCoverage": 1
+    },
+    "previous": {
+      "requests": "200",
+      "failedRequests": "60",
+      "inputTokens": "10000000",
+      "outputTokens": "40000",
+      "estimatedCostNanoUsd": "18000000000",
+      "pricingCoverage": 0.5
+    },
+    "buckets": [
+      {
+        "start": "2026-09-28T16:00:00.000Z",
+        "requests": "257",
+        "failedRequests": "53",
+        "totalTokens": "14859707",
+        "estimatedCostNanoUsd": "20521353840"
+      }
+    ],
+    "byModel": [
+      {
+        "modelId": "gpt-5.2-codex",
+        "requests": "257",
+        "failedRequests": "53",
+        "totalTokens": "14859707",
+        "estimatedCostNanoUsd": "20521353840"
+      }
+    ],
+    "byProvider": [
+      {
+        "providerId": "codex",
+        "name": "Codex",
+        "requests": "257",
+        "failedRequests": "53",
+        "totalTokens": "14859707",
+        "estimatedCostNanoUsd": "20521353840"
+      }
+    ],
+    "trendByModel": [
+      {
+        "bucket": 0,
+        "modelId": "gpt-5.2-codex",
+        "requests": "257",
+        "failedRequests": "53",
+        "totalTokens": "14859707",
+        "estimatedCostNanoUsd": "20521353840"
+      }
+    ],
+    "trendByProvider": [
+      {
+        "bucket": 0,
+        "providerId": "codex",
+        "requests": "257",
+        "failedRequests": "53",
+        "totalTokens": "14859707",
+        "estimatedCostNanoUsd": "20521353840"
+      }
+    ]
+  },
+  "activity": [
+    {
+      "date": "2026-09-29",
+      "totalTokens": "14859707",
+      "models": [{ "modelId": "gpt-5.2-codex", "totalTokens": "14859707" }]
+    }
+  ],
+  "providers": [
+    {
+      "id": "codex",
+      "name": "Codex",
+      "service": { "default": "OpenAI ChatGPT", "zh-Hans": "OpenAI ChatGPT" },
+      "icon": "openai",
+      "enabled": true,
+      "accountLabel": "you@example.com",
+      "state": "ok",
+      "diagnostic": null,
+      "quota": {
+        "status": "ready",
+        "sampledAt": "2026-09-29T07:58:00.000Z",
+        "refreshFailed": false,
+        "plan": { "default": "Pro", "zh-Hans": "专业版" },
+        "windows": [
+          {
+            "id": "primary",
+            "label": { "default": "5 hours", "zh-Hans": "5 小时" },
+            "remainingRatio": 0.4,
+            "resetsAt": "2026-09-29T10:00:00.000Z",
+            "windowMinutes": 300
+          }
+        ]
+      }
+    },
+    {
+      "id": "cursor",
+      "name": "cursor",
+      "service": "Cursor",
+      "icon": null,
+      "enabled": true,
+      "accountLabel": null,
+      "state": "degraded",
+      "diagnostic": {
+        "code": "CREDENTIAL_REFRESH_FAILED",
+        "summary": "Refresh token expired",
+        "suggestedCommand": "aio-proxy provider login --provider cursor"
+      },
+      "quota": { "status": "loading" }
+    }
+  ],
+  "alerts": [{ "providerId": "cursor", "kind": "diagnostic", "message": "Refresh token expired" }]
+}

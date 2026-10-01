@@ -256,6 +256,7 @@
       "uninstalled": "服務已從 {path} 移除",
       "auto_install_failed": "自動安裝或啟動背景服務失敗：{reason}。解決上述錯誤後，請執行 `aio-proxy service install --user`，再執行 `aio-proxy service start`。",
       "command_failed": "服務命令執行失敗：{command}（結束代碼 {code}）",
+      "bootout_timeout": "`launchctl bootout {target}` 執行 {seconds} 秒後服務仍處於已載入狀態，未再次啟動",
       "unsupported_platform": "service 命令不支援目前平台：{platform}",
       "system_unsupported": "暫不支援系統層級安裝，請改用使用者層級服務安裝",
       "exec_not_found": "在 PATH 中找不到 “aio-proxy” 可執行檔。請先全域安裝 aio-proxy（例如 `npm i -g aio-proxy`）再安裝服務",
@@ -285,6 +286,8 @@
       "via": "正在透過 {method} 升級……",
       "success": "已升級到 v{version}",
       "detect_failed": "無法確定 aio-proxy 的安裝方式：{reason}",
+      "desktop_managed": "此 aio-proxy 由 aio-proxy 桌面端管理，請透過桌面端更新。",
+      "desktop_service_skipped": "背景服務屬於 aio-proxy 桌面端，執行的是桌面端內建的副本，因此未重新啟動。",
       "install_failed": "升級失敗：{reason}",
       "manual_restart_hint": "守護行程是手動啟動的，沒有可重新啟動的受管服務。請自行重新啟動以套用升級",
       "restarting": "正在重新啟動守護行程……"

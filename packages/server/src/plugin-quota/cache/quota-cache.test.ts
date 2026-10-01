@@ -188,3 +188,64 @@ test('an invalidated read joins the replacement instead of reading the new accou
   expect(await retired).toEqual(await replacement);
   expect(calls).toBe(2);
 });
+
+const never = (): OAuthQuotaReader => ({ read: () => new Promise<OAuthQuotaSnapshot>(() => {}) });
+
+test('status reports loading while a first read is in flight and none before any read', () => {
+  const cache = createOAuthQuotaCache(never());
+  expect(cache.status('p').kind).toBe('none');
+  cache.warm('p');
+  expect(cache.status('p').kind).toBe('loading');
+});
+
+test('status tells a failed first read apart from one still loading', async () => {
+  const cache = createOAuthQuotaCache(countingReader([new Error('upstream down')]));
+  await cache.read('p').catch(() => {});
+  expect(cache.status('p').kind).toBe('failed');
+});
+
+test('status keeps serving the old snapshot, flagged stale, after a failed refresh', async () => {
+  const cache = createOAuthQuotaCache(countingReader([snapshot('a'), new Error('upstream down')]));
+  await cache.read('p');
+  await cache.read('p', true);
+  const status = cache.status('p');
+  expect(status.kind).toBe('ready');
+  if (status.kind === 'ready') {
+    expect(status.entry.snapshot).toEqual(snapshot('a'));
+    expect(status.entry.stale).toBe(true);
+  }
+});
+
+test('status reports a permanently unsupported provider as unsupported', async () => {
+  const cache = createOAuthQuotaCache(countingReader([new OAuthQuotaCapabilityUnavailableError(true)]));
+  await cache.read('p').catch(() => {});
+  expect(cache.status('p').kind).toBe('unsupported');
+});
+
+test('refresh bypasses the cooldown in the background and shares one in-flight read', async () => {
+  // The refresh read stays pending until released, so the test never depends on how many microtask
+  // turns the cache's promise chain takes.
+  let release: (value: OAuthQuotaSnapshot) => void = () => {};
+  let calls = 0;
+  const cache = createOAuthQuotaCache({
+    read: () => {
+      calls += 1;
+      if (calls === 1) return Promise.resolve(snapshot('a'));
+      return new Promise<OAuthQuotaSnapshot>((resolve) => {
+        release = resolve;
+      });
+    },
+  });
+  await cache.read('p');
+  cache.refresh('p');
+  cache.refresh('p');
+  expect(calls).toBe(2);
+  const during = cache.status('p');
+  expect(during.kind === 'ready' && during.entry.snapshot).toEqual(snapshot('a'));
+  release(snapshot('b'));
+  // read(…, true) joins the refresh already in flight instead of starting a third read.
+  await cache.read('p', true);
+  expect(calls).toBe(2);
+  const after = cache.status('p');
+  expect(after.kind === 'ready' && after.entry.snapshot).toEqual(snapshot('b'));
+});

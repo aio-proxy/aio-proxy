@@ -6,7 +6,9 @@ import {
   createEmbeddedBuiltIns,
   createPluginDiagnosticFactory,
   createPluginRepository,
+  DesktopTokenRejectedError,
   type DiagnosticFactory,
+  ensureDesktopToken,
   pluginDefaultAliases,
   RECOVERY_DRAIN_RETRY_MS,
   Router,
@@ -42,6 +44,7 @@ import { createRequestTraceRecorder, syncOtelDestinations } from '../request-tra
 import { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import { createRealtimeCallStore } from '../routes/realtime';
 import { createVideoJobStore } from '../routes/videos';
+import { logServerEvent, type ServerLogSink } from '../server-log';
 import { createUsageCapture } from '../usage-capture';
 import type { ServerRuntime } from './lifecycle';
 import {
@@ -73,6 +76,20 @@ export function createServerDiagnosticFactory(now: () => number = Date.now): Dia
 function serverDbOptions(options: ServerStateOptions): OpenDbOptions {
   if (options.dbHome !== undefined) return { home: options.dbHome };
   return options.configPath === undefined ? {} : { home: dirname(options.configPath) };
+}
+
+function loadDesktopToken(home: string | undefined, logger: ServerLogSink): string | undefined {
+  if (home === undefined) return undefined;
+  try {
+    return ensureDesktopToken(home);
+  } catch (error) {
+    // A rejected or unwritable token file disables only the desktop client; the proxy must still start.
+    logServerEvent(logger, {
+      event: 'desktop_token.unavailable',
+      reason: error instanceof DesktopTokenRejectedError ? error.reason : 'unwritable',
+    });
+    return undefined;
+  }
 }
 
 function createStartupCleanup() {
@@ -254,8 +271,10 @@ async function initializeServerState(
   if (watcher !== undefined) registerStartupCleanup(() => watcher.close());
   failAfter('watcher');
   syncOtelDestinations(options.config.server.otel.destinations, logger);
+  const desktopToken = loadDesktopToken(serverDbOptions(options).home, logger);
   activeState = assembleServerState(runtime, {
     agentIdentity,
+    ...(desktopToken === undefined ? {} : { desktopToken }),
     manager,
     dbHandle,
     databaseOwnership,

@@ -49,3 +49,103 @@ jobs:
       - run: bun run lint:types
       - run: bun run test:unit -- --concurrency=2
       - run: bun run test:e2e:api
+
+  desktop-changes:
+    if: github.event_name == 'push' || !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.diff.outputs.rust }}
+      bundle: ${{ steps.diff.outputs.bundle }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          changed() {
+            if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+              echo true
+            elif git diff --quiet "$BASE...HEAD" -- "$@"; then
+              echo false
+            else
+              echo true
+            fi
+          }
+          echo "rust=$(changed desktop npm/aio-proxy/package.json packages/types/src/desktop-summary/fixtures .github/workflows/ci.yml)" >> "$GITHUB_OUTPUT"
+          # Server and dashboard changes are left out to spare macOS minutes; the release desktop job
+          # always runs the full runtime smoke before signing (spec "CI").
+          echo "bundle=$(changed desktop packages/cli/scripts packages/brand/src/app-icon.icon .github/workflows bun.lock .bun-version)" >> "$GITHUB_OUTPUT"
+
+  rust:
+    needs: desktop-changes
+    if: needs.desktop-changes.outputs.rust == 'true'
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the pinned Rust toolchain
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            desktop/target
+          key: ${{ runner.os }}-desktop-${{ hashFiles('desktop/rust-toolchain.toml', 'desktop/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-desktop-
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  bundle-smoke:
+    needs: desktop-changes
+    if: needs.desktop-changes.outputs.bundle == 'true'
+    # actool compiles the app icon from its Icon Composer document only with Xcode 26 on macOS 26.
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - run: bun install --frozen-lockfile --prefer-offline
+
+      - name: Install the pinned Rust toolchain
+        working-directory: desktop
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --target aarch64-apple-darwin
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            desktop/target
+          key: ${{ runner.os }}-desktop-bundle-${{ hashFiles('desktop/rust-toolchain.toml', 'desktop/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-desktop-bundle-
+
+      # Build, Mach-O checks, runtime smoke, ad-hoc hardened signature, then the signed smoke with
+      # the JIT check.
+      - run: bun run desktop:bundle --unsigned

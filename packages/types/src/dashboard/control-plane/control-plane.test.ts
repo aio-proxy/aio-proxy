@@ -155,11 +155,18 @@ describe('dashboard release control-plane contracts', () => {
   test('release view reports persisted latest and outdated without requiring them', () => {
     const view = schema('DashboardReleaseViewSchema');
     expect(
-      view.parse({ current: '1.2.0', outdated: false, managedService: false, update: { status: 'idle' } }),
+      view.parse({
+        current: '1.2.0',
+        outdated: false,
+        managedService: false,
+        applyAvailable: false,
+        update: { status: 'idle' },
+      }),
     ).toEqual({
       current: '1.2.0',
       outdated: false,
       managedService: false,
+      applyAvailable: false,
       update: { status: 'idle' },
     });
     expect(
@@ -168,6 +175,7 @@ describe('dashboard release control-plane contracts', () => {
         latest: '1.10.0',
         outdated: true,
         managedService: false,
+        applyAvailable: false,
         update: { status: 'idle' },
       }),
     ).toEqual({
@@ -175,9 +183,13 @@ describe('dashboard release control-plane contracts', () => {
       latest: '1.10.0',
       outdated: true,
       managedService: false,
+      applyAvailable: false,
       update: { status: 'idle' },
     });
-    expect(view.safeParse({ current: '1.2.0', managedService: false, update: { status: 'idle' } }).success).toBe(false);
+    expect(
+      view.safeParse({ current: '1.2.0', managedService: false, applyAvailable: false, update: { status: 'idle' } })
+        .success,
+    ).toBe(false);
   });
 });
 

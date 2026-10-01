@@ -256,6 +256,7 @@
       "uninstalled": "服务已从 {path} 移除",
       "auto_install_failed": "自动安装或启动后台服务失败：{reason}。解决上述错误后，请运行 `aio-proxy service install --user`，再运行 `aio-proxy service start`。",
       "command_failed": "服务命令执行失败：{command}（退出码 {code}）",
+      "bootout_timeout": "`launchctl bootout {target}` 执行 {seconds} 秒后服务仍处于已加载状态，未再次启动",
       "unsupported_platform": "service 命令不支持当前平台：{platform}",
       "system_unsupported": "暂不支持系统级安装，请改用用户级服务安装",
       "exec_not_found": "在 PATH 中找不到 “aio-proxy” 可执行文件。请先全局安装 aio-proxy（例如 `npm i -g aio-proxy`）再安装服务",
@@ -285,6 +286,8 @@
       "via": "正在通过 {method} 升级……",
       "success": "已升级到 v{version}",
       "detect_failed": "无法确定 aio-proxy 的安装方式：{reason}",
+      "desktop_managed": "此 aio-proxy 由 aio-proxy 桌面端管理，请通过桌面端更新。",
+      "desktop_service_skipped": "后台服务属于 aio-proxy 桌面端，运行的是桌面端自带的副本，因此未重启。",
       "install_failed": "升级失败：{reason}",
       "manual_restart_hint": "守护进程是手动启动的，没有可重启的托管服务。请自行重启以应用升级",
       "restarting": "正在重启守护进程……"

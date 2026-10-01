@@ -22,6 +22,7 @@ import type {
 } from '@aio-proxy/types';
 
 import type { SpanAttributesJson, SpanEventJson, SpanLinkJson } from '../schema/trace-span';
+import type { DesktopUsageQuery, DesktopUsageResult } from './desktop-usage';
 import type { TraceFilters } from './trace-filters';
 
 export type StoredSpan = {
@@ -176,6 +177,7 @@ export type TraceStore = {
   readonly overviewDashboard: (query: DashboardOverviewQuery) => DashboardOverviewResponse;
   readonly overviewDashboardDiagnostics: (query: DashboardOverviewQuery) => DashboardOverviewDiagnosticsResponse;
   readonly overviewDashboardActivity: (options?: { readonly now?: Date }) => DashboardOverviewActivityResponse;
+  readonly desktopUsage: (query: DesktopUsageQuery) => DesktopUsageResult;
   readonly resolveResponse: (responseId: string, now: Date) => SessionResponseResolution | undefined;
   readonly markResponseAmbiguous: (responseId: string, now: Date) => void;
   readonly findAffinity: (

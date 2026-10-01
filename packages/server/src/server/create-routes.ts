@@ -23,6 +23,7 @@ import {
   requireDashboardAuthentication,
 } from '../dashboard-auth';
 import { createDashboardRoutes } from '../dashboard-routes/config';
+import { createDesktopSummaryRoute } from '../dashboard-routes/desktop-summary';
 import { createAnthropicMessagesRoutes } from '../routes/anthropic-messages';
 import { createGeminiGenerateContentRoutes } from '../routes/gemini-generate-content';
 import { createGeminiInteractionsRoutes } from '../routes/gemini-interactions';
@@ -167,6 +168,19 @@ const mountAdminControlPlane = (
   });
 };
 
+/** Registered ahead of every `/dashboard/*` middleware on purpose: the desktop summary carries its own
+ *  guard (desktop token + loopback peer) and must not inherit dashboard-session authentication. */
+const mountHealthAndDesktopSummary = (app: Hono, state: ServerState, version: string): void => {
+  app.get('/health', (context) =>
+    context.json({
+      status: 'ok',
+      uptime: performance.now() / 1_000,
+      version,
+    }),
+  );
+  app.route('/dashboard/api/desktop-summary', createDesktopSummaryRoute(state, version));
+};
+
 /** Narrows `ServerState` to what realtime is allowed to see: no usage capture, no
  *  request recorder, no cooldown store. */
 const realtimeRouteSource = (state: ServerState): RealtimeRouteSource => ({
@@ -225,13 +239,7 @@ export const createRoutes = (
   app.get('/v1/models', parseAgentCatalogNegotiation, modelAuthentication, listModelsHandler(state));
   app.use('/v1/*', modelAuthentication);
   app.use('/v1beta/*', modelAuthentication);
-  app.get('/health', (context) =>
-    context.json({
-      status: 'ok',
-      uptime: performance.now() / 1_000,
-      version,
-    }),
-  );
+  mountHealthAndDesktopSummary(app, state, version);
   const dashboardAuth = createDashboardAuthentication(
     () => state.currentConfig().server.password,
     Date.now,

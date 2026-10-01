@@ -38,6 +38,7 @@ const idleRelease: DashboardReleaseView = {
   current: '1.4.2',
   outdated: false,
   managedService: false,
+  applyAvailable: true,
   update: { status: 'idle' },
 };
 
@@ -48,6 +49,7 @@ const withRelease = (
   current: '1.4.2',
   outdated: false,
   managedService: false,
+  applyAvailable: true,
   update: { status: update },
   ...extra,
 });
@@ -79,6 +81,7 @@ const syncReleaseFromCheck = (result: { current: string; latest: string; outdate
         latest: result.latest,
         outdated: result.outdated,
         managedService: current.data?.managedService ?? false,
+        applyAvailable: current.data?.applyAvailable ?? true,
         update: current.data?.update ?? { status: 'idle' },
       },
     });
@@ -216,6 +219,14 @@ test('enables Update now from a persisted outdated GET without clicking Check', 
   expect(screen.getByText(/1\.10\.0/u)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
   expect(screen.queryByRole('button', { name: checkName })).not.toBeInTheDocument();
+});
+
+test('offers no Update now, but keeps Check, when the server cannot apply updates', async () => {
+  prepare(withRelease('idle', { latest: '1.10.0', outdated: true, applyAvailable: false }));
+  await renderGroup();
+
+  expect(screen.queryByRole('button', { name: updateNowName })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: checkName })).toBeInTheDocument();
 });
 
 test('disables Update now and polls when GET already reports in_progress', async () => {

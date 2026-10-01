@@ -17,7 +17,7 @@ import { configEdit, configPathCommand, configShow, configValidate } from './con
 import { dashboardCommand } from './dashboard';
 import { type CliDeps, defaultCliDeps } from './dashboard-assets';
 import { doctorCommand } from './doctor';
-import { isKnownCliUserError, toExitCode } from './exit';
+import { CliExit, EXIT, isKnownCliUserError, toExitCode } from './exit';
 import { pluginAdd, pluginConfig, pluginList, pluginPrune, pluginRemove } from './plugin-commands';
 import { providerImport, providerList, providerLogin, providerTest } from './provider-commands';
 import { reloadCommand } from './reload';
@@ -155,6 +155,17 @@ const registerHiddenPostUpgrade = (program: Command, deps: CliDeps): void => {
       now: agent.now,
     });
     console.log(JSON.stringify(results));
+  });
+};
+
+const registerHiddenDesktopConnect = (program: Command): void => {
+  program.command('__desktop-connect', { hidden: true }).action(async () => {
+    const { defaultDesktopConnectDeps, printDesktopConnect } = await import('./desktop-connect');
+    const deps = defaultDesktopConnectDeps(VERSION);
+    if (deps.platform !== 'darwin') {
+      throw new CliExit(EXIT.unrecoverable, m['cli.service.unsupported_platform']({ platform: deps.platform }));
+    }
+    await printDesktopConnect(deps, (text) => process.stdout.write(text));
   });
 };
 
@@ -301,6 +312,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
 
   bindAgentCommands(program, deps);
   registerHiddenPostUpgrade(program, deps);
+  registerHiddenDesktopConnect(program);
 
   return program;
 };

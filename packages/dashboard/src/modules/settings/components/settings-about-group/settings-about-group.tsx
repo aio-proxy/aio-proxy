@@ -37,10 +37,12 @@ export const SettingsAboutGroup: React.FC = () => {
   });
   // One action at a time while current or applying. A failed/unavailable install still
   // leaves Check so the user can recheck the registry instead of only retrying apply.
+  const applyAvailable = release.data?.applyAvailable === true;
   const hideCheck =
-    applyRelease.inProgress ||
-    applyRelease.restartRequired ||
-    (applyRelease.releaseAvailable && !applyRelease.failed && !applyRelease.unavailable);
+    applyAvailable &&
+    (applyRelease.inProgress ||
+      applyRelease.restartRequired ||
+      (applyRelease.releaseAvailable && !applyRelease.failed && !applyRelease.unavailable));
 
   // A failed lookup must not read as "up to date": an unreachable registry says nothing
   // about the published version. A failed install is the same — do not replace it with
@@ -81,7 +83,7 @@ export const SettingsAboutGroup: React.FC = () => {
                 {m['dashboard.settings.version_check']()}
               </Button>
             )}
-            <SettingsUpdateNowButton {...applyRelease} />
+            {applyAvailable ? <SettingsUpdateNowButton {...applyRelease} /> : null}
             <SettingsExternalLink
               href={current === undefined ? REPOSITORY_URL : `${REPOSITORY_URL}/releases/tag/v${current}`}
               label={m['dashboard.settings.version']()}

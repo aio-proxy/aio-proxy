@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { join } from 'node:path';
 
 import { websocket } from '@aio-proxy/server';
 
@@ -159,4 +160,37 @@ test('the websocket handler carries its own 255s idle window without mutating Ho
   expect(websocket).not.toHaveProperty('idleTimeout');
   // `sendPings` stays at its default `true`; pinning it here would be pinning Bun's default.
   expect(options.websocket).not.toHaveProperty('sendPings');
+});
+
+/** launchd never SIGKILLs a sidecar that outlives SIGTERM, so the process must bound its own exit.
+ *  Run in a child process because the behavior under test is the process exiting. `releases` says
+ *  whether the shutdown callback frees the only handle keeping the event loop alive, standing in for
+ *  a clean shutdown (true) versus one stuck on an outbound connection (false). */
+const stopWithSigterm = async (releases: boolean, deadlineMs = 1_000) => {
+  const script = `
+    import { onShutdownSignal } from ${JSON.stringify(join(import.meta.dir, 'run.ts'))};
+    const busy = setInterval(() => {}, 1_000);
+    onShutdownSignal(() => { ${releases ? 'clearInterval(busy);' : ''} }, ${deadlineMs});
+    console.log('ready');
+  `;
+  const child = Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'inherit' });
+  await child.stdout.getReader().read();
+  const started = performance.now();
+  child.kill('SIGTERM');
+  const code = await child.exited;
+  return { code, elapsedMs: performance.now() - started };
+};
+
+test('a shutdown that leaves the event loop busy still exits cleanly at the deadline', async () => {
+  const { code, elapsedMs } = await stopWithSigterm(false);
+  expect(code).toBe(0);
+  expect(elapsedMs).toBeGreaterThanOrEqual(900);
+  expect(elapsedMs).toBeLessThan(3_000);
+});
+
+test('a clean shutdown exits at once instead of waiting for the deadline', async () => {
+  // A deadline far above the assertion: a slow CI child start cannot fake a pass or a failure.
+  const { code, elapsedMs } = await stopWithSigterm(true, 10_000);
+  expect(code).toBe(0);
+  expect(elapsedMs).toBeLessThan(3_000);
 });

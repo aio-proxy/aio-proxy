@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <!-- The bundled aio-proxy sidecar's only entitlement. JavaScriptCore needs MAP_JIT under the
+       hardened runtime; without it Bun silently falls back to the interpreter (no "JS JIT Generated
+       Code" region in vmmap, about 30% slower requests). allow-jit is the narrowest JIT-capable key.
+       Native-addon plugins are unsupported under the desktop sidecar, so library validation stays on. -->
+  <key>com.apple.security.cs.allow-jit</key><true/>
+</dict></plist>

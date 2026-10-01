@@ -78,6 +78,20 @@ export const traceSpan = sqliteTable(
     index('trace_span_root_started_idx').on(table.parentSpanId, table.startedAt),
     // Keep the parent equality so SQLite prefers this range lookup over the Provider index.
     index('trace_span_root_ended_idx').on(table.parentSpanId, table.endedAt).where(sql.raw('parent_span_id IS NULL')),
+    // Covers the desktop panel's per-Provider split so a 30-day read never touches the table. The parent
+    // column stays in the key because SQLite only treats the index as covering when it also holds the
+    // column the partial predicate and the query's WHERE name.
+    index('trace_span_root_usage_idx')
+      .on(
+        table.parentSpanId,
+        table.endedAt,
+        table.finalProviderId,
+        table.terminationReason,
+        table.inputTokens,
+        table.outputTokens,
+        table.estimatedCostNanoUsd,
+      )
+      .where(sql.raw('parent_span_id IS NULL')),
     index('trace_span_root_status_started_idx').on(table.parentSpanId, table.statusCode, table.startedAt),
     index('trace_span_root_provider_started_idx').on(table.parentSpanId, table.finalProviderId, table.startedAt),
     index('trace_span_root_model_started_idx').on(

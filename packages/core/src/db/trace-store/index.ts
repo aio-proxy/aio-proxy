@@ -1,4 +1,5 @@
 export { createTraceStore } from './trace-store';
+export type { DesktopUsageQuery, DesktopUsageResult, DesktopUsageSlice, DesktopUsageTotals } from './desktop-usage';
 export { decodeTraceCursor, encodeTraceCursor } from './trace-queries';
 export type {
   DashboardOverviewQuery,

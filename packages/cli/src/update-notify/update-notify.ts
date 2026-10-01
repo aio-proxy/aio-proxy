@@ -5,7 +5,15 @@ import { readUpdateCheckState, withUpdateCheckLock, writeUpdateCheckState } from
 import { m } from '@aio-proxy/i18n';
 import { isRecord } from '@aio-proxy/shared';
 
-export const shouldPrintUpdateBanner = (commandChain: readonly string[], argv: readonly string[]): boolean => {
+import { isDesktopManagedInstall } from '../upgrade/upgrade';
+
+export const shouldPrintUpdateBanner = (
+  commandChain: readonly string[],
+  argv: readonly string[],
+  isDesktopManaged: () => boolean = isDesktopManagedInstall,
+): boolean => {
+  // Sparkle updates a desktop binary; `aio-proxy upgrade` would refuse it.
+  if (isDesktopManaged()) return false;
   if (argv.includes('--version') || argv.includes('-v')) return false;
   if (commandChain.includes('upgrade') || commandChain.includes('update')) return false;
   const authIndex = commandChain.indexOf('auth');

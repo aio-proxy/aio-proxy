@@ -1,0 +1,3 @@
+[env]
+# One deployment target for every cargo command; LSMinimumSystemVersion and the bundle minos check use the same 13.0.
+MACOSX_DEPLOYMENT_TARGET = { value = "13.0", force = true }

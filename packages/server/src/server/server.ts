@@ -41,7 +41,7 @@ export type CreateServerOptions = {
   readonly agentHost?: AgentHostPort;
   readonly autoUpdate?: {
     readonly isManagedService: () => boolean;
-    readonly applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>;
+    readonly applyUpdate?: (version: string) => Promise<'installed' | 'unchanged'>;
     readonly notifyAvailable?: (latest: string) => void | Promise<void>;
     readonly fetchLatest?: (pkg: string) => Promise<string>;
   };

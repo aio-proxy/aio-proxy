@@ -8,6 +8,7 @@ import {
   controlBaseUrl,
   DEFAULT_CONTROL_HOST,
   DEFAULT_CONTROL_PORT,
+  localControlHost,
   probeHealth,
   resolveControlAddress,
 } from './control-plane';
@@ -122,5 +123,34 @@ test('the shared control address resolves host and port templates from service.e
     else process.env.AGENT_BIND_HOST = previousHost;
     if (previousPort === undefined) delete process.env.AGENT_BIND_PORT;
     else process.env.AGENT_BIND_PORT = previousPort;
+  }
+});
+
+test.each([
+  ['0.0.0.0', '127.0.0.1'],
+  ['', '127.0.0.1'],
+  ['*', '127.0.0.1'],
+  ['::', '::1'],
+  ['[::]', '::1'],
+  ['localhost', '127.0.0.1'],
+  ['127.0.0.1', '127.0.0.1'],
+  ['127.0.0.5', '127.0.0.5'],
+  ['::1', '::1'],
+  ['[::1]', '::1'],
+  ['192.168.1.5', undefined],
+  ['::ffff:127.0.0.1', undefined],
+  ['proxy.example.com', undefined],
+])('localControlHost(%p) is %p', (host, expected) => {
+  expect(localControlHost(host)).toBe(expected);
+});
+
+test('resolveControlAddress reads the config at an explicit path, not the environment home', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-ctrl-explicit-'));
+  try {
+    writeFileSync(join(home, 'config.jsonc'), '{ "server": { "host": "0.0.0.0", "port": 19317 }, "providers": {} }\n');
+    const { host, port } = await resolveControlAddress({}, join(home, 'config.jsonc'));
+    expect({ host, port }).toEqual({ host: '0.0.0.0', port: '19317' });
+  } finally {
+    rmSync(home, { recursive: true, force: true });
   }
 });

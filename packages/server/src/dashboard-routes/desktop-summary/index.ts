@@ -1,0 +1,1 @@
+export { createDesktopSummaryRoute } from './route';

@@ -184,3 +184,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: bun run scripts/homebrew-notify.ts "$VERSION"
+
+  # The macOS app for the version just published. The desktop publish runs as its own workflow run,
+  # so it never holds the release concurrency group, and it never gates npm, Docker or Homebrew. A
+  # failure is resumed by dispatching desktop-release.yml with the tag. Canary dispatches never set
+  # `published`, so they skip it.
+  desktop:
+    needs: release
+    if: ${{ !cancelled() && needs.release.outputs.published == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ fromJSON(needs.release.outputs['published-packages'])[0].version }}
+    steps:
+      - name: Dispatch the desktop release
+        run: gh workflow run desktop-release.yml --repo aio-proxy/aio-proxy --ref main -f tag="v$VERSION"

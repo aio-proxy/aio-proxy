@@ -256,6 +256,7 @@
       "uninstalled": "サービスを {path} から削除しました",
       "auto_install_failed": "サービスの自動インストールまたは起動に失敗しました: {reason}。エラーを解決してから `aio-proxy service install --user`、`aio-proxy service start` を実行してください。",
       "command_failed": "サービスコマンドが失敗しました: {command} (終了コード {code})",
+      "bootout_timeout": "`launchctl bootout {target}` から {seconds} 秒経ってもサービスがまだロードされています。再起動は行いません",
       "unsupported_platform": "service コマンドはこのプラットフォームをサポートしていません: {platform}",
       "system_unsupported": "システムスコープのインストールは現在未対応です。代わりにユーザーごとのサービスとしてインストールしてください",
       "exec_not_found": "PATH 上に \"aio-proxy\" 実行ファイルが見つかりません。サービスをインストールする前に aio-proxy をグローバルにインストールしてください (例: `npm i -g aio-proxy`)",
@@ -285,6 +286,8 @@
       "via": "{method} 経由でアップグレードしています…",
       "success": "v{version} にアップグレードしました",
       "detect_failed": "aio-proxy のインストール方法を特定できません: {reason}",
+      "desktop_managed": "この aio-proxy は aio-proxy デスクトップアプリで管理されています。デスクトップアプリから更新してください。",
+      "desktop_service_skipped": "バックグラウンドサービスは aio-proxy デスクトップアプリのもので、アプリ同梱のコピーで動作しているため、再起動しませんでした。",
       "install_failed": "アップグレードに失敗しました: {reason}",
       "manual_restart_hint": "デーモンは手動で起動されており、再起動するマネージドサービスがありません。アップグレードを適用するには自分で再起動してください",
       "restarting": "デーモンを再起動しています…"

@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+
 import { m } from '@aio-proxy/i18n';
 import { AgentPluginTargetSchema } from '@aio-proxy/types';
 
@@ -5,7 +7,7 @@ import packageJson from '../../package.json' with { type: 'json' };
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
 import { defaultCliDeps } from '../dashboard-assets';
 import { CliExit, EXIT } from '../exit';
-import { isManagedServiceInstalled, serviceRestart } from '../service';
+import { isManagedServiceInstalled, readDesktopOwnedUnit, serviceRestart } from '../service';
 import { updateViaBinary } from './binary';
 import { NPM_REGISTRY, type UpgradeTarget } from './constants';
 import { resolveManagedRestartExec, resolveUpgradeTarget } from './detect';
@@ -34,6 +36,8 @@ export type UpgradeDeps = AgentUpgradeHandoffDeps & {
   // vs. manual-run hint) are testable without real health probing or launchctl.
   readonly isDaemonRunning: () => Promise<boolean>;
   readonly isServiceManaged: () => boolean;
+  readonly isDesktopManaged: () => boolean;
+  readonly isDesktopOwnedUnit: () => boolean;
   readonly restartService: (exec?: string) => Promise<void>;
   readonly readInstalledVersion: (bin: string) => Promise<string>;
 };
@@ -87,6 +91,25 @@ const captureManagedAgentTargets = async (): Promise<AgentPostUpgradePayload> =>
   return { format: 1, targets };
 };
 
+/**
+ * A binary inside a desktop app bundle belongs to Sparkle: rewriting it breaks the app's signature,
+ * and a package-manager install would fork the daemon away from the app. This covers `aio-proxy
+ * upgrade`, Dashboard apply, and auto-update, which all funnel through runUpgradeCommand.
+ */
+export const isDesktopManagedInstall = (
+  env: NodeJS.ProcessEnv = process.env,
+  execPath: string = process.execPath,
+  realpath: (path: string) => string = realpathSync,
+): boolean => {
+  if (env['AIO_PROXY_UPGRADE_METHOD'] === 'desktop') return true;
+  if ((env['AIO_PROXY_DESKTOP_EXEC'] ?? '') !== '') return true;
+  try {
+    return /\.app\/Contents\/MacOS\//u.test(realpath(execPath));
+  } catch {
+    return false;
+  }
+};
+
 const defaultDeps: UpgradeDeps = {
   resolveTarget: resolveUpgradeTarget,
   fetchLatest: (registry) => fetchLatestVersion(registry),
@@ -100,6 +123,8 @@ const defaultDeps: UpgradeDeps = {
     (await import('./agent-post-upgrade-process')).invokeAgentPostUpgrade(binary, payload),
   isDaemonRunning: probeDaemonRunning,
   isServiceManaged: isManagedServiceInstalled,
+  isDesktopManaged: () => isDesktopManagedInstall(),
+  isDesktopOwnedUnit: () => readDesktopOwnedUnit(),
   restartService: async (exec) => serviceRestart(exec === undefined ? {} : { exec }),
   readInstalledVersion: readBinVersion,
 };
@@ -122,6 +147,7 @@ export const runUpgradeCommand = async (
   overrides: Partial<UpgradeDeps> = {},
 ): Promise<'installed' | 'unchanged'> => {
   const deps = createUpgradeDeps(overrides);
+  if (deps.isDesktopManaged()) throw new CliExit(EXIT.unrecoverable, m['cli.upgrade.desktop_managed']());
   const registry = options.registry ?? NPM_REGISTRY;
   // resolveTarget throws when aio-proxy is not on PATH; surface the real reason
   // and an unrecoverable exit code instead of a generic "Unexpected internal error".
@@ -193,6 +219,12 @@ export const runUpgradeCommand = async (
   // restart it themselves instead of failing the upgrade.
   if (!deps.isServiceManaged()) {
     print(m['cli.upgrade.manual_restart_hint']());
+    return 'installed';
+  }
+  // The desktop app's service runs the app's own binary, which this upgrade did not touch. Restarting
+  // it would rewrite the app's plist to this install and strip its markers (owner flips to external).
+  if (deps.isDesktopOwnedUnit()) {
+    print(m['cli.upgrade.desktop_service_skipped']());
     return 'installed';
   }
   print(m['cli.upgrade.restarting']());
