@@ -26,6 +26,10 @@ pub fn start(cx: &mut App) {
             log::info(format!("install: {install:?}"));
             let model = cx.global_mut::<AppModel>();
             model.install = Some(install);
+            #[cfg(target_os = "linux")]
+            if let Err(error) = crate::platform::login_item::refresh() {
+                log::info(format!("login item refresh: {error}"));
+            }
             // The menu exists from launch, so its check item needs the real status before any
             // panel open.
             model.login_item = crate::platform::login_item::status();

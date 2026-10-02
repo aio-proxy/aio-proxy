@@ -1,4 +1,4 @@
-//! Linux. Stubs until the later tasks: no login item, no updater, no connection is vouched for
+//! Linux. Stubs until the later tasks: no updater, no connection is vouched for
 //! (the token is never sent), and `pid_alive` is always false until Task 5, so restart
 //! verification rests on the health check alone.
 
@@ -55,19 +55,7 @@ pub fn peer_owned_by_this_user(_stream: &TcpStream, _deadline: Instant) -> bool 
     false
 }
 
-pub mod login_item {
-    use crate::platform::LoginItemStatus;
-
-    pub fn status() -> LoginItemStatus {
-        LoginItemStatus::Unavailable
-    }
-
-    pub fn set_enabled(_enabled: bool) -> Result<(), String> {
-        Err("launch at login is not available yet".into())
-    }
-
-    pub fn open_settings() {}
-}
+pub mod login_item;
 
 pub mod updater {
     use futures::channel::mpsc::UnboundedSender;
