@@ -16,19 +16,19 @@ const PROTOCOL_LABELS: Record<
   { readonly label: string; readonly icon: React.FC<{ size?: number; className?: string }> }
 > = {
   [ProviderProtocol.OpenAICompatible]: {
-    label: 'OpenAI Compatible',
+    label: 'OpenAI Chat Completions',
     icon: withLobeIcon('openai'),
   },
   [ProviderProtocol.OpenAIResponse]: {
-    label: 'OpenAI Response',
+    label: 'OpenAI Responses',
     icon: withLobeIcon('codex-color'),
   },
   [ProviderProtocol.Anthropic]: {
-    label: 'Anthropic',
+    label: 'Anthropic Messages',
     icon: withLobeIcon('claude-color'),
   },
   [ProviderProtocol.Gemini]: {
-    label: 'Gemini',
+    label: 'Gemini generateContent',
     icon: withLobeIcon('gemini-color'),
   },
   [ProviderProtocol.GeminiInteractions]: {
@@ -36,7 +36,7 @@ const PROTOCOL_LABELS: Record<
     icon: withLobeIcon('gemini-color'),
   },
   [ProviderProtocol.OpenAIImage]: {
-    label: 'OpenAI Image',
+    label: 'OpenAI Images',
     icon: withLobeIcon('openai'),
   },
   [ProviderProtocol.OpenAIAudio]: {
@@ -44,7 +44,7 @@ const PROTOCOL_LABELS: Record<
     icon: withLobeIcon('openai'),
   },
   [ProviderProtocol.OpenAIVideo]: {
-    label: 'OpenAI Video',
+    label: 'OpenAI Videos',
     icon: withLobeIcon('openai'),
   },
   [ProviderProtocol.TypeSafeSystemOne]: {
@@ -59,14 +59,11 @@ const PROTOCOL_LABELS: Record<
 };
 
 /**
- * Protocol order for pickers. Rendering coverage and picker coverage are different questions:
- * `PROTOCOL_LABELS` must be exhaustive so a card never renders a blank icon, while the pickers offer
- * only the protocols a user may configure or filter by. `openai-image`, `openai-audio`, and
- * `openai-video` render but are not offered.
- * OpenAI Compatible leads because it is what most third-party gateways speak.
- * TypeSafe System One is last: it serves evaluation only, so it is a deliberate choice rather than
- * one of the chat protocols a provider is usually reached on. Leaving it out would make the feature
- * unconfigurable from the dashboard and hide its own traffic from the traces protocol filter.
+ * Protocol order for pickers. Every protocol is offered: each one is a configurable endpoint and
+ * carries its own traffic, so leaving one out makes it unconfigurable from the dashboard and hides
+ * it from the traces protocol filter.
+ * Chat Completions leads because it is what most third-party gateways speak. The media protocols
+ * follow the chat ones, and TypeSafe System One is last since it serves evaluation only.
  */
 export const PROTOCOL_ORDER: readonly ProviderProtocol[] = [
   ProviderProtocol.OpenAICompatible,
@@ -74,6 +71,9 @@ export const PROTOCOL_ORDER: readonly ProviderProtocol[] = [
   ProviderProtocol.Anthropic,
   ProviderProtocol.Gemini,
   ProviderProtocol.GeminiInteractions,
+  ProviderProtocol.OpenAIImage,
+  ProviderProtocol.OpenAIAudio,
+  ProviderProtocol.OpenAIVideo,
   ProviderProtocol.TypeSafeSystemOne,
 ];
 

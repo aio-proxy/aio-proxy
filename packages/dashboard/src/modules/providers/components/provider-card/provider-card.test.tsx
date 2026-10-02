@@ -73,7 +73,7 @@ test('an API Provider names its protocol on line 2 and draws the API mark on lin
   );
 
   expect(screen.getByTestId('provider-kind-mark')).toBeInTheDocument();
-  expect(screen.getByTestId('provider-card-detail')).toHaveTextContent('OpenAI Compatible');
+  expect(screen.getByTestId('provider-card-detail')).toHaveTextContent('OpenAI Chat Completions');
 });
 
 test('several protocols collapse to one word so line 2 never wraps', () => {
@@ -90,7 +90,7 @@ test('several protocols collapse to one word so line 2 never wraps', () => {
 
   const detail = screen.getByTestId('provider-card-detail');
   expect(screen.getByTestId('provider-protocols-multi')).toBeInTheDocument();
-  expect(detail).not.toHaveTextContent('OpenAI Compatible');
+  expect(detail).not.toHaveTextContent('OpenAI Chat Completions');
   expect(detail).not.toHaveTextContent('Anthropic');
 });
 
