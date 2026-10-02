@@ -80,7 +80,7 @@ export const spanRegistry = {
     nameShape: '{http.request.method}',
     kind: SpanKind.CLIENT,
     parent: ['inferenceAttempt', 'attempt'],
-    createdBy: 'request-logging/wire/wire.ts',
+    createdBy: 'request-logging/wire/upstream-span.ts',
   },
   tokenCount: {
     name: spanName.tokenCount,
@@ -127,6 +127,11 @@ export const attributeName = {
   contentGapP95Ms: 'aio_proxy.upstream.content_gap_p95_ms',
   maxSseFramesPerRead: 'aio_proxy.upstream.max_sse_frames_per_read',
   contentEncoding: 'aio_proxy.upstream.content_encoding',
+  upstreamSendIndex: 'aio_proxy.upstream.send_index',
+  upstreamCandidateIndex: 'aio_proxy.upstream.candidate_index',
+  upstreamBodyOutcome: 'aio_proxy.upstream.body_outcome',
+  upstreamRetryReason: 'aio_proxy.upstream.retry_reason',
+  upstreamResponseSelected: 'aio_proxy.upstream.response_selected',
   inboundProtocol: 'aio_proxy.protocol.inbound',
   sessionSource: 'aio_proxy.session.source',
   sessionId: 'aio_proxy.session.id',
@@ -140,6 +145,7 @@ export const attributeName = {
   attemptModelId: 'aio_proxy.attempt.model_id',
   attemptTtftMs: 'aio_proxy.attempt.ttft_ms',
   attemptHttpSends: 'aio_proxy.attempt.http_sends',
+  attemptResponseSendIndex: 'aio_proxy.attempt.response_send_index',
   // 逻辑操作层专属：试了几个 provider，以及转移烧掉多少毫秒。
   // gen_ai.gateway.* 落地后这两个自造 key 应换成标准名（见 spec「后续」）。
   inferenceAttemptCount: 'aio_proxy.inference.attempt_count',

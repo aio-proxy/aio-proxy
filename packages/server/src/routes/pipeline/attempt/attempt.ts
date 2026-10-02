@@ -264,12 +264,12 @@ export async function attemptCandidates<TRequest, TContext>(
   for (const [index, candidate] of live.entries()) {
     const provider = candidate.provider;
     const startedAt = performance.now();
+    const spanRef: CandidateSlot['spanRef'] = { current: undefined };
     const observation = createAttemptResponseObservation({ startedAt });
     let selectionReason: CandidateSlot['trace']['selectionReason'] = 'weight';
     if (resolution.affinity?.active === true && resolution.affinity.providerId === provider.id)
       selectionReason = 'affinity';
     if (resolution.responseOwner?.providerId === provider.id) selectionReason = 'response_owner';
-    const spanRef: CandidateSlot['spanRef'] = { current: undefined };
     const slot: CandidateSlot = {
       index,
       candidate,
@@ -292,6 +292,7 @@ export async function attemptCandidates<TRequest, TContext>(
         urlTemplate?: string,
       ): T => {
         const open = spanRef.current;
+        if (open !== undefined) observation.bindParentContext?.(open.context);
         return withAttemptResponseObservation(observation, () =>
           withAttemptLogContext(
             {

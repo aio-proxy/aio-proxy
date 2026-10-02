@@ -1,6 +1,7 @@
 import type { RawRetryFrame, RawRetryVerdict } from '@aio-proxy/core';
 import { createParser } from 'eventsource-parser';
 
+import { inheritObservedResponse, rejectObservedResponse } from '../../../../response-observation';
 import { createIdleTimer, MAX_PASSTHROUGH_JSON_BYTES, STREAM_IDLE_TIMEOUT_MS } from '../../../../usage-capture';
 import { cancelRetainedRequestBody } from '../../request';
 
@@ -119,6 +120,7 @@ export async function preflightRawRetrySse(
     status: response.status,
     statusText: response.statusText,
   });
+  inheritObservedResponse(response, next);
   // `onEvent` assigns through a closure TypeScript does not track, so after the
   // hold loop both locals look narrower than they are. The rejection frame is
   // set only alongside a 'retry' verdict, so its presence is the decision.
@@ -268,6 +270,7 @@ export async function resolveRawRetry<TRequest, TContext>(
   const replay = async (failed: Response, rejection: RawRetryFrame): Promise<RawInvocationResult | undefined> => {
     const retryRequest = await hook.rewrite(retrySource, input.request, input.context, rejection);
     if (retryRequest === undefined) return undefined;
+    rejectObservedResponse(failed);
     void failed.body?.cancel().catch(() => undefined);
     try {
       return await input.invoke(retryRequest);
