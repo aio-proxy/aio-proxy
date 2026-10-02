@@ -31,6 +31,63 @@ pub fn start(cx: &mut App) {
             model.login_item = crate::login_item::status();
             changed(cx);
             rediscover(cx);
+            probe_cli(cx);
+        });
+    })
+    .detach();
+}
+
+fn probe_cli(cx: &mut App) {
+    let task = cx.background_executor().spawn(async { crate::cli_command::probe() });
+    cx.spawn(async move |cx| {
+        let probe = task.await;
+        cx.update(|cx| {
+            log::info(format!("shell probe: {probe:?}"));
+            cx.global_mut::<AppModel>().cli_probe = probe;
+            changed(cx);
+        });
+    })
+    .detach();
+}
+
+/// Links `/usr/local/bin/aiop` to this bundle's CLI, which Sparkle updates in place. Not the
+/// per-user stable symlink: a machine-wide command must not run through one account's home.
+pub fn install_cli(cx: &mut App) {
+    let model = cx.global_mut::<AppModel>();
+    let (true, false, Some(bundle)) = (model.can_link_cli(), model.cli_installing, model.bundle.as_deref()) else {
+        return;
+    };
+    let target = install::sidecar_of(bundle);
+    model.cli_installing = true;
+    changed(cx);
+    let task = cx.background_executor().spawn(async move {
+        // The cached probe may date from launch: ask the shell again right before the privileged
+        // change, and do nothing (the re-probe below hides the item) unless it still applies.
+        match crate::cli_command::probe() {
+            Some(probe) if !probe.aiop && probe.link_dir_on_path => {
+                crate::cli_command::install(&target, !probe.aio_proxy)
+            }
+            _ => Ok(false),
+        }
+    });
+    cx.spawn(async move |cx| {
+        let result = task.await;
+        cx.update(|cx| {
+            log::info(format!("install aiop: {result:?}"));
+            let model = cx.global_mut::<AppModel>();
+            model.cli_installing = false;
+            // The service-action state machine owns `action` while it runs.
+            if !model.action.is_busy() {
+                match result {
+                    Ok(true) => {
+                        model.action = ActionState::Done(format!("Installed aiop at {}.", crate::cli_command::LINK))
+                    }
+                    Ok(false) => {}
+                    Err(error) => model.action = ActionState::Failed(format!("Install aiop failed: {error}")),
+                }
+            }
+            changed(cx);
+            probe_cli(cx);
         });
     })
     .detach();

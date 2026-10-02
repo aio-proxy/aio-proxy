@@ -8,6 +8,7 @@ pub enum MenuCommand {
     OpenDashboard,
     Run(UserAction),
     OpenLogs,
+    InstallCli,
     ToggleLogin,
     CheckForUpdates,
     Quit,
@@ -24,6 +25,7 @@ impl MenuCommand {
             MenuCommand::Run(UserAction::Restart) => "run-restart",
             MenuCommand::Run(UserAction::Reload) => "run-reload",
             MenuCommand::OpenLogs => "open-logs",
+            MenuCommand::InstallCli => "install-cli",
             MenuCommand::ToggleLogin => "login",
             MenuCommand::CheckForUpdates => "check-updates",
             MenuCommand::Quit => "quit",
@@ -40,12 +42,25 @@ impl MenuCommand {
             "run-restart" => MenuCommand::Run(UserAction::Restart),
             "run-reload" => MenuCommand::Run(UserAction::Reload),
             "open-logs" => MenuCommand::OpenLogs,
+            "install-cli" => MenuCommand::InstallCli,
             "login" => MenuCommand::ToggleLogin,
             "check-updates" => MenuCommand::CheckForUpdates,
             "quit" => MenuCommand::Quit,
             _ => return None,
         })
     }
+}
+
+/// The Install aiop command item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CliOffer {
+    /// The shell has `aiop`, or could not say.
+    Hidden,
+    /// Missing, but installing would not help yet; the label says why.
+    Blocked(&'static str),
+    Ready,
+    /// The admin prompt is up; a second click must not open another.
+    Installing,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +81,7 @@ pub fn menu_entries(
     busy: bool,
     persistent: bool,
     login: LoginItemStatus,
+    cli: CliOffer,
 ) -> Vec<MenuEntry> {
     let mut entries = vec![item(MenuCommand::OpenDashboard, "Open Dashboard", dashboard), MenuEntry::Separator];
     let services = [
@@ -82,6 +98,15 @@ pub fn menu_entries(
         }
     }
     entries.push(item(MenuCommand::OpenLogs, "Open logs", true));
+    let cli_item = match cli {
+        CliOffer::Hidden => None,
+        CliOffer::Blocked(label) => Some((label, false)),
+        CliOffer::Ready => Some(("Install aiop command", true)),
+        CliOffer::Installing => Some(("Installing aiop command…", false)),
+    };
+    if let Some((label, enabled)) = cli_item {
+        entries.push(item(MenuCommand::InstallCli, label, enabled));
+    }
     entries.push(MenuEntry::Separator);
     // Always listed, so the switch is findable; a copy outside Applications cannot register (the
     // login item would point at wherever this bundle happens to be), so there it is disabled.

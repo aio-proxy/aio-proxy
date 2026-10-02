@@ -11,7 +11,7 @@ use crate::client::health::HealthState;
 
 mod menu;
 
-pub use menu::{MenuCommand, MenuEntry, menu_entries};
+pub use menu::{CliOffer, MenuCommand, MenuEntry, menu_entries};
 
 /// 18 pt tall at 2x.
 pub const ICON_WIDTH: u32 = 58;
@@ -139,7 +139,21 @@ pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
         .map(|d| crate::connect::policy::offered_actions(d, model.persistent()))
         .unwrap_or_default();
     let dashboard = !crate::panel::is_down(model);
-    menu_entries(offered, dashboard, model.action.is_busy(), model.persistent(), model.login_item)
+    let cli = match model.cli_probe {
+        _ if model.cli_installing => CliOffer::Installing,
+        Some(probe) if !probe.aiop => {
+            if !model.can_link_cli() {
+                CliOffer::Blocked("Install aiop command (move to /Applications first)")
+            } else if !probe.link_dir_on_path {
+                // The link would not make `aiop` resolve, and the offer would come straight back.
+                CliOffer::Blocked("Install aiop command (/usr/local/bin is not on your PATH)")
+            } else {
+                CliOffer::Ready
+            }
+        }
+        _ => CliOffer::Hidden,
+    };
+    menu_entries(offered, dashboard, model.action.is_busy(), model.persistent(), model.login_item, cli)
 }
 
 /// Runs a menu command, from the right-click menu or the panel's `⋯` menu.
@@ -148,6 +162,7 @@ pub fn run(cx: &mut App, command: MenuCommand) {
         MenuCommand::OpenDashboard => crate::app::open_dashboard(cx),
         MenuCommand::Run(action) => crate::app::run_user_action(cx, action),
         MenuCommand::OpenLogs => crate::app::open_logs(cx),
+        MenuCommand::InstallCli => crate::app::install_cli(cx),
         MenuCommand::ToggleLogin => crate::app::toggle_login_item(cx),
         MenuCommand::CheckForUpdates => crate::updater::check_now(),
         // Quitting leaves the proxy running: launchd owns it.
