@@ -17,8 +17,14 @@ fn labels(entries: &[MenuEntry]) -> Vec<String> {
 
 #[test]
 fn a_running_desktop_service_offers_stop_restart_reload_and_login() {
-    let entries =
-        menu_entries(offered(false, false, true, true, true), true, false, true, LoginItemStatus::Enabled, false);
+    let entries = menu_entries(
+        offered(false, false, true, true, true),
+        true,
+        false,
+        true,
+        LoginItemStatus::Enabled,
+        CliOffer::Hidden,
+    );
     assert_eq!(
         labels(&entries),
         [
@@ -46,7 +52,7 @@ fn a_stopped_service_offers_start_and_a_fresh_one_install() {
         false,
         true,
         LoginItemStatus::NotRegistered,
-        false,
+        CliOffer::Hidden,
     ));
     assert!(stopped.contains(&"Start".to_string()) && !stopped.contains(&"Stop".to_string()));
     let fresh = labels(&menu_entries(
@@ -55,7 +61,7 @@ fn a_stopped_service_offers_start_and_a_fresh_one_install() {
         false,
         true,
         LoginItemStatus::NotRegistered,
-        false,
+        CliOffer::Hidden,
     ));
     assert!(fresh.contains(&"Install and start".to_string()));
 }
@@ -68,7 +74,7 @@ fn a_read_only_copy_lists_login_disabled_and_only_what_it_may_do() {
         false,
         false,
         LoginItemStatus::Unavailable,
-        false,
+        CliOffer::Hidden,
     );
     assert_eq!(
         labels(&entries),
@@ -96,7 +102,7 @@ fn busy_disables_service_actions_and_approval_is_named() {
         true,
         true,
         LoginItemStatus::RequiresApproval,
-        false,
+        CliOffer::Hidden,
     );
     let enabled_of = |wanted: MenuCommand| {
         entries.iter().find_map(|e| match e {
@@ -120,19 +126,20 @@ fn busy_disables_service_actions_and_approval_is_named() {
 }
 
 #[test]
-fn install_cli_is_offered_only_when_the_shell_has_no_aiop() {
-    let item = |persistent, cli_missing| {
-        menu_entries(Offered::default(), true, false, persistent, LoginItemStatus::Enabled, cli_missing)
-            .into_iter()
-            .find_map(|e| match e {
+fn install_cli_is_listed_only_when_the_shell_has_no_aiop_and_runs_once() {
+    let item = |cli| {
+        menu_entries(Offered::default(), true, false, true, LoginItemStatus::Enabled, cli).into_iter().find_map(|e| {
+            match e {
                 MenuEntry::Item { command: MenuCommand::InstallCli, label, enabled } => Some((label, enabled)),
                 _ => None,
-            })
+            }
+        })
     };
-    assert_eq!(item(true, false), None);
-    assert_eq!(item(true, true), Some(("Install aiop command".into(), true)));
-    // The link would point at a stable symlink only a persistent copy maintains.
-    assert_eq!(item(false, true), Some(("Install aiop command (move to Applications first)".into(), false)));
+    assert_eq!(item(CliOffer::Hidden), None);
+    assert_eq!(item(CliOffer::Ready), Some(("Install aiop command".into(), true)));
+    assert_eq!(item(CliOffer::Blocked), Some(("Install aiop command (move to /Applications first)".into(), false)));
+    // Disabled while the admin prompt is up, so a second click cannot open another.
+    assert_eq!(item(CliOffer::Installing), Some(("Installing aiop command…".into(), false)));
 }
 
 #[test]

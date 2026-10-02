@@ -101,6 +101,7 @@ pub struct AppModel {
     pub login_item_error: Option<String>,
     /// Whether the user's shell finds `aiop`; `None` until (or unless) it answers.
     pub cli_on_path: Option<bool>,
+    pub cli_installing: bool,
     /// The Usage group's window. Remembered across panel closes; `24h` at launch.
     pub usage_range: UsageRange,
     /// The last usage per window, so a switch back renders at once while a fetch runs.
@@ -138,6 +139,7 @@ impl AppModel {
             login_item: LoginItemStatus::Unavailable,
             login_item_error: None,
             cli_on_path: None,
+            cli_installing: false,
             usage_range: UsageRange::H24,
             usage_cache: HashMap::new(),
             attempts: AutoAttempts::default(),
@@ -184,6 +186,12 @@ impl AppModel {
     pub fn updated_text(&self) -> Option<String> {
         let minutes = self.last_summary_at?.elapsed().as_secs() / 60;
         Some(if minutes == 0 { "Updated just now".into() } else { format!("Updated {minutes} min ago") })
+    }
+
+    /// `/usr/local/bin/aiop` serves every account, so it may only point into the shared /Applications,
+    /// never into one user's ~/Applications.
+    pub fn can_link_cli(&self) -> bool {
+        self.persistent() && self.bundle.as_deref().is_some_and(|bundle| bundle.starts_with("/Applications"))
     }
 
     pub fn persistent(&self) -> bool {

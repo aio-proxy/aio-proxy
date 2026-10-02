@@ -53,17 +53,20 @@ fn probe_cli(cx: &mut App) {
 /// Links `/usr/local/bin/aiop` to this bundle's CLI, which Sparkle updates in place. Not the
 /// per-user stable symlink: a machine-wide command must not run through one account's home.
 pub fn install_cli(cx: &mut App) {
-    let model = cx.global::<AppModel>();
-    let (true, Some(bundle)) = (model.persistent(), model.bundle.as_deref()) else {
+    let model = cx.global_mut::<AppModel>();
+    let (true, false, Some(bundle)) = (model.can_link_cli(), model.cli_installing, model.bundle.as_deref()) else {
         return;
     };
     let target = install::sidecar_of(bundle);
+    model.cli_installing = true;
+    changed(cx);
     let task = cx.background_executor().spawn(async move { crate::cli_command::install(&target) });
     cx.spawn(async move |cx| {
         let result = task.await;
         cx.update(|cx| {
             log::info(format!("install aiop: {result:?}"));
             let model = cx.global_mut::<AppModel>();
+            model.cli_installing = false;
             // The service-action state machine owns `action` while it runs.
             if !model.action.is_busy() {
                 match result {

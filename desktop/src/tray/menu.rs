@@ -51,6 +51,18 @@ impl MenuCommand {
     }
 }
 
+/// The Install aiop command item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CliOffer {
+    /// The shell has `aiop`, or could not say.
+    Hidden,
+    /// Missing, but the machine-wide link may only point into /Applications.
+    Blocked,
+    Ready,
+    /// The admin prompt is up; a second click must not open another.
+    Installing,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MenuEntry {
     Item { command: MenuCommand, label: String, enabled: bool },
@@ -63,14 +75,13 @@ fn item(command: MenuCommand, label: &str, enabled: bool) -> MenuEntry {
 }
 
 /// `dashboard` is false while the proxy is down: from live health, not only the last discovery.
-/// `cli_missing` is true only when the user's shell answered that it has no `aiop`.
 pub fn menu_entries(
     offered: Offered,
     dashboard: bool,
     busy: bool,
     persistent: bool,
     login: LoginItemStatus,
-    cli_missing: bool,
+    cli: CliOffer,
 ) -> Vec<MenuEntry> {
     let mut entries = vec![item(MenuCommand::OpenDashboard, "Open Dashboard", dashboard), MenuEntry::Separator];
     let services = [
@@ -87,11 +98,14 @@ pub fn menu_entries(
         }
     }
     entries.push(item(MenuCommand::OpenLogs, "Open logs", true));
-    if cli_missing {
-        // The link targets the stable symlink, which only a persistent copy maintains.
-        let label =
-            if persistent { "Install aiop command" } else { "Install aiop command (move to Applications first)" };
-        entries.push(item(MenuCommand::InstallCli, label, persistent));
+    let cli_item = match cli {
+        CliOffer::Hidden => None,
+        CliOffer::Blocked => Some(("Install aiop command (move to /Applications first)", false)),
+        CliOffer::Ready => Some(("Install aiop command", true)),
+        CliOffer::Installing => Some(("Installing aiop command…", false)),
+    };
+    if let Some((label, enabled)) = cli_item {
+        entries.push(item(MenuCommand::InstallCli, label, enabled));
     }
     entries.push(MenuEntry::Separator);
     // Always listed, so the switch is findable; a copy outside Applications cannot register (the

@@ -11,7 +11,7 @@ use crate::client::health::HealthState;
 
 mod menu;
 
-pub use menu::{MenuCommand, MenuEntry, menu_entries};
+pub use menu::{CliOffer, MenuCommand, MenuEntry, menu_entries};
 
 /// 18 pt tall at 2x.
 pub const ICON_WIDTH: u32 = 58;
@@ -139,8 +139,13 @@ pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
         .map(|d| crate::connect::policy::offered_actions(d, model.persistent()))
         .unwrap_or_default();
     let dashboard = !crate::panel::is_down(model);
-    let cli_missing = model.cli_on_path == Some(false);
-    menu_entries(offered, dashboard, model.action.is_busy(), model.persistent(), model.login_item, cli_missing)
+    let cli = match model.cli_on_path {
+        _ if model.cli_installing => CliOffer::Installing,
+        Some(false) if model.can_link_cli() => CliOffer::Ready,
+        Some(false) => CliOffer::Blocked,
+        _ => CliOffer::Hidden,
+    };
+    menu_entries(offered, dashboard, model.action.is_busy(), model.persistent(), model.login_item, cli)
 }
 
 /// Runs a menu command, from the right-click menu or the panel's `⋯` menu.
