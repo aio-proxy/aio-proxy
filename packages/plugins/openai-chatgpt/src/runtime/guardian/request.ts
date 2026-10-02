@@ -1,7 +1,5 @@
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { matchesPolicy } from './policy';
-
 export type GuardianProjection = {
   readonly model: string;
   readonly state: { readonly input: readonly unknown[]; readonly pending_action: Record<string, unknown> };
@@ -37,15 +35,36 @@ export async function guardianPayloadHint(
   }
 }
 
-export async function projectGuardianRequest(request: Request): Promise<GuardianProjection | undefined> {
+export type GuardianProjectionBypassReason = 'unsupported_profile' | 'incomplete_context' | 'missing_pending_action';
+
+export async function projectGuardianRequest(
+  request: Request,
+  onBypass?: (reason: GuardianProjectionBypassReason) => void,
+): Promise<GuardianProjection | undefined> {
   if (request.method !== 'POST' || !new URL(request.url).pathname.endsWith('/responses')) return;
   // Encoded transports have not been decoded at this boundary.
   if (request.headers.has('content-encoding')) return;
   try {
     const body = await readGuardianJsonWithinBytes(request.clone(), 1_048_576);
-    if (!matchesGuardianProfile(body)) return;
+    if (
+      !isPlainObject(body) ||
+      !isPlainObject(body['client_metadata']) ||
+      body['client_metadata']['x-openai-subagent'] !== 'guardian'
+    )
+      return;
+    if (!matchesGuardianProfile(body)) {
+      onBypass?.('unsupported_profile');
+      return;
+    }
+    if (!inlineHistory(body['input'])) {
+      onBypass?.('incomplete_context');
+      return;
+    }
     const pending_action = parseTerminalAction(body['input']);
-    if (pending_action === undefined) return;
+    if (pending_action === undefined) {
+      onBypass?.('missing_pending_action');
+      return;
+    }
     return {
       model: body['model'],
       state: { input: body['input'], pending_action },
@@ -207,7 +226,7 @@ function additionalTools(value: unknown): boolean {
   });
 }
 
-function inlineHistory(input: unknown[]): boolean {
+function inlineHistory(input: readonly unknown[]): boolean {
   let policySeen = false;
   const calls = new Set<string>();
   for (const item of input) {
@@ -231,15 +250,8 @@ function inlineHistory(input: unknown[]): boolean {
       )
         return false;
       if (item['role'] === 'developer') {
-        if (policySeen || !matchesPolicy(item['content'].map((part) => part['text']).join('\n'))) {
-          const text = item['content']
-            .map((part) => part['text'])
-            .join('\n')
-            .trim();
-          // The first developer item is the authoritative policy. Later notes cannot change its outcome rules.
-          if (!(policySeen && item['content'].length === 1 && text.length > 0 && text.length <= 1_000)) return false;
-        }
-        policySeen = true;
+        // The evaluator receives all developer instructions; policy text is not a routing protocol.
+        policySeen ||= item['content'].some((part) => part['text'].trim().length > 0);
       }
     } else if (item['type'] === 'custom_tool_call') {
       if (
@@ -346,7 +358,7 @@ function matchesGuardianProfile(value: unknown): value is MatchedGuardianBody {
     !matchesSchema(value['text']['format']['schema'])
   )
     return false;
-  return inlineHistory(value['input']);
+  return true;
 }
 
 function parseTerminalAction(input: readonly unknown[]): Record<string, unknown> | undefined {
