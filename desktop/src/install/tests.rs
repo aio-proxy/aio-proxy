@@ -5,8 +5,10 @@ use std::path::{Path, PathBuf};
 
 use super::*;
 
+#[cfg(target_os = "macos")]
 const HOME: &str = "/Users/me";
 
+#[cfg(target_os = "macos")]
 fn allowed(bundle: &str) -> bool {
     location_allows_persistence(Path::new(bundle), Path::new(HOME), false)
 }
