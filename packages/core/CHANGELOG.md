@@ -1,5 +1,27 @@
 # @aio-proxy/core
 
+## 0.38.0
+
+### Patch Changes
+
+- [#468](https://github.com/aio-proxy/aio-proxy/pull/468) [`24d77d0`](https://github.com/aio-proxy/aio-proxy/commit/24d77d05fd4e27bfa918a568d904e71ce3593f3b) Thanks @baranwang - Preserve transport timings, retry failure reasons, and response attribution for each upstream HTTP send. Trace details now show send counts and indices, so retries with multiple responses no longer appear to be missing timing data.
+- Updated dependencies [[`24d77d0`](https://github.com/aio-proxy/aio-proxy/commit/24d77d05fd4e27bfa918a568d904e71ce3593f3b)]:
+  - @aio-proxy/plugin-sdk@0.38.0
+  - @aio-proxy/shared@0.38.0
+  - @aio-proxy/i18n@0.38.0
+  - @aio-proxy/logger@0.38.0
+  - @aio-proxy/plugin-claude-code@0.38.0
+  - @aio-proxy/plugin-cursor@0.38.0
+  - @aio-proxy/plugin-github-copilot@0.38.0
+  - @aio-proxy/plugin-google-antigravity@0.38.0
+  - @aio-proxy/plugin-kimi-code@0.38.0
+  - @aio-proxy/plugin-muse-code@0.38.0
+  - @aio-proxy/plugin-openai-chatgpt@0.38.0
+  - @aio-proxy/plugin-opencode-go@0.38.0
+  - @aio-proxy/plugin-openrouter@0.38.0
+  - @aio-proxy/plugin-xai-grok@0.38.0
+  - @aio-proxy/types@0.38.0
+
 ## 0.37.0
 
 ### Patch Changes
