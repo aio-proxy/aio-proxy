@@ -29,8 +29,8 @@ test('a chunked or plain HTTP/1.1 response is read whole', () => {
   expect(parseResponse('garbage')).toBeUndefined();
 });
 
-// macOS only, like the feature: it needs /usr/sbin/lsof, which Linux CI runners lack.
-test.skipIf(process.platform !== 'darwin')(
+// Real-kernel check on both listing sources: lsof on macOS, /proc/net/tcp on Linux (byte order, columns).
+test.skipIf(process.platform !== 'darwin' && process.platform !== 'linux')(
   "the bearer is sent to this user's server and withheld when the serving socket is not ours",
   async () => {
     const seen: Array<string | null> = [];
@@ -49,7 +49,8 @@ test.skipIf(process.platform !== 'darwin')(
       const ours = await verifiedGet(process.platform, deps, String(uid), '127.0.0.1', port, '/x', 'secret', 2_000);
       expect(ours?.status).toBe(200);
       expect(JSON.parse(ours?.body ?? '{}')).toEqual({ server: { version: '1', pid: 7 } });
-      // Another uid owns nothing here: lsof shows only our sockets, so the check fails and nothing is sent.
+      // Another uid does not hold this connection's serving end (lsof hides other users' sockets, /proc
+      // shows them under their own uid), so the check fails and nothing is sent.
       const foreign = await verifiedGet(
         process.platform,
         deps,
