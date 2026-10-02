@@ -1,4 +1,4 @@
-import type { LocalizedText, OAuthQuotaItem, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import type { LocalizedText, OAuthQuotaItem, OAuthQuotaItemScope, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import { clamp } from 'es-toolkit/math';
 import { isPlainObject } from 'es-toolkit/predicate';
 
@@ -8,6 +8,14 @@ const PLAN_LABEL: LocalizedText = { default: 'Plan usage', 'zh-Hans': '套餐用
 const AUTO_LABEL: LocalizedText = { default: 'Auto models', 'zh-Hans': 'Auto 模型' };
 const API_LABEL: LocalizedText = { default: 'Named models', 'zh-Hans': '指定模型' };
 const ON_DEMAND_LABEL: LocalizedText = { default: 'On-demand budget', 'zh-Hans': '按量预算' };
+
+// Cursor refuses a model once its included pool is spent rather than spilling into on-demand, so the
+// two model pools gate routing. Auto mode itself (`default`) and the Grok and Composer families draw
+// from the Auto pool; every other model is a named model. `plan` only blends the two and `on-demand`
+// is a spend budget, so neither gates anything on its own.
+const AUTO_MODELS = ['default', 'grok-*', 'cursor-grok-*', 'composer-*'];
+const AUTO_SCOPE: OAuthQuotaItemScope = { models: AUTO_MODELS };
+const API_SCOPE: OAuthQuotaItemScope = { models: ['*', ...AUTO_MODELS.map((model) => `!${model}`)] };
 
 // Cursor's own dashboard copy for each `membershipType` enum value.
 const MEMBERSHIP_NAMES: Readonly<Record<string, string>> = {
@@ -60,8 +68,8 @@ export function summaryQuota(payload: Readonly<Record<string, unknown>>): Cursor
 
   const items = [
     item('plan', PLAN_LABEL, planRatio(payload, plan, auto, api), resetsAt, windowMinutes),
-    item('auto', AUTO_LABEL, auto, resetsAt, windowMinutes),
-    item('api', API_LABEL, api, resetsAt, windowMinutes),
+    item('auto', AUTO_LABEL, auto, resetsAt, windowMinutes, AUTO_SCOPE),
+    item('api', API_LABEL, api, resetsAt, windowMinutes, API_SCOPE),
     item('on-demand', ON_DEMAND_LABEL, onDemand, resetsAt, windowMinutes),
   ].filter((entry): entry is OAuthQuotaItem => entry !== undefined);
 
@@ -131,6 +139,7 @@ function item(
   remainingRatio: number | undefined,
   resetsAt: number | undefined,
   windowMinutes: number | undefined,
+  scope?: OAuthQuotaItemScope,
 ): OAuthQuotaItem | undefined {
   if (remainingRatio === undefined) return undefined;
   return {
@@ -139,6 +148,7 @@ function item(
     remainingRatio,
     ...(resetsAt === undefined ? {} : { resetsAt }),
     ...(windowMinutes === undefined ? {} : { windowMinutes }),
+    ...(scope === undefined ? {} : { scope }),
   };
 }
 

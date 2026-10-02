@@ -46,6 +46,8 @@ test('maps window and weekly usage without reminting or persisting api_key', asy
         // Carried through so the dashboard knows where the window started, not just when it ends.
         windowMinutes: 60,
         resetsAt: Date.parse('2027-01-15T00:00:00Z'),
+        // Muse Code refuses every model once a subscription window is spent.
+        scope: 'account',
       },
     ],
   });
@@ -66,6 +68,7 @@ test('accepts weekly percent and unix-second resets', async () => {
       remainingRatio: 0.9,
       windowMinutes: 7 * 24 * 60,
       resetsAt: 1_767_972_193_000,
+      scope: 'account',
     },
   ]);
 });
@@ -160,6 +163,7 @@ test('formats every window of at least 60 minutes in hours', async () => {
       displayName: { default: '1.5 hours', 'zh-Hans': '1.5 小时' },
       remainingRatio: 0.75,
       windowMinutes: 90,
+      scope: 'account',
     },
   ]);
 });
@@ -179,6 +183,7 @@ test('treats nonpositive window_duration_mins as a rolling window of unknown len
       id: 'window',
       displayName: { default: 'Rolling window', 'zh-Hans': '滚动窗口' },
       remainingRatio: 0.75,
+      scope: 'account',
     },
   ]);
   const negative = await readMuseCodeQuota(context(), {
@@ -209,6 +214,7 @@ test('keeps a window whose duration rounds outside the reportable range, without
       id: '0m',
       displayName: { default: '0.2 minutes', 'zh-Hans': '0.2 分钟' },
       remainingRatio: 0.75,
+      scope: 'account',
     },
   ]);
 });
