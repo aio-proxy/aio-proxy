@@ -48,15 +48,16 @@ pub fn current_user() -> String {
     process::sid_string(&process::current_user_sid())
 }
 
-/// Restart the CLI's scheduled task: `/End` then `/Run`. The path matches the CLI's `taskPath(sid)`.
-pub fn kickstart(sid: &str) -> Vec<Command> {
+/// Restart the CLI's scheduled task: `/End` then `/Run`. `/End` exits non-zero when nothing is
+/// running, which is exactly when a restart is needed, so only `/Run` must succeed.
+pub fn kickstart(sid: &str) -> Vec<(Command, bool)> {
     use std::os::windows::process::CommandExt;
-    let task = format!(r"\AIO Proxy\aio-proxy-{sid}");
-    ["/End", "/Run"]
-        .map(|verb| {
+    let task = super::task_path::task_path(sid);
+    [("/End", true), ("/Run", false)]
+        .map(|(verb, allow_failure)| {
             let mut command = Command::new("schtasks");
             command.args([verb, "/TN", &task]).creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-            command
+            (command, allow_failure)
         })
         .into()
 }

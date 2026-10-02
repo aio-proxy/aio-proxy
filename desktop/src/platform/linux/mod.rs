@@ -50,10 +50,10 @@ pub fn on_launch(cx: &mut App, events: UnboundedSender<AppEvent>) {
     tray_host::watch_tray_host(events);
 }
 
-pub fn kickstart(_user: &str) -> Vec<Command> {
+pub fn kickstart(_user: &str) -> Vec<(Command, bool)> {
     let mut command = Command::new("systemctl");
     command.args(["--user", "restart", "aio-proxy.service"]);
-    vec![command]
+    vec![(command, false)]
 }
 
 pub use super::unix::{current_user, pid_alive};

@@ -82,9 +82,12 @@ impl Host for SystemHost {
                 if commands.is_empty() {
                     return Err("kickstart is not supported on this platform yet".into());
                 }
-                commands.into_iter().try_for_each(|command| {
+                commands.into_iter().try_for_each(|(command, allow_failure)| {
                     let what = describe(&command);
-                    check(command, SERVICE_TIMEOUT, &what).map(drop)
+                    match check(command, SERVICE_TIMEOUT, &what) {
+                        Err(_) if allow_failure => Ok(()),
+                        result => result.map(drop),
+                    }
                 })
             }
         }
