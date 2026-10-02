@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
+import { processCreationTime } from '../../win32-ffi';
 import { BINARY_DOWNLOAD_TIMEOUT_MS, BINARY_NPM_SCOPE, NPM_REGISTRY, SUPPORTED_BINARY_TARGETS } from '../constants';
 import { parseVersionOutput } from '../version-output';
 
@@ -54,21 +55,29 @@ type CommitOptions = {
   readonly platform: NodeJS.Platform;
   readonly rename: (from: string, to: string) => Promise<void>;
   readonly backupPath?: string;
-  /** The upgrading process, which names the Windows backup. */
+  /** The upgrading process and its start time, which name the Windows backup. */
   readonly pid?: number;
+  readonly created?: string;
 };
 
 // Windows cannot overwrite or delete a running exe but can rename it, so each upgrade renames the running
 // binary aside. The name is unique per upgrading process: an earlier backup may still be the running image of
-// the in-service supervisor, and a fixed name would make the next upgrade's rename fail until logoff.
-const windowsBackupPath = (target: string, pid: number = process.pid): string => `${target}.old-${pid}`;
+// the in-service supervisor, and a fixed name would make the next upgrade's rename fail until logoff. The start
+// time joins the PID because Windows reuses PIDs: a later process must neither keep nor collide with an old backup.
+const windowsBackupPath = (target: string, owner?: { readonly pid: number; readonly created?: string }): string => {
+  const { pid, created } = owner ?? { pid: process.pid, created: processCreationTime(process.pid) };
+  return `${target}.old-${pid}${created === undefined ? '' : `-${created}`}`;
+};
 
 // Moves the staged binary into place, keeping the old one at the backup path; the same two renames work
 // everywhere. A failed second rename puts the old binary back.
 export const commitStagedBinary = async (options: CommitOptions): Promise<void> => {
   const backup =
     options.platform === 'win32'
-      ? windowsBackupPath(options.target, options.pid)
+      ? windowsBackupPath(
+          options.target,
+          options.pid === undefined ? undefined : { pid: options.pid, created: options.created },
+        )
       : (options.backupPath ?? `${options.target}.old`);
   await options.rename(options.target, backup);
   try {
@@ -125,10 +134,12 @@ export const replaceBinaryForUpdate = async (options: ReplaceOptions): Promise<V
   return verification;
 };
 
-export type PidAlive = (pid: number) => boolean;
+/** Whether the upgrader that named a backup still runs: `created` is its start time, when the name records one. */
+export type PidAlive = (pid: number, created?: string) => boolean;
 
 // EPERM means the process exists but belongs to someone else.
-const defaultPidAlive: PidAlive = (pid) => {
+const defaultPidAlive: PidAlive = (pid, created) => {
+  if (created !== undefined) return processCreationTime(pid) === created;
   try {
     process.kill(pid, 0);
     return true;
@@ -137,7 +148,7 @@ const defaultPidAlive: PidAlive = (pid) => {
   }
 };
 
-// Every Windows backup beside `target` (`<exe>.old-<pid>`, or a fixed `<exe>.old` from an older release),
+// Every Windows backup beside `target` (`<exe>.old-<pid>[-<start time>]`, or a fixed `<exe>.old` from an older release),
 // best effort: one that is still some process's running image stays until a later sweep. A backup whose
 // upgrader is still alive is kept too: the upgrader's verification child sweeps at startup, and the backup is
 // the upgrader's only way to roll back a failed verification.
@@ -148,8 +159,8 @@ const sweepOldBackups = async (target: string, platform: NodeJS.Platform, pidAli
   for (const entry of await fs.readdir(dir).catch(() => [] as string[])) {
     const name = fold(entry);
     if (name !== old && !name.startsWith(`${old}-`)) continue;
-    const pid = /^\d+$/u.test(name.slice(old.length + 1)) ? Number(name.slice(old.length + 1)) : undefined;
-    if (pid !== undefined && pidAlive(pid)) continue;
+    const owner = /^(\d+)(?:-(\d+))?$/u.exec(name.slice(old.length + 1));
+    if (owner !== null && pidAlive(Number(owner[1]), owner[2])) continue;
     await unlinkIfExists(join(dir, entry)).catch(() => undefined);
   }
 };

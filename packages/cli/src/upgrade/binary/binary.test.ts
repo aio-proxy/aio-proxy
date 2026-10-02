@@ -125,6 +125,26 @@ test('a sweep keeps the backup of a live upgrader and removes the one of a dead 
   expect(readdirSync(root).sort()).toEqual(['aio-proxy.exe.old-111']);
 });
 
+test('a backup named by an upgrader whose PID was reused is swept, and the new upgrader does not collide', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-bin-reuse-'));
+  const exe = join(root, 'aio-proxy.exe');
+  writeFileSync(join(root, 'aio-proxy.exe.old-111-500'), 'X');
+  writeFileSync(join(root, 'aio-proxy.exe.old-111-900'), 'X');
+  // PID 111 now belongs to a process that started at 900.
+  await sweepStartupBackup(exe, 'win32', (pid, created) => pid === 111 && created === '900');
+  expect(readdirSync(root).sort()).toEqual(['aio-proxy.exe.old-111-900']);
+  const ops: string[] = [];
+  await commitStagedBinary({
+    target: 'C:\\b\\aio-proxy.exe',
+    staged: 'C:\\b\\.new',
+    platform: 'win32',
+    pid: 111,
+    created: '1200',
+    rename: async (from, to) => void ops.push(to),
+  });
+  expect(ops[0]).toBe('C:\\b\\aio-proxy.exe.old-111-1200');
+});
+
 test('a failed verification still rolls back when the verifying child swept at startup', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aio-bin-child-'));
   const target = join(root, 'aio-proxy.exe');
