@@ -50,6 +50,31 @@ jobs:
       - run: bun run test:unit -- --concurrency=2
       - run: bun run test:e2e:api
 
+  cli-windows:
+    if: github.event_name == 'push' || !github.event.pull_request.draft
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - run: bun install --frozen-lockfile --prefer-offline
+      # The CLI tests resolve workspace packages through their built dist.
+      - run: bun run build
+      - run: bun run test:unit src/service src/service-run src/win32-ffi src/desktop-connect src/upgrade
+        working-directory: packages/cli
+      - run: bun test src/desktop-token
+        working-directory: packages/core
+
   desktop-changes:
     if: github.event_name == 'push' || !github.event.pull_request.draft
     runs-on: ubuntu-latest

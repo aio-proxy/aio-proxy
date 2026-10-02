@@ -50,7 +50,7 @@ const isWindows = (options: TokenOptions) => (options.platform ?? process.platfo
  */
 export function desktopTokenPath(home: string, options: TokenOptions = {}): string {
   if (!isWindows(options)) return join(home, DESKTOP_TOKEN_FILE);
-  const localAppData = options.localAppData ?? process.env.LOCALAPPDATA;
+  const localAppData = options.localAppData ?? process.env['LOCALAPPDATA'];
   if (!localAppData) throw new DesktopTokenRejectedError('unreadable');
   const resolved = win32
     .resolve(home)
