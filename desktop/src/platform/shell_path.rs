@@ -1,8 +1,6 @@
 //! Pure `PATH` and shim text helpers for the Windows `aiop` install, compiled everywhere so the
 //! tests run on every platform.
 
-use std::path::Path;
-
 #[cfg(test)]
 mod tests;
 
@@ -22,13 +20,7 @@ pub fn path_with(value: &str, dir: &str) -> String {
     }
 }
 
-/// `value` without any entry equal to `dir`.
-#[cfg_attr(not(test), allow(dead_code))]
-pub fn path_without(value: &str, dir: &str) -> String {
-    value.split(';').filter(|entry| !entry.is_empty() && !same_dir(entry, dir)).collect::<Vec<_>>().join(";")
-}
-
-/// A `.cmd` shim forwarding every argument to `target`.
-pub fn shim_text(target: &Path) -> String {
-    format!("@\"{}\" %*\r\n", target.display())
-}
+/// A `.cmd` shim forwarding every argument to the stable copy at `..\aio-proxy.exe`, relative to
+/// the shim (`%~dp0` ends with `\`). cmd.exe reads batch files in the console code page and expands
+/// `%` in them, so an absolute path would break on a profile like `C:\Users\张三` or one with `%`.
+pub const SHIM_TEXT: &str = "@\"%~dp0..\\aio-proxy.exe\" %*\r\n";

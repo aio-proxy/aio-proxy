@@ -209,13 +209,12 @@ pub fn aiop_path() -> PathBuf {
 }
 
 #[cfg(windows)]
-pub fn aiop_path() -> PathBuf {
-    let home = std::env::var_os("USERPROFILE").unwrap_or_default();
-    shims_dir(&crate::platform::paths(Path::new(&home)).stable).join("aiop.cmd")
+pub fn aiop_path(target: &Path) -> PathBuf {
+    shims_dir(target).join("aiop.cmd")
 }
 
 /// Shims go in their own directory beside the stable copy, so only they, not the whole `bin`, join
-/// the user's PATH.
+/// the user's PATH. `SHIM_TEXT` reaches the copy relative to this directory.
 #[cfg(windows)]
 fn shims_dir(target: &Path) -> PathBuf {
     target.parent().unwrap_or(Path::new("")).join("shims")
@@ -242,7 +241,7 @@ pub fn probe() -> Option<Probe> {
 #[cfg(windows)]
 pub fn install(target: &Path, alias: bool) -> Result<bool, String> {
     let dir = shims_dir(target);
-    let text = crate::platform::shell_path::shim_text(target);
+    let text = crate::platform::shell_path::SHIM_TEXT;
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     for name in ["aiop"].into_iter().chain(alias.then_some("aio-proxy")) {
         let shim = dir.join(format!("{name}.cmd"));

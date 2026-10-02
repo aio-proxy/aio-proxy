@@ -69,6 +69,10 @@ pub fn install_cli(cx: &mut App) {
     };
     #[cfg(not(target_os = "macos"))]
     let target = model.paths.stable.clone();
+    #[cfg(windows)]
+    let aiop = crate::cli_command::aiop_path(&target);
+    #[cfg(not(windows))]
+    let aiop = crate::cli_command::aiop_path();
     model.cli_installing = true;
     changed(cx);
     let task = cx.background_executor().spawn(async move {
@@ -90,12 +94,7 @@ pub fn install_cli(cx: &mut App) {
             // The service-action state machine owns `action` while it runs.
             if !model.action.is_busy() {
                 match result {
-                    Ok(true) => {
-                        model.action = ActionState::Done(format!(
-                            "Installed aiop at {}.",
-                            crate::cli_command::aiop_path().display()
-                        ))
-                    }
+                    Ok(true) => model.action = ActionState::Done(format!("Installed aiop at {}.", aiop.display())),
                     Ok(false) => {}
                     Err(error) => model.action = ActionState::Failed(format!("Install aiop failed: {error}")),
                 }
