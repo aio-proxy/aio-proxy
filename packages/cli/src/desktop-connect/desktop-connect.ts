@@ -158,7 +158,9 @@ export function listensAt(listeners: readonly Socket[], owner: string, host: str
 /**
  * Whether a process of this user listens where the probe goes. Another local account could bind the
  * port while the proxy is down and answer `/health`; the token goes only to a listener this user owns.
- * An unprivileged `lsof` does not even see other users' sockets, and a failure counts as not ours.
+ * The listing is `lsof` on macOS (an unprivileged one does not even see other users' sockets),
+ * `/proc/net/tcp{,6}` uids on Linux, and `netstat` PIDs resolved to their account SID on Windows. A
+ * failure counts as not ours.
  */
 async function listenerIsOurs(deps: DesktopConnectDeps, host: string, port: string): Promise<boolean> {
   if (!/^\d+$/u.test(port)) return false;
@@ -268,15 +270,26 @@ export async function runWithin(
   return { code: await proc.exited, stdout };
 }
 
+// No socket is ever owned by the empty string (every listing drops a row without a uid or SID), so an
+// unreadable account withholds the token while discovery still prints its one line.
+const NO_OWNER = '';
+
 export const defaultDesktopConnectDeps = async (
   bundledVersion: string,
   spawnDeadline: number = Date.now() + SPAWN_BUDGET_MS,
+  ownAccount: () => string = () => currentOwner(process.platform),
 ): Promise<DesktopConnectDeps> => {
   // Bun's fetch honours HTTP_PROXY even for loopback, which would hand the desktop token's bearer
   // header to the proxy. `*` bypasses every host (a plain `::1` entry does not match [::1]); set on
   // both spellings because the lowercase one wins. This process only probes the local control address.
   process.env['NO_PROXY'] = process.env['no_proxy'] = '*';
-  return desktopConnectDeps(bundledVersion, spawnDeadline, currentOwner(process.platform));
+  let owner: string;
+  try {
+    owner = ownAccount();
+  } catch {
+    owner = NO_OWNER;
+  }
+  return desktopConnectDeps(bundledVersion, spawnDeadline, owner);
 };
 
 const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number, owner: string): DesktopConnectDeps => ({

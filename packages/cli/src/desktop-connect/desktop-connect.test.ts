@@ -6,7 +6,14 @@ import { join } from 'node:path';
 import { LAUNCHD_EXEC_WRAPPER } from '../service';
 import { renderServiceSpec, renderTaskXml, serviceSpecPath, serviceStatePath } from '../service/schtasks-unit';
 import { renderSystemdUnit } from '../service/unit-templates';
-import { desktopConnect, listensAt, printDesktopConnect, runWithin, type DesktopConnectDeps } from './desktop-connect';
+import {
+  defaultDesktopConnectDeps,
+  desktopConnect,
+  listensAt,
+  printDesktopConnect,
+  runWithin,
+  type DesktopConnectDeps,
+} from './desktop-connect';
 import { parseSockets } from './sockets';
 
 let root: string;
@@ -255,6 +262,31 @@ test('a discovery step that throws still prints one JSON object, and it permits 
     },
     token: null,
   });
+});
+
+test('an unreadable account still prints one JSON line, and the token is withheld', async () => {
+  const saved = { NO_PROXY: process.env['NO_PROXY'], no_proxy: process.env['no_proxy'] };
+  let owner: string;
+  try {
+    owner = (
+      await defaultDesktopConnectDeps('0.37.0', Date.now() + 1_000, () => {
+        throw new Error('no SID');
+      })
+    ).owner;
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+  writeConfig(home(), '127.0.0.1', 9317);
+  const lines: string[] = [];
+  await printDesktopConnect(
+    { ...deps({ plist: desktopPlist(), token: 'T'.repeat(43), summaryPid: 4312 }), owner },
+    (text) => void lines.push(text),
+  );
+  expect(lines).toHaveLength(1);
+  expect(JSON.parse(lines[0] ?? '')).toMatchObject({ instance: { reachable: true }, token: null });
 });
 
 test('a helper that outlives the command budget is killed instead of hanging discovery', async () => {
