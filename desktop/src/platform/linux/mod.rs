@@ -30,13 +30,17 @@ pub fn paths_from(home: &Path, env: impl Fn(&str) -> Option<OsString>) -> Paths 
     }
 }
 
-/// White on a dark desktop theme, black on a light one: panels follow the theme, and the icon has no
-/// background of its own.
 pub fn tray_color(cx: &App) -> [u8; 3] {
-    match cx.window_appearance() {
-        WindowAppearance::Dark | WindowAppearance::VibrantDark => [255, 255, 255],
-        _ => [0, 0, 0],
-    }
+    let dark = matches!(cx.window_appearance(), WindowAppearance::Dark | WindowAppearance::VibrantDark);
+    tray_color_for(std::env::var("XDG_CURRENT_DESKTOP").ok().as_deref(), dark)
+}
+
+/// The icon has no background of its own. GNOME's top bar is dark in either theme and the
+/// AppIndicator extension shows the pixels as they are, so white there; elsewhere panels follow the
+/// theme: white on dark, black on light.
+pub fn tray_color_for(desktop: Option<&str>, dark: bool) -> [u8; 3] {
+    let gnome = desktop.is_some_and(|desktop| desktop.split(':').any(|name| name.eq_ignore_ascii_case("GNOME")));
+    if gnome || dark { [255, 255, 255] } else { [0, 0, 0] }
 }
 
 /// Linux closes the last window without quitting: in tray mode the icon reopens it, and no-tray
@@ -73,3 +77,6 @@ pub mod updater {
 
 pub mod panel;
 mod tray_host;
+
+#[cfg(test)]
+mod tests;
