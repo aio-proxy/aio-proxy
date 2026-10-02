@@ -49,7 +49,7 @@ fn serves(sockets: &[Listener], uid: u32, peer: SocketAddr, local: SocketAddr) -
 /// `deadline`; any failure counts as not ours.
 pub fn peer_owned_by_this_user(stream: &TcpStream, deadline: Instant) -> bool {
     let (Ok(local), Ok(peer)) = (stream.local_addr(), stream.peer_addr()) else { return false };
-    let uid = super::host::current_uid();
+    let uid = crate::platform::unix::current_uid();
     loop {
         if let Some(output) = lsof(local.port(), deadline)
             && serves(&parse_listeners(&output), uid, peer, local)

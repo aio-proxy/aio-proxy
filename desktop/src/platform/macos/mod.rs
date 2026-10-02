@@ -18,7 +18,8 @@ mod peer;
 pub mod updater;
 mod wake;
 
-pub use host::{current_user, kickstart, pid_alive};
+pub use super::unix::{current_user, pid_alive};
+pub use host::kickstart;
 pub use peer::peer_owned_by_this_user;
 
 pub fn paths(home: &Path) -> Paths {

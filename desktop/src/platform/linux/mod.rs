@@ -1,12 +1,8 @@
-//! Linux. Stubs until the later tasks: no updater, no connection is vouched for
-//! (the token is never sent), and `pid_alive` is always false until Task 5, so restart
-//! verification rests on the health check alone.
+//! Linux. No updater yet; connection ownership comes from `/proc/net/tcp`.
 
 use std::ffi::OsString;
-use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Instant;
 
 use futures::channel::mpsc::UnboundedSender;
 use gpui_kit::App;
@@ -36,26 +32,17 @@ pub fn paths_from(home: &Path, env: impl Fn(&str) -> Option<OsString>) -> Paths 
 
 pub fn on_launch(_cx: &mut App, _events: UnboundedSender<AppEvent>) {}
 
-pub fn current_user() -> String {
-    // SAFETY: getuid never fails.
-    unsafe { libc::getuid() }.to_string()
-}
-
 pub fn kickstart(_user: &str) -> Vec<Command> {
     let mut command = Command::new("systemctl");
     command.args(["--user", "restart", "aio-proxy.service"]);
     vec![command]
 }
 
-pub fn pid_alive(_pid: u32) -> bool {
-    false
-}
-
-pub fn peer_owned_by_this_user(_stream: &TcpStream, _deadline: Instant) -> bool {
-    false
-}
+pub use super::unix::{current_user, pid_alive};
+pub use peer::peer_owned_by_this_user;
 
 pub mod login_item;
+mod peer;
 
 pub mod updater {
     use futures::channel::mpsc::UnboundedSender;
