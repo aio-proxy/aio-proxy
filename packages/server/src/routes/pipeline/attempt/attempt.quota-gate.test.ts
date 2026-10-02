@@ -154,12 +154,12 @@ const refusing = (id: string) =>
     });
   });
 
-const sampled = (ageMs: number): OAuthQuotaCacheStatus => ({
+const sampled = (ageMs: number, stale = false): OAuthQuotaCacheStatus => ({
   kind: 'ready',
   entry: {
     snapshot: { items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 0.02, scope: 'account' }] },
     sampledAt: Date.now() - ageMs,
-    stale: false,
+    stale,
   },
 });
 
@@ -186,6 +186,16 @@ test('a 429 right after a read does not force another one', async () => {
 
   expect((await send()).response.status).toBe(200);
   expect(refreshed).toEqual([]);
+});
+
+test('a 429 after a failed quota read leaves the re-read to the cooldown', async () => {
+  const { send, refreshed, warmed } = setup([refusing('sub-a'), subscription('sub-b')], {
+    'sub-a': sampled(2 * 60_000, true),
+  });
+
+  expect((await send()).response.status).toBe(200);
+  expect(refreshed).toEqual([]);
+  expect(warmed).toContain('sub-a');
 });
 
 test('quota exhaustion overrides session affinity and the response owner', async () => {

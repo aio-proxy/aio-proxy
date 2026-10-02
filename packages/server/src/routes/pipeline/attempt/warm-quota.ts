@@ -39,7 +39,7 @@ export function warmProviderQuota(
 
 // A refusal may cut the cache's 5-minute read cooldown short, but no shorter than this, so a Provider
 // that 429s every request for some other reason (a request-rate limit) costs at most one quota read a
-// minute.
+// minute. A failed read keeps the original sample time, so leave its retry to the cache's cooldown.
 const REFUSAL_REREAD_MIN_AGE_MS = 60_000;
 
 /**
@@ -47,7 +47,8 @@ const REFUSAL_REREAD_MIN_AGE_MS = 60_000;
  * the snapshot it needs to skip the Provider next time — even when it never served a request since
  * start. A snapshot already in the cache says quota remained when it was sampled; the refusal
  * contradicts it, and a plain warm would sit behind the read cooldown while every request is refused,
- * so a snapshot over a minute old is re-read regardless of the cooldown.
+ * so a non-stale snapshot over a minute old is re-read regardless of the cooldown. A failed read
+ * leaves the snapshot stale, and its next read is left to the cooldown.
  */
 export function warmQuotaOnRefusal(
   source: ProviderRouteSource,
@@ -56,7 +57,11 @@ export function warmQuotaOnRefusal(
 ): void {
   if (status !== 429 || provider.kind !== ProviderKind.OAuth) return;
   const cached = source.quotaStatus?.(provider.id);
-  if (cached?.kind === 'ready' && Date.now() - cached.entry.sampledAt >= REFUSAL_REREAD_MIN_AGE_MS) {
+  if (
+    cached?.kind === 'ready' &&
+    !cached.entry.stale &&
+    Date.now() - cached.entry.sampledAt >= REFUSAL_REREAD_MIN_AGE_MS
+  ) {
     source.refreshProviderQuota?.(provider.id);
     return;
   }
