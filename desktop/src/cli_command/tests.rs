@@ -4,10 +4,11 @@ use super::*;
 
 #[test]
 fn only_marker_lines_answer_the_probe() {
-    let probe = parse_probe(&format!("welcome back\n{MARK}aio-proxy\n{MARK}path:/opt/homebrew/bin:/usr/local/bin/\n"));
+    let dir = link_dir_on_path_target().unwrap().display().to_string();
+    let probe = parse_probe(&format!("welcome back\n{MARK}aio-proxy\n{MARK}path:/opt/homebrew/bin:{dir}/\n"));
     assert_eq!(probe, Some(Probe { aiop: false, aio_proxy: true, link_dir_on_path: true }));
-    // fish's PATH, and one whose rc files dropped /usr/local/bin.
-    assert_eq!(parse_probe(&format!("{MARK}path:/usr/local/bin /usr/bin\n")).map(|p| p.link_dir_on_path), Some(true));
+    // fish's PATH, and one whose rc files dropped the link directory.
+    assert_eq!(parse_probe(&format!("{MARK}path:{dir} /usr/bin\n")).map(|p| p.link_dir_on_path), Some(true));
     assert_eq!(parse_probe(&format!("{MARK}path:/usr/bin:/bin\n")).map(|p| p.link_dir_on_path), Some(false));
     // The shell died in its rc files before the lookups ran: unknown, never "missing".
     assert_eq!(parse_probe(""), None);

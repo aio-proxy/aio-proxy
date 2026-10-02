@@ -58,18 +58,17 @@ fn probe_cli(cx: &mut App) {
 /// per-user stable symlink: a machine-wide command must not run through one account's home.
 pub fn install_cli(cx: &mut App) {
     let model = cx.global_mut::<AppModel>();
-    let bundle = model.bundle.clone();
-    let (true, false, Some(bundle)) = (model.can_link_cli(), model.cli_installing, bundle.as_deref()) else {
+    if !model.can_link_cli() || model.cli_installing {
         return;
-    };
+    }
     // Off macOS the command is per-user, so it goes through the stable copy that the app keeps.
     #[cfg(target_os = "macos")]
-    let target = install::sidecar_of(bundle);
-    #[cfg(not(target_os = "macos"))]
-    let target = {
-        let _ = bundle;
-        model.paths.stable.clone()
+    let target = match model.bundle.as_deref() {
+        Some(bundle) => install::sidecar_of(bundle),
+        None => return,
     };
+    #[cfg(not(target_os = "macos"))]
+    let target = model.paths.stable.clone();
     model.cli_installing = true;
     changed(cx);
     let task = cx.background_executor().spawn(async move {
