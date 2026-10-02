@@ -174,6 +174,23 @@ test('a reconfigure interrupted before settings.json was written can be finished
   expect(await f.read()).toEqual(original);
 });
 
+test('an overlapping configure that loses the settings race leaves the winner owning the file', async () => {
+  const original = { env: { ANTHROPIC_BASE_URL: 'https://gateway.example' }, model: 'opus' };
+  const f = await fixture({ settings: original });
+  const input = (endpoint: string) => ({ endpoint, token: PLACEHOLDER, credential: 'placeholder' as const });
+  // The second run starts after the first wrote its marker and finishes before the first writes settings.
+  await expect(
+    configureClaudeCodeSettings(f.location, input('http://127.0.0.1:9400'), {
+      afterMarker: async () => {
+        expect(await configureClaudeCodeSettings(f.location, input(ENDPOINT))).toBe('configured');
+      },
+    }),
+  ).rejects.toThrow('changed during update');
+  expect(await listClaudeCode(false, ENDPOINT, f.deps)).toMatchObject({ status: 'managed', endpointMatches: true });
+  expect(await removeClaudeCode(f.deps)).toMatchObject({ status: 'removed' });
+  expect(await f.read()).toEqual(original);
+});
+
 test('with proxy keys and no way to choose one, configure fails instead of writing a bare endpoint', async () => {
   const f = await fixture({ settings: { model: 'opus' }, apiKeys: [{ key: 'sk-live', label: 'Laptop' }] });
   // bun test has no TTY, so the terminal entry cannot ask.

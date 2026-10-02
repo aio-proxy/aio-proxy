@@ -223,7 +223,10 @@ export async function configureClaudeCodeSettings(
       ANTHROPIC_AUTH_TOKEN: supersede('ANTHROPIC_AUTH_TOKEN'),
     },
   };
-  await replaceFile(location.markerPath, serialize(journal), previous?.file);
+  // Every later marker change is a compare-and-swap against exactly this text, so an overlapping
+  // configure that has since taken ownership never loses its marker to this run's rollback.
+  const ours: FileSnapshot = { text: serialize(journal), mode: 0o600 };
+  await replaceFile(location.markerPath, ours.text, previous?.file);
   await testDeps?.afterMarker?.();
   try {
     await replaceFile(
@@ -235,22 +238,22 @@ export async function configureClaudeCodeSettings(
     );
   } catch (error) {
     try {
-      if (previous === undefined) await removeMarker(location);
-      else await replaceFile(location.markerPath, previous.file.text, await readRegular(location.markerPath));
+      if (previous === undefined) await removeMarker(location, ours);
+      else await replaceFile(location.markerPath, previous.file.text, ours);
     } catch {
       // Best-effort rollback must not replace the original failure.
     }
     throw error;
   }
   if (!isEqual(journal, settled)) {
-    const written = await readRegular(location.markerPath).catch(() => undefined);
     // A leftover `superseded` only widens what remove restores; failing to drop it is harmless.
-    await replaceFile(location.markerPath, serialize(settled), written).catch(() => undefined);
+    await replaceFile(location.markerPath, serialize(settled), ours).catch(() => undefined);
   }
   return 'configured';
 }
 
-async function removeMarker(location: ClaudeCodeLocation): Promise<void> {
+async function removeMarker(location: ClaudeCodeLocation, expected?: FileSnapshot): Promise<void> {
+  if (expected !== undefined && (await readRegular(location.markerPath))?.text !== expected.text) return;
   await rm(location.markerPath, { force: true });
   // Only an empty directory goes; anything the user put next to the marker stays.
   await rmdir(dirname(location.markerPath)).catch(() => undefined);
