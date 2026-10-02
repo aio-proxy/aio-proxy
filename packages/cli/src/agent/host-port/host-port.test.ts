@@ -183,6 +183,7 @@ test('classifyAgentError maps known CLI failures and leaves the rest unknown', (
     'authorization_denied',
   );
   expect(classifyAgentError(new Error('CODEX_SETUP_ENDPOINT_CHANGED'))?.code).toBe('endpoint_changed');
+  expect(classifyAgentError(new Error('CLAUDE_CODE_ENDPOINT_CHANGED'))?.code).toBe('endpoint_changed');
   expect(classifyAgentError(new Error('Codex provider aio is occupied'))?.code).toBe('occupied_provider_id');
   expect(classifyAgentError(new AgentOperationError('plan_stale'))?.code).toBe('plan_stale');
   expect(classifyAgentError(Object.assign(new Error('denied'), { code: 'EACCES' }))?.code).toBe('path_unavailable');

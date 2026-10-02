@@ -444,6 +444,7 @@
         "restart": "변경 사항을 적용하려면 Claude Code를 다시 시작하세요.",
         "key_required": "AIO Proxy에서 API 키가 활성화되어 있어 키를 선택해야 합니다. 대화형 터미널에서 이 명령을 실행하거나 대시보드의 Agents 페이지를 사용하세요. 파일은 변경되지 않았습니다.",
         "credential_failed": "AIO Proxy API 키를 확인하지 못했습니다({code}). 파일은 변경되지 않았습니다.",
+        "endpoint_changed": "Claude Code를 구성하는 동안 aio-proxy 주소가 바뀌었습니다. 파일은 변경되지 않았습니다. 명령을 다시 실행하세요.",
         "modified": "AIO Proxy가 관리하는 Claude Code 설정이 수정되었습니다: {fields}. aiop agent remove claude-code를 실행한 뒤 다시 구성하세요. 파일은 변경되지 않았습니다.",
         "removed": "{configPath}의 Claude Code 관리 설정을 {status}했습니다.",
         "preserved": "직접 수정한 필드는 유지했습니다: {fields}."

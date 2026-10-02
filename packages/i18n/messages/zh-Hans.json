@@ -444,6 +444,7 @@
         "restart": "请重启 Claude Code 使配置生效。",
         "key_required": "AIO Proxy 已启用 API Key，必须选择一把 Key。请在交互式终端运行此命令，或使用 Dashboard 的 Agents 页面；未修改文件。",
         "credential_failed": "无法确定要使用的 AIO Proxy API Key（{code}）；未修改文件。",
+        "endpoint_changed": "配置 Claude Code 期间 aio-proxy 地址发生了变化；未修改文件。请重新运行此命令。",
         "modified": "AIO Proxy 管理的 Claude Code 设置已被修改：{fields}。请先运行 aiop agent remove claude-code，再重新配置；未修改文件。",
         "removed": "已从 {configPath} {status} Claude Code 受管设置。",
         "preserved": "保留了你修改过的字段：{fields}。"

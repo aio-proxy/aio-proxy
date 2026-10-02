@@ -444,6 +444,7 @@
         "restart": "変更を反映するには Claude Code を再起動してください。",
         "key_required": "AIO Proxy で API キーが有効なため、キーを選択する必要があります。対話型ターミナルでこのコマンドを実行するか、ダッシュボードの Agents ページを使用してください。ファイルは変更されていません。",
         "credential_failed": "AIO Proxy の API キーを確定できませんでした（{code}）。ファイルは変更されていません。",
+        "endpoint_changed": "Claude Code の設定中に aio-proxy のアドレスが変わりました。ファイルは変更されていません。もう一度コマンドを実行してください。",
         "modified": "AIO Proxy が管理する Claude Code 設定が変更されています: {fields}。aiop agent remove claude-code を実行してから再設定してください。ファイルは変更されていません。",
         "removed": "Claude Code の管理設定を {configPath} から {status} しました。",
         "preserved": "編集済みのフィールドは保持しました: {fields}。"

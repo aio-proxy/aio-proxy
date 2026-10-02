@@ -228,6 +228,15 @@ test('removing an integration that was never configured creates nothing', async 
   expect(await stat(f.location.home).catch(() => undefined)).toBeUndefined();
 });
 
+test('configure writes nothing if the proxy address changed while the key was being chosen', async () => {
+  const f = await fixture({ settings: { model: 'opus' } });
+  const endpoints = [ENDPOINT, 'http://127.0.0.1:9400'];
+  const moved = { ...f.deps, resolveEndpoint: async () => endpoints.shift() ?? ENDPOINT };
+  await expect(configureClaudeCode(noKey, moved)).rejects.toThrow('CLAUDE_CODE_ENDPOINT_CHANGED');
+  expect(await f.read()).toEqual({ model: 'opus' });
+  expect(await Bun.file(f.location.markerPath).exists()).toBe(false);
+});
+
 test('with proxy keys and no way to choose one, configure fails instead of writing a bare endpoint', async () => {
   const f = await fixture({ settings: { model: 'opus' }, apiKeys: [{ key: 'sk-live', label: 'Laptop' }] });
   // bun test has no TTY, so the terminal entry cannot ask.

@@ -130,9 +130,15 @@ export async function configureClaudeCode(
   const keys = await deps.inspectKeys(endpoint);
   const credential = await keys.resolve(await selectKey(keys.choices));
   // Locked only for the write: holding it across the key prompt would block other runs on a human.
-  const status = await withSettingsLock(deps.location, () =>
-    configureClaudeCodeSettings(deps.location, { endpoint, token: credential.token, credential: credential.kind }),
-  );
+  const status = await withSettingsLock(deps.location, async () => {
+    // The proxy address can change while the prompt is open; a port-only change passes key validation.
+    if ((await deps.resolveEndpoint()) !== endpoint) throw new Error('CLAUDE_CODE_ENDPOINT_CHANGED');
+    return configureClaudeCodeSettings(deps.location, {
+      endpoint,
+      token: credential.token,
+      credential: credential.kind,
+    });
+  });
   return {
     target: 'claude-code',
     integration: 'static-config',
@@ -169,6 +175,8 @@ export async function configureClaudeCodeAgent(
     failure = error;
     if (error instanceof CredentialError)
       throw new CliExit(EXIT.unrecoverable, m['cli.agent.claude_code.credential_failed']({ code: error.code }));
+    if (error instanceof Error && error.message === 'CLAUDE_CODE_ENDPOINT_CHANGED')
+      throw new CliExit(EXIT.transient, m['cli.agent.claude_code.endpoint_changed']());
     throw error;
   } finally {
     ui.session?.close(failure);

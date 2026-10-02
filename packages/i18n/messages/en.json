@@ -444,6 +444,7 @@
         "restart": "Restart Claude Code for the change to take effect.",
         "key_required": "AIO Proxy API keys are enabled, so one must be chosen. Run this command in an interactive terminal or use the Dashboard Agents page; no files were changed.",
         "credential_failed": "The AIO Proxy API key could not be resolved ({code}); no files were changed.",
+        "endpoint_changed": "The aio-proxy address changed while Claude Code was being configured; no files were changed. Run the command again.",
         "modified": "Claude Code settings managed by AIO Proxy were edited: {fields}. Run aiop agent remove claude-code, then configure again; no files were changed.",
         "removed": "Claude Code managed settings {status} at {configPath}.",
         "preserved": "Kept fields you edited: {fields}."

@@ -31,7 +31,10 @@ export type AgentHostPortDeps = {
 const ERROR_MESSAGES: ReadonlyArray<readonly [RegExp, AgentOperationErrorCode]> = [
   [/ is not installed$/u, 'host_missing'],
   [/^managed installation is required$/u, 'not_configured'],
-  [/^CODEX_(SETUP_ENDPOINT_CHANGED|AUTH_ENDPOINT_OR_PROVIDER_CHANGED)$/u, 'endpoint_changed'],
+  [
+    /^(CODEX_SETUP_ENDPOINT_CHANGED|CODEX_AUTH_ENDPOINT_OR_PROVIDER_CHANGED|CLAUDE_CODE_ENDPOINT_CHANGED)$/u,
+    'endpoint_changed',
+  ],
   // A blocked revocation leaves a recovery journal behind, like an interrupted authorization.
   [/^CODEX_AUTH_(OPERATION_PENDING|REVOKE_BLOCKED)$/u, 'recovery_required'],
   [/operation is pending$|^Timed out waiting for process lock: |^Grok lock unverifiable$/u, 'locked'],

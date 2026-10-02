@@ -142,6 +142,7 @@ const AGENT_KEYS = [
   'cli.agent.claude_code.restart',
   'cli.agent.claude_code.key_required',
   'cli.agent.claude_code.credential_failed',
+  'cli.agent.claude_code.endpoint_changed',
   'cli.agent.claude_code.modified',
   'cli.agent.claude_code.removed',
   'cli.agent.claude_code.preserved',
