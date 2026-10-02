@@ -58,10 +58,18 @@ pub fn install_cli(cx: &mut App) {
         return;
     };
     let target = install::sidecar_of(bundle);
-    let alias = model.cli_probe.is_some_and(|probe| !probe.aio_proxy);
     model.cli_installing = true;
     changed(cx);
-    let task = cx.background_executor().spawn(async move { crate::cli_command::install(&target, alias) });
+    let task = cx.background_executor().spawn(async move {
+        // The cached probe may date from launch: ask the shell again right before the privileged
+        // change, and do nothing (the re-probe below hides the item) unless it still applies.
+        match crate::cli_command::probe() {
+            Some(probe) if !probe.aiop && probe.link_dir_on_path => {
+                crate::cli_command::install(&target, !probe.aio_proxy)
+            }
+            _ => Ok(false),
+        }
+    });
     cx.spawn(async move |cx| {
         let result = task.await;
         cx.update(|cx| {
