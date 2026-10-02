@@ -167,6 +167,25 @@ test('stop does nothing for a missing task and refuses a foreign one or a failed
   }
 });
 
+test('stop of a deleted task still kills its orphaned supervisor and waits for it', async () => {
+  let running = true;
+  const killed: number[] = [];
+  const calls = await recordCalls(
+    (io) =>
+      schtasksStop({
+        ...io,
+        imagePath: () => (running ? oldExec : undefined),
+        kill: (pid) => {
+          killed.push(pid);
+          running = false;
+        },
+      }),
+    { task: 'missing' },
+  );
+  expect(killed).toEqual([4242]);
+  expect(calls).toEqual([]);
+});
+
 test('start re-enables a stopped task before running it', async () => {
   const fs = fakeFs({ [specPath]: oldSpec, [exec]: '' });
   const calls = await recordCalls((io) => schtasksStart(io), { fs, task: renderTaskXml({ sid, exec, specPath }) });
@@ -189,6 +208,20 @@ test('start keeps a task whose recorded exec is still on disk without resolving 
 test('start re-creates a task whose recorded exec is gone before running it', async () => {
   const stale = renderTaskXml({ sid, exec: 'C:\\gone\\cli-1.0.0.exe', specPath });
   expect((await recordCalls((io) => schtasksStart(io), { task: stale })).map((c) => c[1])).toEqual(['/Create', '/Run']);
+});
+
+test('start re-creates a task whose spec path moved or whose spec is gone, though its exec is on disk', async () => {
+  const moved = renderTaskXml({ sid, exec: oldExec, specPath: 'C:\\Users\\old\\aio-proxy\\service.json' });
+  expect(
+    (
+      await recordCalls((io) => schtasksStart(io), { fs: fakeFs({ [specPath]: oldSpec, [oldExec]: '' }), task: moved })
+    ).map((c) => c[1]),
+  ).toEqual(['/Create', '/Run']);
+  expect(
+    (await recordCalls((io) => schtasksStart(io), { fs: fakeFs({ [oldExec]: '' }), task: oldTaskXml })).map(
+      (c) => c[1],
+    ),
+  ).toEqual(['/Create', '/Run']);
 });
 
 test('start leaves a package-manager-owned service alone when the desktop app resolves a different unit', async () => {

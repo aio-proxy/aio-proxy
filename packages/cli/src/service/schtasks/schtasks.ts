@@ -203,23 +203,31 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
 }
 
 /**
- * A task whose recorded exec an upgrade since pruned would launch a deleted binary, so it is recreated from the unit;
- * the unit is resolved only then, so a sound task starts even when no binary resolves. Only a service owned the way
+ * A task whose recorded exec an upgrade since pruned would launch a deleted binary, and one naming another spec path
+ * (or ours, gone) would run obsolete settings or exit at once, so either is recreated from the unit; the unit is
+ * resolved only then, so a sound task starts even when no binary resolves. Only a service owned the way
  * the resolved unit is gets refreshed: starting a package-manager-owned service from the desktop app must not
  * rewrite it and hand ownership over.
  */
 async function refreshesStaleTask(io: SchtasksIo, task: ParsedTask): Promise<boolean> {
-  if (task.action !== undefined && io.exists(task.action.exec)) return false;
+  const specPath = serviceSpecPath(io.localAppData);
+  const { action } = task;
+  const sound =
+    action !== undefined &&
+    io.exists(action.exec) &&
+    action.specPath.toLowerCase() === specPath.toLowerCase() &&
+    io.readFile(specPath) !== undefined;
+  if (sound) return false;
   const { spec } = await renderUnit(io);
-  const current = parseServiceSpec(io.readFile(serviceSpecPath(io.localAppData)) ?? '');
+  const current = parseServiceSpec(io.readFile(specPath) ?? '');
   return desktopOwned(current) === desktopOwned(parseServiceSpec(spec));
 }
 
 // Disabling makes the stop survive the next logon, which would otherwise start the task again.
 export async function schtasksStop(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
-  // Stopping a task that does not exist is already done.
-  if (!(await ownTaskExists(io, path))) return;
+  // A task deleted by hand leaves its supervisor running: `/Delete` does not stop what the task started.
+  if (!(await ownTaskExists(io, path))) return awaitSupervisorExit(io, true);
   await endTask(io, path);
   await io.run(['schtasks', '/Change', '/TN', path, '/DISABLE']);
 }
@@ -292,14 +300,10 @@ export async function schtasksRestartInService(
   scheduleExit(EXIT.restartRequested, 1000);
 }
 
-// `/End` kills the supervisor, whose Job Object takes the proxy with it; `/Delete` alone would leave both running.
-export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
-  const path = taskPath(io.sid);
-  const taskExists = await ownTaskExists(io, path);
-  if (taskExists) await endTask(io, path);
+/** Waits up to 10 s for the recorded supervisor to be gone, terminating it first when `kill` is set. */
+async function awaitSupervisorExit(io: SchtasksIo, kill: boolean): Promise<void> {
   const state = parseSupervisorState(io.readFile(serviceStatePath(io.localAppData)));
-  // With the task deleted by hand there is nothing for `/End` to stop, so end an orphaned supervisor ourselves.
-  if (!taskExists && supervisorAlive(state, io.imagePath, io.creationTime)) {
+  if (kill && supervisorAlive(state, io.imagePath, io.creationTime)) {
     try {
       io.kill(state.pid);
     } catch {
@@ -316,6 +320,15 @@ export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
     }
     await io.sleep(SUPERVISOR_POLL_MS);
   }
+}
+
+// `/End` kills the supervisor, whose Job Object takes the proxy with it; `/Delete` alone would leave both running.
+export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
+  const path = taskPath(io.sid);
+  const taskExists = await ownTaskExists(io, path);
+  if (taskExists) await endTask(io, path);
+  // With the task deleted by hand there is nothing for `/End` to stop, so end an orphaned supervisor ourselves.
+  await awaitSupervisorExit(io, !taskExists);
   if (taskExists) await io.run(['schtasks', '/Delete', '/TN', path, '/F']);
   io.remove(serviceSpecPath(io.localAppData));
   io.remove(serviceStatePath(io.localAppData));
