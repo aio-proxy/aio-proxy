@@ -15,6 +15,14 @@ declare const __AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__: string;
 
 const CLIENT_ID = __AIO_PROXY_GITHUB_COPILOT_CLIENT_ID__;
 
+type GitHubCopilotLoginResult = {
+  readonly fingerprint: string;
+  readonly suggestedKey: string;
+  readonly accountLabel?: string;
+  readonly credentials: GitHubCopilotCredential;
+  readonly expiresAt: number;
+};
+
 export async function loginToGitHubCopilot(
   context: OAuthLoginContext,
   options: GitHubAccountOptions,
@@ -23,16 +31,9 @@ export async function loginToGitHubCopilot(
     refreshingToken: 'Refreshing GitHub Copilot token',
     waitingForAuthorization: 'Waiting for GitHub authorization',
   },
-): Promise<{
-  readonly fingerprint: string;
-  readonly suggestedKey: string;
-  readonly accountLabel?: string;
-  readonly credentials: GitHubCopilotCredential;
-  readonly expiresAt: number;
-}> {
+): Promise<GitHubCopilotLoginResult> {
   const enterpriseURL = options.deploymentType === 'enterprise' ? options.enterpriseURL : undefined;
   const authBase = enterpriseURL ?? 'https://github.com';
-  const apiBase = githubApiBase(enterpriseURL);
   const fetcher = context.fetch ?? globalThis.fetch;
   const device = await requestDeviceCode(authBase, context.signal, fetcher);
   await context.authorization.presentDeviceCode({
@@ -42,7 +43,25 @@ export async function loginToGitHubCopilot(
   });
 
   const githubToken = await pollGitHubToken(authBase, device, context, presentationText.waitingForAuthorization);
-  context.progress(presentationText.refreshingToken);
+  return await completeGitHubCopilotLogin(githubToken, options, {
+    ...context,
+    progress: () => context.progress(presentationText.refreshingToken),
+  });
+}
+
+export async function completeGitHubCopilotLogin(
+  githubToken: string,
+  options: GitHubAccountOptions,
+  context: {
+    readonly signal: AbortSignal;
+    readonly fetch?: RuntimeFetch;
+    readonly progress?: (m: LocalizedText) => void;
+  },
+): Promise<GitHubCopilotLoginResult> {
+  const enterpriseURL = options.deploymentType === 'enterprise' ? options.enterpriseURL : undefined;
+  const apiBase = githubApiBase(enterpriseURL);
+  const fetcher = context.fetch ?? globalThis.fetch;
+  context.progress?.('Refreshing GitHub Copilot token');
   const copilot = await fetchCopilotToken(apiBase, githubToken, context.signal, fetcher);
   const baseURL = getGitHubCopilotBaseURL(copilot.access, enterpriseURL);
   const user = await fetchGitHubUser(apiBase, githubToken, context.signal, fetcher);
