@@ -1,16 +1,17 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   closeSync,
   constants,
   fstatSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
   unlinkSync,
   writeSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, win32 } from 'node:path';
 
 export const DESKTOP_TOKEN_FILE = 'desktop-token';
 
@@ -29,18 +30,54 @@ export class DesktopTokenRejectedError extends Error {
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/u;
 
-type TokenOptions = { readonly uid?: number };
+type TokenOptions = {
+  readonly uid?: number;
+  /** Defaults to `process.platform`; injectable so the win32 branch runs in tests on any host. */
+  readonly platform?: NodeJS.Platform;
+  /** Windows only: defaults to `process.env.LOCALAPPDATA`. */
+  readonly localAppData?: string;
+};
 type Inspection =
   | { readonly token: string }
   | { readonly missing: true }
   | { readonly rejected: DesktopTokenRejection };
 
+const isWindows = (options: TokenOptions) => (options.platform ?? process.platform) === 'win32';
+
+/**
+ * Where the token for `home` lives. POSIX keeps it inside `home`. Windows keeps one file per resolved home
+ * under the user's LocalAppData, because a Windows home directory carries no private mode bits.
+ */
+export function desktopTokenPath(home: string, options: TokenOptions = {}): string {
+  if (!isWindows(options)) return join(home, DESKTOP_TOKEN_FILE);
+  const localAppData = options.localAppData ?? process.env.LOCALAPPDATA;
+  if (!localAppData) throw new DesktopTokenRejectedError('unreadable');
+  const resolved = win32
+    .resolve(home)
+    .replace(/[\\/]+$/u, '')
+    .toLowerCase();
+  const digest = createHash('sha256').update(resolved).digest('hex');
+  return join(localAppData, 'aio-proxy', 'desktop-tokens', digest);
+}
+
 function inspect(path: string, options: TokenOptions): Inspection {
+  const windows = isWindows(options);
+  if (windows) {
+    // O_NOFOLLOW does not exist on Windows; refuse a symlink or junction up front instead.
+    try {
+      if (lstatSync(path).isSymbolicLink()) return { rejected: 'not_regular_file' };
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === 'ENOENT' ? { missing: true } : { rejected: 'unreadable' };
+    }
+  }
   let fd: number;
   try {
     // O_NOFOLLOW refuses a symlink (ELOOP); O_NONBLOCK keeps a planted FIFO from blocking the open.
     // Every check below runs on the opened descriptor, so nothing can be swapped in between.
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    fd = openSync(
+      path,
+      windows ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === 'ENOENT') return { missing: true };
@@ -49,9 +86,12 @@ function inspect(path: string, options: TokenOptions): Inspection {
   try {
     const stat = fstatSync(fd);
     if (!stat.isFile()) return { rejected: 'not_regular_file' };
-    const uid = options.uid ?? process.getuid?.();
-    if (uid !== undefined && stat.uid !== uid) return { rejected: 'foreign_owner' };
-    if ((stat.mode & 0o077) !== 0) return { rejected: 'insecure_mode' };
+    // Windows has no POSIX uid or mode bits; the LocalAppData profile ACL is the access control.
+    if (!windows) {
+      const uid = options.uid ?? process.getuid?.();
+      if (uid !== undefined && stat.uid !== uid) return { rejected: 'foreign_owner' };
+      if ((stat.mode & 0o077) !== 0) return { rejected: 'insecure_mode' };
+    }
     const token = readFileSync(fd, 'utf8').trim();
     return TOKEN_PATTERN.test(token) ? { token } : { rejected: 'malformed' };
   } catch {
@@ -63,8 +103,13 @@ function inspect(path: string, options: TokenOptions): Inspection {
 
 /** The desktop token, or `undefined` when the file is missing, unreadable, or fails the ownership and permission checks. */
 export function readDesktopToken(home: string, options: TokenOptions = {}): string | undefined {
-  const result = inspect(join(home, DESKTOP_TOKEN_FILE), options);
-  return 'token' in result ? result.token : undefined;
+  try {
+    const result = inspect(desktopTokenPath(home, options), options);
+    return 'token' in result ? result.token : undefined;
+  } catch (error) {
+    if (error instanceof DesktopTokenRejectedError) return undefined;
+    throw error;
+  }
 }
 
 /**
@@ -72,11 +117,11 @@ export function readDesktopToken(home: string, options: TokenOptions = {}): stri
  * overwritten or repaired: that would silently hand a token to whoever planted the file.
  */
 export function ensureDesktopToken(home: string, options: TokenOptions = {}): string {
-  const path = join(home, DESKTOP_TOKEN_FILE);
+  const path = desktopTokenPath(home, options);
   const existing = inspect(path, options);
   if ('token' in existing) return existing.token;
   if ('rejected' in existing) throw new DesktopTokenRejectedError(existing.rejected);
-  mkdirSync(home, { recursive: true, mode: 0o700 });
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const temp = `${path}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
   const fd = openSync(temp, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY, 0o600);
   try {
