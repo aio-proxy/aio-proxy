@@ -97,3 +97,13 @@ AIO Proxy 会识别请求的逻辑会话（例如 OpenAI `session_id`、Anthropi
 
 - AIO Proxy 会捕获该失败，记录在链路跟踪日志中，并无缝切到下一个候选提供商。
 - 仅在**所有可用候选均告失败**时，AIO Proxy 才会向客户端返回最后一次尝试所捕获的错误。
+
+### 6. 冷却与订阅配额跳过
+
+在尝试任何候选之前，AIO Proxy 会移除当前无法服务的候选。即使响应 owner 或会话亲和把它排在队首，也照样移除：
+
+- **冷却**：上游返回带有效 `Retry-After` 的 429 后，该 Provider 在这段时间内对该模型处于冷却状态。
+- **订阅配额用尽**：缓存的配额快照显示覆盖该模型的窗口已用尽、且重置时间已知时，该订阅 Provider 会被跳过，直到窗口重置。由插件声明每个窗口覆盖哪些模型，目前支持 Kimi Code、Muse Code、ChatGPT 和 Cursor。
+- 配额未知、读取失败或快照超过 10 分钟时，永远不会移除候选；请求路径上也不会为此等待任何网络读取。
+- 若全部候选都被移除，客户端会收到 429，`Retry-After` 为最早的重置时间。
+- 请求 trace 的 `aio_proxy.route.skipped_candidates` 属性会列出每个被移除的候选及原因（`cooldown` 或 `quota_exhausted`）。

@@ -234,8 +234,9 @@ router:
 4. 剩余候选按 Provider priority 从高到低，再在同一 priority 层级内按 Provider weight 排序。配置顺序是目录表示和诊断的确定性平局规则，不再是同一层级中正数 weight 候选的请求顺序。
 5. 稳定（非 generated）逻辑会话使用确定性加权抽取，因此在路由快照未变时，token-count 与生成共用同一预先尝试顺序。generated 会话每次独立随机抽取。
 6. 响应 owner，然后是会话亲和，可将合格的普通候选提前到队首。它们不会复活已禁用或 weight 为零的 Provider。会话亲和仍会覆盖 priority，使会话可以粘在此前成功的 Provider 上（例如 prompt-cache 连续性）。
-7. 同协议的 `api` Provider 使用原始透传，其他组合通过 AI SDK 转换。
-8. 当前 Provider 失败后尝试下一个候选；全部失败时返回最后一次失败。
+7. 移除当前无法服务的候选，即使响应 owner 或会话亲和把它排在了队首：因带 `Retry-After` 的 429 而处于冷却中的 Provider，以及缓存的配额快照显示覆盖该模型的窗口已用尽、且重置时间已知的订阅 Provider（Kimi Code、Muse Code、ChatGPT 和 Cursor 会声明每个窗口覆盖哪些模型）。配额未知、读取失败或快照超过 10 分钟时，永远不会移除候选。若全部候选都被移除，客户端会收到 429，`Retry-After` 为最早的重置时间。请求 trace 会在 `aio_proxy.route.skipped_candidates` 中列出被移除的候选。
+8. 同协议的 `api` Provider 使用原始透传，其他组合通过 AI SDK 转换。
+9. 当前 Provider 失败后尝试下一个候选；全部失败时返回最后一次失败。
 
 在上述示例策略中，priority 30 时 `provider-a` 大约 60% 排在第一、`provider-b` 大约 40%。若选中的 Provider 失败，会先尝试同一 priority-30 的另一个 Provider，再尝试 `provider-c`。
 

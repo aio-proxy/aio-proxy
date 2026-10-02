@@ -112,3 +112,15 @@ When an upstream attempt returns a retryable error (HTTP 5xx, network timeout, r
 1. The error details and latency are recorded in trace diagnostics.
 2. The pipeline advances to the next candidate in the queue.
 3. Only when all candidates in all tiers fail will AIO Proxy return the final failure response to the client.
+
+---
+
+## 6. Cooldown and Subscription Quota Skipping
+
+Before any attempt, AIO Proxy removes candidates that cannot serve right now, even when response owner or session affinity put them first:
+
+- **Cooldown**: after an upstream 429 with a usable `Retry-After`, that Provider cools down for the model until the window passes.
+- **Exhausted subscription quota**: when the cached quota snapshot shows the window covering this model exhausted with a known reset, the subscription Provider is skipped until the reset. Plugins declare which models each window covers; Kimi Code, Muse Code, ChatGPT, and Cursor do today.
+- Quota that is unknown, failed to read, or older than 10 minutes never removes a candidate, and the request path never waits on a quota read.
+- If every candidate is removed, the client gets a 429 whose `Retry-After` is the earliest reset.
+- The request trace attribute `aio_proxy.route.skipped_candidates` lists each removed candidate with its reason (`cooldown` or `quota_exhausted`).
