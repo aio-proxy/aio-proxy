@@ -1,4 +1,4 @@
-import type { PluginRepository } from '@aio-proxy/core';
+import type { PluginRepository, ProviderModelCatalogRepository } from '@aio-proxy/core';
 import type {
   Config,
   DashboardProviderSummary,
@@ -30,6 +30,7 @@ export type ModelRoutingControlPlaneOptions = {
   readonly currentConfig: () => Config;
   readonly currentSummaries: () => readonly DashboardProviderSummary[];
   readonly repository: PluginRepository;
+  readonly providerModels: ProviderModelCatalogRepository;
   readonly configStore: ConfigStore;
   readonly pluginDefaults?: (provider: Extract<Provider, { kind: 'oauth' }>) => ProviderAlias | undefined;
 };
@@ -49,6 +50,7 @@ export function createModelRoutingControlPlane(options: ModelRoutingControlPlane
       config: options.currentConfig(),
       summaries: options.currentSummaries(),
       repository: options.repository,
+      providerModels: options.providerModels,
       writable,
       pluginDefaults: options.pluginDefaults,
     });

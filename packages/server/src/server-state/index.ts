@@ -6,6 +6,7 @@ import {
   createEmbeddedBuiltIns,
   createPluginDiagnosticFactory,
   createPluginRepository,
+  createProviderModelCatalogRepository,
   DesktopTokenRejectedError,
   type DiagnosticFactory,
   ensureDesktopToken,
@@ -157,6 +158,7 @@ async function initializeServerState(
   const events = createDashboardEventHub(options.eventLimits);
   registerStartupCleanup(() => events.close());
   const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);
+  const providerModels = createProviderModelCatalogRepository(dbHandle.sqlite);
   const diagnostics = createServerDiagnosticFactory();
   const pluginLogger = options.pluginLogger ?? defaultPluginLogger;
   const logger = options.logger ?? defaultLogger;
@@ -170,6 +172,7 @@ async function initializeServerState(
     options,
     internalOptions,
     repository,
+    providerModels,
     diagnostics,
     pluginLogger,
     logger,
@@ -197,6 +200,7 @@ async function initializeServerState(
           undefined,
           options,
           repository,
+          providerModels,
           diagnostics,
           pluginLogger,
           () => queueRebuild(runtime),
@@ -244,6 +248,7 @@ async function initializeServerState(
     currentConfig: () => (manager.current() as Snapshot).config,
     currentSummaries: () => (manager.current() as Snapshot).summaries,
     repository,
+    providerModels,
     configStore,
     pluginDefaults: (provider) => {
       const adapter = (manager.current() as Snapshot).plugins.registry.resolveOAuth(

@@ -4,6 +4,7 @@ import type {
   PendingAccountOperation,
   PluginLogSink,
   PluginRepository,
+  ProviderModelCatalogRepository,
 } from '@aio-proxy/core';
 import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
 import type { DatabaseOwnershipLock, OpenDbHandle } from '@aio-proxy/core/db';
@@ -45,6 +46,7 @@ export type ServerRuntime = {
   readonly options: ServerStateOptions;
   readonly internalOptions: InternalServerStateOptions;
   readonly repository: PluginRepository;
+  readonly providerModels: ProviderModelCatalogRepository;
   readonly diagnostics: DiagnosticFactory;
   readonly pluginLogger: PluginLogSink;
   readonly logger: ServerLogSink;
@@ -98,6 +100,7 @@ export async function commitConfig(
     previous,
     runtime.options,
     runtime.repository,
+    runtime.providerModels,
     runtime.diagnostics,
     runtime.pluginLogger,
     () => queueRebuild(runtime),
