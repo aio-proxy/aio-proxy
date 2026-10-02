@@ -1,5 +1,5 @@
 import { existsSync, readdirSync } from 'node:fs';
-import { basename, delimiter, dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import type { PackageUpgradeMethod, UpgradeMethod, UpgradeTarget } from './constants';
 import { BINARY_NPM_SCOPE, HOMEBREW_FORMULA, PACKAGE, SUPPORTED_BINARY_TARGETS } from './constants';
@@ -111,9 +111,17 @@ const managerCommandAt = (dir: string, name: string): string | undefined => {
   return existsSync(direct) ? direct : undefined;
 };
 
-const launcherBeside = (command: string): string | undefined => {
-  const candidate = join(dirname(command), PACKAGE);
-  return existsSync(candidate) ? candidate : undefined;
+// Windows launchers are npm's .cmd shim and bun's .exe shim; the extensionless
+// name is a POSIX shell script there and cannot be executed directly.
+const launcherNames = (platform: NodeJS.Platform): readonly string[] =>
+  platform === 'win32' ? [`${PACKAGE}.exe`, `${PACKAGE}.cmd`, PACKAGE] : [PACKAGE];
+
+export const launcherBeside = (command: string, platform: NodeJS.Platform = process.platform): string | undefined => {
+  for (const name of launcherNames(platform)) {
+    const candidate = join(dirname(command), name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
 };
 
 const layoutPreferredManager = (binPath: string): NodeManager | undefined => {
@@ -168,19 +176,21 @@ const platformPackageTarget = (binPath: string, preferred?: PackageUpgradeMethod
   return undefined;
 };
 
-const whichOnPath = (name: string): string | undefined => {
-  const pathVar = process.env['PATH'];
+export const whichOnPath = (
+  pathVar: string | undefined = process.env['PATH'],
+  platform: NodeJS.Platform = process.platform,
+): string | undefined => {
   if (pathVar === undefined || pathVar === '') return undefined;
-  for (const dir of pathVar.split(delimiter)) {
+  for (const dir of pathVar.split(platform === 'win32' ? ';' : ':')) {
     if (dir === '') continue;
-    const candidate = join(dir, name);
-    if (existsSync(candidate)) return candidate;
+    const found = launcherBeside(join(dir, PACKAGE), platform);
+    if (found !== undefined) return found;
   }
   return undefined;
 };
 
 const pathLauncherTarget = (preferred?: NodeManager): UpgradeTarget | undefined => {
-  const onPath = whichOnPath(PACKAGE);
+  const onPath = whichOnPath();
   if (onPath === undefined || isPlatformCliBinary(onPath)) return undefined;
   if (preferred !== undefined) {
     const command = siblingCommand(onPath, preferred);
@@ -300,8 +310,12 @@ const listDir = (dir: string): readonly string[] => {
   }
 };
 
-const nativeAt = (nodeModules: string, platformPkg: string): string | undefined => {
-  const candidate = join(nodeModules, platformPkg, 'bin', process.platform === 'win32' ? `${PACKAGE}.exe` : PACKAGE);
+export const nativeAt = (
+  nodeModules: string,
+  platformPkg: string,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined => {
+  const candidate = join(nodeModules, platformPkg, 'bin', platform === 'win32' ? `${PACKAGE}.exe` : PACKAGE);
   return existsSync(candidate) ? candidate : undefined;
 };
 

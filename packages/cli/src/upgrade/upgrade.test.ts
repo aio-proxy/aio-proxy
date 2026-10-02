@@ -6,6 +6,9 @@ import { dirname, join } from 'node:path';
 import {
   isPathInDirectory,
   isPlatformCliBinary,
+  launcherBeside,
+  nativeAt,
+  whichOnPath,
   resolveManagedRestartExec,
   resolveUpgradeMethod,
   resolveUpgradeTargetFrom,
@@ -1409,6 +1412,25 @@ test('a stable desktop copy reached without env markers is desktop-managed', () 
 test('the native win32 binary under an npm prefix is recognized as a package install', () => {
   const exe = 'C:\\Users\\U\\AppData\\Roaming\\npm\\node_modules\\@aio-proxy\\cli-win32-x64\\bin\\aio-proxy.exe';
   expect(isPlatformCliBinary(exe)).toBe(true);
+});
+
+test('on win32 the .exe and .cmd launchers are found where the extensionless name is not', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-win-launcher-'));
+  writeFileSync(join(dir, 'aio-proxy.cmd'), '');
+  expect(whichOnPath(`/nowhere;${dir}`, 'win32')).toBe(join(dir, 'aio-proxy.cmd'));
+  expect(whichOnPath(`/nowhere:${dir}`, 'linux')).toBeUndefined();
+  writeFileSync(join(dir, 'aio-proxy.exe'), '');
+  expect(launcherBeside(join(dir, 'npm.cmd'), 'win32')).toBe(join(dir, 'aio-proxy.exe'));
+  expect(launcherBeside(join(dir, 'npm'), 'linux')).toBeUndefined();
+});
+
+test('nativeAt looks for aio-proxy.exe on win32', () => {
+  const nm = mkdtempSync(join(tmpdir(), 'aio-win-native-'));
+  const bin = join(nm, '@aio-proxy', 'cli-win32-x64', 'bin');
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, 'aio-proxy.exe'), '');
+  expect(nativeAt(nm, '@aio-proxy/cli-win32-x64', 'win32')).toBe(join(bin, 'aio-proxy.exe'));
+  expect(nativeAt(nm, '@aio-proxy/cli-win32-x64', 'linux')).toBeUndefined();
 });
 
 test('a CLI upgrade installs but never restarts a service the desktop app owns', async () => {

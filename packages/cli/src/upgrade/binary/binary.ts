@@ -135,6 +135,16 @@ export const sweepStaleBackups = async (targetPath: string): Promise<void> => {
   }
 };
 
+// Windows cannot delete the previous exe while it is the running image, so the
+// upgrade leaves it at `<exe>.old`; the next process start removes it.
+export const sweepStartupBackup = async (
+  execPath: string = process.execPath,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> => {
+  if (platform !== 'win32') return;
+  await unlinkIfExists(`${execPath}.old`).catch(() => undefined);
+};
+
 const verifyInstalledVersion = async (binPath: string, expected: string): Promise<Verification> => {
   const proc = Bun.spawn([binPath, '--version'], { stdout: 'pipe', stderr: 'ignore', windowsHide: true });
   const out = (await new Response(proc.stdout).text()).trim();

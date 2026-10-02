@@ -4,5 +4,6 @@ export {
   commitStagedBinary,
   replaceBinaryForUpdate,
   sweepStaleBackups,
+  sweepStartupBackup,
   updateViaBinary,
 } from './binary';

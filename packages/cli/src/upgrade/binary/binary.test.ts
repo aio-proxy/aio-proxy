@@ -3,7 +3,13 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { commitStagedBinary, extractBinaryFromTarball, replaceBinaryForUpdate, sweepStaleBackups } from './binary';
+import {
+  commitStagedBinary,
+  extractBinaryFromTarball,
+  replaceBinaryForUpdate,
+  sweepStaleBackups,
+  sweepStartupBackup,
+} from './binary';
 
 const tarball = async (entries: Record<string, Uint8Array>): Promise<Uint8Array> =>
   new Bun.Archive(entries, { compress: 'gzip' }).bytes();
@@ -64,4 +70,15 @@ test('a win32 upgrade keeps the previous binary at <target>.old and the next swe
   writeFileSync(`${target}.old`, 'STALE');
   await sweepStaleBackups(target);
   expect(existsSync(`${target}.old`)).toBe(false);
+});
+
+test('the startup sweep removes the previous exe left at <exe>.old on win32 only', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-bin-start-'));
+  const exe = join(root, 'aio-proxy.exe');
+  writeFileSync(`${exe}.old`, 'OLD');
+  await sweepStartupBackup(exe, 'linux');
+  expect(existsSync(`${exe}.old`)).toBe(true);
+  await sweepStartupBackup(exe, 'win32');
+  expect(existsSync(`${exe}.old`)).toBe(false);
+  await sweepStartupBackup(exe, 'win32'); // nothing left: still a no-op
 });

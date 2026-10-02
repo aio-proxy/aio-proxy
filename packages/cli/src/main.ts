@@ -26,6 +26,7 @@ import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceSto
 import { statusCommand } from './status';
 import { applyHelpStyle, createStyle, formatErrorLines, PromptCancelledError } from './ui';
 import { printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
+import { sweepStartupBackup } from './upgrade/binary';
 import { runUpgradeCommand } from './upgrade/upgrade';
 
 export { readOrBootstrapConfig } from './run';
@@ -340,6 +341,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
 };
 
 export const main = async (deps: CliDeps = defaultCliDeps) => {
+  await sweepStartupBackup();
   try {
     const installationId = codexAuthInvocation(process.argv.slice(2));
     if (installationId !== undefined) {
