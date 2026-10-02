@@ -14,6 +14,8 @@ fn only_marker_lines_answer_the_probe() {
     assert_eq!(parse_probe(&format!("zsh: bad option: -i\n{MARK}aiop\n")), None);
 }
 
+// Exercises the macOS /usr/local/bin install; the Linux `aiop` tests arrive in phase 2 Task 9.
+#[cfg(target_os = "macos")]
 #[test]
 fn links_aiop_and_a_free_aio_proxy_through_awkward_paths() {
     let dir = tempfile::tempdir().unwrap();
@@ -25,6 +27,8 @@ fn links_aiop_and_a_free_aio_proxy_through_awkward_paths() {
     assert_eq!(fs::read_link(&long).unwrap(), target);
 }
 
+// Exercises the macOS /usr/local/bin install; the Linux `aiop` tests arrive in phase 2 Task 9.
+#[cfg(target_os = "macos")]
 #[test]
 fn an_existing_aio_proxy_is_left_alone() {
     let dir = tempfile::tempdir().unwrap();
@@ -36,6 +40,8 @@ fn an_existing_aio_proxy_is_left_alone() {
     assert_eq!(fs::read_to_string(&long).unwrap(), "npm copy");
 }
 
+// Exercises the macOS /usr/local/bin install; the Linux `aiop` tests arrive in phase 2 Task 9.
+#[cfg(target_os = "macos")]
 #[test]
 fn a_foreign_aiop_is_refused_while_ours_and_dangling_ones_are_replaced() {
     let dir = tempfile::tempdir().unwrap();
@@ -53,6 +59,8 @@ fn a_foreign_aiop_is_refused_while_ours_and_dangling_ones_are_replaced() {
     assert_eq!(fs::read_link(&aiop).unwrap(), target);
 }
 
+// Exercises the macOS /usr/local/bin install; the Linux `aiop` tests arrive in phase 2 Task 9.
+#[cfg(target_os = "macos")]
 #[test]
 fn no_alias_is_linked_when_aio_proxy_resolves_elsewhere() {
     let dir = tempfile::tempdir().unwrap();

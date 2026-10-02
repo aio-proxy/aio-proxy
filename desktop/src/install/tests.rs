@@ -11,6 +11,8 @@ fn allowed(bundle: &str) -> bool {
     location_allows_persistence(Path::new(bundle), Path::new(HOME), false)
 }
 
+// The Applications-folder persistence model is macOS-only.
+#[cfg(target_os = "macos")]
 #[test]
 fn only_an_applications_folder_on_a_writable_volume_is_persistent() {
     assert!(allowed("/Applications/AIO Proxy.app"));
@@ -170,6 +172,8 @@ fn a_target_that_cannot_be_stat_ed_is_not_treated_as_missing() {
     assert_eq!(fs::read_link(&f.paths.stable).unwrap(), a);
 }
 
+// Symlink repoint; Windows copies a sidecar instead.
+#[cfg(unix)]
 #[test]
 fn a_failed_repoint_leaves_the_original_and_no_temp_file() {
     let f = fixture();
