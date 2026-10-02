@@ -50,13 +50,14 @@ fn probe_cli(cx: &mut App) {
     .detach();
 }
 
-/// Links `/usr/local/bin/aiop` to the stable symlink, so the command survives app updates.
+/// Links `/usr/local/bin/aiop` to this bundle's CLI, which Sparkle updates in place. Not the
+/// per-user stable symlink: a machine-wide command must not run through one account's home.
 pub fn install_cli(cx: &mut App) {
     let model = cx.global::<AppModel>();
-    if !model.persistent() {
+    let (true, Some(bundle)) = (model.persistent(), model.bundle.as_deref()) else {
         return;
-    }
-    let target = model.paths.symlink.clone();
+    };
+    let target = install::sidecar_of(bundle);
     let task = cx.background_executor().spawn(async move { crate::cli_command::install(&target) });
     cx.spawn(async move |cx| {
         let result = task.await;

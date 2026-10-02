@@ -52,6 +52,19 @@ fn probe_answer(stdout: &str) -> Option<bool> {
     })
 }
 
+/// Run as root behind the prompt with `$1` target, `$2` aiop, `$3` aio-proxy. An `aiop` is replaced
+/// only when absent, dangling or already ours, since the probe ran earlier and only saw the user's
+/// PATH; `aio-proxy` is linked only when free, so an npm or Homebrew copy is left alone.
+const LINK_SCRIPT: &str = r#"set -e
+/bin/mkdir -p "$(/usr/bin/dirname "$2")"
+if [ -e "$2" ] && [ "$(/usr/bin/readlink "$2")" != "$1" ]; then
+  echo "$2 already exists and is not this app's" >&2
+  exit 1
+fi
+/bin/ln -sf "$1" "$2"
+[ -e "$3" ] || [ -L "$3" ] || /bin/ln -s "$1" "$3"
+"#;
+
 /// Points `/usr/local/bin/aiop`, and `aio-proxy` when free, at `target`. `Ok(false)` when the user
 /// cancelled the prompt.
 pub fn install(target: &Path) -> Result<bool, String> {
@@ -60,27 +73,30 @@ pub fn install(target: &Path) -> Result<bool, String> {
 
 fn link(target: &Path, aiop: &Path, long: &Path, admin: bool) -> Result<bool, String> {
     let privileges = if admin { " with administrator privileges" } else { "" };
-    // Paths reach the shell only through `quoted form of`. `ln -s` without `-f` fails on any existing
-    // entry, which is the "when free" rule for `aio-proxy`.
-    let script = format!(
-        "do shell script \"/bin/mkdir -p \" & quoted form of item 4 of argv & \" && /bin/ln -sf \" & target & \" \" & quoted form of item 2 of argv & \" && (/bin/ln -s \" & target & \" \" & quoted form of item 3 of argv & \" 2>/dev/null || true)\"{privileges}"
-    );
+    // Script and paths reach the shell only through `quoted form of`.
+    let run = format!("do shell script cmd{privileges}");
     let mut command = Command::new("/usr/bin/osascript");
     command
         .args([
             "-e",
             "on run argv",
             "-e",
-            "set target to quoted form of item 1 of argv",
+            "set cmd to \"/bin/sh -c \" & quoted form of item 1 of argv & \" sh\"",
             "-e",
-            &script,
+            "repeat with arg in rest of argv",
+            "-e",
+            "set cmd to cmd & \" \" & quoted form of (arg as text)",
+            "-e",
+            "end repeat",
+            "-e",
+            &run,
             "-e",
             "end run",
+            LINK_SCRIPT,
         ])
         .arg(target)
         .arg(aiop)
-        .arg(long)
-        .arg(aiop.parent().unwrap_or(Path::new("/")));
+        .arg(long);
     let output = run_with_timeout(command, INSTALL_TIMEOUT).map_err(|error| error.to_string())?;
     if output.status.success() {
         return Ok(true);
