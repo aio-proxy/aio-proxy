@@ -49,14 +49,16 @@ function orderTier(
     if (resetsAt === undefined) unknown.push(candidate);
     else keyed.push({ candidate, resetsAt });
   }
-  if (keyed.length > 0) {
-    for (const candidate of unknown) {
-      if (candidate.provider.kind === ProviderKind.OAuth) warm?.(candidate.provider.id);
-    }
-  }
   // `sort` is stable, so equal resets keep the router's (weighted or deterministic) order.
   keyed.sort((left, right) => left.resetsAt - right.resetsAt);
-  return [...keyed.map(({ candidate }) => ({ ...candidate, selectionSource: 'quota_reset' as const })), ...unknown];
+  const ordered = [
+    ...keyed.map(({ candidate }) => ({ ...candidate, selectionSource: 'quota_reset' as const })),
+    ...unknown,
+  ];
+  for (const candidate of unknown) {
+    if (candidate !== ordered[0] && candidate.provider.kind === ProviderKind.OAuth) warm?.(candidate.provider.id);
+  }
+  return ordered;
 }
 
 /**
@@ -64,10 +66,8 @@ function orderTier(
  * allowance is not left to lapse on one subscription while another is drained. Candidates with no
  * usable quota follow in the router's order. Tiers never mix, and a provider-qualified route is left
  * alone: its `selectionSource` is what strips the Provider ID back to the public slug.
- * Unknown OAuth candidates demoted behind a keyed candidate are warmed without waiting, so a cold
- * cache converges. They usually won't serve this request, so the warm won't pre-empt their own
- * post-success warm. With no keyed candidate, the first weighted candidate serves and warms after
- * its response settles instead.
+ * Unknown OAuth candidates behind the first in each tier are warmed without waiting. The serving
+ * subscription warms after success, avoiding a pre-request warm that would pre-empt it.
  */
 export function orderByQuotaReset(
   candidates: readonly Candidate[],

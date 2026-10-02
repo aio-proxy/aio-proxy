@@ -156,10 +156,21 @@ describe('orderByQuotaReset', () => {
     expect(warmed).toEqual(['a']);
   });
 
-  test('does not warm when nothing in the tier is keyed', () => {
+  test('warms cold subscriptions behind an api Provider that leads the tier', () => {
+    const warmed: string[] = [];
+    orderByQuotaReset(
+      [candidate('api-x', { kind: 'api' }), candidate('a'), candidate('c')],
+      statuses({}),
+      now,
+      (providerId) => warmed.push(providerId),
+    );
+    expect(warmed).toEqual(['a', 'c']);
+  });
+
+  test('does not warm the subscription about to serve', () => {
     const warmed: string[] = [];
     orderByQuotaReset([candidate('a'), candidate('c')], statuses({}), now, (providerId) => warmed.push(providerId));
-    expect(warmed).toEqual([]);
+    expect(warmed).toEqual(['c']);
   });
 
   test('ties keep the router order', () => {
