@@ -120,6 +120,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     defaults:
       run:
+        # The toolchain step is bash; Windows runners default to PowerShell.
+        shell: bash
         working-directory: desktop
     steps:
       - uses: actions/checkout@v7
