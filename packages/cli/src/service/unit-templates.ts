@@ -12,6 +12,18 @@ export type UnitOptions = {
 export const LAUNCHD_LABEL = 'com.aio-proxy.agent';
 export const SYSTEMD_UNIT_NAME = 'aio-proxy.service';
 
+/** Environment every managed unit hands the daemon. `dirOf` lets the Windows spec resolve a Windows config path on any host. */
+export const unitEnv = (
+  { configPath, path, upgradeMethod, desktopExec }: UnitOptions,
+  dirOf: (p: string) => string = dirname,
+): Record<string, string> => ({
+  AIO_PROXY_HOME: dirOf(configPath),
+  AIO_PROXY_MANAGED: '1',
+  ...(path === undefined ? {} : { PATH: path }),
+  ...(upgradeMethod === undefined ? {} : { AIO_PROXY_UPGRADE_METHOD: upgradeMethod }),
+  ...(desktopExec === undefined ? {} : { AIO_PROXY_DESKTOP_EXEC: desktopExec }),
+});
+
 // systemd splits command lines on whitespace unless a token is double-quoted, and
 // treats `%` as a specifier and `\` / `"` as escapes. Quote the value and escape
 // those metacharacters so an exec or config-home path containing spaces (or any of
@@ -69,19 +81,9 @@ const launchdEmpty = (name: string): Bun.XML.NodeInput => ({ name, children: [] 
 const launchdDict = (children: Bun.XML.NodeInput[]): Bun.XML.NodeInput => ({ name: 'dict', children });
 
 export function renderLaunchdPlist({ exec, configPath, path, upgradeMethod, desktopExec }: UnitOptions): string {
-  const environmentVariables = [
-    launchdText('key', 'AIO_PROXY_HOME'),
-    launchdText('string', dirname(configPath)),
-    launchdText('key', 'AIO_PROXY_MANAGED'),
-    launchdText('string', '1'),
-    ...(path === undefined ? [] : [launchdText('key', 'PATH'), launchdText('string', path)]),
-    ...(upgradeMethod === undefined
-      ? []
-      : [launchdText('key', 'AIO_PROXY_UPGRADE_METHOD'), launchdText('string', upgradeMethod)]),
-    ...(desktopExec === undefined
-      ? []
-      : [launchdText('key', 'AIO_PROXY_DESKTOP_EXEC'), launchdText('string', desktopExec)]),
-  ];
+  const environmentVariables = Object.entries(unitEnv({ exec, configPath, path, upgradeMethod, desktopExec })).flatMap(
+    ([name, value]) => [launchdText('key', name), launchdText('string', value)],
+  );
   const plist: Bun.XML.NodeInput = {
     name: 'plist',
     attributes: { version: '1.0' },
