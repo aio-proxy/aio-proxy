@@ -201,7 +201,7 @@ const savedModel = (weight: number, metadata?: DashboardRoutingModel['metadata']
 
 /** Resolves the pending save the way the real PUT does: with the inventory it just wrote. */
 const resolveSave = (saved: DashboardRoutingModel) => {
-  mocks.callbacks?.onSuccess?.({ writable: true, models: [saved] });
+  mocks.callbacks?.onSuccess?.({ writable: true, selection: 'weighted', models: [saved] });
 };
 
 const blockerEnabledFor = () => mocks.shouldBlock?.() ?? false;

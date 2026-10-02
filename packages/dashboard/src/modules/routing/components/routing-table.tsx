@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardRoutingModel } from '@aio-proxy/types';
+import type { DashboardRoutingModel, RouterSelection } from '@aio-proxy/types';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { useNavigate } from '@tanstack/react-router';
@@ -22,6 +22,7 @@ interface RoutingTableProps {
   /** Every model, before the vendor filter, so the vendor selector keeps offering the other vendors. */
   readonly vendorModels?: readonly DashboardRoutingModel[];
   readonly traffic: RoutingTrafficIndex | undefined;
+  readonly selection?: RouterSelection;
   readonly lab?: string;
   readonly onLabChange?: (lab: string | undefined) => void;
 }
@@ -30,13 +31,14 @@ export const RoutingTable: React.FC<RoutingTableProps> = ({
   models,
   vendorModels = models,
   traffic,
+  selection,
   lab,
   onLabChange,
 }) => {
   'use no memo';
 
   const navigate = useNavigate();
-  const columns = useMemo(() => createRoutingColumns({ traffic }), [traffic]);
+  const columns = useMemo(() => createRoutingColumns({ traffic, selection }), [traffic, selection]);
   const { table } = useDataTable(models, columns, { getRowId: (model) => model.modelId });
 
   if (models.length === 0) return <Empty>{m['dashboard.routing.empty']()}</Empty>;

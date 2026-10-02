@@ -737,6 +737,8 @@
       "load_failed": "無法載入路由。請重試。",
       "retry": "重試",
       "read_only": "此伺服器沒有可寫入的設定檔。可以檢視路由，但無法儲存。",
+      "selection_quota_reset": "優先消耗最快重置的訂閱",
+      "selection_quota_reset_description": "在同一 priority 層內，先嘗試配額最快重置的訂閱，再按權重抽取；會話親和仍然優先。",
       "table": {
         "label": "模型路由",
         "filter": "篩選模型",

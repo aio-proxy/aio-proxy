@@ -737,6 +737,8 @@
       "load_failed": "无法加载路由。请重试。",
       "retry": "重试",
       "read_only": "此服务器没有可写配置文件。可以查看路由，但无法保存。",
+      "selection_quota_reset": "优先消耗最快重置的订阅",
+      "selection_quota_reset_description": "在同一 priority 层内，先尝试配额最快重置的订阅，再按权重抽取；会话亲和仍然优先。",
       "table": {
         "label": "模型路由",
         "filter": "筛选模型",
