@@ -12,43 +12,18 @@ test('scheduler leaves enough host budget for daily timeout and sandbox discover
     resolveWrite = resolve;
   });
   const scheduler = new CatalogScheduler({
-    repository: {
-      compareAndSwapCatalog(input: { readonly catalog: unknown }) {
-        written = input.catalog;
-        resolveWrite();
-        return { ok: true, revision: 1 };
-      },
-      writeCatalogUnavailableIfCurrent() {
-        return true;
-      },
-      writeCatalog() {},
-      writeDiagnostic() {
-        return true;
-      },
-      clearDiagnostic() {
-        return true;
-      },
-    } as never,
-    diagnostics: ((code: string) => ({
-      code,
-      summary: code,
-      retryable: true,
-      occurredAt: new Date().toISOString(),
-    })) as never,
     rebuild: async () => {},
     discoveryTimeoutMs: 50,
   });
   scheduler.replaceJobs([
     {
       providerId: 'person',
-      plugin: '@example/oauth',
-      capability: 'default',
-      accountRuntimeRevision: 1,
       policy: { kind: 'static' },
       stored: null,
       enabled: true,
-      discover: async (signal) =>
-        await discoverAntigravityCatalog(discoveryContext(signal), {
+      markUnavailable: () => true,
+      discover: async (signal) => {
+        const catalog = await discoverAntigravityCatalog(discoveryContext(signal), {
           fetch: async (input, init) => {
             if (new URL(String(input)).origin === 'https://daily-cloudcode-pa.sandbox.googleapis.com') {
               return Response.json({ models: { prod: {} } });
@@ -58,7 +33,13 @@ test('scheduler leaves enough host budget for daily timeout and sandbox discover
             });
           },
           timeoutSignal: () => AbortSignal.timeout(5),
-        }),
+        });
+        return () => {
+          written = catalog;
+          resolveWrite();
+          return true;
+        };
+      },
     },
   ]);
 

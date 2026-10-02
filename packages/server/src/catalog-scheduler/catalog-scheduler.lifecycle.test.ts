@@ -1,56 +1,25 @@
 import { expect, test } from 'bun:test';
 
-import type { CatalogJobDescriptor } from '../plugin-runtime';
+import type { CatalogCommit, CatalogJobDescriptor } from '../plugin-runtime';
 import { CatalogScheduler } from './catalog-scheduler';
-
-const repository = {
-  compareAndSwapCatalog() {
-    return { ok: true, revision: 1 };
-  },
-  writeCatalogUnavailableIfCurrent() {
-    return true;
-  },
-  writeCatalog() {},
-  writeDiagnostic() {
-    return true;
-  },
-  clearDiagnostic() {
-    return true;
-  },
-};
 
 function job(overrides: Partial<CatalogJobDescriptor> & Pick<CatalogJobDescriptor, 'discover'>): CatalogJobDescriptor {
   return {
     providerId: 'person',
-    plugin: '@example/oauth',
-    capability: 'default',
-    accountRuntimeRevision: 1,
     policy: { kind: 'static' },
     stored: null,
     enabled: true,
+    markUnavailable: () => true,
     ...overrides,
   };
 }
 
 test('static catalogs with a stored first result do not schedule discovery', async () => {
   let calls = 0;
-  const scheduler = new CatalogScheduler({
-    repository: repository as never,
-    diagnostics: ((code: string) => ({
-      code,
-      summary: code,
-      retryable: true,
-      occurredAt: new Date().toISOString(),
-    })) as never,
-    rebuild: async () => {},
-  });
+  const scheduler = new CatalogScheduler({ rebuild: async () => {} });
   scheduler.replaceJobs([
     job({
-      stored: {
-        catalog: { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] },
-        refreshedAt: 0,
-        revision: 1,
-      },
+      stored: { refreshedAt: 0, revision: 1 },
       discover: async () => {
         calls++;
         throw new Error('must not run');
@@ -65,27 +34,16 @@ test('static catalogs with a stored first result do not schedule discovery', asy
 test('a migrated TTL catalog with revision 0 rediscovers immediately even when recently refreshed', async () => {
   let discoveries = 0;
   const scheduler = new CatalogScheduler({
-    repository: repository as never,
-    diagnostics: ((code: string) => ({
-      code,
-      summary: code,
-      retryable: true,
-      occurredAt: new Date().toISOString(),
-    })) as never,
     now: () => 10_000,
     rebuild: async () => {},
   });
   scheduler.replaceJobs([
     job({
       policy: { kind: 'ttl', ttlMs: 6 * 60 * 60_000 },
-      stored: {
-        catalog: { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] },
-        refreshedAt: 9_000,
-        revision: 0,
-      },
+      stored: { refreshedAt: 9_000, revision: 0 },
       discover: async () => {
         discoveries++;
-        return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+        return () => true;
       },
     }),
   ]);
@@ -96,16 +54,7 @@ test('a migrated TTL catalog with revision 0 rediscovers immediately even when r
 
 test('close aborts an in-flight discovery and discards it', async () => {
   let aborted = false;
-  const scheduler = new CatalogScheduler({
-    repository: repository as never,
-    diagnostics: ((code: string) => ({
-      code,
-      summary: code,
-      retryable: true,
-      occurredAt: new Date().toISOString(),
-    })) as never,
-    rebuild: async () => {},
-  });
+  const scheduler = new CatalogScheduler({ rebuild: async () => {} });
   scheduler.replaceJobs([
     job({
       discover: (signal) =>
@@ -131,48 +80,20 @@ test('an overdue TTL catalog persists discovery and rebuilds the runtime snapsho
   let written: unknown;
   let rebuilds = 0;
   const scheduler = new CatalogScheduler({
-    repository: {
-      ...repository,
-      compareAndSwapCatalog(input: { readonly catalog: unknown }) {
-        written = input.catalog;
-        return { ok: true, revision: 2 };
-      },
-    } as never,
-    diagnostics: ((code: string) => ({
-      code,
-      summary: code,
-      retryable: true,
-      occurredAt: new Date().toISOString(),
-    })) as never,
     now: () => 10_000,
     rebuild: async () => {
       rebuilds++;
     },
   });
-  const discovered = {
-    language: [{ id: 'new-model' }],
-    image: [],
-    embedding: [],
-    speech: [],
-    transcription: [],
-    reranking: [],
-  };
+  const discovered = ['new-model'];
   scheduler.replaceJobs([
     job({
       policy: { kind: 'ttl', ttlMs: 1_000 },
-      stored: {
-        catalog: {
-          language: [{ id: 'old-model' }],
-          image: [],
-          embedding: [],
-          speech: [],
-          transcription: [],
-          reranking: [],
-        },
-        refreshedAt: 0,
-        revision: 1,
+      stored: { refreshedAt: 0, revision: 1 },
+      discover: async () => () => {
+        written = discovered;
+        return true;
       },
-      discover: async () => discovered,
     }),
   ]);
 
@@ -183,38 +104,21 @@ test('an overdue TTL catalog persists discovery and rebuilds the runtime snapsho
 });
 
 test('replacing a job while discovery is in flight discards the late catalog', async () => {
-  let resolveDiscovery = (_value: unknown) => {};
+  const discovery = Promise.withResolvers<CatalogCommit>();
   let catalogWrites = 0;
   let rebuilds = 0;
   const scheduler = new CatalogScheduler({
-    repository: {
-      ...repository,
-      compareAndSwapCatalog() {
-        catalogWrites++;
-        return { ok: true, revision: 1 };
-      },
-    } as never,
-    diagnostics: ((code: string) => ({
-      code,
-      summary: code,
-      retryable: true,
-      occurredAt: new Date().toISOString(),
-    })) as never,
     rebuild: async () => {
       rebuilds++;
     },
   });
-  scheduler.replaceJobs([
-    job({
-      discover: async () =>
-        new Promise((resolve) => {
-          resolveDiscovery = resolve;
-        }),
-    }),
-  ]);
+  scheduler.replaceJobs([job({ discover: async () => await discovery.promise })]);
   await Bun.sleep(10);
   scheduler.replaceJobs([]);
-  resolveDiscovery({ language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] });
+  discovery.resolve(() => {
+    catalogWrites++;
+    return true;
+  });
 
   await Bun.sleep(10);
   expect(catalogWrites).toBe(0);
@@ -225,31 +129,13 @@ test('replacing a job while discovery is in flight discards the late catalog', a
 test('close cancels a pending post-persistence rebuild retry', async () => {
   let rebuilds = 0;
   const scheduler = new CatalogScheduler({
-    repository: repository as never,
-    diagnostics: ((code: string) => ({
-      code,
-      summary: code,
-      retryable: true,
-      occurredAt: new Date().toISOString(),
-    })) as never,
     rebuildRetryMs: 10,
     rebuild: async () => {
       rebuilds++;
       throw new Error('rebuild failed');
     },
   });
-  scheduler.replaceJobs([
-    job({
-      discover: async () => ({
-        language: [],
-        image: [],
-        embedding: [],
-        speech: [],
-        transcription: [],
-        reranking: [],
-      }),
-    }),
-  ]);
+  scheduler.replaceJobs([job({ discover: async () => () => true })]);
 
   await Bun.sleep(5);
   expect(rebuilds).toBe(1);

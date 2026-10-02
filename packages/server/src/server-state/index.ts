@@ -214,8 +214,6 @@ async function initializeServerState(
     onRecoveryNeeded: (nextRunAt) => runtime.recovery?.schedule(nextRunAt),
   });
   runtime.scheduler = new CatalogScheduler({
-    repository,
-    diagnostics,
     logger: pluginLogger,
     rebuild: () => queue(() => commitConfig(runtime, (manager.current() as Snapshot).config, 'catalog')),
   });
