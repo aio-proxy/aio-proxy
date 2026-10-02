@@ -6,6 +6,11 @@
   },
   {
     "type": "file",
+    "name": "desktop",
+    "label": "桌面客户端 (macOS)"
+  },
+  {
+    "type": "file",
     "name": "service",
     "label": "后台守护服务"
   },
