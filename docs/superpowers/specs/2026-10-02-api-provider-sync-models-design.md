@@ -67,7 +67,8 @@ provider_model_catalog(
   source_digest text not null,
   models_json   text,            -- sorted string[]; null until the first success
   refreshed_at  integer,         -- last success
-  failed_at     integer          -- last failure since the last success, else null
+  failure_code  text,            -- CATALOG_UNAVAILABLE | CATALOG_UNSUPPORTED since the last success, else null
+  failed_at     integer          -- time of that failure, else null
 )
 ```
 
@@ -112,7 +113,7 @@ type CatalogJobDescriptor = {
   /** Discover and commit; resolves false when the commit was fenced off. Throws on discovery failure. */
   readonly refresh: (signal: AbortSignal, startedAt: number) => Promise<boolean>;
   /** Record the failure; resolves true when stored state changed and the snapshot must rebuild. */
-  readonly markUnavailable: () => boolean;
+  readonly markUnavailable: (error: unknown) => boolean;
 };
 ```
 
