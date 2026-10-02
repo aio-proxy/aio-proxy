@@ -1717,8 +1717,7 @@
         "not_installed": "이 머신에서 {target}을(를) 찾을 수 없습니다.",
         "conflict": "{target} 파일이 온전한 AIO Proxy 관리 통합이 아닙니다. CLI로 해결하세요.",
         "recovery_required": "중단된 설정을 먼저 복구해야 합니다. 터미널에서 configure 명령을 실행하세요.",
-        "modified": "AIO Proxy가 관리하는 일부 필드가 수정되었습니다. 복구하면 되돌립니다.",
-        "modified_remove": "AIO Proxy가 관리하는 필드를 직접 수정해 구성에서 덮어쓰지 않습니다. 통합을 제거한 뒤(수정 내용은 유지됨) 다시 구성하세요.",
+        "modified": "AIO Proxy가 관리하는 일부 필드가 수정되었습니다. 통합을 제거(수정 내용은 유지됨)한 뒤 다시 구성하세요.",
         "missing": "일부 관리 파일이 없습니다. 복구하면 다시 설치합니다.",
         "outdated": "이 AIO Proxy 버전에 더 새로운 어댑터가 포함되어 있습니다."
       },
@@ -1769,6 +1768,7 @@
         "invalid_provider_id": "프로바이더 ID가 비어 있거나 예약되어 있습니다.",
         "occupied_provider_id": "해당 프로바이더 ID는 config.toml에서 이미 사용 중입니다.",
         "endpoint_changed": "설정 중 AIO Proxy 주소가 바뀌었습니다. 다시 시도하세요.",
+        "configuration_modified": "AIO Proxy가 관리하는 필드가 수정되어 덮어쓰지 않았습니다. 통합을 제거(수정 내용은 유지됨)한 뒤 다시 구성하세요.",
         "authorization_denied": "기기가 거부되었습니다.",
         "authorization_expired": "승인 요청이 만료되었습니다.",
         "recovery_required": "중단된 설정을 CLI로 먼저 복구하세요.",

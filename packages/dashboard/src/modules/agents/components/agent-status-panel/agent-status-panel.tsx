@@ -10,7 +10,7 @@ interface AgentStatusPanelProps {
 }
 
 export const AgentStatusPanel: React.FC<AgentStatusPanelProps> = ({ local }) => {
-  const hint = statusHint(local.status, AGENT_DISPLAY_NAMES[local.target], local.target !== 'claude-code');
+  const hint = statusHint(local.status, AGENT_DISPLAY_NAMES[local.target]);
   const rows: ReadonlyArray<readonly [string, string | undefined]> = [
     [m['dashboard.agents.field.version'](), local.host.version],
     [m['dashboard.agents.field.config_path'](), local.configPath],

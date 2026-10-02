@@ -190,6 +190,7 @@ export const AgentOperationErrorCodeSchema = z.enum([
   'invalid_provider_id',
   'occupied_provider_id',
   'endpoint_changed',
+  'configuration_modified',
   'authorization_denied',
   'authorization_expired',
   'recovery_required',

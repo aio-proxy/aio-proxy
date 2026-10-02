@@ -41,6 +41,11 @@ const ERROR_MESSAGES: ReadonlyArray<readonly [RegExp, AgentOperationErrorCode]> 
   [/ is occupied$/u, 'occupied_provider_id'],
   // The key list changed after the form was loaded, or the form skipped a choice that is now required.
   [/^CREDENTIAL_(SELECTION_STALE|NO_SELECTION)$/u, 'plan_stale'],
+  // Configure never overwrites edited managed fields; the user removes the integration and configures again.
+  [
+    /^(Codex managed fields changed|Grok configuration modified|Claude Code managed fields changed): /u,
+    'configuration_modified',
+  ],
 ];
 
 // Filesystem failures that mean the Agent's directory cannot be used as configured.

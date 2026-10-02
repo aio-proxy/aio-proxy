@@ -13,7 +13,8 @@ const local = (status: AgentLocalState['status'], extra: Partial<AgentLocalState
 test('the primary action moves each repairable state forward and leaves CLI-only states alone', () => {
   expect(primaryAgentAction(local('not_configured'))).toBe('configure');
   expect(primaryAgentAction(local('outdated'))).toBe('update');
-  expect(primaryAgentAction(local('modified'))).toBe('repair');
+  // Configure refuses to overwrite user edits, so only Remove can move a modified integration forward.
+  expect(primaryAgentAction(local('modified'))).toBeUndefined();
   expect(primaryAgentAction(local('configured', { endpointMatches: false }))).toBe('repair');
   expect(primaryAgentAction(local('configured'))).toBe('reconfigure');
   expect(primaryAgentAction(local('conflict'))).toBeUndefined();
@@ -22,8 +23,6 @@ test('the primary action moves each repairable state forward and leaves CLI-only
   expect(primaryAgentAction(undefined)).toBeUndefined();
   // Config left behind by an uninstalled Agent is only removable.
   expect(primaryAgentAction(local('modified', { host: { detected: false, support: 'unknown' } }))).toBeUndefined();
-  // Edited Claude Code keys are kept by configure, so only remove can move them forward.
-  expect(primaryAgentAction(local('modified', { target: 'claude-code' }))).toBeUndefined();
 });
 
 const installation = (installationId: string): AgentInstallationSummary => ({

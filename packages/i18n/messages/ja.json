@@ -1717,8 +1717,7 @@
         "not_installed": "このマシンに {target} が見つかりません。",
         "conflict": "{target} のファイルは完全な AIO Proxy 管理の連携ではありません。CLI で解決してください。",
         "recovery_required": "中断したセットアップを先に復旧する必要があります。ターミナルで configure コマンドを実行してください。",
-        "modified": "AIO Proxy が管理する一部のフィールドが編集されています。修復すると元に戻します。",
-        "modified_remove": "AIO Proxy が管理するフィールドが編集されているため、設定では上書きしません。連携を削除して（編集内容は保持されます）から、もう一度設定してください。",
+        "modified": "AIO Proxy が管理する一部のフィールドが編集されています。連携を削除（編集内容は保持されます）してから、もう一度設定してください。",
         "missing": "一部の管理ファイルがありません。修復すると再インストールします。",
         "outdated": "この AIO Proxy には新しいアダプターが含まれています。"
       },
@@ -1769,6 +1768,7 @@
         "invalid_provider_id": "プロバイダー ID が空か予約済みです。",
         "occupied_provider_id": "そのプロバイダー ID は config.toml で使用中です。",
         "endpoint_changed": "セットアップ中に AIO Proxy のアドレスが変わりました。再試行してください。",
+        "configuration_modified": "AIO Proxy が管理するフィールドが編集されているため、上書きしません。連携を削除（編集内容は保持されます）してから、もう一度設定してください。",
         "authorization_denied": "デバイスは拒否されました。",
         "authorization_expired": "承認リクエストの期限が切れました。",
         "recovery_required": "中断したセットアップを CLI で先に復旧してください。",

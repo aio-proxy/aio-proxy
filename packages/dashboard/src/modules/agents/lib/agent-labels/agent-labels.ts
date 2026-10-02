@@ -17,11 +17,7 @@ const STATUS: Readonly<Record<AgentLocalStatus, () => string>> = {
 export const statusLabel = (status: AgentLocalStatus | undefined): string =>
   status === undefined ? m['dashboard.agents.status.unknown']() : STATUS[status]();
 
-export const statusHint = (
-  status: AgentLocalStatus,
-  target: string,
-  repairable: boolean = true,
-): string | undefined => {
+export const statusHint = (status: AgentLocalStatus, target: string): string | undefined => {
   switch (status) {
     case 'not_installed':
       return m['dashboard.agents.status_hint.not_installed']({ target });
@@ -30,9 +26,7 @@ export const statusHint = (
     case 'recovery_required':
       return m['dashboard.agents.status_hint.recovery_required']();
     case 'modified':
-      return repairable
-        ? m['dashboard.agents.status_hint.modified']()
-        : m['dashboard.agents.status_hint.modified_remove']();
+      return m['dashboard.agents.status_hint.modified']();
     case 'missing':
       return m['dashboard.agents.status_hint.missing']();
     case 'outdated':
@@ -63,6 +57,7 @@ const ERRORS: Readonly<Record<string, () => string>> = {
   invalid_provider_id: () => m['dashboard.agents.error.invalid_provider_id'](),
   occupied_provider_id: () => m['dashboard.agents.error.occupied_provider_id'](),
   endpoint_changed: () => m['dashboard.agents.error.endpoint_changed'](),
+  configuration_modified: () => m['dashboard.agents.error.configuration_modified'](),
   authorization_denied: () => m['dashboard.agents.error.authorization_denied'](),
   authorization_expired: () => m['dashboard.agents.error.authorization_expired'](),
   recovery_required: () => m['dashboard.agents.error.recovery_required'](),
