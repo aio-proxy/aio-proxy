@@ -166,6 +166,13 @@ test('start fails on a task query failure without touching the task', async () =
   expect(recorded()).toEqual([]);
 });
 
+test('start refuses a task at our path that runs as another user without enabling or running it', async () => {
+  const fs = fakeFs({ [specPath]: oldSpec });
+  const task = previousXml.replaceAll(sid, 'S-1-5-21-9-9-9-500');
+  await expect(schtasksStart(io({ fs, task }))).rejects.toBeInstanceOf(CliExit);
+  expect(recorded()).toEqual([]);
+});
+
 test('install clears the uninstall marker and writes the spec and a UTF-16 task XML together', async () => {
   const marker = uninstallMarkerPath('win32', env)!;
   const fs = fakeFs({ [marker]: '' });

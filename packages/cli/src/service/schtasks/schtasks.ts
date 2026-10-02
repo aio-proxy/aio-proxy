@@ -137,10 +137,8 @@ export async function schtasksInstall(io: SchtasksIo): Promise<void> {
 
 export async function schtasksStart(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
-  const query = await queryTaskXml(io.capture, path);
-  if (query.kind === 'failed') throw commandFailed(['schtasks', '/Query', '/XML', '/TN', path], query.code);
   // A spec without its task (a failed `/Create`, or the task deleted by hand) can only be fixed by creating it again.
-  if (query.kind === 'missing') await schtasksInstall(io);
+  if (!(await ownTaskExists(io, path))) await schtasksInstall(io);
   else await io.run(['schtasks', '/Change', '/TN', path, '/ENABLE']);
   await runTask(io, path);
 }

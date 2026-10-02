@@ -1214,27 +1214,36 @@ test('runPackageManagerUpgrade for brew execs the absolute command, never the st
   }
 });
 
-test('runPackageManagerUpgrade for npm sets PATH so the sibling node satisfies env node', async () => {
-  const calls: { readonly cmd: string[]; readonly path?: string }[] = [];
+const npmPathFor = async (platform: NodeJS.Platform, command: string): Promise<string | undefined> => {
+  const paths: (string | undefined)[] = [];
   const original = Bun.spawn;
-  Bun.spawn = ((cmd: string[], options?: { readonly env?: NodeJS.ProcessEnv }) => {
-    calls.push({ cmd, path: options?.env?.['PATH'] });
+  Bun.spawn = ((_cmd: string[], options?: { readonly env?: NodeJS.ProcessEnv }) => {
+    paths.push(options?.env?.['PATH']);
     return { exited: Promise.resolve(0) };
   }) as typeof Bun.spawn;
   try {
     await runPackageManagerUpgrade(
-      { method: 'npm', command: '/usr/local/bin/npm', bin: '/usr/local/bin/aio-proxy' },
+      { method: 'npm', command, bin: 'aio-proxy' },
       '1.2.3',
       { registry: NPM_REGISTRY, force: false },
+      platform,
     );
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.cmd[0]).toBe('/usr/local/bin/npm');
-    expect(calls[0]?.path).toContain('/usr/local/bin');
-    expect(calls[0]?.path).toContain('/usr/bin');
-    expect(calls[0]?.path).toContain('/bin');
   } finally {
     Bun.spawn = original;
   }
+  expect(paths).toHaveLength(1);
+  return paths[0];
+};
+
+test('runPackageManagerUpgrade for npm sets PATH so the sibling node satisfies env node', async () => {
+  const path = await npmPathFor('linux', '/usr/local/bin/npm');
+  expect(path?.startsWith('/usr/local/bin:/usr/bin:/bin')).toBe(true);
+});
+
+test('runPackageManagerUpgrade for npm on Windows puts the command directory first on a ;-joined PATH', async () => {
+  const path = await npmPathFor('win32', 'C:\\Program Files\\nodejs\\npm.cmd');
+  // Exactly the command directory plus the host PATH: no POSIX fallbacks, `;` separator.
+  expect(path).toBe(`C:\\Program Files\\nodejs;${process.env['PATH'] ?? process.env['Path']}`);
 });
 
 test('runUpgradeCommand pins options.version and does not call fetchLatest', async () => {

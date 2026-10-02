@@ -103,13 +103,46 @@ test('the post-upgrade and startup sweeps remove every <exe>.old* backup, the st
     }
   };
   const left = () => readdirSync(root).sort();
+  const dead = () => false;
   plant();
-  await sweepStartupBackup(exe, 'linux');
+  await sweepStartupBackup(exe, 'linux', dead);
   expect(left()).toHaveLength(6);
-  await sweepStartupBackup(exe, 'win32');
+  await sweepStartupBackup(exe, 'win32', dead);
   expect(left()).toEqual(['aio-proxy.exe', 'aio-proxy.exe.older', 'other.exe.old-1']);
-  await sweepStartupBackup(exe, 'win32'); // nothing left: still a no-op
+  await sweepStartupBackup(exe, 'win32', dead); // nothing left: still a no-op
   plant();
-  await sweepStaleBackups(exe, 'win32');
+  await sweepStaleBackups(exe, 'win32', dead);
   expect(left()).toEqual(['aio-proxy.exe', 'aio-proxy.exe.older', 'other.exe.old-1']);
+});
+
+test('a sweep keeps the backup of a live upgrader and removes the one of a dead pid and a legacy .old', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-bin-live-'));
+  const exe = join(root, 'aio-proxy.exe');
+  for (const name of ['aio-proxy.exe.old-111', 'aio-proxy.exe.old-222', 'aio-proxy.exe.old']) {
+    writeFileSync(join(root, name), 'X');
+  }
+  await sweepStartupBackup(exe, 'win32', (pid) => pid === 111);
+  expect(readdirSync(root).sort()).toEqual(['aio-proxy.exe.old-111']);
+});
+
+test('a failed verification still rolls back when the verifying child swept at startup', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-bin-child-'));
+  const target = join(root, 'aio-proxy.exe');
+  const temp = join(root, '.aio-proxy.new');
+  writeFileSync(target, 'OLD');
+  writeFileSync(temp, 'NEW');
+  const res = await replaceBinaryForUpdate({
+    targetPath: target,
+    tempPath: temp,
+    backupPath: join(root, 'unused.bak'),
+    expectedVersion: '1.0.0',
+    platform: 'win32',
+    // The new binary's `--version` run sweeps at startup while this process (the upgrader) is alive.
+    verify: async () => {
+      await sweepStartupBackup(target, 'win32');
+      return { ok: false };
+    },
+  });
+  expect(res.ok).toBe(false);
+  expect(readFileSync(target, 'utf8')).toBe('OLD');
 });

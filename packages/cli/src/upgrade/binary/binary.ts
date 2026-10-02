@@ -125,15 +125,31 @@ export const replaceBinaryForUpdate = async (options: ReplaceOptions): Promise<V
   return verification;
 };
 
+export type PidAlive = (pid: number) => boolean;
+
+// EPERM means the process exists but belongs to someone else.
+const defaultPidAlive: PidAlive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+};
+
 // Every Windows backup beside `target` (`<exe>.old-<pid>`, or a fixed `<exe>.old` from an older release),
-// best effort: one that is still some process's running image stays until a later sweep.
-const sweepOldBackups = async (target: string, platform: NodeJS.Platform): Promise<void> => {
+// best effort: one that is still some process's running image stays until a later sweep. A backup whose
+// upgrader is still alive is kept too: the upgrader's verification child sweeps at startup, and the backup is
+// the upgrader's only way to roll back a failed verification.
+const sweepOldBackups = async (target: string, platform: NodeJS.Platform, pidAlive: PidAlive): Promise<void> => {
   const dir = dirname(target);
   const fold = (name: string): string => (platform === 'win32' ? name.toLowerCase() : name);
   const old = fold(`${basename(target)}.old`);
   for (const entry of await fs.readdir(dir).catch(() => [] as string[])) {
     const name = fold(entry);
     if (name !== old && !name.startsWith(`${old}-`)) continue;
+    const pid = /^\d+$/u.test(name.slice(old.length + 1)) ? Number(name.slice(old.length + 1)) : undefined;
+    if (pid !== undefined && pidAlive(pid)) continue;
     await unlinkIfExists(join(dir, entry)).catch(() => undefined);
   }
 };
@@ -141,6 +157,7 @@ const sweepOldBackups = async (target: string, platform: NodeJS.Platform): Promi
 export const sweepStaleBackups = async (
   targetPath: string,
   platform: NodeJS.Platform = process.platform,
+  pidAlive: PidAlive = defaultPidAlive,
 ): Promise<void> => {
   const dir = dirname(targetPath);
   const base = basename(targetPath);
@@ -151,7 +168,7 @@ export const sweepStaleBackups = async (
     if (middle.length > 0 && !/^\d+(\.\d+)*$/.test(middle)) continue;
     await unlinkIfExists(join(dir, entry));
   }
-  await sweepOldBackups(targetPath, platform);
+  await sweepOldBackups(targetPath, platform, pidAlive);
 };
 
 // Windows cannot delete the previous exe while it is a running image, so each upgrade leaves it at
@@ -159,9 +176,10 @@ export const sweepStaleBackups = async (
 export const sweepStartupBackup = async (
   execPath: string = process.execPath,
   platform: NodeJS.Platform = process.platform,
+  pidAlive: PidAlive = defaultPidAlive,
 ): Promise<void> => {
   if (platform !== 'win32') return;
-  await sweepOldBackups(execPath, platform);
+  await sweepOldBackups(execPath, platform, pidAlive);
 };
 
 const verifyInstalledVersion = async (binPath: string, expected: string): Promise<Verification> => {

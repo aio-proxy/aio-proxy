@@ -38,11 +38,11 @@ export const interpreterSafePath = (
   return parts.filter((part) => part !== undefined && part !== '').join(win ? ';' : ':');
 };
 
-const exec = async (cmd: string[]): Promise<void> => {
+const exec = async (cmd: string[], platform: NodeJS.Platform): Promise<void> => {
   const proc = Bun.spawn(cmd, {
     stdout: 'inherit',
     stderr: 'inherit',
-    env: { ...process.env, PATH: interpreterSafePath(cmd[0] ?? '') },
+    env: { ...process.env, PATH: interpreterSafePath(cmd[0] ?? '', platform) },
   });
   const code = await proc.exited;
   if (code !== 0) throw new Error(`${cmd[0]} exited with ${code}`);
@@ -52,16 +52,17 @@ export const runPackageManagerUpgrade = async (
   target: Exclude<UpgradeTarget, { readonly method: 'binary' }>,
   version: string,
   opts: { readonly registry: string; readonly force: boolean },
+  platform: NodeJS.Platform = process.platform,
 ): Promise<void> => {
   switch (target.method) {
     case 'bun':
-      return exec([target.command, ...buildBunInstallArgs(version, opts.registry)]);
+      return exec([target.command, ...buildBunInstallArgs(version, opts.registry)], platform);
     case 'npm':
-      return exec([target.command, ...buildNpmInstallArgs(version, opts.registry)]);
+      return exec([target.command, ...buildNpmInstallArgs(version, opts.registry)], platform);
     case 'pnpm':
-      return exec([target.command, ...buildPnpmInstallArgs(version, opts.registry)]);
+      return exec([target.command, ...buildPnpmInstallArgs(version, opts.registry)], platform);
     case 'brew':
-      await exec([target.command, 'update']);
-      return exec([target.command, ...buildHomebrewUpdateArgs(opts.force)]);
+      await exec([target.command, 'update'], platform);
+      return exec([target.command, ...buildHomebrewUpdateArgs(opts.force)], platform);
   }
 };
