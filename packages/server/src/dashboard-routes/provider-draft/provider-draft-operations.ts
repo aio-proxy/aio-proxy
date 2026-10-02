@@ -1,4 +1,3 @@
-import { BUNDLED_PROVIDERS, createProxyFetch, loadAiSdkProvider } from '@aio-proxy/core';
 import {
   apiProviderEndpoints,
   type DashboardProviderDraftCatalogResponse,
@@ -8,11 +7,10 @@ import {
   ProviderProtocol,
   ProviderSchema,
 } from '@aio-proxy/types';
-import { uniq } from 'es-toolkit/array';
-import { isPlainObject } from 'es-toolkit/predicate';
 
 import { oauthExposedModels } from '../../plugin-runtime';
-import { effectiveProxy, materializeProviders } from '../../provider-runtime';
+import { discoverProviderModels } from '../../provider-model-discovery';
+import { materializeProviders } from '../../provider-runtime';
 import { withAttemptLogContext, withRequestLogContext } from '../../request-logging';
 import type { RuntimeProviderInstance } from '../../runtime';
 import type { ServerState } from '../../server-state';
@@ -30,117 +28,10 @@ export async function loadProviderDraftCatalog(
 ): Promise<DashboardProviderDraftCatalogResponse> {
   // OAuth candidates come from oauthProviderEditView, not the draft catalog endpoint.
   if (provider.kind === ProviderKind.OAuth) return failure('catalog_unsupported');
-  if (provider.kind === ProviderKind.AiSdk) return loadAiSdkDraftCatalog(state, provider);
-
-  try {
-    const primary = apiProviderEndpoints(provider)[0];
-    const runtime = materializeDraft(state, provider);
-    const raw = runtime.raw?.resolve({ protocol: primary.protocol, modelId: '' });
-    if (raw === undefined) return failure('catalog_unavailable');
-    const signal = AbortSignal.timeout(5_000);
-    const models = new Set<string>();
-    let path: string | undefined = catalogPath(primary.protocol);
-    while (path !== undefined) {
-      const response = await raw.invoke(new Request(`http://provider-draft.invalid${path}`, { signal }), undefined, {
-        upstreamStream: false,
-      });
-      if (!response.ok) {
-        await response.body?.cancel();
-        return failure('catalog_unavailable');
-      }
-      const page = catalogPage(primary.protocol, await response.json());
-      for (const model of page.models) models.add(model);
-      path = page.nextPath;
-    }
-    return { ok: true, models: [...models] };
-  } catch {
-    return failure('catalog_unavailable');
-  }
-}
-
-// The AI SDK contract does not standardize model discovery. Custom packages may
-// expose listModels(signal?) on their provider instance; otherwise retain the
-// existing OpenAI-compatible options.baseURL + /models convention.
-async function loadAiSdkDraftCatalog(
-  state: ServerState,
-  provider: Extract<Provider, { kind: ProviderKind.AiSdk }>,
-): Promise<DashboardProviderDraftCatalogResponse> {
-  // Proxy only. The runtime path also wraps this in createProviderRequestTransformFetch +
-  // createObservedFetch (materialize.ts:156-159), but both are provably inert here: the
-  // transform fetch returns early unless currentProviderAttemptContext() names this
-  // provider, and createObservedFetch passes through with neither a debug scope nor an
-  // attempt response observation. Draft catalog loading establishes none of the three —
-  // the api loader above has the same gap. Wiring them in would look like transform
-  // support without providing any.
-  const fetchWithProxy = createProxyFetch(
-    effectiveProxy(state.currentConfig().proxy, provider.proxy, state.currentConfig(), provider),
-  );
-  let extensionUnavailable = false;
-  if (BUNDLED_PROVIDERS[provider.packageName] === undefined) {
-    try {
-      const runtime = await loadAiSdkProvider(provider.packageName, {
-        ...provider.options,
-        fetch: fetchWithProxy,
-      });
-      if (typeof runtime?.listModels === 'function') {
-        const models = catalogEntryIds(await runtime.listModels(AbortSignal.timeout(5_000)));
-        if (models !== null) return { ok: true, models };
-        extensionUnavailable = true;
-      }
-    } catch {
-      extensionUnavailable = true;
-    }
-  }
-
-  const baseURL = provider.options?.['baseURL'];
-  if (typeof baseURL !== 'string' || baseURL.trim() === '') {
-    return failure(extensionUnavailable ? 'catalog_unavailable' : 'catalog_unsupported');
-  }
-  try {
-    const response = await fetchWithProxy(`${baseURL.replace(/\/+$/u, '')}/models`, {
-      signal: AbortSignal.timeout(5_000),
-      headers: catalogHeaders(provider.options),
-    });
-    if (!response.ok) {
-      await response.body?.cancel();
-      return failure('catalog_unavailable');
-    }
-    const page = catalogPage(ProviderProtocol.OpenAICompatible, await response.json());
-    return { ok: true, models: uniq(page.models) };
-  } catch {
-    return failure('catalog_unavailable');
-  }
-}
-
-function catalogEntryIds(rows: unknown): readonly string[] | null {
-  if (!Array.isArray(rows)) return null;
-  return uniq(
-    rows.flatMap((row) => {
-      const id = typeof row === 'string' ? row : isPlainObject(row) ? row['id'] : undefined;
-      if (typeof id !== 'string') return [];
-      return id.trim() === '' ? [] : [id];
-    }),
-  );
-}
-
-// apiKey first, configured headers second — `upstreamHeaders` (core/.../api.ts:98-104),
-// the schema contract at types/provider.ts:94 ("configured values win"), and
-// @ai-sdk/openai-compatible itself all resolve the collision this way. A gateway whose
-// real credential lives in options.headers must authenticate here exactly as it does in
-// the proxy, or Load models reports catalog_unavailable for a provider that works.
-// Headers.set is case-insensitive, so a configured `Authorization` in any casing replaces
-// the bearer instead of being comma-joined onto it the way an object spread would.
-function catalogHeaders(options: Readonly<Record<string, unknown>> | undefined): Headers {
-  const headers = new Headers();
-  const apiKey = options?.['apiKey'];
-  if (typeof apiKey === 'string' && apiKey !== '') headers.set('authorization', `Bearer ${apiKey}`);
-  const configured = options?.['headers'];
-  // isPlainObject, not `typeof === 'object'`: the native check admits an array, which
-  // would spread into a bogus `0:` header.
-  if (isPlainObject(configured)) {
-    for (const [name, value] of Object.entries(configured)) headers.set(name, String(value));
-  }
-  return headers;
+  const discovery = await discoverProviderModels(state.currentConfig(), provider, AbortSignal.timeout(5_000), {
+    strict: false,
+  });
+  return discovery.ok ? discovery : failure(discovery.code);
 }
 
 export async function testProviderDraft(
@@ -253,18 +144,15 @@ function materializeDraftRuntime(
   state: ServerState,
   provider: Exclude<Provider, { kind: ProviderKind.OAuth }>,
 ): { readonly provider: RuntimeProviderInstance; readonly probe: () => Promise<'OK' | 'FAIL'> } {
-  const runtime = materializeProviders({ ...state.currentConfig(), invalidProviders: [], providers: [provider] });
+  const runtime = materializeDraft(state, provider);
   const instance = runtime.providers[0];
   const probe = runtime.probes.get(provider.id);
   if (instance === undefined || probe === undefined) throw new Error('draft provider materialization failed');
   return { provider: instance, probe };
 }
 
-function materializeDraft(
-  state: ServerState,
-  provider: Exclude<Provider, { kind: ProviderKind.OAuth }>,
-): RuntimeProviderInstance {
-  return materializeDraftRuntime(state, provider).provider;
+function materializeDraft(state: ServerState, provider: Exclude<Provider, { kind: ProviderKind.OAuth }>) {
+  return materializeProviders({ ...state.currentConfig(), invalidProviders: [], providers: [provider] });
 }
 
 function withDraftAttempt<T>(
@@ -288,58 +176,4 @@ function withDraftAttempt<T>(
       operation,
     ),
   );
-}
-
-function geminiCatalog(protocol: ProviderProtocol): boolean {
-  return protocol === ProviderProtocol.Gemini || protocol === ProviderProtocol.GeminiInteractions;
-}
-
-function catalogPath(protocol: ProviderProtocol): string {
-  return geminiCatalog(protocol) ? '/v1beta/models' : '/v1/models';
-}
-
-type CatalogPage = {
-  readonly models: readonly string[];
-  readonly nextPath?: string;
-};
-
-function catalogPage(protocol: ProviderProtocol, payload: unknown): CatalogPage {
-  const models = catalogModels(protocol, payload);
-  if (geminiCatalog(protocol)) {
-    const pageToken = stringProperty(payload, 'nextPageToken');
-    return pageToken === undefined
-      ? { models }
-      : { models, nextPath: `/v1beta/models?pageToken=${encodeURIComponent(pageToken)}` };
-  }
-  if (protocol === ProviderProtocol.Anthropic && booleanProperty(payload, 'has_more')) {
-    const afterId = stringProperty(payload, 'last_id');
-    if (afterId === undefined) throw new TypeError('invalid catalog continuation');
-    return { models, nextPath: `/v1/models?after_id=${encodeURIComponent(afterId)}` };
-  }
-  return { models };
-}
-
-function stringProperty(payload: unknown, key: string): string | undefined {
-  if (typeof payload !== 'object' || payload === null) throw new TypeError('invalid catalog');
-  const value = Reflect.get(payload, key);
-  return typeof value === 'string' && value !== '' ? value : undefined;
-}
-
-function booleanProperty(payload: unknown, key: string): boolean {
-  if (typeof payload !== 'object' || payload === null) throw new TypeError('invalid catalog');
-  return Reflect.get(payload, key) === true;
-}
-
-function catalogModels(protocol: ProviderProtocol, payload: unknown): readonly string[] {
-  if (typeof payload !== 'object' || payload === null) throw new TypeError('invalid catalog');
-  const gemini = geminiCatalog(protocol);
-  const rows = Reflect.get(payload, gemini ? 'models' : 'data');
-  if (!Array.isArray(rows)) throw new TypeError('invalid catalog');
-  const models = rows.flatMap((row) => {
-    if (typeof row !== 'object' || row === null) return [];
-    const value = Reflect.get(row, gemini ? 'name' : 'id');
-    if (typeof value !== 'string' || value.trim() === '') return [];
-    return [gemini ? value.replace(/^models\//u, '') : value];
-  });
-  return uniq(models);
 }
