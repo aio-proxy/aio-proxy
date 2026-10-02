@@ -65,7 +65,7 @@ const runLoginSession = async (
   session.authorization = authorization;
   try {
     const result = await loginOAuthAccount({
-      localSignIn: input.localSignIn,
+      localSignIn: input.localSignIn ?? false,
       ...(input.targetProviderId === undefined ? {} : { targetProviderId: input.targetProviderId }),
       ...(input.capability === undefined ? {} : { capability: input.capability }),
       ...(input.providerPatch === undefined

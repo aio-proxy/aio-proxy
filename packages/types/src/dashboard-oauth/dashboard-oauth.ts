@@ -170,7 +170,7 @@ export const DashboardOAuthSessionStartSchema = z
   .strictObject({
     capability: z.strictObject({ plugin: z.string().min(1), capability: z.string().min(1) }).optional(),
     targetProviderId: IdSchema.optional(),
-    localSignIn: z.boolean().default(false),
+    localSignIn: z.boolean().optional(),
     publicValues: z.record(z.string(), z.json()).default({}),
     secrets: z.record(z.string(), z.string()).default({}),
     clearSecrets: z.array(z.string().min(1)).default([]),

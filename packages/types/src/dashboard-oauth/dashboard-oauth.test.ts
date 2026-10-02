@@ -23,9 +23,18 @@ test('dashboard OAuth local sign-in metadata accepts localized sources and rejec
   ).toBe(false);
 });
 
-test('dashboard OAuth session start defaults to browser login and accepts an explicit local choice', () => {
-  const request = { capability: { plugin: '@example/oauth', capability: 'default' } };
-  expect(dashboard.DashboardOAuthSessionStartSchema.parse(request)).toHaveProperty('localSignIn', false);
+test('dashboard OAuth session start keeps local sign-in optional for existing callers and accepts explicit choices', () => {
+  const request: dashboard.DashboardOAuthSessionStart = {
+    capability: { plugin: '@example/oauth', capability: 'default' },
+    publicValues: {},
+    secrets: {},
+    clearSecrets: [],
+  };
+  expect(dashboard.DashboardOAuthSessionStartSchema.parse(request)).toEqual(request);
+  expect(dashboard.DashboardOAuthSessionStartSchema.parse({ ...request, localSignIn: false })).toHaveProperty(
+    'localSignIn',
+    false,
+  );
   expect(dashboard.DashboardOAuthSessionStartSchema.parse({ ...request, localSignIn: true })).toHaveProperty(
     'localSignIn',
     true,
