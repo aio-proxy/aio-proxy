@@ -85,3 +85,15 @@ fn actions_in_flight_read_as_words() {
     m.action = ActionState::Running(crate::connect::policy::UserAction::InstallAndStart);
     assert_eq!(notice(&m).as_deref(), Some("Install and start…"));
 }
+
+#[test]
+fn read_only_notices_use_the_platform_s_words() {
+    let macos = cfg!(target_os = "macos");
+    let mut m = model(|_| {});
+    m.install = Some(InstallState::ReadOnly(ReadOnlyReason::Location));
+    assert_eq!(notice(&m).unwrap().contains("Applications"), macos);
+    m.install = Some(InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed("denied".into())));
+    let text = notice(&m).unwrap();
+    assert_eq!(text.contains("service link"), macos);
+    assert_eq!(text.contains("command-line copy"), !macos);
+}

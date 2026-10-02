@@ -182,10 +182,18 @@ pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
         _ if model.cli_installing => CliOffer::Installing,
         Some(probe) if !probe.aiop => {
             if !model.can_link_cli() {
-                CliOffer::Blocked("Install aiop command (move to /Applications first)")
+                CliOffer::Blocked(if cfg!(target_os = "macos") {
+                    "Install aiop command (move to /Applications first)"
+                } else {
+                    "Install aiop command (unavailable from this location)"
+                })
             } else if !probe.link_dir_on_path {
                 // The link would not make `aiop` resolve, and the offer would come straight back.
-                CliOffer::Blocked("Install aiop command (/usr/local/bin is not on your PATH)")
+                CliOffer::Blocked(if cfg!(target_os = "macos") {
+                    "Install aiop command (/usr/local/bin is not on your PATH)"
+                } else {
+                    "Install aiop command (~/.local/bin is not on your PATH)"
+                })
             } else {
                 CliOffer::Ready
             }

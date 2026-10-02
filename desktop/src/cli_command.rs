@@ -1,9 +1,10 @@
-//! The `aiop` shell command: whether the user's shell finds one, and installing ours into
-//! /usr/local/bin (on every PATH through /etc/paths) behind the system's admin prompt.
+//! The `aiop` shell command: whether the user's shell finds one, and installing ours: into
+//! /usr/local/bin (on every PATH through /etc/paths) behind the system's admin prompt on macOS, and
+//! into ~/.local/bin without one on Linux.
 
 #[cfg(unix)]
 use std::ffi::CStr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::process::Command;
 #[cfg(unix)]
@@ -13,12 +14,12 @@ use std::time::Duration;
 use crate::process::{run_with_timeout, tail};
 
 pub const LINK: &str = "/usr/local/bin/aiop";
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 /// Linked only when free: an npm or Homebrew `aio-proxy` already there is left alone.
 const LONG_LINK: &str = "/usr/local/bin/aio-proxy";
 #[cfg(unix)]
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 /// Long enough for the user to type a password.
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
 
@@ -38,8 +39,24 @@ fn login_shell() -> String {
 #[cfg(unix)]
 /// Prefixes every line the probe prints, so rc-file chatter on stdout is ignored.
 const MARK: &str = "aio-proxy-probe:";
+
+/// Where a link makes `aiop` resolve for the user's shell.
+#[cfg(target_os = "macos")]
+fn link_dir_on_path_target() -> Option<PathBuf> {
+    Some(PathBuf::from("/usr/local/bin"))
+}
+
+#[cfg(target_os = "linux")]
+fn link_dir_on_path_target() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|home| link_dir(Path::new(&home)))
+}
+
+/// `~/.local/bin`: on the default PATH of most distributions, and writable without a prompt.
 #[cfg(unix)]
-const LINK_DIR: &str = "/usr/local/bin";
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn link_dir(home: &Path) -> PathBuf {
+    home.join(".local/bin")
+}
 
 /// What the user's shell resolves, as their terminal would.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,15 +87,18 @@ pub fn probe() -> Option<Probe> {
 fn parse_probe(stdout: &str) -> Option<Probe> {
     let marks: Vec<&str> = stdout.lines().filter_map(|line| line.trim().strip_prefix(MARK)).collect();
     let path = marks.iter().find_map(|mark| mark.strip_prefix("path:"))?;
+    let link_dir = link_dir_on_path_target();
     Some(Probe {
         aiop: marks.contains(&"aiop"),
         aio_proxy: marks.contains(&"aio-proxy"),
         // fish joins its PATH list with spaces inside quotes.
-        link_dir_on_path: path.split([':', ' ']).any(|dir| dir.trim_end_matches('/') == LINK_DIR),
+        link_dir_on_path: path
+            .split([':', ' '])
+            .any(|dir| link_dir.as_deref().is_some_and(|link_dir| Path::new(dir.trim_end_matches('/')) == link_dir)),
     })
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 /// Run as root behind the prompt with `$1` target, `$2` aiop, `$3` aio-proxy or empty. An `aiop` is
 /// replaced only when absent, dangling or already ours, since the probe ran earlier and only saw the
 /// user's PATH; `aio-proxy` is linked only when free, so an npm or Homebrew copy is left alone.
@@ -94,12 +114,12 @@ fi
 
 /// Points `/usr/local/bin/aiop`, and `aio-proxy` when `alias` and free, at `target`. `Ok(false)` when
 /// the user cancelled the prompt.
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 pub fn install(target: &Path, alias: bool) -> Result<bool, String> {
     link(target, Path::new(LINK), alias.then_some(Path::new(LONG_LINK)), true)
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "macos")]
 fn link(target: &Path, aiop: &Path, alias: Option<&Path>, admin: bool) -> Result<bool, String> {
     let privileges = if admin { " with administrator privileges" } else { "" };
     // Script and paths reach the shell only through `quoted form of`.
@@ -133,6 +153,51 @@ fn link(target: &Path, aiop: &Path, alias: Option<&Path>, admin: bool) -> Result
     let stderr = tail(&output.stderr, 600);
     // -128 is userCanceledErr: the password prompt was dismissed.
     if stderr.contains("(-128)") { Ok(false) } else { Err(stderr) }
+}
+
+/// Symlinks `aiop`, and `aio-proxy` when the probe says that name is free, into `dir`. An existing
+/// file is never replaced: the probe ran earlier and only saw the user's PATH.
+#[cfg(unix)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn install_links(dir: &Path, target: &Path, probe: Probe) -> std::io::Result<Vec<PathBuf>> {
+    std::fs::create_dir_all(dir)?;
+    let names = ["aiop"].into_iter().chain((!probe.aio_proxy).then_some("aio-proxy"));
+    let mut made = Vec::new();
+    for name in names {
+        let link = dir.join(name);
+        // A dangling symlink counts as existing: `exists()` would follow it and miss it.
+        if link.symlink_metadata().is_ok() {
+            if name == "aiop" {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!("{} already exists", link.display()),
+                ));
+            }
+            continue;
+        }
+        std::os::unix::fs::symlink(target, &link)?;
+        made.push(link);
+    }
+    Ok(made)
+}
+
+/// `~/.local/bin/aiop` and, when free, `aio-proxy`. Never `Ok(false)`: there is no prompt to cancel.
+#[cfg(target_os = "linux")]
+pub fn install(target: &Path, alias: bool) -> Result<bool, String> {
+    let dir = link_dir_on_path_target().ok_or("HOME is not set")?;
+    let probe = Probe { aiop: false, aio_proxy: !alias, link_dir_on_path: true };
+    install_links(&dir, target, probe).map(|_| true).map_err(|error| error.to_string())
+}
+
+/// Where `install` puts `aiop`, for the confirmation line.
+#[cfg(target_os = "linux")]
+pub fn aiop_path() -> PathBuf {
+    link_dir_on_path_target().unwrap_or_default().join("aiop")
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn aiop_path() -> PathBuf {
+    PathBuf::from(LINK)
 }
 
 /// ponytail: the Windows `aiop` install is a later task; until then the offer stays hidden.

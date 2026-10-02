@@ -192,7 +192,11 @@ impl AppModel {
 
     /// `/usr/local/bin/aiop` serves every account, so it may only point into the shared /Applications,
     /// never into one user's ~/Applications.
+    /// Off macOS the link is per-user, so only a persistent install is needed.
     pub fn can_link_cli(&self) -> bool {
+        if !cfg!(target_os = "macos") {
+            return self.persistent();
+        }
         self.persistent() && self.bundle.as_deref().is_some_and(|bundle| bundle.starts_with("/Applications"))
     }
 

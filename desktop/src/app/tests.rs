@@ -60,3 +60,13 @@ fn a_summary_for_another_window_is_cached_under_its_own_range() {
     model.forget_usage();
     assert!(model.usage_for(UsageRange::D7).is_none());
 }
+
+#[test]
+fn only_macos_needs_an_applications_bundle_to_offer_aiop() {
+    let mut model = super::AppModel::new(
+        crate::platform::paths_from(std::path::Path::new("/Users/me"), |_| None),
+        Some("/Users/me/Apps/AIO Proxy.AppImage".into()),
+    );
+    model.install = Some(crate::install::InstallState::Persistent);
+    assert_eq!(model.can_link_cli(), !cfg!(target_os = "macos"));
+}

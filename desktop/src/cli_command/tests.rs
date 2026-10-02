@@ -14,7 +14,7 @@ fn only_marker_lines_answer_the_probe() {
     assert_eq!(parse_probe(&format!("zsh: bad option: -i\n{MARK}aiop\n")), None);
 }
 
-// Exercises the macOS /usr/local/bin install; the Linux `aiop` tests arrive in phase 2 Task 9.
+// Exercises the macOS /usr/local/bin install.
 #[cfg(target_os = "macos")]
 #[test]
 fn links_aiop_and_a_free_aio_proxy_through_awkward_paths() {
@@ -27,7 +27,7 @@ fn links_aiop_and_a_free_aio_proxy_through_awkward_paths() {
     assert_eq!(fs::read_link(&long).unwrap(), target);
 }
 
-// Exercises the macOS /usr/local/bin install; the Linux `aiop` tests arrive in phase 2 Task 9.
+// Exercises the macOS /usr/local/bin install.
 #[cfg(target_os = "macos")]
 #[test]
 fn an_existing_aio_proxy_is_left_alone() {
@@ -40,7 +40,7 @@ fn an_existing_aio_proxy_is_left_alone() {
     assert_eq!(fs::read_to_string(&long).unwrap(), "npm copy");
 }
 
-// Exercises the macOS /usr/local/bin install; the Linux `aiop` tests arrive in phase 2 Task 9.
+// Exercises the macOS /usr/local/bin install.
 #[cfg(target_os = "macos")]
 #[test]
 fn a_foreign_aiop_is_refused_while_ours_and_dangling_ones_are_replaced() {
@@ -59,7 +59,7 @@ fn a_foreign_aiop_is_refused_while_ours_and_dangling_ones_are_replaced() {
     assert_eq!(fs::read_link(&aiop).unwrap(), target);
 }
 
-// Exercises the macOS /usr/local/bin install; the Linux `aiop` tests arrive in phase 2 Task 9.
+// Exercises the macOS /usr/local/bin install.
 #[cfg(target_os = "macos")]
 #[test]
 fn no_alias_is_linked_when_aio_proxy_resolves_elsewhere() {
@@ -69,4 +69,25 @@ fn no_alias_is_linked_when_aio_proxy_resolves_elsewhere() {
     assert_eq!(link(&target, &aiop, None, false), Ok(true));
     assert_eq!(fs::read_link(&aiop).unwrap(), target);
     assert!(!dir.path().join("aio-proxy").exists());
+}
+
+#[test]
+fn links_aiop_and_only_a_free_aio_proxy_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("stable/aio-proxy");
+    let taken = Probe { aiop: false, aio_proxy: true, link_dir_on_path: true };
+    let made = install_links(dir.path(), &target, taken).unwrap();
+    assert_eq!(made, vec![dir.path().join("aiop")]);
+    assert_eq!(fs::read_link(dir.path().join("aiop")).unwrap(), target);
+    assert!(!dir.path().join("aio-proxy").exists());
+}
+
+#[test]
+fn an_existing_aiop_is_never_replaced() {
+    let dir = tempfile::tempdir().unwrap();
+    let aiop = dir.path().join("aiop");
+    fs::write(&aiop, "someone else's").unwrap();
+    let free = Probe { aiop: false, aio_proxy: false, link_dir_on_path: true };
+    assert!(install_links(dir.path(), &dir.path().join("target"), free).is_err());
+    assert_eq!(fs::read_to_string(&aiop).unwrap(), "someone else's");
 }

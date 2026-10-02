@@ -92,7 +92,11 @@ pub fn notice(model: &AppModel) -> Option<String> {
     }
     match &model.install {
         Some(InstallState::ReadOnly(ReadOnlyReason::Location)) => {
-            return Some("Move AIO Proxy to Applications to let it manage the proxy.".into());
+            return Some(if cfg!(target_os = "macos") {
+                "Move AIO Proxy to Applications to let it manage the proxy.".into()
+            } else {
+                "AIO Proxy can't keep its command-line copy here; run it from a writable location.".into()
+            });
         }
         Some(InstallState::ReadOnly(ReadOnlyReason::NewerCopy { app, version })) => {
             return Some(format!(
@@ -104,7 +108,8 @@ pub fn notice(model: &AppModel) -> Option<String> {
             return Some(format!("Cannot read the version of {}. This copy is read-only.", app.display()));
         }
         Some(InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(error))) => {
-            return Some(format!("Cannot update the service link: {error}"));
+            let what = if cfg!(target_os = "macos") { "service link" } else { "command-line copy" };
+            return Some(format!("Cannot update the {what}: {error}"));
         }
         _ => {}
     }
