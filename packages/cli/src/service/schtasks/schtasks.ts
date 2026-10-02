@@ -12,6 +12,7 @@ import { processImagePath } from '../../win32-ffi';
 import { type CaptureResult, runCapture } from '../run-capture';
 import {
   parseServiceSpec,
+  parseTaskXml,
   renderServiceSpec,
   renderTaskXml,
   serviceSpecPath,
@@ -200,6 +201,39 @@ export async function schtasksRestart(io: SchtasksIo): Promise<void> {
     }
     throw error;
   }
+}
+
+/** Ends the process after `ms`, from a ref'd timer so the exit still fires when nothing else keeps the loop alive. */
+export const exitProcessLater = (code: number, ms: number): void => {
+  setTimeout(() => process.exit(code), ms);
+};
+
+/**
+ * Restart from inside the service. `/End` would kill our own supervisor (and, through its Job Object, this
+ * process) before `/Run`, so instead refresh the spec (and the task when its `exec` moved) and exit with the
+ * restart code: the supervisor re-reads the spec and relaunches. Returns normally so a caller that awaits the
+ * restart (the auto-update task) does not see a failure.
+ */
+export async function schtasksRestartInService(
+  io: SchtasksIo,
+  scheduleExit: (code: number, ms: number) => void,
+): Promise<void> {
+  const path = taskPath(io.sid);
+  const specPath = serviceSpecPath(io.localAppData);
+  const { spec, xml } = await renderUnit(io);
+  const staged = `${specPath}.new`;
+  io.writeFile(staged, spec);
+  try {
+    const query = await queryTaskXml(io.capture, path);
+    const current = query.kind === 'found' ? parseTaskXml(query.xml)?.exec : undefined;
+    // A query failure counts as "differs": re-creating is the safe side.
+    if (current !== parseServiceSpec(spec)?.exec) await createTask(io, path, stageTaskXml(io, xml));
+    io.rename(staged, specPath);
+  } catch (error) {
+    io.remove(staged);
+    throw error;
+  }
+  scheduleExit(EXIT.restartRequested, 1000);
 }
 
 // `/End` kills the supervisor, whose Job Object takes the proxy with it; `/Delete` alone would leave both running.

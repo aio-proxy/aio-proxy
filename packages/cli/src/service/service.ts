@@ -24,8 +24,10 @@ import { runCapture } from './run-capture';
 import {
   currentUserSid,
   defaultSchtasksIo,
+  exitProcessLater,
   schtasksInstall,
   schtasksRestart,
+  schtasksRestartInService,
   schtasksStart,
   schtasksStatus,
   schtasksStop,
@@ -290,6 +292,8 @@ export type ServiceRestartIo = {
   readonly bootoutTimeoutMs?: number;
   /** Moves the staged plist over the installed one. Injected by tests. */
   readonly replaceUnit?: (staged: string, plist: string) => void;
+  /** Ends the process after the restart returned (Windows in-service restart). Injected by tests. */
+  readonly scheduleExit?: (code: number, ms: number) => void;
 };
 
 export async function serviceRestart(io: ServiceRestartIo = {}): Promise<void> {
@@ -307,7 +311,13 @@ export async function serviceRestart(io: ServiceRestartIo = {}): Promise<void> {
     return;
   }
   if (os === 'win32') {
-    await schtasksRestart(await windowsIo(run, io.exec, env));
+    const winIo = await windowsIo(run, io.exec, env);
+    // Same shape as `isDarwinLaunchdJob`: the scheduled task's own proxy must not `/End` itself.
+    if (env['AIO_PROXY_MANAGED'] === '1' && isTTY !== true) {
+      await schtasksRestartInService(winIo, io.scheduleExit ?? exitProcessLater);
+    } else {
+      await schtasksRestart(winIo);
+    }
     return;
   }
   // Rewrite an already-installed unit with a freshly resolved exec first. A unit

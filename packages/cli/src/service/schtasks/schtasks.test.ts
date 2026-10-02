@@ -18,6 +18,7 @@ import {
   type SchtasksIo,
   schtasksInstall,
   schtasksRestart,
+  schtasksRestartInService,
   schtasksStart,
   schtasksStop,
   schtasksUninstall,
@@ -197,6 +198,65 @@ test('restart after stop rewrites XML and spec, re-creates the task enabled, the
   expect(parseServiceSpec(fs.read(specPath)!)?.exec).toBe(exec);
   expect(onlyFilesBesides(fs).sort()).toEqual([specPath, statePath].sort());
   expect(fs.files.size).toBe(2);
+});
+
+test('a managed proxy restarting itself on Windows rewrites the spec and asks its supervisor to relaunch', async () => {
+  const exits: [number, number][] = [];
+  const { calls, fs } = await recordRun((io) =>
+    schtasksRestartInService(io, (code, ms) => void exits.push([code, ms])),
+  );
+  expect(calls.map((c) => c[1])).toEqual(['/Create']);
+  expect(calls[0]).toContain('/F');
+  expect(parseTaskXml(fs.lastXmlCreated()!)?.exec).toBe(exec);
+  expect(exits).toEqual([[75, 1000]]);
+  expect(parseServiceSpec(fs.read(specPath)!)?.exec).toBe(exec);
+  expect(onlyFilesBesides(fs).sort()).toEqual([specPath, statePath].sort());
+});
+
+test('an in-service restart leaves the task alone when its exec did not change, and re-creates it when the query fails', async () => {
+  const exits: number[] = [];
+  const same = renderTaskXml({ sid, exec, specPath });
+  await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), { task: same });
+  expect(recorded()).toEqual([]);
+  for (const task of ['missing', 5] as const) {
+    await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), { task });
+    expect(recorded().map((c) => c[1])).toEqual(['/Create']);
+  }
+  expect(exits).toEqual([75, 75, 75]);
+});
+
+test('an in-service restart that cannot re-create the task keeps the old spec and does not exit', async () => {
+  const fs = fakeFs({ [specPath]: oldSpec });
+  const exits: number[] = [];
+  await expect(
+    schtasksRestartInService(io({ fs, failOn: '/Create' }), (code) => void exits.push(code)),
+  ).rejects.toThrow('/Create failed');
+  expect(fs.read(specPath)).toBe(oldSpec);
+  expect(fs.files.size).toBe(1);
+  expect(exits).toEqual([]);
+});
+
+test('the default scheduled exit ends the process with 75 after the restart already returned', async () => {
+  const dir = import.meta.dir;
+  const script = `
+    import { schtasksRestartInService, exitProcessLater } from ${JSON.stringify(`${dir}/schtasks.ts`)};
+    const files = new Map();
+    const io = {
+      run: async () => 0,
+      capture: async () => ({ code: 0x80070002, stdout: '', stderr: '' }),
+      sid: 'S-1-5-21-1', account: 'PC-u', localAppData: 'C:/L', tempDir: 'C:/T',
+      unit: async () => ({ exec: 'C:/a.exe', configPath: 'C:/c.jsonc' }),
+      readFile: (p) => files.get(p), writeFile: (p, d) => void files.set(p, d),
+      rename: (a, b) => { files.set(b, files.get(a)); files.delete(a); }, remove: (p) => void files.delete(p),
+      pidAlive: () => false, sleep: async () => {}, now: Date.now, warn: () => {},
+    };
+    await schtasksRestartInService(io, exitProcessLater);
+    console.log('returned');
+  `;
+  const child = Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'pipe' });
+  const [stdout, code] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+  expect(stdout, await new Response(child.stderr).text()).toContain('returned');
+  expect(code).toBe(75);
 });
 
 test('a failed re-create re-registers the previous task from our own spec, not from the queried XML', async () => {
