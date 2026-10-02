@@ -1,6 +1,8 @@
+#[cfg(unix)]
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
 
 use super::*;
@@ -54,6 +56,8 @@ fn an_appimage_runs_the_sidecar_from_its_mount() {
     assert_eq!(sidecar_dir(exe, None), Some(PathBuf::from("/opt/aio")));
 }
 
+// The symlink model is macOS's (Linux and Windows keep a copy) and needs Unix symlinks.
+#[cfg(unix)]
 struct Fixture {
     _dir: tempfile::TempDir,
     paths: Paths,
@@ -62,6 +66,7 @@ struct Fixture {
 }
 
 /// A fake home with this app's bundle and another installed copy, each holding a sidecar file.
+#[cfg(unix)]
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     let paths = crate::platform::paths_from(dir.path(), |_| None);
@@ -76,6 +81,7 @@ fn fixture() -> Fixture {
     Fixture { _dir: dir, paths, bundle, other }
 }
 
+#[cfg(unix)]
 #[test]
 fn outside_an_applications_folder_nothing_persistent_happens() {
     let f = fixture();
@@ -84,6 +90,7 @@ fn outside_an_applications_folder_nothing_persistent_happens() {
     assert!(fs::symlink_metadata(&f.paths.stable).is_err(), "no symlink may be created");
 }
 
+#[cfg(unix)]
 #[test]
 fn a_missing_or_dangling_symlink_is_pointed_at_this_copy() {
     let f = fixture();
@@ -109,6 +116,7 @@ fn a_newer_installed_copy_is_never_repointed_to_an_older_one() {
     assert_eq!(fs::read_link(&f.paths.stable).unwrap(), sidecar_of(&f.other));
 }
 
+#[cfg(unix)]
 #[test]
 fn an_older_or_equal_copy_is_repointed_to_this_one() {
     for found in ["0.36.9", "0.37.0"] {
@@ -151,6 +159,7 @@ fn probes_a_copy_version_with_its_cli() {
     assert_eq!(probe_version(&dir.path().join("missing")), None);
 }
 
+#[cfg(unix)]
 #[test]
 fn something_that_is_not_a_symlink_is_never_renamed_over() {
     let f = fixture();
@@ -162,6 +171,7 @@ fn something_that_is_not_a_symlink_is_never_renamed_over() {
     assert!(!fs::symlink_metadata(&f.paths.stable).unwrap().is_symlink());
 }
 
+#[cfg(unix)]
 #[test]
 fn a_target_that_cannot_be_stat_ed_is_not_treated_as_missing() {
     let f = fixture();

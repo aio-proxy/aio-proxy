@@ -119,12 +119,6 @@ pub fn volume_is_read_only(path: &Path) -> bool {
     rc != 0 || unsafe { stats.assume_init() }.f_flag & libc::ST_RDONLY != 0
 }
 
-/// ponytail: Windows has no read-only-volume concept in this policy yet; revisit with the Windows installer.
-#[cfg(windows)]
-pub fn volume_is_read_only(_path: &Path) -> bool {
-    false
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymlinkPlan {
     Keep,
@@ -163,21 +157,20 @@ pub fn plan_symlink(
 }
 
 /// Create-temp-symlink + rename, so the service never sees a missing link.
+#[cfg(unix)]
 pub fn repoint(symlink: &Path, target: &Path) -> io::Result<()> {
     let dir = symlink.parent().ok_or_else(|| io::Error::other("symlink has no parent"))?;
     fs::create_dir_all(dir)?;
     let temp = dir.join(format!(".aio-proxy.{}.tmp", std::process::id()));
     let _ = fs::remove_file(&temp);
-    #[cfg(unix)]
     std::os::unix::fs::symlink(target, &temp)?;
-    #[cfg(windows)]
-    std::os::windows::fs::symlink_file(target, &temp)?;
     fs::rename(&temp, symlink).inspect_err(|_| {
         let _ = fs::remove_file(&temp);
     })
 }
 
 /// Startup install step. Outside an Applications folder nothing on disk changes.
+#[cfg(unix)]
 pub fn prepare(
     paths: &Paths,
     bundle: &Path,
