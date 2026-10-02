@@ -73,10 +73,13 @@ fn handle(cx: &mut App, event: AppEvent, events: &mpsc::UnboundedSender<AppEvent
             changed(cx);
         }
         AppEvent::TrayHost(owned) => {
-            if owned {
+            // A watcher with no host registered yet (KDE login, a just-enabled GNOME extension) still
+            // refuses the icon, so the mode follows the icon, not the watcher.
+            let shown = owned && {
                 tray::install(cx, events.clone());
-            }
-            panel::tray_host_changed(cx, owned);
+                cx.has_global::<tray::Tray>()
+            };
+            panel::tray_host_changed(cx, shown);
         }
     }
 }

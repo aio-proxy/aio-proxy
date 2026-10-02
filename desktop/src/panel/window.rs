@@ -32,7 +32,7 @@ pub fn show(cx: &mut App) {
         }
         cx.global_mut::<PanelWindow>().handle = None;
     }
-    toggle(cx);
+    open(cx);
 }
 
 pub fn toggle(cx: &mut App) {
@@ -50,6 +50,11 @@ pub fn toggle(cx: &mut App) {
     if closed_at.is_some_and(|at| at.elapsed() < REOPEN_GUARD) {
         return;
     }
+    open(cx);
+}
+
+/// Opens a new window, past the reopen guard: callers decide whether a click should be dropped.
+fn open(cx: &mut App) {
     let Some(options) = platform::panel::window_options(cx, cx.try_global::<Tray>()) else {
         return;
     };
@@ -105,10 +110,10 @@ pub fn close_by_user(window: &mut Window, cx: &mut App) {
     }
 }
 
-/// A tray host appeared or went away (Linux); losing it opens the window, since nothing else could.
-pub fn tray_host_changed(cx: &mut App, owned: bool) {
+/// The tray icon appeared or went away (Linux); losing it opens the window, since nothing else could.
+pub fn tray_host_changed(cx: &mut App, icon_shown: bool) {
     let state = cx.global_mut::<PanelWindow>();
-    let (mode, open) = next_mode(state.tray_mode, owned);
+    let (mode, open) = next_mode(state.tray_mode, icon_shown);
     state.tray_mode = mode;
     if open {
         show(cx);

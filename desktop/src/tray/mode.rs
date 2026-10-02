@@ -15,10 +15,10 @@ pub enum CloseAction {
     Quit,
 }
 
-/// The mode after the tray host appeared (`watcher_owned`) or went away, and whether to open the
-/// window. A host that appears later only adds the icon; it never closes a window the user sees.
-pub fn next_mode(current: TrayMode, watcher_owned: bool) -> (TrayMode, bool) {
-    match (current, watcher_owned) {
+/// The mode after the tray icon appeared (`icon_shown`) or went away, and whether to open the
+/// window. An icon that appears later never closes a window the user sees.
+pub fn next_mode(current: TrayMode, icon_shown: bool) -> (TrayMode, bool) {
+    match (current, icon_shown) {
         (_, true) => (TrayMode::Tray, false),
         (TrayMode::Tray, false) => (TrayMode::NoTray, true),
         (TrayMode::NoTray, false) => (TrayMode::NoTray, false),
