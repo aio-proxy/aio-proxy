@@ -210,7 +210,7 @@ test('start re-creates a task whose recorded exec is gone before running it', as
   expect((await recordCalls((io) => schtasksStart(io), { task: stale })).map((c) => c[1])).toEqual(['/Create', '/Run']);
 });
 
-test('start re-creates a task whose spec path moved or whose spec is gone, though its exec is on disk', async () => {
+test('start re-creates a task whose spec path moved or whose spec is gone or malformed, though its exec is on disk', async () => {
   const moved = renderTaskXml({ sid, exec: oldExec, specPath: 'C:\\Users\\old\\aio-proxy\\service.json' });
   expect(
     (
@@ -222,6 +222,11 @@ test('start re-creates a task whose spec path moved or whose spec is gone, thoug
       (c) => c[1],
     ),
   ).toEqual(['/Create', '/Run']);
+  const truncated = fakeFs({ [specPath]: oldSpec.slice(0, 10), [oldExec]: '' });
+  expect((await recordCalls((io) => schtasksStart(io), { fs: truncated, task: oldTaskXml })).map((c) => c[1])).toEqual([
+    '/Create',
+    '/Run',
+  ]);
 });
 
 test('start leaves a package-manager-owned service alone when the desktop app resolves a different unit', async () => {

@@ -204,7 +204,7 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
 
 /**
  * A task whose recorded exec an upgrade since pruned would launch a deleted binary, and one naming another spec path
- * (or ours, gone) would run obsolete settings or exit at once, so either is recreated from the unit; the unit is
+ * (or ours, gone or unreadable) would run obsolete settings or exit at once, so either is recreated from the unit; the unit is
  * resolved only then, so a sound task starts even when no binary resolves. Only a service owned the way
  * the resolved unit is gets refreshed: starting a package-manager-owned service from the desktop app must not
  * rewrite it and hand ownership over.
@@ -212,14 +212,15 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
 async function refreshesStaleTask(io: SchtasksIo, task: ParsedTask): Promise<boolean> {
   const specPath = serviceSpecPath(io.localAppData);
   const { action } = task;
+  // The supervisor exits for good on a spec it cannot parse, so a malformed one is as stale as a missing one.
+  const current = parseServiceSpec(io.readFile(specPath) ?? '');
   const sound =
     action !== undefined &&
     io.exists(action.exec) &&
     action.specPath.toLowerCase() === specPath.toLowerCase() &&
-    io.readFile(specPath) !== undefined;
+    current !== undefined;
   if (sound) return false;
   const { spec } = await renderUnit(io);
-  const current = parseServiceSpec(io.readFile(specPath) ?? '');
   return desktopOwned(current) === desktopOwned(parseServiceSpec(spec));
 }
 
