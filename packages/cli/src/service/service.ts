@@ -1,10 +1,9 @@
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { delimiter as platformDelimiter, dirname, isAbsolute, join, win32 } from 'node:path';
 
 import { configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
-import { isPlainObject } from 'es-toolkit/predicate';
 
 import { resolveAgentExecutable } from '../executable';
 import { CliExit, EXIT } from '../exit';
@@ -20,6 +19,7 @@ import {
   spawnDarwinRestartHelper,
   startLaunchdJob,
 } from './launchd';
+import { isManagedServiceInstalled } from './managed-unit';
 import { runCapture } from './run-capture';
 import {
   currentUserSid,
@@ -33,6 +33,7 @@ import {
 } from './schtasks';
 import { serviceSpecPath } from './schtasks-unit';
 import { systemdUnitPath } from './systemd';
+import { clearUninstallMarker, writeUninstallMarker } from './uninstall-marker';
 import {
   LAUNCHD_LABEL,
   renderLaunchdPlist,
@@ -42,6 +43,7 @@ import {
 } from './unit-templates';
 
 export { launchdDomain, launchdJobTarget } from './launchd';
+export { isManagedServiceInstalled, managedUnitPath, readDesktopOwnedUnit } from './managed-unit';
 export { renderLaunchdPlist, renderSystemdUnit } from './unit-templates';
 export { resolveAgentExecutable as resolveExec };
 
@@ -75,48 +77,6 @@ function requirePlatform(): SupportedPlatform {
   const current = platform();
   if (current === 'darwin' || current === 'linux' || current === 'win32') return current;
   throw new CliExit(EXIT.unrecoverable, m['cli.service.unsupported_platform']({ platform: current }));
-}
-
-export function managedUnitPath(os: NodeJS.Platform = platform()): string | undefined {
-  if (os === 'darwin') return launchdPlistPath();
-  if (os === 'linux') return systemdUnitPath();
-  const localAppData = process.env['LOCALAPPDATA'];
-  if (os === 'win32' && localAppData !== undefined && localAppData !== '') return serviceSpecPath(localAppData);
-  return undefined;
-}
-
-/**
- * Whether the installed plist belongs to the desktop app: its wrapper target is the symlink the app
- * recorded as `AIO_PROXY_DESKTOP_EXEC` (writeManagedUnit writes both only for a desktop-owned unit,
- * and a CLI rewrite replaces both). Any read or parse failure answers false, which keeps today's behavior.
- */
-export function readDesktopOwnedUnit(path: string = launchdPlistPath()): boolean {
-  if (process.platform !== 'darwin' || !existsSync(path)) return false;
-  const converted = Bun.spawnSync(['plutil', '-convert', 'json', '-o', '-', path], {
-    stdout: 'pipe',
-    stderr: 'ignore',
-  });
-  if (converted.exitCode !== 0) return false;
-  try {
-    const plist: unknown = JSON.parse(converted.stdout.toString());
-    if (!isPlainObject(plist)) return false;
-    const env = plist['EnvironmentVariables'];
-    const args = plist['ProgramArguments'];
-    const marker = isPlainObject(env) ? env['AIO_PROXY_DESKTOP_EXEC'] : undefined;
-    return typeof marker === 'string' && marker !== '' && Array.isArray(args) && args[3] === marker;
-  } catch {
-    return false;
-  }
-}
-
-// Whether a managed unit file exists for the current platform. Callers that only
-// want to restart a managed daemon should gate on this first, since a manually
-// started daemon (`aio-proxy run`) has no installed unit. Returns false on
-// unsupported platforms rather than throwing, since "no managed service" is the
-// honest answer there too.
-export function isManagedServiceInstalled(): boolean {
-  const unit = managedUnitPath();
-  return unit !== undefined && existsSync(unit);
 }
 
 // Run a manager command, streaming its output. `allowFailure` is for status-style
@@ -198,12 +158,13 @@ export async function writeManagedUnit(
   exec: string = resolveAgentExecutable(),
   target: string = os === 'darwin' ? launchdPlistPath() : systemdUnitPath(),
   env: NodeJS.ProcessEnv = process.env,
+  run: typeof runManager = runManager,
 ): Promise<string> {
   const unit = await resolveUnitOptions(os, exec, env);
   const body = os === 'darwin' ? renderLaunchdPlist(unit) : renderSystemdUnit(unit);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, body, { mode: 0o644 });
-  if (os === 'linux') await runManager(['systemctl', '--user', 'daemon-reload']);
+  if (os === 'linux') await run(['systemctl', '--user', 'daemon-reload']);
   return target;
 }
 
@@ -211,24 +172,36 @@ export async function writeManagedUnit(
 const windowsIo = (run: ServiceRestartIo['runManager'] = runManager, exec?: string, env = process.env) =>
   defaultSchtasksIo(run, () => resolveUnitOptions('win32', exec ?? resolveAgentExecutable(), env), env);
 
-export async function serviceInstall(options: ServiceInstallOptions = {}, print: Printer = console.log): Promise<void> {
+type ServiceLifecycleIo = {
+  readonly platform?: SupportedPlatform;
+  readonly runManager?: ServiceRestartIo['runManager'];
+};
+
+export async function serviceInstall(
+  options: ServiceInstallOptions = {},
+  print: Printer = console.log,
+  io: ServiceLifecycleIo = {},
+): Promise<void> {
   assertUserScope(options);
-  const os = requirePlatform();
+  const os = io.platform ?? requirePlatform();
+  const run = io.runManager ?? runManager;
   let target: string;
   if (os === 'win32') {
-    const io = await windowsIo();
-    await schtasksInstall(io);
-    target = serviceSpecPath(io.localAppData);
+    const winIo = await windowsIo();
+    await schtasksInstall(winIo);
+    target = serviceSpecPath(winIo.localAppData);
   } else {
-    target = await writeManagedUnit(os);
+    clearUninstallMarker(os);
+    target = await writeManagedUnit(os, undefined, undefined, process.env, run);
   }
-  if (os === 'linux') await runManager(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
+  if (os === 'linux') await run(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
   print(`${createStyle(process.stdout).mark('ok')} ${m['cli.service.installed']({ path: target })}`);
   print(m['cli.service.env_hint']({ path: serviceEnvFile(configPath()) }));
 }
 
-export async function serviceUninstall(print: Printer = console.log): Promise<void> {
-  const os = requirePlatform();
+export async function serviceUninstall(print: Printer = console.log, io: ServiceLifecycleIo = {}): Promise<void> {
+  const os = io.platform ?? requirePlatform();
+  const run = io.runManager ?? runManager;
   if (os === 'win32') {
     const io = await windowsIo();
     await schtasksUninstall(io);
@@ -245,9 +218,10 @@ export async function serviceUninstall(print: Printer = console.log): Promise<vo
     return;
   }
   const target = systemdUnitPath();
-  await runManager(['systemctl', '--user', 'disable', '--now', SYSTEMD_UNIT_NAME], true);
+  await run(['systemctl', '--user', 'disable', '--now', SYSTEMD_UNIT_NAME], true);
   rmSync(target, { force: true });
-  await runManager(['systemctl', '--user', 'daemon-reload']);
+  writeUninstallMarker('linux');
+  await run(['systemctl', '--user', 'daemon-reload']);
   print(`${createStyle(process.stdout).mark('ok')} ${m['cli.service.uninstalled']({ path: target })}`);
 }
 
@@ -273,7 +247,8 @@ export async function serviceStart(io: ServiceStartIo = {}): Promise<void> {
       await schtasksStart(await windowsIo(run));
       return;
     }
-    await run(['systemctl', '--user', 'start', SYSTEMD_UNIT_NAME]);
+    // enable --now: a later stop disables, so start must re-enable or the service stays off after reboot.
+    await run(['systemctl', '--user', 'enable', '--now', SYSTEMD_UNIT_NAME]);
   } catch (error) {
     if (installed) throw error;
     throw new CliExit(
@@ -283,8 +258,9 @@ export async function serviceStart(io: ServiceStartIo = {}): Promise<void> {
   }
 }
 
-export async function serviceStop(): Promise<void> {
-  const os = requirePlatform();
+export async function serviceStop(io: ServiceLifecycleIo = {}): Promise<void> {
+  const os = io.platform ?? requirePlatform();
+  const run = io.runManager ?? runManager;
   if (os === 'darwin') {
     await runManager(['launchctl', 'unload', '-w', launchdPlistPath()]);
     return;
@@ -293,7 +269,8 @@ export async function serviceStop(): Promise<void> {
     await schtasksStop(await windowsIo());
     return;
   }
-  await runManager(['systemctl', '--user', 'stop', SYSTEMD_UNIT_NAME]);
+  // disable --now: a plain stop would let the unit's WantedBy start it again at the next login.
+  await run(['systemctl', '--user', 'disable', '--now', SYSTEMD_UNIT_NAME]);
 }
 
 export type ServiceRestartIo = {
@@ -371,6 +348,7 @@ export async function serviceRestart(io: ServiceRestartIo = {}): Promise<void> {
     return;
   }
   await write();
+  await run(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
   await run(['systemctl', '--user', 'restart', SYSTEMD_UNIT_NAME]);
 }
 

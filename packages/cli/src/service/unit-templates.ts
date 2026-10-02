@@ -38,7 +38,10 @@ const systemdQuote = (value: string): string =>
 // The daemon loads the optional service.env itself (see service-env), so no
 // EnvironmentFile= is needed and the env file is parsed identically on both
 // platforms without a shell.
-export function renderSystemdUnit({ exec, configPath, path, upgradeMethod }: UnitOptions): string {
+export function renderSystemdUnit(o: UnitOptions): string {
+  const environment = Object.entries(unitEnv(o))
+    .map(([name, value]) => `Environment=${systemdQuote(`${name}=${value}`)}`)
+    .join('\n');
   return `[Unit]
 Description=AIO Proxy
 After=network-online.target
@@ -46,12 +49,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${systemdQuote(exec)} run
+ExecStart=${systemdQuote(o.exec)} run
 Restart=on-failure
 RestartSec=5
 RestartPreventExitStatus=1
-Environment=${systemdQuote(`AIO_PROXY_HOME=${dirname(configPath)}`)}
-Environment=${systemdQuote('AIO_PROXY_MANAGED=1')}${path === undefined ? '' : `\nEnvironment=${systemdQuote(`PATH=${path}`)}`}${upgradeMethod === undefined ? '' : `\nEnvironment=${systemdQuote(`AIO_PROXY_UPGRADE_METHOD=${upgradeMethod}`)}`}
+${environment}
 
 [Install]
 WantedBy=default.target

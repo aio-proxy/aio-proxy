@@ -15,9 +15,14 @@ import {
   resolveExec,
   resolveUnitOptions,
   serviceRestart,
+  serviceInstall,
   serviceStart,
+  serviceStop,
+  serviceUninstall,
   writeManagedUnit,
 } from './service';
+import { parseSystemdUnit } from './systemd';
+import { uninstallMarkerPath } from './uninstall-marker';
 import { LAUNCHD_EXEC_WRAPPER } from './unit-templates';
 
 // A stand-in for launchd: `print` reports the job loaded after bootstrap or kickstart and unloaded
@@ -72,7 +77,7 @@ for (const platform of ['linux', 'darwin'] as const) {
       });
       expect(launchd.calls).toEqual(
         platform === 'linux'
-          ? ['install', 'systemctl --user start aio-proxy.service']
+          ? ['install', 'systemctl --user enable --now aio-proxy.service']
           : [
               'install',
               `launchctl enable ${launchdJobTarget()}`,
@@ -107,12 +112,12 @@ for (const platform of ['linux', 'darwin'] as const) {
   }
 }
 
-test('serviceStart on linux starts an installed service through its manager', async () => {
+test('serviceStart on linux enables an installed service through its manager', async () => {
   const runManager = mock(async () => 0);
   const install = mock(async () => {});
   await serviceStart({ platform: 'linux', unitInstalled: () => true, runManager, install });
   expect(install).not.toHaveBeenCalled();
-  expect(runManager).toHaveBeenCalledWith(['systemctl', '--user', 'start', 'aio-proxy.service']);
+  expect(runManager).toHaveBeenCalledWith(['systemctl', '--user', 'enable', '--now', 'aio-proxy.service']);
 });
 
 test('serviceStart bootstraps an unloaded launchd job after clearing the override a stop leaves', async () => {
@@ -782,4 +787,114 @@ test('managed service PATH uses the platform delimiter and keeps Windows paths',
 test('the Windows unit keeps the entries of a `Path` variable split on semicolons', async () => {
   const unit = await resolveUnitOptions('win32', 'C:\\aio\\aio-proxy.exe', { Path: 'C:\\Windows\\System32;D:\\Tools' });
   expect(unit.path?.split(';').slice(0, 2)).toEqual(['C:\\Windows\\System32', 'D:\\Tools']);
+});
+
+// Points XDG_CONFIG_HOME at a temp dir so the unit and marker land there; `run` records the manager commands.
+const withLinuxHome = async (
+  body: (
+    home: string,
+    calls: string[][],
+    io: { platform: 'linux'; runManager: (cmd: readonly string[]) => Promise<number> },
+  ) => Promise<void>,
+) => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-linux-'));
+  const previous = process.env['XDG_CONFIG_HOME'];
+  process.env['XDG_CONFIG_HOME'] = home;
+  const calls: string[][] = [];
+  const runManager = async (cmd: readonly string[]) => {
+    calls.push([...cmd]);
+    return 0;
+  };
+  try {
+    await body(home, calls, { platform: 'linux', runManager });
+  } finally {
+    if (previous === undefined) delete process.env['XDG_CONFIG_HOME'];
+    else process.env['XDG_CONFIG_HOME'] = previous;
+  }
+};
+
+test('linux stop disables and start enables, so a stop survives a reboot', async () => {
+  await withLinuxHome(async (_home, calls, io) => {
+    await serviceStop(io);
+    expect(calls).toEqual([['systemctl', '--user', 'disable', '--now', 'aio-proxy.service']]);
+    calls.length = 0;
+    await serviceStart({ ...io, unitInstalled: () => true });
+    expect(calls).toContainEqual(['systemctl', '--user', 'enable', '--now', 'aio-proxy.service']);
+  });
+});
+
+test('linux restart rewrites the unit, then enables before restarting', async () => {
+  const calls: string[] = [];
+  await serviceRestart({
+    platform: 'linux',
+    unitInstalled: () => true,
+    writeManagedUnit: async () => {
+      calls.push('write');
+      return '/tmp/unused';
+    },
+    runManager: async (cmd) => {
+      calls.push(cmd.slice(2).join(' '));
+      return 0;
+    },
+  });
+  expect(calls).toEqual(['write', 'enable aio-proxy.service', 'restart aio-proxy.service']);
+});
+
+test('linux uninstall leaves the marker and install clears it', async () => {
+  await withLinuxHome(async (home, calls, io) => {
+    const marker = uninstallMarkerPath('linux', { XDG_CONFIG_HOME: home });
+    await serviceInstall({}, () => {}, io);
+    expect(existsSync(join(home, 'systemd', 'user', 'aio-proxy.service'))).toBe(true);
+    await serviceUninstall(() => {}, io);
+    expect(existsSync(marker!)).toBe(true);
+    expect(existsSync(join(home, 'systemd', 'user', 'aio-proxy.service'))).toBe(false);
+    expect(calls).toContainEqual(['systemctl', '--user', 'disable', '--now', 'aio-proxy.service']);
+    await serviceInstall({}, () => {}, io);
+    expect(existsSync(marker!)).toBe(false);
+  });
+});
+
+test('a systemd unit round-trips paths with quotes, backslashes and percent signs', () => {
+  const exec = '/opt/we ird/"q"\\b/100%/aio-proxy';
+  const unit = renderSystemdUnit({ exec, configPath: '/h/a b/config.jsonc', path: '/usr/bin:/bin' });
+  expect(parseSystemdUnit(unit)).toEqual({
+    exec,
+    env: { AIO_PROXY_HOME: '/h/a b', AIO_PROXY_MANAGED: '1', PATH: '/usr/bin:/bin' },
+  });
+  expect(parseSystemdUnit('[Service]\n')).toEqual({ exec: null, env: {} });
+});
+
+test('a desktop-owned systemd unit carries its own marker and is recognized', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-systemd-owned-'));
+  const link = join(dir, 'aio-proxy-desktop', 'bin', 'aio-proxy');
+  const file = (name: string, unit: string) => {
+    writeFileSync(join(dir, name), unit);
+    return join(dir, name);
+  };
+  const desktop = renderSystemdUnit({ exec: link, configPath: '/h/config.jsonc', desktopExec: link });
+  expect(parseSystemdUnit(desktop)).toMatchObject({ exec: link, env: { AIO_PROXY_DESKTOP_EXEC: link } });
+  expect(readDesktopOwnedUnit(file('desktop.service', desktop), 'linux')).toBe(true);
+  const cli = renderSystemdUnit({ exec: '/usr/bin/aio-proxy', configPath: '/h/config.jsonc' });
+  expect(readDesktopOwnedUnit(file('cli.service', cli), 'linux')).toBe(false);
+  const retargeted = renderSystemdUnit({
+    exec: '/usr/bin/aio-proxy',
+    configPath: '/h/config.jsonc',
+    desktopExec: link,
+  });
+  expect(readDesktopOwnedUnit(file('moved.service', retargeted), 'linux')).toBe(false);
+  expect(readDesktopOwnedUnit(join(dir, 'missing.service'), 'linux')).toBe(false);
+});
+
+test('a desktop-owned Windows spec is recognized by the same rule', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-spec-owned-'));
+  const spec = join(dir, 'service.json');
+  writeFileSync(
+    spec,
+    JSON.stringify({ exec: 'C:\\d\\aio-proxy.exe', env: { AIO_PROXY_DESKTOP_EXEC: 'C:\\d\\aio-proxy.exe' } }),
+  );
+  expect(readDesktopOwnedUnit(spec, 'win32')).toBe(true);
+  writeFileSync(spec, JSON.stringify({ exec: 'C:\\cli.exe', env: { AIO_PROXY_DESKTOP_EXEC: 'C:\\d\\aio-proxy.exe' } }));
+  expect(readDesktopOwnedUnit(spec, 'win32')).toBe(false);
+  writeFileSync(spec, 'not json');
+  expect(readDesktopOwnedUnit(spec, 'win32')).toBe(false);
 });
