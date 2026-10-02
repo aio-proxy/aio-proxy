@@ -98,6 +98,29 @@ export type OAuthCredentialImporter<AccountOptions, Credential> = {
   ) => Promise<OAuthLoginResult<Credential>>;
 };
 
+export type OAuthLocalSignInContext = { readonly signal: AbortSignal };
+
+export type OAuthLocalSignIn<AccountOptions, Credential> = {
+  readonly source: LocalizedText;
+  /** Checks presence only; never parses the host store or reads or returns secrets. */
+  readonly detect: (context: OAuthLocalSignInContext) => Promise<boolean>;
+  /**
+   * Reads the host sign-in after explicit user consent for this account. For adapters with `write`,
+   * the same store contents must map to the same credential value: the framework compares canonical
+   * digests of two reads. Never include host credentials in logs, diagnostics, or errors.
+   */
+  readonly read: (
+    context: OAuthCredentialImportContext,
+    options: AccountOptions,
+  ) => Promise<OAuthLoginResult<Credential>>;
+  /**
+   * Only for rotating stores. Replace only while the host still holds `previous` (same account and
+   * refresh token), re-checked immediately before the atomic replace; otherwise return without writing.
+   * Complete the write even if the signal is aborted, since rotation has already consumed the token.
+   */
+  readonly write?: (context: OAuthLocalSignInContext, next: Credential, previous: Credential) => Promise<void>;
+};
+
 export type CredentialSnapshot<Credential> = {
   readonly value: Credential;
   readonly revision: number;
@@ -229,6 +252,7 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   readonly credentialImports?: {
     readonly cpa?: OAuthCredentialImporter<AccountOptions, Credential>;
   };
+  readonly localSignIn?: OAuthLocalSignIn<AccountOptions, Credential>;
   readonly catalog: {
     readonly policy: { readonly kind: 'static' } | { readonly kind: 'ttl'; readonly ttlMs: number };
     readonly discover: (context: AccountContext<Credential, AccountOptions>) => Promise<ModelCatalog>;

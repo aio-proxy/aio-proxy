@@ -3,6 +3,8 @@ import type {
   OAuthAdapter,
   OAuthCredentialImportContext,
   OAuthCredentialImporter,
+  OAuthLocalSignIn,
+  OAuthLocalSignInContext,
   OAuthLoginResult,
   OAuthQuotaItem,
   PluginApi,
@@ -96,6 +98,52 @@ api.oauth.register(importerAdapter);
 // @ts-expect-error an importer must claim at least one type
 const emptyImporter: OAuthCredentialImporter<MyOptions, MyCredential> = { types: [], import: cpaImporter.import };
 void emptyImporter;
+
+declare const localSignInContext: OAuthLocalSignInContext;
+
+const localSignIn: OAuthLocalSignIn<MyOptions, MyCredential> = {
+  source: { default: 'Example tool', 'zh-Hans': '示例工具' },
+  async detect(context) {
+    context.signal.throwIfAborted();
+    // @ts-expect-error presence detection cannot report account details
+    void context.progress;
+    // @ts-expect-error presence detection does not receive network access
+    void context.fetch;
+    return true;
+  },
+  async read(context, options) {
+    context.progress(`Reading ${options.baseURL}`);
+    context.signal.throwIfAborted();
+    await context.fetch?.('https://provider.example/account');
+    return { fingerprint: 'account', suggestedKey: 'account', credentials: { accessToken: 'token' } };
+  },
+  async write(context, next, previous) {
+    const signal: AbortSignal = context.signal;
+    const nextToken: string = next.accessToken;
+    const previousToken: string = previous.accessToken;
+    void signal;
+    void nextToken;
+    void previousToken;
+  },
+};
+
+const localSignInAdapter: OAuthAdapter<MyOptions, MyCredential> = { ...quotaAdapter, localSignIn };
+api.oauth.register(localSignInAdapter);
+void localSignIn.detect(localSignInContext);
+void localSignIn.read(importContext, { baseURL: 'https://provider.example' });
+void localSignIn.write?.(localSignInContext, { accessToken: 'next' }, { accessToken: 'previous' });
+
+// @ts-expect-error local sign-in reads use the adapter's account options
+void localSignIn.read(importContext, { baseURL: 1 });
+// @ts-expect-error local sign-in writes use the adapter's credential type
+void localSignIn.write?.(localSignInContext, { accessToken: 1 }, { accessToken: 'previous' });
+
+const readOnlyLocalSignIn: OAuthLocalSignIn<MyOptions, MyCredential> = {
+  source: 'Example tool',
+  detect: localSignIn.detect,
+  read: localSignIn.read,
+};
+void readOnlyLocalSignIn;
 
 const proxyUnsupportedAdapter: OAuthAdapter<MyOptions, MyCredential> = {
   ...quotaAdapter,
