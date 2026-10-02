@@ -1,6 +1,5 @@
-import { currentUser, queryTaskXml, type TaskQuery, windowsLocalAppData } from '../../service/schtasks';
+import { queryTaskXml, type TaskQuery, windowsLocalAppData } from '../../service/schtasks';
 import {
-  asciiFolded,
   isOwnTask,
   parseServiceSpec,
   parseTaskXml,
@@ -30,8 +29,8 @@ export function inspectTask(
     action !== undefined &&
     service !== undefined &&
     isOwnTask(task, user) &&
-    asciiFolded(action.exec) === asciiFolded(service.exec) &&
-    asciiFolded(action.specPath) === asciiFolded(specPath);
+    action.exec.toLowerCase() === service.exec.toLowerCase() &&
+    action.specPath.toLowerCase() === specPath.toLowerCase();
   return {
     present: true,
     wrapperValid,
@@ -57,6 +56,9 @@ type TaskProbeDeps = {
   readonly run: Run;
   readonly readFile: (path: string) => Promise<string>;
   readonly imagePath: (pid: number) => string | undefined;
+  /** This process's account SID; empty when it could not be read. */
+  readonly owner: string;
+  readonly sidForAccount: (account: string) => string | undefined;
 };
 
 const NO_UNIT: UnitInspection = { present: false, wrapperValid: false, target: null, home: null };
@@ -67,7 +69,8 @@ export async function readTask(deps: TaskProbeDeps): Promise<{ unit: UnitInspect
   const read = (path: string) => deps.readFile(path).catch(() => undefined);
   try {
     const localAppData = windowsLocalAppData(deps.env);
-    const user = await currentUser(capture);
+    if (deps.owner === '') throw new Error('no account SID');
+    const user = { sid: deps.owner, sidForAccount: deps.sidForAccount };
     const query = await queryTaskXml(capture, taskPath(user.sid));
     const unit =
       query.kind === 'missing'

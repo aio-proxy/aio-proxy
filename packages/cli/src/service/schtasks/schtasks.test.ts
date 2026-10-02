@@ -32,12 +32,13 @@ const path = taskPath(sid);
 const specPath = serviceSpecPath(localAppData);
 const statePath = serviceStatePath(localAppData);
 const exec = 'C:\\Users\\Zoë\\AppData\\Local\\aio-proxy-desktop\\bin\\aio-proxy.exe';
-const account = 'DESKTOP-1\\Zoë';
+const account = 'DESKTOP-1\\张';
+const sidForAccount = (name: string) => (name === account ? sid : name === 'DESKTOP-1\\李' ? 'S-1-5-21-9' : undefined);
 const oldExec = 'C:\\Users\\Zoë\\old\\aio-proxy.exe';
 const oldSpec = JSON.stringify(
   renderServiceSpec({ exec: oldExec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc' }),
 );
-// What `/Query /XML` hands back: non-ASCII may not survive the pipe, so it must never be re-registered.
+// What the task query hands back: Task Scheduler may have rewritten it, so it must never be re-registered.
 const previousXml = renderTaskXml({ sid, exec: 'C:\\Users\\Zo?\\old\\aio-proxy.exe', specPath });
 const oldTaskXml = renderTaskXml({ sid, exec: oldExec, specPath });
 // The supervisor records its own image beside its PID.
@@ -69,7 +70,7 @@ type Options = {
   /** The command (`/Create`, `/Run`) whose first call fails; `failAlways` fails every call. */
   readonly failOn?: string;
   readonly failAlways?: boolean;
-  /** What `/Query /XML` finds: the task XML (default `previousXml`), nothing, or a failure exit code. */
+  /** What the task query finds: the task XML (default `previousXml`), nothing, or a failure exit code. */
   readonly task?: string | 'missing' | number;
   readonly imagePath?: (pid: number) => string | undefined;
 };
@@ -103,13 +104,14 @@ function io({
       return 0;
     },
     capture: async (cmd): Promise<CaptureResult> => {
-      expect(cmd).toEqual(['schtasks', '/Query', '/XML', '/TN', path, '/HRESULT']);
-      if (task === 'missing') return { code: 0x80070002, stdout: '', stderr: '' };
+      expect(cmd[0]).toBe('powershell.exe');
+      expect(cmd.at(-1)).toContain(`-TaskPath '\\AIO Proxy\\' -TaskName 'aio-proxy-${sid}'`);
+      if (task === 'missing') return { code: 3, stdout: '', stderr: '' };
       if (typeof task === 'number') return { code: task, stdout: '', stderr: 'Access is denied.' };
       return { code: 0, stdout: task, stderr: '' };
     },
     sid,
-    account,
+    sidForAccount,
     localAppData,
     tempDir: 'C:\\Temp',
     unit: async () => ({ exec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc' }),
@@ -206,17 +208,16 @@ test('install replaces a task that already runs as the current user', async () =
   expect(calls.map((c) => c[1])).toEqual(['/Create']);
 });
 
-test('install accepts a task whose principal is exported as our account name, in any case', async () => {
-  for (const name of [account, account.toUpperCase()]) {
-    const calls = await recordCalls((io) => schtasksInstall(io), { task: previousXml.replaceAll(sid, name) });
-    expect(calls.map((c) => c[1])).toEqual(['/Create']);
-  }
+test('install accepts a task whose principal is exported as an account name resolving to our SID', async () => {
+  const calls = await recordCalls((io) => schtasksInstall(io), { task: previousXml.replaceAll(sid, account) });
+  expect(calls.map((c) => c[1])).toEqual(['/Create']);
 });
 
 test('install refuses a task at our path that runs as another user, and a failed query', async () => {
   const foreignSid = previousXml.replaceAll(sid, 'S-1-5-21-9-9-9-500');
-  const foreignAccount = previousXml.replaceAll(sid, 'DESKTOP-1\\other');
-  for (const task of [foreignSid, foreignAccount, 1]) {
+  const foreignAccount = previousXml.replaceAll(sid, 'DESKTOP-1\\李');
+  const unknownAccount = previousXml.replaceAll(sid, 'DESKTOP-1\\other');
+  for (const task of [foreignSid, foreignAccount, unknownAccount, 1]) {
     const fs = fakeFs();
     const rejection = expect(schtasksInstall(io({ fs, task }))).rejects;
     await rejection.toBeInstanceOf(CliExit);
@@ -291,8 +292,8 @@ test('the default scheduled exit ends the process with 75 after the restart alre
     const files = new Map();
     const io = {
       run: async () => 0,
-      capture: async () => ({ code: 0x80070002, stdout: '', stderr: '' }),
-      sid: 'S-1-5-21-1', account: 'PC-u', localAppData: 'C:/L', tempDir: 'C:/T',
+      capture: async () => ({ code: 3, stdout: '', stderr: '' }),
+      sid: 'S-1-5-21-1', sidForAccount: () => undefined, localAppData: 'C:/L', tempDir: 'C:/T',
       unit: async () => ({ exec: 'C:/a.exe', configPath: 'C:/c.jsonc' }),
       readFile: (p) => files.get(p), writeFile: (p, d) => void files.set(p, d),
       rename: (a, b) => { files.set(b, files.get(a)); files.delete(a); }, remove: (p) => void files.delete(p),
@@ -392,9 +393,7 @@ test('a task query tells "does not exist" apart from every other failure', async
   const query = (code: number) =>
     queryTaskXml(async () => ({ code, stdout: code === 0 ? '<Task/>' : '', stderr: '' }), path);
   expect(await query(0)).toEqual({ kind: 'found', xml: '<Task/>' });
-  expect(await query(0x80070002)).toEqual({ kind: 'missing' });
-  expect(await query(-2147024894)).toEqual({ kind: 'missing' });
-  expect(await query(0x80070005)).toEqual({ kind: 'failed', code: 0x80070005 });
+  expect(await query(3)).toEqual({ kind: 'missing' });
   expect(await query(1)).toEqual({ kind: 'failed', code: 1 });
 });
 

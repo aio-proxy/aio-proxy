@@ -5,7 +5,7 @@ import { unitOwner } from '../launchd-inspect';
 import { inspectTask, readTask, taskJob } from './schtasks-inspect';
 
 const sid = 'S-1-5-21-1-2-3-1001';
-const user = { sid, account: 'DESKTOP-1\\Ada' };
+const user = { sid, sidForAccount: (name: string) => (name === 'DESKTOP-1\\Ada' ? sid : undefined) };
 const specPath = 'C:\\Users\\Ada\\AppData\\Local\\aio-proxy\\service.json';
 const link = 'C:\\Users\\Ada\\AppData\\Local\\aio-proxy-desktop\\bin\\aio-proxy.exe';
 const home = 'C:\\Users\\Ada\\.aio-proxy';
@@ -21,13 +21,14 @@ test('a task of this user that runs the spec it names is the unit', () => {
   expect(unitOwner(unit, link, () => true)).toBe('desktop');
 });
 
-test('a principal given as the account name matches case-insensitively', () => {
-  expect(inspectTask(xmlFor('desktop-1\\ada'), specFor(), user, specPath).wrapperValid).toBe(true);
+test('a principal given as an account name is ours only when it resolves to our SID', () => {
+  expect(inspectTask(xmlFor('DESKTOP-1\\Ada'), specFor(), user, specPath).wrapperValid).toBe(true);
+  expect(inspectTask(xmlFor('DESKTOP-1\\Bob'), specFor(), user, specPath).wrapperValid).toBe(false);
 });
 
 test('a trigger user spelled as the account beside a SID principal is still ours; another account is not', () => {
   const withTrigger = (name: string) => xmlFor(sid).replace(/(<LogonTrigger>[\s\S]*?<UserId>)[^<]*/u, `$1${name}`);
-  expect(inspectTask(withTrigger('desktop-1\\ADA'), specFor(), user, specPath).wrapperValid).toBe(true);
+  expect(inspectTask(withTrigger('DESKTOP-1\\Ada'), specFor(), user, specPath).wrapperValid).toBe(true);
   expect(unitOwner(inspectTask(withTrigger('DESKTOP-1\\Bob'), specFor(), user, specPath), link, () => true)).toBe(
     'unknown',
   );
@@ -45,13 +46,16 @@ test('a task owned by another principal, or running something else, is unknown',
   expect(inspectTask(undefined, specFor(), user, specPath).wrapperValid).toBe(false);
 });
 
-// schtasks' XML output encoding is unverified: a non-ASCII path may come back mangled, so only its ASCII
-// letters are compared, and the reported target is the spec's own text.
-test('non-ASCII path text from the queried task is compared by its ASCII letters only', () => {
-  const exec = 'C:\\Users\\张三\\AppData\\Local\\aio-proxy-desktop\\bin\\aio-proxy.exe';
-  const mangled = xmlFor(sid, exec.replace('张三', '\uFFFD\uFFFD\uFFFD'), specPath.toUpperCase());
-  const unit = inspectTask(mangled, specFor(exec), user, specPath);
-  expect(unit).toMatchObject({ wrapperValid: true, target: exec });
+// Paths compare exactly, ignoring only case: distinct non-ASCII user folders must never match.
+test('task paths match the spec case-insensitively, but a different non-ASCII path does not', () => {
+  const exec = 'C:\\Users\\张\\AppData\\Local\\aio-proxy-desktop\\bin\\aio-proxy.exe';
+  const spec = specPath.replace('Ada', '张');
+  expect(inspectTask(xmlFor(sid, exec.toUpperCase(), spec), specFor(exec), user, spec)).toMatchObject({
+    wrapperValid: true,
+    target: exec,
+  });
+  expect(inspectTask(xmlFor(sid, exec.replace('张', '李'), spec), specFor(exec), user, spec).wrapperValid).toBe(false);
+  expect(inspectTask(xmlFor(sid, exec, spec.replace('张', '李')), specFor(exec), user, spec).wrapperValid).toBe(false);
 });
 
 test.each([
@@ -88,10 +92,9 @@ test('discovery after an exec change still reports the running supervisor, and n
       env: { LOCALAPPDATA: localAppData },
       unitPath,
       imagePath,
-      run: async (cmd) =>
-        cmd[0] === 'whoami'
-          ? { code: 0, stdout: `"${user.account}","${sid}"\r\n` }
-          : { code: 0, stdout: renderTaskXml({ sid, exec: moved, specPath: unitPath }) },
+      owner: sid,
+      sidForAccount: () => undefined,
+      run: async () => ({ code: 0, stdout: renderTaskXml({ sid, exec: moved, specPath: unitPath }) }),
       readFile: async (path) => {
         if (path === unitPath) return specFor(moved);
         if (path === serviceStatePath(localAppData)) return JSON.stringify({ pid: 4310, exec: link });

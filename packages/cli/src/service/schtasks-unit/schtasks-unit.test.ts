@@ -47,22 +47,21 @@ test('a task that runs anything but __service-run with a spec has no action of o
   expect(parseTaskXml('not xml')).toBeUndefined();
 });
 
-test('a task is ours when its principal and its trigger, if any, name this user by SID or account', () => {
-  const user = { sid, account: 'DESKTOP-1\\Zoë Chen' };
-  const xml = renderTaskXml({ sid, exec, specPath });
-  const withTrigger = (name: string) => xml.replace(/(<LogonTrigger>[\s\S]*?<UserId>)[^<]*/u, `$1${name}`);
-  expect(isOwnTask(parseTaskXml(xml), user)).toBe(true);
-  expect(isOwnTask(parseTaskXml(withTrigger('desktop-1\\ZOË CHEN')), user)).toBe(true);
-  expect(isOwnTask(parseTaskXml(withTrigger('DESKTOP-1\\Bob')), user)).toBe(false);
+// A fake directory: account names resolve exactly, so distinct non-ASCII names map to distinct SIDs.
+const accounts: Record<string, string> = { 'DESKTOP-1\\张': sid, 'DESKTOP-1\\李': 'S-1-5-21-9-9-9-1002' };
+const user = { sid, sidForAccount: (name: string) => accounts[name] };
+const withTrigger = (name: string) =>
+  parseTaskXml(renderTaskXml({ sid, exec, specPath }).replace(/(<LogonTrigger>[\s\S]*?<UserId>)[^<]*/u, `$1${name}`));
+
+test('a task is ours when its principal and its trigger, if any, name this user by SID or a resolving account', () => {
+  expect(isOwnTask(parseTaskXml(renderTaskXml({ sid, exec, specPath })), user)).toBe(true);
+  expect(isOwnTask(withTrigger('DESKTOP-1\\张'), user)).toBe(true);
   expect(isOwnTask(parseTaskXml(renderTaskXml({ sid: 'S-1-5-21-9', exec, specPath })), user)).toBe(false);
   expect(isOwnTask(undefined, user)).toBe(false);
 });
 
-test('a non-ASCII account read back mangled from the task XML still matches by its ASCII characters', () => {
-  const user = { sid, account: 'DESKTOP-1\\张三' };
-  const withTrigger = (name: string) =>
-    parseTaskXml(renderTaskXml({ sid, exec, specPath }).replace(/(<LogonTrigger>[\s\S]*?<UserId>)[^<]*/u, `$1${name}`));
-  expect(isOwnTask(withTrigger('DESKTOP-1\\\uFFFD\uFFFD'), user)).toBe(true);
+test('another non-ASCII account, or one that does not resolve, is not ours', () => {
+  expect(isOwnTask(withTrigger('DESKTOP-1\\李'), user)).toBe(false);
   expect(isOwnTask(withTrigger('DESKTOP-1\\Bob'), user)).toBe(false);
 });
 

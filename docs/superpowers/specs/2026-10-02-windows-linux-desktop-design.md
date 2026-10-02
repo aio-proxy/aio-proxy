@@ -163,8 +163,8 @@ owner. Windows instead keeps the token where only this user can create files:
   suffices. It plays the role of the disabled override that `launchctl unload -w` leaves on macOS: with no
   unit present, discovery reports `disabled: true` while the marker exists, so the app does not reinstall a
   service the user removed.
-- Task Scheduler queries capture stdout and stderr and pass `/HRESULT`, so "the task does not exist"
-  (`0x80070002`) is told apart from every other failure. Process identity checks (the state file's PID
+- The task XML is read with `Export-ScheduledTask` (PowerShell, UTF-8 output, exit 3 when the task does not
+  exist, so that is told apart from every other failure); `schtasks` only mutates. Process identity checks (the state file's PID
   running the image it recorded) read the full image path with `QueryFullProcessImageNameW` through `bun:ffi`, beside the
   Job Object calls; `tasklist` reports only the image name. Account checks compare SIDs read from the
   process token (`OpenProcessToken` + `GetTokenInformation(TokenUser)`), never names that console tools
@@ -188,7 +188,7 @@ meanings, so the Rust `Discovery` parser and the `policy` state machine are unch
 
 | Probe | darwin (today) | linux | win32 |
 | --- | --- | --- | --- |
-| `readUnit` | `plutil` → `inspectUnit` | parse `ExecStart=` and `Environment=` | `schtasks /Query /XML /TN <path>`: the principal must be the current user's SID and the action `<exec> __service-run <spec path>` (through `conhost` if the spike picks it), else `wrapperValid: false`; then read `service.json` |
+| `readUnit` | `plutil` → `inspectUnit` | parse `ExecStart=` and `Environment=` | `Export-ScheduledTask` (UTF-8): the principal and logon trigger must be the current user's SID, an account name counting only when it resolves (`LookupAccountNameW`) to that SID exactly, and the action `<exec> __service-run <spec path>` (through `conhost` if the spike picks it), else `wrapperValid: false`; paths compare exactly, ignoring only case; then read `service.json` |
 | `readJob` | `launchctl print`, `print-disabled` | `systemctl --user show -p LoadState,ActiveState,UnitFileState,MainPID` | `schtasks /Query /V /FO CSV`; `pid` from `service.state.json` when that process is alive and its image is the `exec` recorded there (uninstall waits on the same check) |
 | Connection ownership | `lsof` | `/proc/net/tcp{,6}`: the uid of the row matching the four-tuple | `netstat -ano -p TCP` and `-p TCPv6` → PID → that process's token SID equals ours |
 

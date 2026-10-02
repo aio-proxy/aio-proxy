@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { accountForSid, currentUserSid, processImagePath, processUserSid } from './win32-ffi';
+import { accountForSid, currentUserSid, processImagePath, processUserSid, sidForAccount } from './win32-ffi';
 
 const onlyOnWindows = test.skipIf(process.platform !== 'win32');
 
@@ -72,4 +72,9 @@ onlyOnWindows('the current SID resolves to a DOMAIN\\name account', () => {
   const sid = currentUserSid();
   expect(sid).toBeDefined();
   expect(accountForSid(sid!)).toMatch(/^[^\\]+\\[^\\]+$/u);
+});
+
+onlyOnWindows('our account name resolves back to our SID', () => {
+  const sid = currentUserSid();
+  expect(sidForAccount(accountForSid(sid!)!)).toBe(sid);
 });

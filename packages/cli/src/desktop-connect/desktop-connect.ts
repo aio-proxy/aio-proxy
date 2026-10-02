@@ -7,7 +7,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import { controlBaseUrl, localControlHost, probeHealth, resolveControlAddress } from '../control-plane';
 import { launchdDomain, launchdJobTarget, managedUnitPath } from '../service';
 import { decodeOutput } from '../service/run-capture';
-import { processImagePath, processUserSid } from '../win32-ffi';
+import { processImagePath, processUserSid, sidForAccount } from '../win32-ffi';
 import {
   inspectUnit,
   isRunnable,
@@ -43,6 +43,8 @@ export type DesktopConnectDeps = {
   readonly imagePath: (pid: number) => string | undefined;
   /** The SID of a process's account (win32): who owns a socket, by the process netstat names. */
   readonly userSid: (pid: number) => string | undefined;
+  /** An account name's SID (win32): the task may name its principal by account. */
+  readonly sidForAccount: (account: string) => string | undefined;
   readonly readToken: (home: string) => string | undefined;
   /** This process's account: the listener must belong to it before the token is offered. */
   readonly owner: string;
@@ -305,6 +307,7 @@ const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number, owner
   targetRunnable: isRunnable,
   imagePath: processImagePath,
   userSid: processUserSid,
+  sidForAccount,
   readToken: (home) => readDesktopToken(home),
   owner,
   // A killed or budget-exhausted helper degrades its fields like any other probe failure.

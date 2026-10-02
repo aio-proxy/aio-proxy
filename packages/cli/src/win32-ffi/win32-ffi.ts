@@ -24,6 +24,10 @@ const loadAdvapi32 = () =>
     },
     ConvertSidToStringSidW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     ConvertStringSidToSidW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+    LookupAccountNameW: {
+      args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr],
+      returns: FFIType.i32,
+    },
     LookupAccountSidW: {
       args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr],
       returns: FFIType.i32,
@@ -176,18 +180,48 @@ function tokenUserSid(proc: Pointer | bigint): string | undefined {
     const base = BigInt(ptr(info));
     // Anything but a pointer into our own buffer means the layout is not what we read it as.
     if (sid < base || sid >= base + BigInt(info.byteLength)) return undefined;
-    const textOut = new BigUint64Array(1);
-    if (a.ConvertSidToStringSidW(sid, textOut) === 0 || textOut[0] === 0n) return undefined;
-    const text = textOut[0]!;
-    try {
-      const length = k.lstrlenW(text);
-      if (length <= 0) return undefined;
-      const value = new TextDecoder('utf-16le').decode(toArrayBuffer(text, 0, length * 2));
-      return value.startsWith('S-1-') ? value : undefined;
-    } finally {
-      k.LocalFree(text);
-    }
+    return stringSid(sid);
   } finally {
     k.CloseHandle(token);
+  }
+}
+
+/** The string form of a binary SID; `undefined` when it cannot be converted. */
+function stringSid(sid: Pointer | bigint | Uint8Array): string | undefined {
+  const k = kernel32();
+  const textOut = new BigUint64Array(1);
+  if (advapi32().ConvertSidToStringSidW(sid, textOut) === 0 || textOut[0] === 0n) return undefined;
+  const text = textOut[0]!;
+  try {
+    const length = k.lstrlenW(text);
+    if (length <= 0) return undefined;
+    const value = new TextDecoder('utf-16le').decode(toArrayBuffer(text, 0, length * 2));
+    return value.startsWith('S-1-') ? value : undefined;
+  } finally {
+    k.LocalFree(text);
+  }
+}
+
+/**
+ * The string SID of an account name (`DOMAIN\name` or `name`), resolved in UTF-16 so distinct non-ASCII
+ * names stay distinct; `undefined` when it cannot be resolved or not on win32.
+ */
+export function sidForAccount(account: string): string | undefined {
+  try {
+    const a = advapi32();
+    const name = Buffer.from(`${account}\0`, 'utf16le');
+    // The first call fails with ERROR_INSUFFICIENT_BUFFER and reports the SID size and domain length.
+    const sidSize = new Uint32Array(1);
+    const domainLength = new Uint32Array(1);
+    const use = new Uint32Array(1);
+    a.LookupAccountNameW(null, name, null, sidSize, null, domainLength, use);
+    if (!sidSize[0]) return undefined;
+    const sid = new Uint8Array(sidSize[0]);
+    const domain = new Uint16Array(Math.max(domainLength[0] ?? 0, 1));
+    domainLength[0] = domain.length;
+    if (a.LookupAccountNameW(null, name, sid, sidSize, domain, domainLength, use) === 0) return undefined;
+    return stringSid(sid);
+  } catch {
+    return undefined;
   }
 }

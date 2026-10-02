@@ -7,7 +7,7 @@ import { m } from '@aio-proxy/i18n';
 
 import { CliExit, EXIT } from '../../exit';
 import { createStyle } from '../../ui';
-import { accountForSid, currentUserSid as nativeUserSid, processImagePath } from '../../win32-ffi';
+import { accountForSid, currentUserSid as nativeUserSid, processImagePath, sidForAccount } from '../../win32-ffi';
 import { type CaptureResult, runCapture } from '../run-capture';
 import {
   isOwnTask,
@@ -33,8 +33,8 @@ export type SchtasksIo = {
   /** Queries; their output is parsed, never shown. */
   readonly capture: Capture;
   readonly sid: string;
-  /** `DOMAIN\user`: exported task XML may name the principal by account instead of SID. */
-  readonly account: string;
+  /** Resolves an account name to its SID: exported task XML may name the principal by account instead. */
+  readonly sidForAccount: (account: string) => string | undefined;
   readonly localAppData: string;
   /** Where the task XML is staged for `/Create /XML`. */
   readonly tempDir: string;
@@ -54,8 +54,7 @@ export type SchtasksIo = {
 
 export type TaskQuery = { kind: 'found'; xml: string } | { kind: 'missing' } | { kind: 'failed'; code: number };
 
-// `/HRESULT` makes schtasks exit with the HRESULT; Bun may report it signed or unsigned.
-const TASK_NOT_FOUND = 0x80070002;
+const TASK_NOT_FOUND = 3;
 const SUPERVISOR_EXIT_TIMEOUT_MS = 10_000;
 const SUPERVISOR_POLL_MS = 100;
 
@@ -93,23 +92,41 @@ export async function currentUser(
 
 export const currentUserSid = async (capture: Capture): Promise<string> => (await currentUser(capture)).sid;
 
+const psQuoted = (text: string): string => `'${text.replaceAll("'", "''")}'`;
+
+/**
+ * Exports the task XML as UTF-8 so non-ASCII paths and accounts read back exactly; `schtasks /Query /XML`
+ * writes it in an unverified encoding. Exits 3 when the task does not exist.
+ */
+const taskXmlCommand = (path: string): string[] => {
+  const split = path.lastIndexOf('\\') + 1;
+  const where = `-TaskPath ${psQuoted(path.slice(0, split))} -TaskName ${psQuoted(path.slice(split))}`;
+  return [
+    'powershell.exe',
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    `[Console]::OutputEncoding=[Text.Encoding]::UTF8; $t = Get-ScheduledTask ${where} -ErrorAction SilentlyContinue; ` +
+      `if ($null -eq $t) { exit ${TASK_NOT_FOUND} } else { Export-ScheduledTask ${where} }`,
+  ];
+};
+
 export async function queryTaskXml(capture: Capture, path: string): Promise<TaskQuery> {
-  const { code, stdout } = await capture(['schtasks', '/Query', '/XML', '/TN', path, '/HRESULT']);
+  const { code, stdout } = await capture(taskXmlCommand(path));
   if (code === 0) return { kind: 'found', xml: stdout };
-  return code === TASK_NOT_FOUND || code === (TASK_NOT_FOUND | 0) ? { kind: 'missing' } : { kind: 'failed', code };
+  return code === TASK_NOT_FOUND ? { kind: 'missing' } : { kind: 'failed', code };
 }
 
 /**
- * Our task, or undefined when it does not exist; refuses one that runs as someone else. The queried XML is only read for whose it
- * is: its encoding through a pipe is unverified, so it is never fed back to `/Create`.
+ * Our task, or undefined when it does not exist; refuses one that runs as someone else. The queried XML is only
+ * read for whose it is, never fed back to `/Create`: Task Scheduler may have rewritten it.
  */
 async function ownTask(io: SchtasksIo, path: string): Promise<ParsedTask | undefined> {
   const query = await queryTaskXml(io.capture, path);
-  if (query.kind === 'failed') throw commandFailed(['schtasks', '/Query', '/XML', '/TN', path], query.code);
+  if (query.kind === 'failed') throw commandFailed(taskXmlCommand(path), query.code);
   if (query.kind === 'missing') return undefined;
   const task = parseTaskXml(query.xml);
-  if (!isOwnTask(task, { sid: io.sid, account: io.account }))
-    throw new CliExit(EXIT.unrecoverable, m['cli.service.task_owned_by_other_user']({ path }));
+  if (!isOwnTask(task, io)) throw new CliExit(EXIT.unrecoverable, m['cli.service.task_owned_by_other_user']({ path }));
   return task;
 }
 
@@ -274,12 +291,12 @@ export async function defaultSchtasksIo(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<SchtasksIo> {
   const localAppData = windowsLocalAppData(env);
-  const { sid, account } = await currentUser(runCapture);
+  const { sid } = await currentUser(runCapture);
   return {
     run,
     capture: runCapture,
     sid,
-    account,
+    sidForAccount,
     localAppData,
     tempDir: tmpdir(),
     unit,

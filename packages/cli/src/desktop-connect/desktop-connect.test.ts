@@ -65,6 +65,7 @@ const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | 
     unitExists: () => scenario.plist !== undefined,
     imagePath: () => undefined,
     userSid: () => undefined,
+    sidForAccount: () => undefined,
     targetRunnable: () => true,
     readToken: () => scenario.token,
     owner: '501',
@@ -440,8 +441,7 @@ test('win32: a desktop-owned running task is identified end to end through the s
       return text;
     },
     run: async (cmd) => {
-      if (cmd[0] === 'whoami') return { code: 0, stdout: `"DESKTOP-1\\Ada","${sid}"\r\n` };
-      if (cmd[0] === 'schtasks') return { code: 0, stdout: renderTaskXml({ sid, exec: winLink, specPath }) };
+      if (cmd[0] === 'powershell.exe') return { code: 0, stdout: renderTaskXml({ sid, exec: winLink, specPath }) };
       if (cmd.join(' ') === 'netstat -ano -p TCP') {
         return { code: 0, stdout: '  TCP    127.0.0.1:19317        0.0.0.0:0              LISTENING       4312\r\n' };
       }

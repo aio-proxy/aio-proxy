@@ -81,8 +81,8 @@ export type ParsedTask = {
   readonly sid: string;
   /** The logon trigger's `UserId`, which Task Scheduler may spell differently from the principal. */
   readonly triggerUser: string | undefined;
-  /** `Settings/Enabled`, what `/Change /DISABLE` flips; ASCII, so unlike the localized `/V` status it reads
-   * the same through any encoding. Absent means enabled. */
+  /** `Settings/Enabled`, what `/Change /DISABLE` flips; unlike the localized `/V` status it reads the same in
+   * every locale. Absent means enabled. */
   readonly enabled: boolean;
   /** The `<exec> __service-run <spec>` action `renderTaskXml` writes; undefined for any other action. */
   readonly action: { readonly exec: string; readonly specPath: string } | undefined;
@@ -108,16 +108,15 @@ export function parseTaskXml(xml: string): ParsedTask | undefined {
   return { sid, triggerUser, enabled, action: match === null ? undefined : { exec: match[1]!, specPath: match[2]! } };
 }
 
-/** The current Windows user, as Task Scheduler may name it: by SID or by `DOMAIN\user`. */
-export type WindowsUser = { readonly sid: string; readonly account: string };
-
-// `schtasks /Query /XML` output reaches us in an unverified encoding, so non-ASCII text from it may come
-// back mangled (U+FFFD or another code page). Only its ASCII characters are compared.
-export const asciiFolded = (text: string): string => text.replace(/[\u0080-\u{10FFFF}]/gu, '').toLowerCase();
+/** The current Windows user; Task Scheduler may name it by SID or by an account, which `sidForAccount` resolves. */
+export type WindowsUser = {
+  readonly sid: string;
+  readonly sidForAccount: (account: string) => string | undefined;
+};
 
 /** Whether the task runs as `user`: its principal and, when present, its logon trigger name them. */
 export function isOwnTask(task: ParsedTask | undefined, user: WindowsUser): boolean {
-  // The SID match is the trust boundary; the ASCII-folded account match only tolerates a mangled name.
-  const isUser = (id: string) => id === user.sid || asciiFolded(id) === asciiFolded(user.account);
+  // Exact SIDs only: an account name counts once it resolves to ours, so distinct non-ASCII names never collide.
+  const isUser = (id: string) => id === user.sid || user.sidForAccount(id) === user.sid;
   return task !== undefined && isUser(task.sid) && (task.triggerUser === undefined || isUser(task.triggerUser));
 }
