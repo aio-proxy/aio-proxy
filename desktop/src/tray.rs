@@ -129,10 +129,18 @@ fn build(cx: &App, events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
     let builder = TrayIconBuilder::new().with_icon(icon(TrayState::Down, color));
     #[cfg(target_os = "macos")]
     let builder = builder.with_icon_as_template(true);
+    // Identifies the notification-area icon across launches, so the user's "always show" choice
+    // sticks. Must never change: a new value is a new icon to Windows.
+    #[cfg(windows)]
+    let builder = builder.with_guid(0x0967_9fb3_76f4_7c3a_3bb6_c89c_2a69_d6d8);
     let icon =
         builder.with_tooltip("AIO Proxy").with_menu_on_left_click(false).build().map_err(|error| error.to_string())?;
     let clicks = events.clone();
     TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
+        #[cfg(windows)]
+        if let TrayIconEvent::Click { rect, .. } = event {
+            crate::platform::panel::remember_click(rect);
+        }
         if let TrayIconEvent::Click { button, button_state, .. } = event
             && let Some(message) = click_event(button, button_state)
         {

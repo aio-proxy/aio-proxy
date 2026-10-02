@@ -6,9 +6,8 @@ mod footer;
 mod format;
 mod groups;
 mod header;
-/// Anchoring under the menu-bar icon.
-#[cfg(target_os = "macos")]
-pub(crate) mod placement;
+/// Anchoring beside the menu-bar or tray icon; pure, so its tests run on every platform.
+pub mod placement;
 mod quota;
 mod states;
 mod status;

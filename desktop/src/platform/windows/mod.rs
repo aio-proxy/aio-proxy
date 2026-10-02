@@ -1,4 +1,4 @@
-//! Windows. Stubs until later phase 3 tasks: no updater. Connection ownership
+//! Windows. Stub until a later phase 3 task: no updater. Connection ownership
 //! comes from the TCP table and the owning process's account SID.
 
 use std::ffi::OsString;
@@ -32,9 +32,13 @@ pub fn paths_from(home: &Path, env: impl Fn(&str) -> Option<OsString>) -> Paths 
     }
 }
 
-/// White until phase 3 reads the taskbar theme.
+/// A black mark on a light taskbar, white otherwise (dark, or the value missing).
 pub fn tray_color(_cx: &App) -> [u8; 3] {
-    [255, 255, 255]
+    let light = windows_registry::CURRENT_USER
+        .open(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
+        .and_then(|key| key.get_u32("SystemUsesLightTheme"))
+        .is_ok_and(|value| value == 1);
+    if light { [0, 0, 0] } else { [255, 255, 255] }
 }
 
 /// gpui quits when the last window closes outside macOS; closing the panel must leave the tray
@@ -82,24 +86,4 @@ pub mod updater {
     pub fn check_now() {}
 }
 
-pub mod panel {
-    use gpui_kit::*;
-
-    use crate::panel::{PANEL_HEIGHT, PANEL_WIDTH};
-    use crate::tray::Tray;
-
-    pub fn window_options(cx: &App, _tray: Option<&Tray>) -> Option<WindowOptions> {
-        let size = size(px(PANEL_WIDTH as f32), px(PANEL_HEIGHT as f32));
-        Some(WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size, cx))),
-            kind: WindowKind::Normal,
-            ..Default::default()
-        })
-    }
-
-    pub fn after_open(_handle: AnyWindowHandle, _cx: &mut App) {}
-
-    pub fn closes_on_deactivate() -> bool {
-        false
-    }
-}
+pub mod panel;

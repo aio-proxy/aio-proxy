@@ -99,7 +99,9 @@ pub fn notice(model: &AppModel) -> Option<String> {
                  ~/.local/share/aio-proxy-desktop isn't writable."
                     .into()
             } else {
-                "AIO Proxy can't keep its command-line copy here; run it from a writable location.".into()
+                "AIO Proxy can't manage the proxy: aio-proxy.exe is missing next to the app, or \
+                 %LOCALAPPDATA%\\aio-proxy-desktop isn't writable."
+                    .into()
             });
         }
         Some(InstallState::ReadOnly(ReadOnlyReason::NewerCopy { app, version })) => {

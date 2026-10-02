@@ -59,7 +59,7 @@ fn open(cx: &mut App) {
         return;
     };
     cx.activate(true);
-    let transparent = options.window_background == WindowBackgroundAppearance::Transparent;
+    let transparent = options.window_background != WindowBackgroundAppearance::Opaque;
     match gpui_kit::open_window(options, cx, |window, cx| cx.new(|cx| PanelView::new(window, cx))) {
         Ok((handle, _view)) => {
             let _ = handle.update(cx, |_, window, cx| {
