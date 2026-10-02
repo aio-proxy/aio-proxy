@@ -2,12 +2,24 @@ import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { accountForSid, currentUserSid, processImagePath, processUserSid, sidForAccount } from './win32-ffi';
+import {
+  accountForSid,
+  currentUserSid,
+  processCreationTime,
+  processImagePath,
+  processUserSid,
+  sidForAccount,
+} from './win32-ffi';
 
 const onlyOnWindows = test.skipIf(process.platform !== 'win32');
 
 onlyOnWindows('processImagePath reads the full executable path of a running process', () => {
   expect(processImagePath(process.pid)?.toLowerCase()).toBe(process.execPath.toLowerCase());
+});
+
+onlyOnWindows('processCreationTime is stable for a running process and unreadable once it is gone', () => {
+  expect(processCreationTime(process.pid)).toMatch(/^\d+$/);
+  expect(processCreationTime(process.pid)).toBe(processCreationTime(process.pid));
 });
 
 onlyOnWindows('killing the job owner ends the processes assigned to its kill-on-close job', async () => {

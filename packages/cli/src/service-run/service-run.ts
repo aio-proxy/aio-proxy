@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { EXIT } from '../exit';
 import { parseServiceSpec, serviceStatePathBeside, type ServiceSpec } from '../service/schtasks-unit';
 import type { SupervisorState } from '../service/supervisor-state';
-import { assignToJob, createKillOnCloseJob } from '../win32-ffi';
+import { assignToJob, createKillOnCloseJob, processCreationTime } from '../win32-ffi';
 
 export type Decision = 'stop' | 'relaunch-now' | 'relaunch-later';
 
@@ -75,11 +75,15 @@ export function defaultSupervisorDeps(specPath: string): SupervisorDeps {
       }
       return child.exited;
     },
-    // The image is recorded so a reader can tell this supervisor from a later process given the same PID.
+    // Image and start time are recorded so a reader can tell this supervisor from a later process given the same PID.
     writeState: (pid) =>
       writeFileSync(
         serviceStatePathBeside(specPath),
-        JSON.stringify({ pid, exec: process.execPath } satisfies SupervisorState),
+        JSON.stringify({
+          pid,
+          exec: process.execPath,
+          created: processCreationTime(pid) ?? '',
+        } satisfies SupervisorState),
       ),
     sleep: (ms) => Bun.sleep(ms),
     pid: process.pid,

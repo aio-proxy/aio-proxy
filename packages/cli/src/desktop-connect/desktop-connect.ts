@@ -7,7 +7,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import { controlBaseUrl, localControlHost, probeHealth, resolveControlAddress } from '../control-plane';
 import { launchdDomain, launchdJobTarget, managedUnitPath } from '../service';
 import { decodeOutput } from '../service/run-capture';
-import { processImagePath, processUserSid, sidForAccount } from '../win32-ffi';
+import { processCreationTime, processImagePath, processUserSid, sidForAccount } from '../win32-ffi';
 import {
   inspectUnit,
   isRunnable,
@@ -41,6 +41,7 @@ export type DesktopConnectDeps = {
   readonly targetRunnable: (path: string) => boolean;
   /** A process's full image path (win32), to tell the supervisor from any other process with its PID. */
   readonly imagePath: (pid: number) => string | undefined;
+  readonly creationTime: (pid: number) => string | undefined;
   /** The SID of a process's account (win32): who owns a socket, by the process netstat names. */
   readonly userSid: (pid: number) => string | undefined;
   /** An account name's SID (win32): the task may name its principal by account. */
@@ -306,6 +307,7 @@ const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number, owner
   },
   targetRunnable: isRunnable,
   imagePath: processImagePath,
+  creationTime: processCreationTime,
   userSid: processUserSid,
   sidForAccount,
   readToken: (home) => readDesktopToken(home),

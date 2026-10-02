@@ -7,7 +7,13 @@ import { m } from '@aio-proxy/i18n';
 
 import { CliExit, EXIT } from '../../exit';
 import { createStyle } from '../../ui';
-import { accountForSid, currentUserSid as nativeUserSid, processImagePath, sidForAccount } from '../../win32-ffi';
+import {
+  accountForSid,
+  currentUserSid as nativeUserSid,
+  processCreationTime,
+  processImagePath,
+  sidForAccount,
+} from '../../win32-ffi';
 import { type CaptureResult, runCapture } from '../run-capture';
 import {
   isOwnTask,
@@ -47,6 +53,8 @@ export type SchtasksIo = {
   readonly remove: (path: string) => void;
   /** A process's full image path, to tell the supervisor from a later process given its PID. */
   readonly imagePath: (pid: number) => string | undefined;
+  /** A process's start time, the other half of that identity: a reused PID starts later. */
+  readonly creationTime: (pid: number) => string | undefined;
   /** Terminates a process; on Windows that closes the supervisor's kill-on-close Job Object and ends the proxy too. */
   readonly kill: (pid: number) => void;
   readonly sleep: (ms: number) => Promise<void>;
@@ -291,7 +299,7 @@ export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
   if (taskExists) await endTask(io, path);
   const state = parseSupervisorState(io.readFile(serviceStatePath(io.localAppData)));
   // With the task deleted by hand there is nothing for `/End` to stop, so end an orphaned supervisor ourselves.
-  if (!taskExists && supervisorAlive(state, io.imagePath)) {
+  if (!taskExists && supervisorAlive(state, io.imagePath, io.creationTime)) {
     try {
       io.kill(state.pid);
     } catch {
@@ -299,7 +307,7 @@ export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
     }
   }
   const deadline = io.now() + SUPERVISOR_EXIT_TIMEOUT_MS;
-  while (supervisorAlive(state, io.imagePath)) {
+  while (supervisorAlive(state, io.imagePath, io.creationTime)) {
     if (io.now() >= deadline) {
       throw new CliExit(
         EXIT.transient,
@@ -316,12 +324,12 @@ export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
 
 /** Prints the task, then exits 0 only when the supervisor runs: a registered but stopped or disabled task is not active. */
 export async function schtasksStatus(
-  io: Pick<SchtasksIo, 'run' | 'sid' | 'localAppData' | 'readFile' | 'imagePath'>,
+  io: Pick<SchtasksIo, 'run' | 'sid' | 'localAppData' | 'readFile' | 'imagePath' | 'creationTime'>,
 ): Promise<number> {
   const code = await io.run(['schtasks', '/Query', '/TN', taskPath(io.sid), '/V', '/FO', 'LIST'], true);
   if (code !== 0) return code;
   const state = parseSupervisorState(io.readFile(serviceStatePath(io.localAppData)));
-  return supervisorAlive(state, io.imagePath) ? 0 : EXIT.transient;
+  return supervisorAlive(state, io.imagePath, io.creationTime) ? 0 : EXIT.transient;
 }
 
 export async function defaultSchtasksIo(
@@ -354,6 +362,7 @@ export async function defaultSchtasksIo(
     remove: (path) => rmSync(path, { force: true }),
     exists: existsSync,
     imagePath: processImagePath,
+    creationTime: processCreationTime,
     kill: (pid) => process.kill(pid),
     sleep: (ms) => Bun.sleep(ms),
     now: Date.now,

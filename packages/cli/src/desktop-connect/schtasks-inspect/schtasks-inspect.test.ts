@@ -92,12 +92,14 @@ test('discovery after an exec change still reports the running supervisor, and n
       env: { LOCALAPPDATA: localAppData },
       unitPath,
       imagePath,
+      creationTime: () => '133000000000000000',
       owner: sid,
       sidForAccount: () => undefined,
       run: async () => ({ code: 0, stdout: renderTaskXml({ sid, exec: moved, specPath: unitPath }) }),
       readFile: async (path) => {
         if (path === unitPath) return specFor(moved);
-        if (path === serviceStatePath(localAppData)) return JSON.stringify({ pid: 4310, exec: link });
+        if (path === serviceStatePath(localAppData))
+          return JSON.stringify({ pid: 4310, exec: link, created: '133000000000000000' });
         throw new Error(`ENOENT ${path}`);
       },
     });

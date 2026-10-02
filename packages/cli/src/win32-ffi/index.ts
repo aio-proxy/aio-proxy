@@ -3,6 +3,7 @@ export {
   assignToJob,
   createKillOnCloseJob,
   currentUserSid,
+  processCreationTime,
   processImagePath,
   processUserSid,
   sidForAccount,

@@ -45,7 +45,7 @@ const oldSpec = JSON.stringify(
 const previousXml = renderTaskXml({ sid, exec: 'C:\\Users\\Zo?\\old\\aio-proxy.exe', specPath });
 const oldTaskXml = renderTaskXml({ sid, exec: oldExec, specPath });
 // The supervisor records its own image beside its PID.
-const supervisorState = JSON.stringify({ pid: 4242, exec: oldExec });
+const supervisorState = JSON.stringify({ pid: 4242, exec: oldExec, created: '133000000000000000' });
 
 type FakeFs = ReturnType<typeof fakeFs>;
 
@@ -130,6 +130,7 @@ function io({
     },
     remove: (p) => void fs.files.delete(p),
     imagePath,
+    creationTime: () => '133000000000000000',
     kill,
     sleep: async (ms) => void (clock += ms),
     now: () => clock,
@@ -346,7 +347,7 @@ test('the default scheduled exit ends the process with 75 after the restart alre
       unit: async () => ({ exec: 'C:/a.exe', configPath: 'C:/c.jsonc' }),
       readFile: (p) => files.get(p), writeFile: (p, d) => void files.set(p, d),
       rename: (a, b) => { files.set(b, files.get(a)); files.delete(a); }, remove: (p) => void files.delete(p),
-      imagePath: () => undefined, sleep: async () => {}, now: Date.now, warn: () => {},
+      imagePath: () => undefined, creationTime: () => undefined, sleep: async () => {}, now: Date.now, warn: () => {},
     };
     await schtasksRestartInService(io, exitProcessLater);
     console.log('returned');

@@ -8,6 +8,7 @@ const loadKernel32 = () =>
     OpenProcess: { args: [FFIType.u32, FFIType.i32, FFIType.u32], returns: FFIType.ptr },
     AssignProcessToJobObject: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     QueryFullProcessImageNameW: { args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+    GetProcessTimes: { args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     CloseHandle: { args: [FFIType.ptr], returns: FFIType.i32 },
     LocalFree: { args: [FFIType.ptr], returns: FFIType.ptr },
     lstrlenW: { args: [FFIType.ptr], returns: FFIType.i32 },
@@ -94,6 +95,27 @@ export function processImagePath(pid: number): string | undefined {
       const size = new Uint32Array([buffer.length]);
       if (k.QueryFullProcessImageNameW(proc, 0, buffer, size) === 0) return undefined;
       return new TextDecoder('utf-16le').decode(buffer.subarray(0, size[0]));
+    } finally {
+      k.CloseHandle(proc);
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * When `pid` started, as the decimal FILETIME (100 ns ticks) string; `undefined` when it cannot be read (gone,
+ * denied, not win32). A reused PID has a different start time. A string because the tick count exceeds 2^53.
+ */
+export function processCreationTime(pid: number): string | undefined {
+  try {
+    const k = kernel32();
+    const proc = k.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+    if (proc === null) return undefined;
+    try {
+      const [created, exited, kernel, user] = [1, 2, 3, 4].map(() => new BigUint64Array(1));
+      if (k.GetProcessTimes(proc, created, exited, kernel, user) === 0) return undefined;
+      return created![0]!.toString();
     } finally {
       k.CloseHandle(proc);
     }

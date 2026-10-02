@@ -56,6 +56,7 @@ type TaskProbeDeps = {
   readonly run: Run;
   readonly readFile: (path: string) => Promise<string>;
   readonly imagePath: (pid: number) => string | undefined;
+  readonly creationTime: (pid: number) => string | undefined;
   /** This process's account SID; empty when it could not be read. */
   readonly owner: string;
   readonly sidForAccount: (account: string) => string | undefined;
@@ -78,7 +79,10 @@ export async function readTask(deps: TaskProbeDeps): Promise<{ unit: UnitInspect
         : inspectTask(query.kind === 'found' ? query.xml : undefined, await read(deps.unitPath), user, deps.unitPath);
     const state = parseSupervisorState(await read(serviceStatePath(localAppData)));
     const markerExists = uninstallMarkerExists('win32', deps.env);
-    return { unit, job: taskJob(query, markerExists, supervisorAlive(state, deps.imagePath) ? state.pid : null) };
+    return {
+      unit,
+      job: taskJob(query, markerExists, supervisorAlive(state, deps.imagePath, deps.creationTime) ? state.pid : null),
+    };
   } catch {
     return {
       unit: { present: true, wrapperValid: false, target: null, home: null },

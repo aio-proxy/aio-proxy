@@ -64,6 +64,7 @@ const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | 
     defaultHome: () => join(root, 'default-home'),
     unitExists: () => scenario.plist !== undefined,
     imagePath: () => undefined,
+    creationTime: () => undefined,
     userSid: () => undefined,
     sidForAccount: () => undefined,
     targetRunnable: () => true,
@@ -425,7 +426,7 @@ test('win32: a desktop-owned running task is identified end to end through the s
     [specPath]: JSON.stringify(
       renderServiceSpec({ exec: winLink, configPath: join(home(), 'config.jsonc'), desktopExec: winLink }),
     ),
-    [serviceStatePath(localAppData)]: JSON.stringify({ pid: 4310, exec: winLink }),
+    [serviceStatePath(localAppData)]: JSON.stringify({ pid: 4310, exec: winLink, created: '133000000000000000' }),
   };
   const result = await desktopConnect({
     ...deps({ token: 'T'.repeat(43), summaryPid: 4312, summaryPpid: 4310 }),
@@ -434,6 +435,7 @@ test('win32: a desktop-owned running task is identified end to end through the s
     owner: sid,
     unitPath: specPath,
     imagePath: (pid) => (pid === 4310 ? winLink : undefined),
+    creationTime: (pid) => (pid === 4310 ? '133000000000000000' : undefined),
     userSid: (pid) => (pid === 4312 ? sid : undefined),
     readFile: async (path) => {
       const text = files[path];
