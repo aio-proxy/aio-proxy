@@ -1,7 +1,7 @@
 import { ipv6Text } from './proc-net';
 import type { Run, Socket } from './sockets';
 
-const ROW = /^\s*TCP\s+(\S+)\s+(\S+)\s+([A-Z_]+)\s+(\d+)\s*$/u;
+const ROW = /^\s*TCP\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d+)\s*$/u;
 const IPV4 = /^(\d{1,3}(?:\.\d{1,3}){3}):(\d+)$/u;
 // A zone suffix (`%12`) is deliberately not matched: such a row is dropped, never guessed.
 const IPV6 = /^\[([0-9a-f:.]+)\]:(\d+)$/iu;
@@ -47,7 +47,7 @@ function endpoint(text: string): Endpoint | undefined {
 }
 
 /**
- * The rows of `netstat -ano -p TCP|TCPv6` in lsof's spelling: a LISTENING row is `host:port` (`*:port`
+ * The rows of `netstat -ano -p TCP|TCPv6` in lsof's spelling: a listener row is `host:port` (`*:port`
  * on the wildcard), any other row `local->remote`. Dying connections and rows that do not parse are
  * dropped, never guessed.
  */
@@ -55,14 +55,17 @@ export function parseNetstat(text: string): { family: Socket['family']; address:
   const rows: { family: Socket['family']; address: string; pid: number }[] = [];
   for (const line of text.split('\n')) {
     const match = ROW.exec(line.replace(/\r$/u, ''));
+    // English names only skip dying connections early; a localized one is kept, and owned by PID 0.
     if (match === null || match[3] === 'TIME_WAIT' || match[3] === 'CLOSE_WAIT') continue;
     const local = endpoint(match[1] ?? '');
     const remote = endpoint(match[2] ?? '');
     if (local === undefined || remote === undefined || local.family !== remote.family) continue;
-    const address =
-      match[3] === 'LISTENING'
-        ? `${local.wildcard ? '*' : local.host}:${local.port}`
-        : `${local.host}:${local.port}->${remote.host}:${remote.port}`;
+    // The State column is localized (German `ABHÖREN`), so a listener is the row whose peer is the
+    // wildcard at port 0, not the row that says LISTENING.
+    const isListener = remote.wildcard && remote.port === '0';
+    const address = isListener
+      ? `${local.wildcard ? '*' : local.host}:${local.port}`
+      : `${local.host}:${local.port}->${remote.host}:${remote.port}`;
     rows.push({ family: local.family, address, pid: Number(match[4]) });
   }
   return rows;

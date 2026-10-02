@@ -81,6 +81,21 @@ test('netstat rows map to lsof spellings for both families', () => {
   ]);
 });
 
+test('a localized State column maps to the same sockets as the English one', () => {
+  const german = `
+  Proto  Lokale Adresse         Remoteadresse          Status          PID
+  TCP    127.0.0.1:4137         0.0.0.0:0              ABHÖREN         812
+  TCP    127.0.0.1:4137         127.0.0.1:50000        HERGESTELLT     812
+  TCP    [::]:4137              [::]:0                 ABHÖREN         812
+  TCP    [::1]:4137             [::1]:50001            HERGESTELLT     812`;
+  expect(parseNetstat(german)).toEqual([
+    { family: 'IPv4', address: '127.0.0.1:4137', pid: 812 },
+    { family: 'IPv4', address: '127.0.0.1:4137->127.0.0.1:50000', pid: 812 },
+    { family: 'IPv6', address: '*:4137', pid: 812 },
+    { family: 'IPv6', address: '[::1]:4137->[::1]:50001', pid: 812 },
+  ]);
+});
+
 test('tasklist user column names the owner; N/A is nobody', () => {
   expect(parseTasklistUser('"bun.exe","812","Console","1","90,000 K","Running","PC\\Zoë Chen","0:00:01","N/A"')).toBe(
     'PC\\Zoë Chen',
