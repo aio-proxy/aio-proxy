@@ -66,7 +66,13 @@ export function linkLocalSignInCredentials(
           throw new LocalSignInUnavailableError();
         }
         if (observed.fingerprint !== link.fingerprint) throw new LocalSignInAccountChangedError();
-        const digest = localSignInDigest(observed.credentials);
+        let digest: string;
+        try {
+          // Serialization can invoke credential accessors or toJSON that throw host secrets.
+          digest = localSignInDigest(observed.credentials);
+        } catch {
+          throw new LocalSignInUnavailableError();
+        }
         const stale = digest === state.consumed;
         const base = stale ? current.value : observed.credentials;
         let result;

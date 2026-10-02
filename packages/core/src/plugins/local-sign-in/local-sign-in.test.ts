@@ -362,6 +362,43 @@ test('errors from read, exchange, and write carry no host credential string in m
   );
 });
 
+test.each(['toJSON', 'getter'])('a throwing credential %s fails safely before exchange', async (kind) => {
+  const f = setup(true, 'previous-digest');
+  const before = f.repository.readAccount('provider-1');
+  const secret = 'synthetic-host-digest-secret';
+  const unsafe = new Error(`Cannot serialize ${secret}`, { cause: new Error(secret) });
+  unsafe.stack = `Error: ${secret}\n at ${secret}`;
+  f.host.credentials = credential(secret);
+  const fail = () => {
+    throw unsafe;
+  };
+  Object.defineProperty(
+    f.host.credentials,
+    kind === 'toJSON' ? 'toJSON' : 'refreshToken',
+    kind === 'toJSON' ? { value: fail } : { enumerable: true, get: fail },
+  );
+
+  const error = (await f.refresh().catch((failure: unknown) => failure)) as Error;
+  expect(error.message).not.toContain(secret);
+  expect(error.stack).not.toContain(secret);
+  expect(error.cause).toBeUndefined();
+  expect(error).not.toBe(unsafe);
+  expect(error).toBeInstanceOf(LocalSignInUnavailableError);
+  expect(error).toMatchObject({
+    message: 'Local sign-in unavailable',
+    options: { retryable: true, reason: 'local_sign_in_unavailable' },
+  });
+  expect(f.logs).toHaveLength(1);
+  expect(f.logs[0]).toMatchObject({ event: 'plugin.credential.refresh.failed' });
+  expect(JSON.stringify(f.logs)).not.toContain(secret);
+  expect(f.repository.readDiagnostics('provider-1')).toEqual([]);
+  expect(f.exchangeState.inputs).toEqual([]);
+  expect(f.exchangeState.used.size).toBe(0);
+  expect(f.host.writes).toEqual([]);
+  expect(f.writeFailures).toEqual([]);
+  expect(f.repository.readAccount('provider-1')).toEqual(before);
+});
+
 test('redacts both the stale host observation and mirror used for exchange', async () => {
   const f = setup(true, localSignInDigest(credential('host-initial')));
   f.exchangeState.error = new Error('host-initial mirror-initial');
