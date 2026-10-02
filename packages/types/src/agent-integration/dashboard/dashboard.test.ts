@@ -23,4 +23,6 @@ test('claude-code configure always carries an explicit key selection', () => {
   expect(AgentOperationRequestSchema.safeParse({ ...request, claudeCode }).success).toBe(true);
   expect(AgentOperationRequestSchema.safeParse(request).success).toBe(false);
   expect(AgentOperationRequestSchema.safeParse({ kind: 'configure', target: 'grok', claudeCode }).success).toBe(false);
+  const empty = { ...request, claudeCode: { key: { kind: 'existing', id: '' } } };
+  expect(AgentOperationRequestSchema.safeParse(empty).success).toBe(false);
 });

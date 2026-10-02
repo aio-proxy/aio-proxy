@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 
+import { acquireProcessFileLock } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 import type { ClaudeCodeSetupPlan } from '@aio-proxy/types';
 
@@ -102,6 +103,20 @@ export const createClaudeCodeDeps = (
 });
 
 /**
+ * Serializes aio-proxy's own configure and remove runs. Claude Code does not take this lock, so the
+ * compare-and-swap in managed-settings still guards against its writes; it cannot exclude one that
+ * lands between that check and the rename, the same limit the Codex and Grok Build targets document.
+ */
+async function withSettingsLock<T>(location: ClaudeCodeLocation, action: () => Promise<T>): Promise<T> {
+  const lease = await acquireProcessFileLock(join(location.home, '.aio-proxy.lock'));
+  try {
+    return await lease.withOwnership(action);
+  } finally {
+    await lease.release();
+  }
+}
+
+/**
  * `selectKey` always decides the credential: `none` resolves to the placeholder token only while the
  * proxy has no API keys, and a live key is written only when the caller names it.
  */
@@ -114,11 +129,10 @@ export async function configureClaudeCode(
   const endpoint = await deps.resolveEndpoint();
   const keys = await deps.inspectKeys(endpoint);
   const credential = await keys.resolve(await selectKey(keys.choices));
-  const status = await configureClaudeCodeSettings(deps.location, {
-    endpoint,
-    token: credential.token,
-    credential: credential.kind,
-  });
+  // Locked only for the write: holding it across the key prompt would block other runs on a human.
+  const status = await withSettingsLock(deps.location, () =>
+    configureClaudeCodeSettings(deps.location, { endpoint, token: credential.token, credential: credential.kind }),
+  );
   return {
     target: 'claude-code',
     integration: 'static-config',
@@ -198,6 +212,9 @@ export async function removeClaudeCode(deps: ClaudeCodeDeps = createClaudeCodeDe
     target: 'claude-code',
     integration: 'static-config',
     configPath: deps.location.settingsPath,
-    ...(await removeClaudeCodeSettings(deps.location)),
+    // Nothing to remove needs no lock, and must not create the Claude Code directory just to take one.
+    ...((await Bun.file(deps.location.markerPath).exists())
+      ? await withSettingsLock(deps.location, () => removeClaudeCodeSettings(deps.location))
+      : { status: 'absent' as const, preservedPaths: [] }),
   };
 }

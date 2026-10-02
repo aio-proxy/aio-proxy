@@ -204,6 +204,30 @@ test('a configure that lands while remove is finishing keeps its ownership', asy
   expect(await f.read()).toEqual({ model: 'opus' });
 });
 
+test('concurrent configure runs are serialized so the marker always matches the settings', async () => {
+  const original = { env: { ANTHROPIC_BASE_URL: 'https://gateway.example' }, model: 'opus' };
+  const f = await fixture({ settings: original });
+  const other = { ...f.deps, resolveEndpoint: async () => 'http://127.0.0.1:9400' };
+  const results = await Promise.allSettled([configureClaudeCode(noKey, f.deps), configureClaudeCode(noKey, other)]);
+  expect(results.map((result) => result.status)).toEqual(['fulfilled', 'fulfilled']);
+  const settings = await f.read();
+  const listed = await listClaudeCode(
+    false,
+    String((settings['env'] as Record<string, unknown>)['ANTHROPIC_BASE_URL']),
+    f.deps,
+  );
+  expect(listed).toMatchObject({ status: 'managed', endpointMatches: true });
+  expect(await removeClaudeCode(f.deps)).toMatchObject({ status: 'removed' });
+  expect(await f.read()).toEqual(original);
+  expect(await Bun.file(join(f.location.home, '.aio-proxy.lock')).exists()).toBe(false);
+});
+
+test('removing an integration that was never configured creates nothing', async () => {
+  const f = await fixture();
+  expect((await removeClaudeCode(f.deps)).status).toBe('absent');
+  expect(await stat(f.location.home).catch(() => undefined)).toBeUndefined();
+});
+
 test('with proxy keys and no way to choose one, configure fails instead of writing a bare endpoint', async () => {
   const f = await fixture({ settings: { model: 'opus' }, apiKeys: [{ key: 'sk-live', label: 'Laptop' }] });
   // bun test has no TTY, so the terminal entry cannot ask.

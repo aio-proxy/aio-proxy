@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { ClaudeCodeConfigureInput, ClaudeCodeSetupPlan } from '@aio-proxy/types';
+import { ClaudeCodeKeyIdSchema, type ClaudeCodeConfigureInput, type ClaudeCodeSetupPlan } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
@@ -28,7 +28,11 @@ export const ClaudeCodeSetupForm: React.FC<ClaudeCodeSetupFormProps> = ({ plan, 
       <form.Field
         name="keyId"
         validators={{
-          onSubmit: ({ value }) => (value === '' ? m['dashboard.agents.claude_code.key_required']() : undefined),
+          // The API's own schema, so an empty choice is refused here exactly as the server would refuse it.
+          onSubmit: ({ value }) =>
+            ClaudeCodeKeyIdSchema.safeParse(value).success
+              ? undefined
+              : m['dashboard.agents.claude_code.key_required'](),
         }}
       >
         {(field) => (

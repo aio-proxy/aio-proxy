@@ -114,8 +114,16 @@ export const ClaudeCodeSetupPlanSchema = z.strictObject({
 });
 export type ClaudeCodeSetupPlan = z.output<typeof ClaudeCodeSetupPlanSchema>;
 
+/** The opaque ID of a proxy key the user picked; never empty. */
+export const ClaudeCodeKeyIdSchema = z.string().min(1);
+
 /** `none` is only accepted while the proxy has no API keys; a key is never picked on the user's behalf. */
-export const ClaudeCodeConfigureInputSchema = z.strictObject({ key: CodexKeySelectionSchema });
+export const ClaudeCodeConfigureInputSchema = z.strictObject({
+  key: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('none') }),
+    z.strictObject({ kind: z.literal('existing'), id: ClaudeCodeKeyIdSchema }),
+  ]),
+});
 export type ClaudeCodeConfigureInput = z.output<typeof ClaudeCodeConfigureInputSchema>;
 
 /** Codex's built-in model providers; aio-proxy never writes a managed provider under these IDs. */
