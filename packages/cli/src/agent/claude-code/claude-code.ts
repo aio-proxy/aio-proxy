@@ -128,16 +128,21 @@ export async function configureClaudeCode(
   await assertClaudeCodeConfigurable(deps.location);
   const endpoint = await deps.resolveEndpoint();
   const keys = await deps.inspectKeys(endpoint);
-  const credential = await keys.resolve(await selectKey(keys.choices));
-  // Locked only for the write: holding it across the key prompt would block other runs on a human.
-  const status = await withSettingsLock(deps.location, async () => {
-    // The proxy address can change while the prompt is open; a port-only change passes key validation.
+  const selection = await selectKey(keys.choices);
+  // The prompt stays outside the lock so other runs never wait on a human. Everything the choice was
+  // based on is rechecked inside it, right before the write: the proxy address (a port-only change
+  // passes key validation) and the key list, which `resolve` rereads and rejects if it changed.
+  const { status, credential } = await withSettingsLock(deps.location, async () => {
     if ((await deps.resolveEndpoint()) !== endpoint) throw new Error('CLAUDE_CODE_ENDPOINT_CHANGED');
-    return configureClaudeCodeSettings(deps.location, {
-      endpoint,
-      token: credential.token,
-      credential: credential.kind,
-    });
+    const resolved = await keys.resolve(selection);
+    return {
+      credential: resolved,
+      status: await configureClaudeCodeSettings(deps.location, {
+        endpoint,
+        token: resolved.token,
+        credential: resolved.kind,
+      }),
+    };
   });
   return {
     target: 'claude-code',

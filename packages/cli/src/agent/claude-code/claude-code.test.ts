@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, rm, stat, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { AtomicConfigFile } from '@aio-proxy/core';
+import { acquireProcessFileLock, AtomicConfigFile } from '@aio-proxy/core';
 
 import { CliExit } from '../../exit';
 import { inspectProxyKeys } from '../codex';
@@ -235,6 +235,18 @@ test('configure writes nothing if the proxy address changed while the key was be
   await expect(configureClaudeCode(noKey, moved)).rejects.toThrow('CLAUDE_CODE_ENDPOINT_CHANGED');
   expect(await f.read()).toEqual({ model: 'opus' });
   expect(await Bun.file(f.location.markerPath).exists()).toBe(false);
+});
+
+test('a key removed while configure waits for the settings lock is not written', async () => {
+  const f = await fixture({ apiKeys: [{ key: 'sk-old' }] });
+  const lock = await acquireProcessFileLock(join(f.location.home, '.aio-proxy.lock'));
+  const pending = configureClaudeCode(firstKey, f.deps);
+  // The choice is made; the key list then changes before the write can start.
+  await Bun.sleep(50);
+  await f.setKeys([{ key: 'sk-new' }]);
+  await lock.release();
+  await expect(pending).rejects.toMatchObject({ code: 'CREDENTIAL_SELECTION_STALE' });
+  expect(await f.exists()).toBe(false);
 });
 
 test('with proxy keys and no way to choose one, configure fails instead of writing a bare endpoint', async () => {
