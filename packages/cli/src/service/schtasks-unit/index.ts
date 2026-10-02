@@ -1,5 +1,6 @@
 export {
   parseServiceSpec,
+  parseServiceState,
   parseTaskXml,
   renderServiceSpec,
   renderTaskXml,

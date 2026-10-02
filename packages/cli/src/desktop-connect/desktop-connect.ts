@@ -6,21 +6,26 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { controlBaseUrl, localControlHost, probeHealth, resolveControlAddress } from '../control-plane';
 import { launchdDomain, launchdJobTarget, managedUnitPath } from '../service';
+import { decodeOutput } from '../service/run-capture';
+import { processImagePath } from '../win32-ffi';
 import {
   inspectUnit,
   isRunnable,
+  type JobState,
   parseDisabled,
   parseJobPrint,
   type UnitInspection,
   type UnitOwner,
   unitOwner,
 } from './launchd-inspect';
+import { readTask } from './schtasks-inspect';
 import { currentOwner, listSockets, type Socket } from './sockets';
+import { readSystemdJob, readSystemdUnit } from './systemd-inspect';
 import { verifiedGet } from './verified-get';
 
 const PROBE_TIMEOUT_MS = 2_000;
 // The spec bounds the whole command at 10 s. The two HTTP probes take at most 2 s each, so the
-// helper processes (plutil, launchctl) share what is left.
+// helper processes (plutil, launchctl, systemctl, schtasks, …) share what is left.
 const COMMAND_BUDGET_MS = 10_000;
 const SPAWN_BUDGET_MS = COMMAND_BUDGET_MS - 2 * PROBE_TIMEOUT_MS;
 
@@ -28,11 +33,14 @@ export type DesktopConnectDeps = {
   readonly platform: NodeJS.Platform;
   readonly env: NodeJS.ProcessEnv;
   readonly bundledVersion: string;
-  readonly plistPath: string;
+  /** The plist, the systemd unit, or Windows' `service.json`. */
+  readonly unitPath: string;
   readonly defaultHome: () => string;
-  readonly plistExists: () => boolean;
-  /** Whether the plist's wrapper target is still something launchd can run. */
+  readonly unitExists: () => boolean;
+  /** Whether the unit's target is still something the service manager can run. */
   readonly targetRunnable: (path: string) => boolean;
+  /** A process's full image path (win32), to tell the supervisor from any other process with its PID. */
+  readonly imagePath: (pid: number) => string | undefined;
   readonly readToken: (home: string) => string | undefined;
   /** This process's account: the listener must belong to it before the token is offered. */
   readonly owner: string;
@@ -52,7 +60,7 @@ export type DesktopConnectResult = {
   readonly protocolVersion: 1;
   readonly bundledVersion: string;
   readonly unit: UnitInspection & { readonly owner: UnitOwner };
-  readonly job: { readonly loaded: boolean; readonly disabled: boolean; readonly pid: number | null };
+  readonly job: JobState;
   readonly instance: {
     readonly controlUrl: string | null;
     readonly dashboardUrl: string | null;
@@ -76,17 +84,17 @@ const UNREACHABLE: DesktopConnectResult['instance'] = {
   matchesJob: null,
 };
 
-async function readUnit(deps: DesktopConnectDeps): Promise<UnitInspection> {
-  if (!deps.plistExists()) return NO_UNIT;
+async function readLaunchdUnit(deps: DesktopConnectDeps): Promise<UnitInspection> {
+  if (!deps.unitExists()) return NO_UNIT;
   try {
-    const { code, stdout } = await deps.run(['plutil', '-convert', 'json', '-o', '-', deps.plistPath]);
+    const { code, stdout } = await deps.run(['plutil', '-convert', 'json', '-o', '-', deps.unitPath]);
     return code === 0 ? inspectUnit(JSON.parse(stdout)) : inspectUnit(undefined);
   } catch {
     return inspectUnit(undefined);
   }
 }
 
-async function readJob(deps: DesktopConnectDeps): Promise<DesktopConnectResult['job']> {
+async function readLaunchdJob(deps: DesktopConnectDeps): Promise<JobState> {
   try {
     const printed = await deps.run(['launchctl', 'print', launchdJobTarget()]);
     const disabled = await deps.run(['launchctl', 'print-disabled', launchdDomain()]);
@@ -99,6 +107,12 @@ async function readJob(deps: DesktopConnectDeps): Promise<DesktopConnectResult['
   } catch {
     return { loaded: false, disabled: true, pid: null };
   }
+}
+
+async function readService(deps: DesktopConnectDeps): Promise<{ unit: UnitInspection; job: JobState }> {
+  if (deps.platform === 'win32') return readTask(deps);
+  if (deps.platform === 'linux') return { unit: await readSystemdUnit(deps), job: await readSystemdJob(deps) };
+  return { unit: await readLaunchdUnit(deps), job: await readLaunchdJob(deps) };
 }
 
 async function summaryIdentity(
@@ -162,9 +176,8 @@ function readTokenSafely(deps: DesktopConnectDeps, home: string): string | undef
 }
 
 export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopConnectResult> {
-  const unit = await readUnit(deps);
+  const { unit, job } = await readService(deps);
   const owner = unitOwner(unit, deps.env['AIO_PROXY_DESKTOP_EXEC'], deps.targetRunnable);
-  const job = await readJob(deps);
   // The service's own home, not this process's environment: the app is launched from Finder and
   // does not inherit the shell that installed the service.
   const home = unit.home ?? deps.defaultHome();
@@ -204,14 +217,15 @@ export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopC
       version: identity?.version ?? health?.version ?? null,
       pid,
       ppid,
-      // job.pid is the /bin/sh wrapper launchd started; a managed sidecar is its child, so ppid matches.
+      // job.pid is launchd's /bin/sh wrapper or Windows' supervisor, whose child the proxy is (ppid
+      // matches), or systemd's MainPID, the proxy itself (pid matches).
       matchesJob: pid === null || job.pid === null ? null : pid === job.pid || ppid === job.pid,
     },
     token: trustedToken ?? null,
   };
 }
 
-// Reported when discovery itself throws. `owner: 'unknown'` is deliberate: `null` means "no plist",
+// Reported when discovery itself throws. `owner: 'unknown'` is deliberate: `null` means "no unit",
 // which the app answers with a fresh install, while `unknown` permits no automatic action at all.
 const failedDiscovery = (bundledVersion: string): DesktopConnectResult => ({
   protocolVersion: 1,
@@ -247,7 +261,8 @@ export async function runWithin(
     killSignal: 'SIGKILL',
     windowsHide: true,
   });
-  const stdout = await new Response(proc.stdout).text();
+  // Windows tools may write UTF-16LE to a pipe.
+  const stdout = decodeOutput(await new Response(proc.stdout).bytes());
   return { code: await proc.exited, stdout };
 }
 
@@ -270,16 +285,17 @@ const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number, owner
   platform: process.platform,
   env: process.env,
   bundledVersion,
-  plistPath: managedUnitPath('darwin') ?? '',
+  unitPath: managedUnitPath(process.platform) ?? '',
   defaultHome: aioHome,
-  plistExists: () => {
-    const path = managedUnitPath('darwin');
+  unitExists: () => {
+    const path = managedUnitPath(process.platform);
     return path !== undefined && existsSync(path);
   },
   targetRunnable: isRunnable,
+  imagePath: processImagePath,
   readToken: (home) => readDesktopToken(home),
   owner,
-  // A killed or budget-exhausted helper degrades its fields like any other launchctl/plutil failure.
+  // A killed or budget-exhausted helper degrades its fields like any other probe failure.
   run: (cmd) => runWithin(cmd, spawnDeadline),
   readFile: (path) => readFile(path, 'utf8'),
   identityGet: (host, port, path, token) =>

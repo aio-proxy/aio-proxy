@@ -28,6 +28,17 @@ export function parseServiceSpec(text: string): ServiceSpec | undefined {
   return { exec: value['exec'], env: env as Record<string, string> };
 }
 
+/** The supervisor PID in `service.state.json`; undefined when the file does not hold one. */
+export function parseServiceState(text: string): number | undefined {
+  try {
+    const state: unknown = JSON.parse(text);
+    const pid = isPlainObject(state) ? state['pid'] : undefined;
+    return typeof pid === 'number' && Number.isInteger(pid) && pid > 0 ? pid : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const TASK_NAMESPACE = 'http://schemas.microsoft.com/windows/2004/02/mit/task';
 const COMMAND = 'conhost.exe';
 // Windows paths cannot contain `"`, so quoting each path in plain double quotes is lossless.

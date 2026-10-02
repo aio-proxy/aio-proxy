@@ -12,6 +12,7 @@ import { processImagePath } from '../../win32-ffi';
 import { type CaptureResult, runCapture } from '../run-capture';
 import {
   parseServiceSpec,
+  parseServiceState,
   parseTaskXml,
   renderServiceSpec,
   renderTaskXml,
@@ -133,15 +134,8 @@ async function renderUnit(io: SchtasksIo): Promise<{ spec: string; xml: string }
   };
 }
 
-function readSupervisorPid(io: SchtasksIo): number | undefined {
-  try {
-    const state: unknown = JSON.parse(io.readFile(serviceStatePath(io.localAppData)) ?? '');
-    const pid = isPlainObject(state) ? state['pid'] : undefined;
-    return typeof pid === 'number' && Number.isInteger(pid) && pid > 0 ? pid : undefined;
-  } catch {
-    return undefined;
-  }
-}
+const readSupervisorPid = (io: SchtasksIo): number | undefined =>
+  parseServiceState(io.readFile(serviceStatePath(io.localAppData)) ?? '');
 
 const endTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/End', '/TN', path], true);
 const runTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/Run', '/TN', path]);

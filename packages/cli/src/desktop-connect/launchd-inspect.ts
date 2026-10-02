@@ -11,6 +11,8 @@ export type UnitInspection = {
   readonly home: string | null;
 };
 
+export type JobState = { readonly loaded: boolean; readonly disabled: boolean; readonly pid: number | null };
+
 const KNOWN_WRAPPERS = new Set([LAUNCHD_EXEC_WRAPPER, ...LEGACY_LAUNCHD_EXEC_WRAPPERS]);
 
 /** `plist` is `plutil -convert json` output. ProgramArguments[0] is /bin/sh; the aio-proxy path is the fourth element. */

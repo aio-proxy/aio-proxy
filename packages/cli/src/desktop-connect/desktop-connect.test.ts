@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { LAUNCHD_EXEC_WRAPPER } from '../service';
+import { renderServiceSpec, renderTaskXml, serviceSpecPath, serviceStatePath } from '../service/schtasks-unit';
+import { renderSystemdUnit } from '../service/unit-templates';
 import { desktopConnect, listensAt, printDesktopConnect, runWithin, type DesktopConnectDeps } from './desktop-connect';
 import { parseSockets } from './sockets';
 
@@ -51,9 +53,10 @@ const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | 
     platform: 'darwin',
     env: { AIO_PROXY_DESKTOP_EXEC: link },
     bundledVersion: '0.37.0',
-    plistPath: '/tmp/com.aio-proxy.agent.plist',
+    unitPath: '/tmp/com.aio-proxy.agent.plist',
     defaultHome: () => join(root, 'default-home'),
-    plistExists: () => scenario.plist !== undefined,
+    unitExists: () => scenario.plist !== undefined,
+    imagePath: () => undefined,
     targetRunnable: () => true,
     readToken: () => scenario.token,
     owner: '501',
@@ -226,7 +229,7 @@ test('a discovery step that throws still prints one JSON object, and it permits 
   let output = '';
   const throwing: DesktopConnectDeps = {
     ...deps({ plist: desktopPlist() }),
-    plistExists: () => {
+    unitExists: () => {
       throw new Error('EACCES: permission denied');
     },
   };
@@ -338,4 +341,88 @@ test("the listener must be at the probed address or its family's wildcard", () =
   expect(listensAt(listeners, '501', '::1', '9418')).toBe(true);
   // An IPv6 wildcard does not vouch for an IPv4 probe.
   expect(listensAt(listeners, '501', '127.0.0.1', '9418')).toBe(false);
+});
+
+// /proc/net/tcp row: 127.0.0.1:<port> listening (state 0A), owned by uid 1000.
+const procListener = (port: number) =>
+  `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n` +
+  `   0: 0100007F:${port.toString(16).toUpperCase().padStart(4, '0')} 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 1 1 0 100 0 0 10 0\n`;
+
+// systemd's MainPID is the proxy itself (`<exec> run`), so the instance's own pid matches the job.
+test('linux: a desktop-owned running unit is identified end to end through MainPID', async () => {
+  writeConfig(home(), '127.0.0.1', 19317);
+  const linuxLink = '/home/u/.local/share/aio-proxy-desktop/bin/aio-proxy';
+  const unitPath = join(root, 'aio-proxy.service');
+  writeFileSync(
+    unitPath,
+    renderSystemdUnit({ exec: linuxLink, configPath: join(home(), 'config.jsonc'), desktopExec: linuxLink }),
+  );
+  const result = await desktopConnect({
+    ...deps({ token: 'T'.repeat(43), summaryPid: 812, summaryPpid: 1 }),
+    platform: 'linux',
+    env: { AIO_PROXY_DESKTOP_EXEC: linuxLink, XDG_CONFIG_HOME: join(root, 'xdg') },
+    owner: '1000',
+    unitPath,
+    unitExists: () => true,
+    readFile: async (path) => {
+      if (path === unitPath) return Bun.file(path).text();
+      if (path === '/proc/net/tcp') return procListener(19317);
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    },
+    run: async (cmd) =>
+      cmd[0] === 'systemctl'
+        ? { code: 0, stdout: 'LoadState=loaded\nActiveState=active\nUnitFileState=enabled\nMainPID=812\n' }
+        : { code: 1, stdout: '' },
+  });
+  expect(result.unit).toEqual({ present: true, wrapperValid: true, target: linuxLink, home: home(), owner: 'desktop' });
+  expect(result.job).toEqual({ loaded: true, disabled: false, pid: 812 });
+  expect(result.instance).toMatchObject({ reachable: true, pid: 812, matchesJob: true });
+  expect(result.token).toBe('T'.repeat(43));
+});
+
+// The task runs the supervisor (state-file pid 4310); the proxy (4312) is its child, so its ppid matches.
+test('win32: a desktop-owned running task is identified end to end through the supervisor pid', async () => {
+  writeConfig(home(), '127.0.0.1', 19317);
+  const winLink = 'C:\\Users\\Ada\\AppData\\Local\\aio-proxy-desktop\\bin\\aio-proxy.exe';
+  const sid = 'S-1-5-21-1-2-3-1001';
+  const localAppData = 'C:\\Users\\Ada\\AppData\\Local';
+  const specPath = serviceSpecPath(localAppData);
+  const files: Record<string, string> = {
+    [specPath]: JSON.stringify(
+      renderServiceSpec({ exec: winLink, configPath: join(home(), 'config.jsonc'), desktopExec: winLink }),
+    ),
+    [serviceStatePath(localAppData)]: JSON.stringify({ pid: 4310 }),
+  };
+  const result = await desktopConnect({
+    ...deps({ token: 'T'.repeat(43), summaryPid: 4312, summaryPpid: 4310 }),
+    platform: 'win32',
+    env: { AIO_PROXY_DESKTOP_EXEC: winLink, LOCALAPPDATA: localAppData },
+    owner: 'desktop-1\\ada',
+    unitPath: specPath,
+    imagePath: (pid) => (pid === 4310 ? winLink : undefined),
+    readFile: async (path) => {
+      const text = files[path];
+      if (text === undefined) throw new Error(`ENOENT ${path}`);
+      return text;
+    },
+    run: async (cmd) => {
+      if (cmd[0] === 'whoami') return { code: 0, stdout: `"DESKTOP-1\\Ada","${sid}"\r\n` };
+      if (cmd[0] === 'schtasks') return { code: 0, stdout: renderTaskXml({ sid, exec: winLink, specPath }) };
+      if (cmd.join(' ') === 'netstat -ano -p TCP') {
+        return { code: 0, stdout: '  TCP    127.0.0.1:19317        0.0.0.0:0              LISTENING       4312\r\n' };
+      }
+      if (cmd[0] === 'netstat') return { code: 0, stdout: '' };
+      if (cmd[0] === 'tasklist') {
+        return {
+          code: 0,
+          stdout: '"aio-proxy.exe","4312","Console","1","50,000 K","Running","DESKTOP-1\\Ada","0:00:01","N/A"\r\n',
+        };
+      }
+      return { code: 1, stdout: '' };
+    },
+  });
+  expect(result.unit).toEqual({ present: true, wrapperValid: true, target: winLink, home: home(), owner: 'desktop' });
+  expect(result.job).toEqual({ loaded: true, disabled: false, pid: 4310 });
+  expect(result.instance).toMatchObject({ reachable: true, pid: 4312, ppid: 4310, matchesJob: true });
+  expect(result.token).toBe('T'.repeat(43));
 });
