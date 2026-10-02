@@ -23,6 +23,7 @@ New fields on `api` and `ai-sdk` Providers (authoring, runtime, and mutation sch
 providers:
   relay:
     kind: api
+    protocol: openai-compatible
     baseURL: https://relay.example.com
     apiKey: ...
     syncModels: true
@@ -50,12 +51,17 @@ reader of `provider.models` (router, alias validation, exposure preview, Dashboa
   naming differences.
 - `ai-sdk`: same rule as the Dashboard's **Load models** today — the package instance's `listModels(signal)` when it
   exists, otherwise `options.baseURL` + `/models` (OpenAI-compatible shape). When neither is available the Provider
-  state is `unavailable` with a `CATALOG_UNSUPPORTED` diagnostic (new `DiagnosticCode`), and the Dashboard refuses to
-  switch it to sync. Switching back to manual in the Dashboard drops `excludedModels` with the switch.
+  state carries a `CATALOG_UNSUPPORTED` diagnostic (new `DiagnosticCode`), and the Dashboard refuses to switch it to
+  sync.
+- The discovery request is made with an enabled copy of the Provider, so a manual refresh of a disabled Provider works
+  (the scheduler still arms no timer for it).
 - The discovery code moves out of `dashboard-routes/provider-draft/provider-draft-operations.ts` into a shared
   server module used by both the draft **Load models** probe and the scheduled job, so the two can never disagree.
 - Result is de-duplicated and sorted before it is stored, so upstream ordering changes never reorder `/v1/models`.
 - An empty result counts as a failure.
+- Scheduled discovery is strict: any row without a non-blank string ID, a malformed pagination field, or a non-array
+  `listModels` result fails the whole discovery, so a partly corrupt page never shrinks the stored list. The draft
+  **Load models** probe keeps today's lenient row skipping.
 
 ## Storage
 
@@ -74,8 +80,10 @@ provider_model_catalog(
 
 - Not `oauth_catalog`: that table and its diagnostics have a foreign key to `oauth_account`, and its CAS is fenced by
   the OAuth account runtime revision.
-- `source_digest` hashes the discovery source (`api`: primary protocol + base URL; `ai-sdk`: package name +
-  `options.baseURL`). A row whose digest no longer matches the config is treated as absent, so pointing a Provider at a
+- `source_digest` hashes the discovery source (`api`: the primary normalized endpoint's protocol, base URL, and
+  `mode` — `origin` and `sdk` endpoints resolve `/models` against different paths; `ai-sdk`: package name +
+  `options.baseURL`). Credentials are deliberately excluded so rotating an API key never hides the stored list. A custom
+  AI SDK package whose upstream is chosen by other options is a known limitation; its next refresh corrects the list. A row whose digest no longer matches the config is treated as absent, so pointing a Provider at a
   different upstream never routes the old upstream's model list.
 - Rows of deleted Providers are left in place (a few KB); a re-added Provider ID with a different source is already
   covered by the digest.
@@ -91,11 +99,13 @@ provider_model_catalog(
 ## Failure and first discovery
 
 - Failure (network error, non-2xx, malformed page, timeout, empty list): nothing is committed, `failed_at` is set, the
-  last good list keeps routing, and the job retries after `CATALOG_RETRY_MS` (5 min). The Provider state is
-  `ready` with `catalog: 'stale'` and a `CATALOG_UNAVAILABLE` diagnostic.
-- First discovery (no stored list for the current source digest): the Provider exposes only its aliases, its state is
-  `unavailable` with `CATALOG_UNAVAILABLE`, and the job is due immediately on startup and after every config change.
-  Config loading is never blocked on the network.
+  last good list keeps routing, and the job retries after `CATALOG_RETRY_MS` (5 min) once the TTL has expired — the
+  same `dueAt` rule OAuth uses, so a failed manual refresh of a fresh list waits for the TTL. The Provider state is
+  `ready` with `catalog: 'stale'` and a `CATALOG_UNAVAILABLE` (or `CATALOG_UNSUPPORTED`) diagnostic.
+- First discovery (no stored list for the current source digest): the Provider exposes only its aliases, and the job is
+  due immediately on startup and after every config change. Its state is also `ready` + `catalog: 'stale'` + diagnostic,
+  never `unavailable`: the routing inventory treats `unavailable` as ineligible while the router still routes the
+  aliases, and the two must agree. Config loading is never blocked on the network.
 - Success: `models_json`/`refreshed_at` replaced, `failed_at` cleared, snapshot rebuilt.
 - TTL: fixed 1 hour, not configurable. The Dashboard has a manual refresh.
 
@@ -110,12 +120,19 @@ type CatalogJobDescriptor = {
   readonly policy: { kind: 'static' } | { kind: 'ttl'; ttlMs: number };
   readonly stored: { readonly refreshedAt: number; readonly revision: number } | null;
   readonly unavailableOccurredAt?: number;
-  /** Discover and commit; resolves false when the commit was fenced off. Throws on discovery failure. */
-  readonly refresh: (signal: AbortSignal, startedAt: number) => Promise<boolean>;
+  /** Discovers and returns the commit for that result. Throws on discovery failure. */
+  readonly discover: (signal: AbortSignal) => Promise<CatalogCommit>;
   /** Record the failure; resolves true when stored state changed and the snapshot must rebuild. */
   readonly markUnavailable: (error: unknown) => boolean;
 };
+/** Synchronous; returns false when the write was fenced off. */
+type CatalogCommit = () => boolean;
 ```
+
+The commit stays synchronous and the scheduler requests the snapshot rebuild with no `await` between the commit and
+the request, exactly as today. An asynchronous commit inside discovery would let a concurrent config commit install a
+snapshot built from the old list and replace the job before it asks for a rebuild, leaving the new list unrouted until
+the next TTL.
 
 The OAuth job moves `validateModelCatalog`, `compareAndSwapCatalog`, and `writeCatalogUnavailableIfCurrent` into its
 own closures in `plugin-runtime/materialize.ts`; the synced-Provider job supplies closures over the new repository.
@@ -128,8 +145,17 @@ Timers, retry, single flight, timeout, and `refreshNow` keep their current seman
   the switch off with an error, so a Provider is never saved into a mode that cannot work.
 - In sync mode the model list is the discovered catalog, read-only, with a per-row hide toggle that edits
   `excludedModels` (same interaction as OAuth). It shows when the catalog was last refreshed and a refresh button.
-- The refresh button uses the existing `POST /providers/:id/edit-view` with `refreshCatalog`, now also for synced
-  `api` / `ai-sdk` Providers. The edit view gains the discovered list and `catalogLastSuccessAt` for them.
+  An empty probe result also keeps the switch off.
+- Alias targets in sync mode are checked against the whole discovered list, not the exposed one: an alias may target a
+  hidden model, which the router serves through the alias.
+- The refresh button uses the existing `POST /providers/:id/edit-view` with `refreshCatalog` only for a saved synced
+  Provider whose discovery source fields are unchanged in the form; otherwise (new Provider, sync not yet saved, base URL
+  edited) it runs the draft probe. The edit view gains the discovered list and `catalogLastSuccessAt` for synced
+  Providers, read after the refresh so provider and list describe the same config.
+- Switching back to manual writes `models` = exposed models plus discovered alias targets, and drops `syncModels` and
+  `excludedModels`. Router semantics make that route the same set: a non-preserved alias target loses its direct route.
+- The draft **Test** button works for synced drafts: eligibility comes from a live draft discovery minus the draft's
+  `excludedModels`, and the one-model test Provider is built without `syncModels` / `excludedModels`.
 - Provider summaries expose `catalogLastSuccessAt` for synced Providers (the field already exists for OAuth).
 
 ## Testing

@@ -29,7 +29,7 @@
 2. **Refresh in flight while the config changes** — a discovery started before a save must not commit after `replaceJobs` aborted it. Test in Task 4 (`an aborted synced refresh commits nothing`).
 3. **Upstream returns 200 with `data: []`** — treated as failure, last good list kept. Test in Task 5 (`empty discovery keeps the last good list`).
 4. **`excludedModels` lists an ID that also appears in `alias`** — the alias still routes; only the direct route disappears. Test in Task 5 (`excluded model stays reachable through an alias`).
-5. **Toggling sync off in the Dashboard** — the saved body must carry `syncModels` absent/false, no `excludedModels`, and the models the user had exposed as a static array, so the Provider keeps routing what it routed a second ago. Test in Task 7 (`switching to manual seeds models from the exposed list`).
+5. **Toggling sync off in the Dashboard** — the saved body must carry no `syncModels`, no `excludedModels`, and `models` = exposed models plus discovered alias targets, so the Provider keeps routing what it routed a second ago and the server's alias-target check accepts it. Test in Task 7 (`switching to manual seeds models from exposed models and alias targets`).
 
 ---
 
@@ -109,7 +109,7 @@
 
 **Files:**
 - Create: `packages/server/src/provider-model-discovery/{index.ts, provider-model-discovery.ts, provider-model-discovery.test.ts}`
-- Modify: `packages/server/src/dashboard-routes/provider-draft/provider-draft-operations.ts` — move `loadProviderDraftCatalog`'s body, `loadAiSdkDraftCatalog`, `catalogEntryIds`, `catalogHeaders`, `geminiCatalog`, `catalogPath`, `catalogPage`, `stringProperty`, `booleanProperty`, `catalogModels` into the new module; `loadProviderDraftCatalog` becomes a thin call with `AbortSignal.timeout(5_000)`.
+- Modify: `packages/server/src/dashboard-routes/provider-draft/provider-draft-operations.ts` — move the api branch of `loadProviderDraftCatalog`, `loadAiSdkDraftCatalog`, `catalogEntryIds`, `catalogHeaders`, `geminiCatalog`, `catalogPath`, `catalogPage`, `stringProperty`, `booleanProperty`, `catalogModels` into the new module. `loadProviderDraftCatalog` keeps its OAuth `catalog_unsupported` branch, calls `discoverProviderModels(state.currentConfig(), provider, AbortSignal.timeout(5_000), { strict: false })`, and maps `{ ok: false, code }` to the existing `failure(code)` wire shape (`{ ok: false, error: { code, recoverable: true } }`).
 
 **Interfaces:**
 - Produces:
@@ -121,11 +121,16 @@
     config: Config,
     provider: ApiProvider | AiSdkProvider,
     signal: AbortSignal,
+    options: { readonly strict: boolean },
   ): Promise<ProviderModelDiscovery>;
   ```
-  Returns upstream order, de-duplicated (draft behavior unchanged). The `api` branch materializes a one-provider runtime with `materializeProviders({ ...config, invalidProviders: [], providers: [provider] })` exactly as `materializeDraft` does today.
+  Returns upstream order, de-duplicated. `strict: false` is today's draft behavior (malformed rows skipped). `strict: true` returns `catalog_unavailable` when any row lacks a non-blank string ID, a present pagination field (`nextPageToken`, `has_more`, `last_id`) has the wrong type, or `listModels` returns a non-array. The `api` branch materializes `materializeProviders({ ...config, invalidProviders: [], providers: [{ ...provider, enabled: true }] })` — `materializeProviders` skips disabled Providers, and a manual refresh must reach one.
 
-- [ ] **Step 1: Write failing test** `discoverProviderModels pages an Anthropic catalog through has_more` against a `Bun.serve({ port: 0 })` fake returning two pages → `{ ok: true, models: ['a', 'b'] }`, and `returns catalog_unavailable on a 503`.
+- [ ] **Step 1: Write failing tests** against a `Bun.serve({ port: 0 })` fake:
+  - `pages an Anthropic catalog through has_more` → two pages, `{ ok: true, models: ['a', 'b'] }`.
+  - `returns catalog_unavailable on a 503`.
+  - `strict discovery rejects a page with one malformed row` → `data: [{ id: 'a' }, { id: 42 }]`: strict `{ ok: false, code: 'catalog_unavailable' }`, lenient `{ ok: true, models: ['a'] }`.
+  - `discovers a disabled Provider` → `enabled: false` still returns the fake's list.
 - [ ] **Step 2:** `bun test packages/server/src/provider-model-discovery` → FAIL.
 - [ ] **Step 3: Implement** by moving code; no behavior change for the draft endpoint.
 - [ ] **Step 4:** `bun test packages/server/src/provider-model-discovery packages/server/src/dashboard-routes/provider-draft` → PASS (existing draft tests unchanged).
@@ -141,6 +146,7 @@
 - Modify: `packages/server/src/catalog-scheduler/catalog-scheduler.ts` (`#runOnce`, `CatalogSchedulerOptions` drops `repository` and `diagnostics`)
 - Modify: `packages/server/src/server-state/index.ts:216` (scheduler construction)
 - Modify: `packages/server/src/catalog-scheduler/*.test.ts` (construct descriptors in the new shape)
+- Modify: `packages/server/src/plugin-runtime/catalog.test.ts:157-159` (no more `plugin` / `capability` / `accountRuntimeRevision` on the descriptor: assert instead that the job's commit is fenced off after the account's runtime revision moves)
 
 **Interfaces:**
 - Produces:
@@ -151,16 +157,21 @@
     readonly policy: { readonly kind: 'static' } | { readonly kind: 'ttl'; readonly ttlMs: number };
     readonly stored: { readonly refreshedAt: number; readonly revision: number } | null;
     readonly unavailableOccurredAt?: number;
-    /** Discovers and commits. Resolves false when the commit was fenced off or `signal` aborted before it. Throws on discovery failure. */
-    readonly refresh: (signal: AbortSignal, startedAt: number) => Promise<boolean>;
-    /** Records a failed discovery. Resolves true when stored state changed and the snapshot must rebuild. */
+    /** Discovers and returns the synchronous commit for that result. Throws on discovery failure. */
+    readonly discover: (signal: AbortSignal) => Promise<CatalogCommit>;
+    /** Records a failed discovery. Returns true when stored state changed and the snapshot must rebuild. */
     readonly markUnavailable: (error: unknown) => boolean;
   };
+  /** Returns false when the write was fenced off. */
+  export type CatalogCommit = () => boolean;
   ```
-- OAuth `refresh`: `validateModelCatalog(await adapter.catalog.discover(...))`, return `false` if `signal.aborted`, else `repository.compareAndSwapCatalog({...}).ok`. OAuth `markUnavailable`: `repository.writeCatalogUnavailableIfCurrent({..., diagnostic: diagnostics('CATALOG_UNAVAILABLE', { providerId, retryable: true }) })`.
-- Scheduler semantics otherwise unchanged: `dueAt`, single flight, timeout, retry, rebuild retry, `refreshNow`.
+- `#runOnce`: `const commit = await Promise.race([discover(signal), aborted])`; if `!#current || signal.aborted` → `'failed'`; `commit()` synchronously; then request `rebuild('catalog')` with no `await` between the commit and the request (today's ordering — an async commit would let a concurrent config commit install a snapshot built from the old list and replace the job before the rebuild is requested).
+- OAuth `discover`: records `startedAt = Date.now()`, `catalog = validateModelCatalog(await adapter.catalog.discover(...))`, returns `() => repository.compareAndSwapCatalog({ ..., catalog, startedAt, refreshedAt: Date.now() }).ok`. OAuth `markUnavailable`: `repository.writeCatalogUnavailableIfCurrent({..., diagnostic: diagnostics('CATALOG_UNAVAILABLE', { providerId, retryable: true }) })`.
+- Scheduler semantics otherwise unchanged: `dueAt` (including `max(catalogDue, retryDue)`), single flight, timeout, retry, rebuild retry, `refreshNow`.
 
-- [ ] **Step 1: Write failing test** in `catalog-scheduler.failure.test.ts`: `an aborted refresh commits nothing` — descriptor whose `refresh` awaits a deferred, `replaceJobs([])` while pending, then resolve; assert the descriptor's commit spy was not called and `rebuild` was not called.
+- [ ] **Step 1: Write failing tests** in `catalog-scheduler.failure.test.ts`:
+  - `an aborted refresh commits nothing` — `discover` awaits a deferred; `replaceJobs([])` while pending; resolve with a commit spy; spy not called, `rebuild` not called.
+  - `the rebuild is requested in the same turn as the commit` — `rebuild` spy records whether the commit spy had already run and that no microtask separated them (commit sets a flag; a `queueMicrotask` scheduled inside the commit must not have run when `rebuild` is called).
 - [ ] **Step 2:** `bun test packages/server/src/catalog-scheduler` → FAIL (type/shape mismatch).
 - [ ] **Step 3: Implement** the descriptor change, update the five scheduler test files' fixtures, and move the OAuth closures into `catalog-job.ts`.
 - [ ] **Step 4:** `bun test packages/server/src/catalog-scheduler packages/server/src/plugin-runtime packages/server/src/dashboard-routes` → PASS.
@@ -182,7 +193,7 @@
   ```ts
   export const SYNCED_MODELS_TTL_MS = 60 * 60_000;
   export function isSyncedProvider(provider: Provider): provider is (ApiProvider | AiSdkProvider) & { syncModels: true };
-  export function modelSourceDigest(provider: ApiProvider | AiSdkProvider): string; // sha256 of JSON {kind, protocol, baseURL} (api: primary endpoint) or {kind, packageName, baseURL: options.baseURL}
+  export function modelSourceDigest(provider: ApiProvider | AiSdkProvider): string; // sha256 (Bun.CryptoHasher) of JSON {kind, protocol, baseURL, mode} of apiProviderEndpoints(provider)[0], or {kind, packageName, baseURL: options.baseURL}; never credentials
   /** Stored list for the current source digest minus excludedModels, sorted; undefined when none. */
   export function syncedModels(provider: ApiProvider | AiSdkProvider, stored: StoredProviderModels | null): readonly string[] | undefined;
   export type SyncedProviderResolution = {
@@ -197,15 +208,19 @@
     diagnostics: DiagnosticFactory,
   ): SyncedProviderResolution;
   ```
-- Job `refresh`: `discoverProviderModels(config, provider, signal)`; `ok: false` → throw an `Error` carrying the code; empty list → throw; `signal.aborted` → `false`; else `writeSuccess(id, digest, uniq(models).toSorted(), Date.now())` and `true`. `markUnavailable(error)`: `writeFailure(id, digest, code, Date.now())` with `code = 'CATALOG_UNSUPPORTED'` for `catalog_unsupported`, else `'CATALOG_UNAVAILABLE'`; returns `true`.
-- States: no list for the digest → `{ status: 'unavailable', diagnostic }` (failure code, or `CATALOG_UNAVAILABLE` before any attempt); list + failure → `{ status: 'ready', catalog: 'stale', diagnostic }`; list, no failure → `{ status: 'ready', catalog: 'fresh' }`.
+- Job `discover`: `discoverProviderModels(config, provider, signal, { strict: true })`; `ok: false` → throw an `Error` carrying the code; empty list → throw; else return `() => { repository.writeSuccess(id, digest, uniq(models).toSorted(), Date.now()); return true; }`. The job's `enabled` is the configured value. `markUnavailable(error)`: `writeFailure(id, digest, code, Date.now())` with `code = 'CATALOG_UNSUPPORTED'` for `catalog_unsupported`, else `'CATALOG_UNAVAILABLE'`; returns `true`.
+- States: never `unavailable` (the routing inventory marks `unavailable` ineligible while the router still routes aliases). No list for the digest, or list + failure → `{ status: 'ready', catalog: 'stale', diagnostic }` with the stored failure code, or `CATALOG_UNAVAILABLE` before any attempt; list, no failure → `{ status: 'ready', catalog: 'fresh' }`.
+- Injected arrays are copied (`[...models]`) into mutable `Provider`/`Config` shapes; no type assertions.
 - `buildSnapshot`: `nonOAuth.providers` passed to `materializeProviders` and `resolveCatalogModalities` come from `resolution.providers`; `configWithExtend` (the snapshot's `config`) stays authored. `assembleProviders` uses `resolution.states` over the default `ready`, and summaries of synced Providers get `catalogLastSuccessAt`. `catalogJobs` = OAuth jobs + `resolution.jobs`.
 
 - [ ] **Step 1: Write failing tests** in `provider-model-sync.test.ts`, end to end through `createServerState` (`#server-test-lifecycle`, `dbHome` in a temp dir) with a `Bun.serve({ port: 0 })` OpenAI-style `/v1/models` fake whose response the test mutates, an `api` Provider `relay` with `syncModels: true`, and `listModels(state)` from `server/list-models`:
-  - `a newly discovered model becomes routable without a config edit` — fake lists `['m-1']`; `await state.refreshProviderCatalog('relay')` → `'refreshed'`; fake lists `['m-1', 'm-2']`; refresh again; `listModels(state).data.map((row) => row.id)` contains `'m-2'`; `state.currentConfig().providers[0].models` is `undefined`.
+  Provider config in every case: `{ kind: 'api', protocol: 'openai-compatible', baseURL: fake.url, syncModels: true }`; ids are read with `(await listModels(state)).data.map((row) => row.id)`.
+  - `a newly discovered model becomes routable without a config edit` — fake lists `['m-1']`; `await state.refreshProviderCatalog('relay')` → `'refreshed'`; fake lists `['m-1', 'm-2']`; refresh again; ids contain `'m-2'`; `state.currentConfig().providers[0].models` is `undefined`.
   - `an upstream outage removes no route` — after a good refresh, fake answers 503; refresh → `'failed'`; ids unchanged; summary state `{ status: 'ready', catalog: 'stale' }` with `CATALOG_UNAVAILABLE`.
   - `empty discovery keeps the last good list` — fake answers `{ data: [] }`; same assertions as the outage.
-  - `source digest change hides the stored list` — commit config with a different `baseURL` (fake down); `m-1` no longer listed; state `unavailable`.
+  - `source digest change hides the stored list` — commit config with a different `baseURL` (fake down); `m-1` no longer listed; state `ready` + `catalog: 'stale'` + `CATALOG_UNAVAILABLE`. Same for switching the same URL from top-level `protocol`/`baseURL` to `endpoints: [{ protocol, baseURL }]`.
+  - `first discovery failure keeps aliases eligible` — fake down from the start, `alias: { fast: { model: 'm-1' } }`; `fast` listed; `state.modelRouting` inventory row for `fast` has `effective.eligible === true`.
+  - `a disabled synced Provider refreshes manually but never on a timer` — `enabled: false`; `refreshProviderCatalog` → `'refreshed'`; the fake's hit count does not grow afterwards with a short TTL override.
   - `excluded model stays reachable through an alias` — `excludedModels: ['m-1']`, `alias: { fast: { model: 'm-1' } }`; ids contain `fast`, not `m-1`.
   - `static models are unchanged` — Provider with `models: ['x']` and no `syncModels`: no catalog job for it (`__test.onCatalogJobsReplaced` spy), the fake is never hit, ids `['x']`.
   - `ids are listed in sorted order` — fake lists `['b', 'a']`; ids `['a', 'b']`.
@@ -225,9 +240,12 @@
 
 **Interfaces:**
 - Produces: `ServerState.syncedProviderEditView(providerId: string): { readonly models: readonly string[]; readonly refreshedAt?: string } | undefined` — the stored list for the current source digest **before** `excludedModels` (the editor needs hidden rows to un-hide them), `undefined` for non-synced Providers.
-- Edit view response gains `sync?: { models: readonly string[]; refreshedAt?: string }`. `refreshCatalog` runs `state.refreshProviderCatalog(id)` for OAuth **and** synced Providers; `catalogRefreshed` semantics unchanged.
+- Edit view response gains `sync?: { models: readonly string[]; refreshedAt?: string }`. `refreshCatalog` runs `state.refreshProviderCatalog(id)` for OAuth **and** synced Providers; `catalogRefreshed` semantics unchanged. `readEditView` reads `provider`, `oauth`, `sync`, and `routing` **after** the refresh, and answers 404 if the Provider is gone by then.
+- `testProviderDraft` (`provider-draft-operations.ts`): for a synced draft, eligibility = `discoverProviderModels(..., { strict: false })` result minus the draft's `excludedModels` (`model_not_enabled` otherwise); the one-model test Provider is parsed with `syncModels` and `excludedModels` removed.
 
-- [ ] **Step 1: Write failing test** `POST edit-view refreshes a synced api Provider` — fixture as Task 5; POST `/providers/relay/edit-view` → `catalogRefreshed: true`, `sync.models` equals the fake's list, `sync.refreshedAt` is an ISO string; GET on a static Provider has no `sync`.
+- [ ] **Step 1: Write failing tests:**
+  - `POST edit-view refreshes a synced api Provider` — fixture as Task 5; POST `/providers/relay/edit-view` → `catalogRefreshed: true`, `sync.models` equals the fake's list, `sync.refreshedAt` is an ISO string; GET on a static Provider has no `sync`.
+  - `draft test accepts a discovered model of a synced draft` (in `provider-draft.test.ts`) — synced draft, fake lists `['m-1']`, test `m-1` → not `model_not_enabled`; `excludedModels: ['m-1']` → `model_not_enabled`.
 - [ ] **Step 2:** run the test file → FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4:** `bun test packages/server/src/dashboard-routes/provider-routes` → PASS.
@@ -240,21 +258,30 @@
 **Files:**
 - Create: `packages/dashboard/src/modules/providers/components/provider-editor/models-section/models-sync-switch.tsx` (switch + last-refreshed line)
 - Modify: `models-section.tsx` — treat `discoveryMode = kind === OAuth || syncModels === true` wherever the OAuth branch is chosen today (field `excludedModels`, `oauthEditorExposedModels`, refresh via `fetchProviderEditView(id, { refreshCatalog: true })` reading `data.sync?.models` for synced, no manual add). Keep the file under 400 lines; put switching logic in the new component.
-- Modify: `packages/dashboard/src/modules/providers/templates/provider-editor-page/use-provider-editor-page.ts` (471 lines — must not grow: pass `sync` from the edit view through the existing `candidates`/`oauth`-style prop path with a net-zero diff, extracting a helper if needed) and `packages/dashboard/src/routes/providers/$id.edit.tsx` (seed `syncModels`, `excludedModels`, `candidates = sync.models`)
+- Modify: `packages/dashboard/src/modules/providers/templates/provider-editor-page/provider-editor-page.tsx:57-61,146` (candidates = `oauth?.models ?? sync?.models ?? probe result`; preview and testable models use `oauthEditorExposedModels` when `syncModels`)
+- Modify: `packages/dashboard/src/modules/providers/templates/provider-editor-page/use-provider-editor-page.ts` (471 lines — must not grow: extract the exposure/section-status inputs it builds at lines ~387-403 into a helper under `lib/` that also covers synced Providers) and `packages/dashboard/src/routes/providers/$id.edit.tsx` (seed `syncModels`, `excludedModels`, `sync`)
+- Modify: `use-provider-editor-form.ts` (`ProviderEditorInitial.syncModels?: boolean`; seed `excludedModels: []` for synced api/ai-sdk)
+- Modify: `packages/dashboard/src/modules/providers/lib/alias-editor/alias-editor.ts` callers — in sync mode pass the full discovered list (not the exposed list) as the alias-target set
 - Modify: `packages/dashboard/src/modules/providers/lib/section-status/section-status.ts` (synced Providers count exposed models like OAuth)
 - Modify: `packages/i18n/messages/*.json` (`dashboard.providers.form.models_sync_label` "Sync with upstream", `models_sync_hint` "New upstream models are added automatically; hide the ones you don't want.", `models_sync_refreshed_at` "Last refreshed {time}", `models_sync_never` "Not refreshed yet")
 - Test: `models-section.test.tsx`
 
 **Interfaces:**
 - Consumes: edit view `sync` (Task 6), draft catalog mutation (`useProviderCatalogMutation`).
-- Switch on: run the draft catalog mutation; on `ok: false` keep the switch off and toast `catalog_failed` with the code; on `ok: true` set `syncModels: true`, `models: []`, `excludedModels: []`, candidates = probe result.
-- Switch off: set `models` to the currently exposed list (`oauthEditorExposedModels(discovered, excludedModels)`), unset `syncModels` and `excludedModels`.
+- The draft probe result is page-level state (lifted from the section into `use-provider-editor-page.ts`'s existing candidate flow) because the preview, section status, and test panel all read it.
+- Switch on: run the draft catalog mutation; on `ok: false` **or an empty list** keep the switch off and toast `catalog_failed` (code, or `catalog_unavailable` for empty); on success set `syncModels: true`, `models: []`, `excludedModels: []`, candidates = probe result.
+- Switch off: `models` = `uniq([...oauthEditorExposedModels(discovered, excludedModels), ...aliasTargetModels(alias).filter((id) => discovered.includes(id))])`; unset `syncModels` and `excludedModels`.
+- Refresh button: persisted refresh (`fetchProviderEditView(id, { refreshCatalog: true })`, reading `sync.models`) only when the Provider is saved with `syncModels: true` and the form's `protocol`/`baseURL`/`endpoints`/`packageName`/`options.baseURL` equal the initial values; otherwise the draft probe.
 
 - [ ] **Step 1: Write failing tests:**
   - `switching to sync probes the catalog and saves syncModels` — mocked catalog `{ ok: true, models: ['a', 'b'] }`; form values `syncModels === true`, `models` `[]`.
   - `switch stays off when the catalog is unsupported` — mocked `{ ok: false, error: { code: 'catalog_unsupported' } }`; `syncModels` not true; error toast shown.
   - `hiding a discovered model writes excludedModels` — synced initial with candidates `['a','b']`; untick `b` → `excludedModels` `['b']`.
-  - `switching to manual seeds models from the exposed list` — synced, `excludedModels: ['b']`, candidates `['a','b']`; switch off → `models` `['a']`, no `syncModels`, no `excludedModels`.
+  - `switching to manual seeds models from exposed models and alias targets` — synced, candidates `['a','b','c']`, `excludedModels: ['b','c']`, alias `fast → b`; switch off → `models` `['a','b']`, no `syncModels`, no `excludedModels`; the resulting body passes `ProviderMutationBodySchema`.
+  - `an alias may target a hidden model in sync mode` — candidates `['a','b']`, `excludedModels: ['b']`, alias `fast → b` → no `target-missing` issue.
+  - `switch stays off on an empty catalog` — mocked `{ ok: true, models: [] }`.
+  - `refresh uses the draft probe after the base URL changes` — saved synced Provider, edit `baseURL`, click refresh → draft catalog endpoint called, edit-view POST not called.
+  - `editor page saves a synced Provider` (page-level test) — the PUT body carries `syncModels: true` and `excludedModels`.
   - `shows when the catalog was last refreshed` — `refreshedAt` set → text matches the formatted time.
 - [ ] **Step 2:** `bun run --filter @aio-proxy/dashboard test -- models-section` → FAIL.
 - [ ] **Step 3: Implement** following `packages/dashboard/AGENTS.md` (shared `@aio-proxy/ui` `Switch`, typed Hono client types, state owned by the section).
