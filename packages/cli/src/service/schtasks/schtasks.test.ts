@@ -134,6 +134,7 @@ function io({
     sleep: async (ms) => void (clock += ms),
     now: () => clock,
     warn: (line) => void warnings.push(line),
+    exists: fs.exists,
   };
 }
 
@@ -166,18 +167,27 @@ test('stop does nothing for a missing task and refuses a foreign one or a failed
 });
 
 test('start re-enables a stopped task before running it', async () => {
-  const calls = await recordCalls((io) => schtasksStart(io), { task: renderTaskXml({ sid, exec, specPath }) });
+  const fs = fakeFs({ [specPath]: oldSpec, [exec]: '' });
+  const calls = await recordCalls((io) => schtasksStart(io), { fs, task: renderTaskXml({ sid, exec, specPath }) });
   expect(calls).toEqual([
     ['schtasks', '/Change', '/TN', path, '/ENABLE'],
     ['schtasks', '/Run', '/TN', path],
   ]);
 });
 
-test('start re-creates a task whose recorded exec went stale before running it, and leaves a current one alone', async () => {
+test('start keeps a task whose recorded exec is still on disk without resolving the unit', async () => {
+  // Another binary than the one invoking `start` (and none resolvable at all) is no reason to rewrite the task.
+  const fs = fakeFs({ [specPath]: oldSpec, [oldExec]: '' });
+  const unit = async () => {
+    throw new Error('resolved the unit');
+  };
+  await schtasksStart({ ...io({ fs, task: oldTaskXml }), unit });
+  expect(recorded().map((c) => c[1])).toEqual(['/Change', '/Run']);
+});
+
+test('start re-creates a task whose recorded exec is gone before running it', async () => {
   const stale = renderTaskXml({ sid, exec: 'C:\\gone\\cli-1.0.0.exe', specPath });
   expect((await recordCalls((io) => schtasksStart(io), { task: stale })).map((c) => c[1])).toEqual(['/Create', '/Run']);
-  const same = renderTaskXml({ sid, exec, specPath });
-  expect((await recordCalls((io) => schtasksStart(io), { task: same })).map((c) => c[1])).toEqual(['/Change', '/Run']);
 });
 
 test('start leaves a package-manager-owned service alone when the desktop app resolves a different unit', async () => {
@@ -439,6 +449,22 @@ test('uninstall of a deleted task still kills a live supervisor, waits for it, t
   expect(killed).toEqual([4242]);
   expect(calls).toEqual([]);
   expect(fs.exists(specPath)).toBe(false);
+  expect(fs.exists(uninstallMarkerPath('win32', env)!)).toBe(true);
+});
+
+test('uninstall of a deleted task goes on when the supervisor exits just before the kill', async () => {
+  let checks = 0;
+  const { fs } = await recordRun(
+    (io) =>
+      schtasksUninstall({
+        ...io,
+        imagePath: () => (checks++ === 0 ? oldExec : undefined),
+        kill: () => {
+          throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' });
+        },
+      }),
+    { task: 'missing' },
+  );
   expect(fs.exists(uninstallMarkerPath('win32', env)!)).toBe(true);
 });
 

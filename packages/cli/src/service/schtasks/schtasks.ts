@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, win32 } from 'node:path';
 
@@ -41,6 +41,7 @@ export type SchtasksIo = {
   /** The unit to write: resolved only by the commands that write one. */
   readonly unit: () => Promise<UnitOptions>;
   readonly readFile: (path: string) => string | undefined;
+  readonly exists: (path: string) => boolean;
   readonly writeFile: (path: string, data: string | Uint8Array) => void;
   readonly rename: (from: string, to: string) => void;
   readonly remove: (path: string) => void;
@@ -188,17 +189,22 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   // A spec without its task (a failed `/Create`, or the task deleted by hand) can only be fixed by creating it again.
   const task = await ownTask(io, path);
-  // A task recording an exec that an upgrade since pruned would launch a deleted binary: recreate it from the unit.
-  const { spec } = task ? await renderUnit(io) : { spec: '' };
-  const specPath = serviceSpecPath(io.localAppData);
-  const resolved = parseServiceSpec(spec);
-  // Only refresh a service owned the way the resolved unit is: starting a package-manager-owned service from the
-  // desktop app must not rewrite it and hand ownership over.
-  const sameOwner = desktopOwned(parseServiceSpec(io.readFile(specPath) ?? '')) === desktopOwned(resolved);
-  if (!task || (sameOwner && !taskCurrent(task.action, resolved?.exec, specPath))) {
-    await schtasksInstall(io);
-  } else await io.run(['schtasks', '/Change', '/TN', path, '/ENABLE']);
+  if (!task || (await refreshesStaleTask(io, task))) await schtasksInstall(io);
+  else await io.run(['schtasks', '/Change', '/TN', path, '/ENABLE']);
   await runTask(io, path);
+}
+
+/**
+ * A task whose recorded exec an upgrade since pruned would launch a deleted binary, so it is recreated from the unit;
+ * the unit is resolved only then, so a sound task starts even when no binary resolves. Only a service owned the way
+ * the resolved unit is gets refreshed: starting a package-manager-owned service from the desktop app must not
+ * rewrite it and hand ownership over.
+ */
+async function refreshesStaleTask(io: SchtasksIo, task: ParsedTask): Promise<boolean> {
+  if (task.action !== undefined && io.exists(task.action.exec)) return false;
+  const { spec } = await renderUnit(io);
+  const current = parseServiceSpec(io.readFile(serviceSpecPath(io.localAppData)) ?? '');
+  return desktopOwned(current) === desktopOwned(parseServiceSpec(spec));
 }
 
 // Disabling makes the stop survive the next logon, which would otherwise start the task again.
@@ -285,7 +291,13 @@ export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
   if (taskExists) await endTask(io, path);
   const state = parseSupervisorState(io.readFile(serviceStatePath(io.localAppData)));
   // With the task deleted by hand there is nothing for `/End` to stop, so end an orphaned supervisor ourselves.
-  if (!taskExists && supervisorAlive(state, io.imagePath)) io.kill(state.pid);
+  if (!taskExists && supervisorAlive(state, io.imagePath)) {
+    try {
+      io.kill(state.pid);
+    } catch {
+      // It may have exited since the check (ESRCH): the wait below decides either way.
+    }
+  }
   const deadline = io.now() + SUPERVISOR_EXIT_TIMEOUT_MS;
   while (supervisorAlive(state, io.imagePath)) {
     if (io.now() >= deadline) {
@@ -340,6 +352,7 @@ export async function defaultSchtasksIo(
     },
     rename: renameSync,
     remove: (path) => rmSync(path, { force: true }),
+    exists: existsSync,
     imagePath: processImagePath,
     kill: (pid) => process.kill(pid),
     sleep: (ms) => Bun.sleep(ms),
