@@ -62,10 +62,12 @@ function setup(
     config: ConfigSchema.parse({ router: { models: { [REQUESTED_MODEL]: { providers } } }, providers: {} }),
   });
   const warmed: string[] = [];
+  const refreshed: string[] = [];
   const source: ProviderRouteSource = {
     ...route.source,
     quotaStatus: (providerId) => quota[providerId] ?? { kind: 'none' },
     warmProviderQuota: (providerId) => warmed.push(providerId),
+    refreshProviderQuota: (providerId) => refreshed.push(providerId),
     ...overrides,
   };
   const send = async (rawRequest = jsonRequest({ model: REQUESTED_MODEL }), responses = false) => {
@@ -85,7 +87,7 @@ function setup(
     route.recording.spans.find((span) => span.name === spanName.inference)?.attributes[
       attributeName.routeSkippedCandidates
     ];
-  return { route, source, warmed, send, skipped };
+  return { route, source, warmed, refreshed, send, skipped };
 }
 
 test('skips an exhausted subscription and serves from the next candidate', async () => {
@@ -141,21 +143,49 @@ test('a non-OAuth provider ignores quota status', async () => {
   expect(plain.calls.model).toHaveLength(1);
 });
 
-test('a 429 from a subscription warms its quota so the next request can skip it', async () => {
-  const a = subscription('sub-a', () => {
+const refusing = (id: string) =>
+  subscription(id, () => {
     throw new APICallError({
       message: 'usage limit reached',
-      url: 'https://sub-a.example.test',
+      url: `https://${id}.example.test`,
       requestBodyValues: {},
       statusCode: 429,
       isRetryable: false,
     });
   });
-  const b = subscription('sub-b');
-  const { send, warmed } = setup([a, b], {});
+
+const sampled = (ageMs: number): OAuthQuotaCacheStatus => ({
+  kind: 'ready',
+  entry: {
+    snapshot: { items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 0.02, scope: 'account' }] },
+    sampledAt: Date.now() - ageMs,
+    stale: false,
+  },
+});
+
+test('a 429 from a subscription warms its quota so the next request can skip it', async () => {
+  const { send, warmed } = setup([refusing('sub-a'), subscription('sub-b')], {});
 
   expect((await send()).response.status).toBe(200);
   expect(warmed).toContain('sub-a');
+});
+
+// The snapshot still says quota remains, so a plain warm would sit behind the cache's read cooldown and
+// leave the Provider attempted, and refused, on every request until it expires.
+test('a 429 that contradicts a snapshot over a minute old forces a re-read', async () => {
+  const { send, refreshed } = setup([refusing('sub-a'), subscription('sub-b')], { 'sub-a': sampled(2 * 60_000) });
+
+  expect((await send()).response.status).toBe(200);
+  expect(refreshed).toEqual(['sub-a']);
+});
+
+// Bounds the re-reads: a Provider refusing every request for a reason other than quota must not turn
+// each refusal into a quota read.
+test('a 429 right after a read does not force another one', async () => {
+  const { send, refreshed } = setup([refusing('sub-a'), subscription('sub-b')], { 'sub-a': sampled(1_000) });
+
+  expect((await send()).response.status).toBe(200);
+  expect(refreshed).toEqual([]);
 });
 
 test('quota exhaustion overrides session affinity and the response owner', async () => {

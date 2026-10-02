@@ -37,16 +37,30 @@ export function warmProviderQuota(
   });
 }
 
+// A refusal may cut the cache's 5-minute read cooldown short, but no shorter than this, so a Provider
+// that 429s every request for some other reason (a request-rate limit) costs at most one quota read a
+// minute.
+const REFUSAL_REREAD_MIN_AGE_MS = 60_000;
+
 /**
- * A 429 from a subscription is usually its quota running out. Warming here gives selection the
- * snapshot it needs to skip the Provider next time, even when it never served a request since start.
+ * A 429 from a subscription is usually its quota running out, so re-read the quota to give selection
+ * the snapshot it needs to skip the Provider next time — even when it never served a request since
+ * start. A snapshot already in the cache says quota remained when it was sampled; the refusal
+ * contradicts it, and a plain warm would sit behind the read cooldown while every request is refused,
+ * so a snapshot over a minute old is re-read regardless of the cooldown.
  */
 export function warmQuotaOnRefusal(
   source: ProviderRouteSource,
   provider: RuntimeProviderInstance,
   status: number | undefined,
 ): void {
-  if (status === 429 && provider.kind === ProviderKind.OAuth) source.warmProviderQuota?.(provider.id);
+  if (status !== 429 || provider.kind !== ProviderKind.OAuth) return;
+  const cached = source.quotaStatus?.(provider.id);
+  if (cached?.kind === 'ready' && Date.now() - cached.entry.sampledAt >= REFUSAL_REREAD_MIN_AGE_MS) {
+    source.refreshProviderQuota?.(provider.id);
+    return;
+  }
+  source.warmProviderQuota?.(provider.id);
 }
 
 // `highWaterMark: 0` keeps this a pass-through that never reads ahead of the client, so it cannot turn

@@ -263,4 +263,6 @@ export type ProviderRouteSource = {
   readonly warmProviderQuota?: (providerId: string) => void;
   /** Optional: the quota cache's synchronous view, which selection reads to skip exhausted subscriptions. */
   readonly quotaStatus?: (providerId: string) => OAuthQuotaCacheStatus;
+  /** Optional: fire-and-forget quota re-read that ignores the cache's read cooldown. */
+  readonly refreshProviderQuota?: (providerId: string) => void;
 };
