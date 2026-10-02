@@ -187,7 +187,7 @@ test('stop of a deleted task still kills its orphaned supervisor and waits for i
 });
 
 test('start re-enables a stopped task before running it', async () => {
-  const fs = fakeFs({ [specPath]: oldSpec, [exec]: '' });
+  const fs = fakeFs({ [specPath]: oldSpec, [exec]: '', [oldExec]: '' });
   const calls = await recordCalls((io) => schtasksStart(io), { fs, task: renderTaskXml({ sid, exec, specPath }) });
   expect(calls).toEqual([
     ['schtasks', '/Change', '/TN', path, '/ENABLE'],
@@ -223,6 +223,19 @@ test('start re-creates a task whose spec path moved or whose spec is gone or mal
     ),
   ).toEqual(['/Create', '/Run']);
   const truncated = fakeFs({ [specPath]: oldSpec.slice(0, 10), [oldExec]: '' });
+  const emptyExec = fakeFs({ [specPath]: '{"exec":"","env":{}}', [oldExec]: '' });
+  expect((await recordCalls((io) => schtasksStart(io), { fs: emptyExec, task: oldTaskXml })).map((c) => c[1])).toEqual([
+    '/Create',
+    '/Run',
+  ]);
+  const goneExec = fakeFs({
+    [specPath]: JSON.stringify(renderServiceSpec({ exec: 'C:\\gone\\aio-proxy.exe', configPath: 'C:\\c.jsonc' })),
+    [oldExec]: '',
+  });
+  expect((await recordCalls((io) => schtasksStart(io), { fs: goneExec, task: oldTaskXml })).map((c) => c[1])).toEqual([
+    '/Create',
+    '/Run',
+  ]);
   expect((await recordCalls((io) => schtasksStart(io), { fs: truncated, task: oldTaskXml })).map((c) => c[1])).toEqual([
     '/Create',
     '/Run',

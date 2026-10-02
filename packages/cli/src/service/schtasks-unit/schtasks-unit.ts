@@ -23,7 +23,7 @@ export function parseServiceSpec(text: string): ServiceSpec | undefined {
   } catch {
     return undefined;
   }
-  if (!isPlainObject(value) || typeof value['exec'] !== 'string') return undefined;
+  if (!isPlainObject(value) || typeof value['exec'] !== 'string' || value['exec'] === '') return undefined;
   const env = value['env'];
   if (!isPlainObject(env) || !Object.values(env).every((v) => typeof v === 'string')) return undefined;
   return { exec: value['exec'], env: env as Record<string, string> };

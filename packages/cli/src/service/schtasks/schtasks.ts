@@ -212,13 +212,14 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
 async function refreshesStaleTask(io: SchtasksIo, task: ParsedTask): Promise<boolean> {
   const specPath = serviceSpecPath(io.localAppData);
   const { action } = task;
-  // The supervisor exits for good on a spec it cannot parse, so a malformed one is as stale as a missing one.
+  // The supervisor exits on a spec it cannot parse or whose exec is gone, so either is as stale as a missing spec.
   const current = parseServiceSpec(io.readFile(specPath) ?? '');
   const sound =
     action !== undefined &&
     io.exists(action.exec) &&
     action.specPath.toLowerCase() === specPath.toLowerCase() &&
-    current !== undefined;
+    current !== undefined &&
+    io.exists(current.exec);
   if (sound) return false;
   const { spec } = await renderUnit(io);
   // Without a readable spec there is no ownership left to protect, and the task cannot run as it is.
