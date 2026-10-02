@@ -145,6 +145,23 @@ describe('orderByQuotaReset', () => {
     ]);
   });
 
+  test('warms unknown subscriptions demoted behind a keyed one', () => {
+    const warmed: string[] = [];
+    orderByQuotaReset(
+      [candidate('a'), candidate('b'), candidate('api-x', { kind: 'api' })],
+      statuses({ b: ready([window(DAY, WEEK)]) }),
+      now,
+      (providerId) => warmed.push(providerId),
+    );
+    expect(warmed).toEqual(['a']);
+  });
+
+  test('does not warm when nothing in the tier is keyed', () => {
+    const warmed: string[] = [];
+    orderByQuotaReset([candidate('a'), candidate('c')], statuses({}), now, (providerId) => warmed.push(providerId));
+    expect(warmed).toEqual([]);
+  });
+
   test('ties keep the router order', () => {
     const ordered = orderByQuotaReset(
       [candidate('a'), candidate('b')],

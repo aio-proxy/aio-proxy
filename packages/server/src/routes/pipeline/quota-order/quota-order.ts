@@ -39,6 +39,7 @@ function orderTier(
   tier: readonly Candidate[],
   quotaStatus: (providerId: string) => OAuthQuotaCacheStatus,
   now: number,
+  warm?: (providerId: string) => void,
 ) {
   if (tier.length < 2) return tier;
   const keyed: { readonly candidate: Candidate; readonly resetsAt: number }[] = [];
@@ -47,6 +48,11 @@ function orderTier(
     const resetsAt = allowanceResetsAt(candidate, quotaStatus(candidate.provider.id), now);
     if (resetsAt === undefined) unknown.push(candidate);
     else keyed.push({ candidate, resetsAt });
+  }
+  if (keyed.length > 0) {
+    for (const candidate of unknown) {
+      if (candidate.provider.kind === ProviderKind.OAuth) warm?.(candidate.provider.id);
+    }
   }
   // `sort` is stable, so equal resets keep the router's (weighted or deterministic) order.
   keyed.sort((left, right) => left.resetsAt - right.resetsAt);
@@ -58,11 +64,16 @@ function orderTier(
  * allowance is not left to lapse on one subscription while another is drained. Candidates with no
  * usable quota follow in the router's order. Tiers never mix, and a provider-qualified route is left
  * alone: its `selectionSource` is what strips the Provider ID back to the public slug.
+ * Unknown OAuth candidates demoted behind a keyed candidate are warmed without waiting, so a cold
+ * cache converges. They usually won't serve this request, so the warm won't pre-empt their own
+ * post-success warm. With no keyed candidate, the first weighted candidate serves and warms after
+ * its response settles instead.
  */
 export function orderByQuotaReset(
   candidates: readonly Candidate[],
   quotaStatus: (providerId: string) => OAuthQuotaCacheStatus,
   now: number,
+  warm?: (providerId: string) => void,
 ): readonly Candidate[] {
   if (candidates.some((candidate) => candidate.selectionSource === 'provider_qualified')) return candidates;
   const ordered: Candidate[] = [];
@@ -71,7 +82,7 @@ export function orderByQuotaReset(
     if (index < candidates.length && candidates[index]?.routing.priority === candidates[start]?.routing.priority) {
       continue;
     }
-    ordered.push(...orderTier(candidates.slice(start, index), quotaStatus, now));
+    ordered.push(...orderTier(candidates.slice(start, index), quotaStatus, now, warm));
     start = index;
   }
   return ordered;
@@ -81,9 +92,9 @@ export function orderByQuotaReset(
 export function applySelectionPolicy(
   candidates: readonly Candidate[],
   selection: RouterConfig['selection'] | undefined,
-  source: Pick<ProviderRouteSource, 'quotaStatus'>,
+  source: Pick<ProviderRouteSource, 'quotaStatus' | 'warmProviderQuota'>,
   now: number,
 ): readonly Candidate[] {
   if (selection !== 'quota-reset' || source.quotaStatus === undefined) return candidates;
-  return orderByQuotaReset(candidates, source.quotaStatus, now);
+  return orderByQuotaReset(candidates, source.quotaStatus, now, source.warmProviderQuota);
 }
