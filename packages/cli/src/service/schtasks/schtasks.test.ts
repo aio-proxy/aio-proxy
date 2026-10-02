@@ -1,7 +1,10 @@
 import { expect, test } from 'bun:test';
+import { rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { CliExit } from '../../exit';
-import { type CaptureResult } from '../run-capture';
+import { type CaptureResult, runCapture } from '../run-capture';
 import {
   parseServiceSpec,
   parseTaskXml,
@@ -487,3 +490,31 @@ test('status prints the task and succeeds only while the recorded supervisor run
   expect(await schtasksStatus(io({ fs: fakeFs(), imagePath: () => oldExec }))).not.toBe(0);
   expect(await schtasksStatus({ ...alive, run: async () => 1 })).toBe(1);
 });
+
+// Settles whether `/Create /XML /TN \\Folder\\Name` makes a missing folder, as schtasksInstall relies on.
+test.skipIf(process.platform !== 'win32')(
+  'schtasks creates a task under a folder that does not exist yet',
+  async () => {
+    const { sid: ownSid } = await currentUser(runCapture);
+    const folder = `AIO Proxy Test ${process.pid}`;
+    const taskName = `\\${folder}\\aio-proxy-${ownSid}`;
+    const file = join(tmpdir(), `aio-proxy-task-test-${process.pid}.xml`);
+    const xml = renderTaskXml({ sid: ownSid, exec: process.execPath, specPath: join(tmpdir(), 'service.json') });
+    writeFileSync(file, Buffer.from(`\uFEFF${xml}`, 'utf16le'));
+    try {
+      const created = await runCapture(['schtasks', '/Create', '/XML', file, '/TN', taskName, '/F']);
+      expect(created.code, created.stderr).toBe(0);
+      expect((await queryTaskXml(runCapture, taskName)).kind).toBe('found');
+    } finally {
+      rmSync(file, { force: true });
+      await runCapture(['schtasks', '/Delete', '/TN', taskName, '/F']);
+      await runCapture([
+        'powershell.exe',
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `$s = New-Object -ComObject Schedule.Service; $s.Connect(); $s.GetFolder('\\').DeleteFolder('${folder}', 0)`,
+      ]);
+    }
+  },
+);
