@@ -57,6 +57,7 @@ const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | 
     defaultHome: () => join(root, 'default-home'),
     unitExists: () => scenario.plist !== undefined,
     imagePath: () => undefined,
+    userSid: () => undefined,
     targetRunnable: () => true,
     readToken: () => scenario.token,
     owner: '501',
@@ -397,9 +398,10 @@ test('win32: a desktop-owned running task is identified end to end through the s
     ...deps({ token: 'T'.repeat(43), summaryPid: 4312, summaryPpid: 4310 }),
     platform: 'win32',
     env: { AIO_PROXY_DESKTOP_EXEC: winLink, LOCALAPPDATA: localAppData },
-    owner: 'desktop-1\\ada',
+    owner: sid,
     unitPath: specPath,
     imagePath: (pid) => (pid === 4310 ? winLink : undefined),
+    userSid: (pid) => (pid === 4312 ? sid : undefined),
     readFile: async (path) => {
       const text = files[path];
       if (text === undefined) throw new Error(`ENOENT ${path}`);
@@ -412,12 +414,6 @@ test('win32: a desktop-owned running task is identified end to end through the s
         return { code: 0, stdout: '  TCP    127.0.0.1:19317        0.0.0.0:0              LISTENING       4312\r\n' };
       }
       if (cmd[0] === 'netstat') return { code: 0, stdout: '' };
-      if (cmd[0] === 'tasklist') {
-        return {
-          code: 0,
-          stdout: '"aio-proxy.exe","4312","Console","1","50,000 K","Running","DESKTOP-1\\Ada","0:00:01","N/A"\r\n',
-        };
-      }
       return { code: 1, stdout: '' };
     },
   });

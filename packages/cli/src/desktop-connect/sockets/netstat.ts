@@ -1,4 +1,4 @@
-import { ipv6Text } from './proc-net';
+import { ipv6Text, touchesPort } from './proc-net';
 import type { Run, Socket } from './sockets';
 
 const ROW = /^\s*TCP\s+(\S+)\s+(\S+)\s+(\S+)\s+(\d+)\s*$/u;
@@ -71,23 +71,16 @@ export function parseNetstat(text: string): { family: Socket['family']; address:
   return rows;
 }
 
-/** The account in the `User Name` column of one `tasklist /V /FO CSV /NH` row; undefined when it names nobody. */
-export function parseTasklistUser(csv: string): string | undefined {
-  // Every field is double-quoted and may contain commas; `""` escapes a quote inside one.
-  const fields = [...csv.matchAll(/"((?:[^"]|"")*)"/gu)].map((m) => (m[1] ?? '').replaceAll('""', '"'));
-  const user = fields[6]?.trim();
-  return fields.length >= 8 && user !== undefined && user !== '' && user.toUpperCase() !== 'N/A' ? user : undefined;
-}
-
-const touchesPort = (address: string, port: number): boolean =>
-  address.split('->').some((end) => end.endsWith(`:${port}`));
-
 /**
- * The TCP sockets with `port` at either end, each owned by the lower-cased account of its process. A
- * process whose account cannot be read owns nothing here. A failing `netstat` throws: callers treat a
- * throw as "not ours".
+ * The TCP sockets with `port` at either end, each owned by the SID of its process's account. A process
+ * whose SID cannot be read owns nothing here. A failing `netstat` throws: callers treat a throw as "not
+ * ours".
  */
-export async function listWindowsSockets(port: number, run: Run): Promise<readonly Socket[]> {
+export async function listWindowsSockets(
+  port: number,
+  run: Run,
+  userSid: (pid: number) => string | undefined,
+): Promise<readonly Socket[]> {
   const rows = [];
   for (const proto of ['TCP', 'TCPv6']) {
     const { code, stdout } = await run(['netstat', '-ano', '-p', proto]);
@@ -95,10 +88,7 @@ export async function listWindowsSockets(port: number, run: Run): Promise<readon
     rows.push(...parseNetstat(stdout).filter((row) => touchesPort(row.address, port)));
   }
   const owners = new Map<number, string | undefined>();
-  for (const pid of new Set(rows.map((row) => row.pid))) {
-    const { code, stdout } = await run(['tasklist', '/V', '/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH']);
-    owners.set(pid, code === 0 ? parseTasklistUser(stdout)?.toLowerCase() : undefined);
-  }
+  for (const pid of new Set(rows.map((row) => row.pid))) owners.set(pid, userSid(pid));
   return rows.flatMap(({ pid, ...row }) => {
     const owner = owners.get(pid);
     return owner === undefined ? [] : [{ owner, ...row }];

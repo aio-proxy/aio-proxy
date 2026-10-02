@@ -1,1 +1,8 @@
-export { assignToJob, createKillOnCloseJob, processImagePath, type JobHandle } from './win32-ffi';
+export {
+  assignToJob,
+  createKillOnCloseJob,
+  currentUserSid,
+  processImagePath,
+  processUserSid,
+  type JobHandle,
+} from './win32-ffi';

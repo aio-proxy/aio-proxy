@@ -29,6 +29,10 @@ export function ipv6Text(bytes: readonly number[]): string {
   return bestStart < 0 ? text(0, 8) : `${text(0, bestStart)}::${text(bestStart + bestLength, 8)}`;
 }
 
+/** Whether `port` is at either end of an lsof-spelled address (`host:port` or `local->remote`). */
+export const touchesPort = (address: string, port: number): boolean =>
+  address.split('->').some((end) => end.endsWith(`:${port}`));
+
 const isWildcard = (bytes: readonly number[]) => bytes.every((b) => b === 0);
 
 function endpoint(hex: string, port: string, family: Socket['family']): { host: string; wildcard: boolean } {

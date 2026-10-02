@@ -163,8 +163,10 @@ owner. Windows instead keeps the token where only this user can create files:
 - Task Scheduler queries capture stdout and stderr and pass `/HRESULT`, so "the task does not exist"
   (`0x80070002`) is told apart from every other failure. Process identity checks (the state file's PID
   running `exec`) read the full image path with `QueryFullProcessImageNameW` through `bun:ffi`, beside the
-  Job Object calls; `tasklist` reports only the image name.
-- Every child process the CLI spawns on win32 (`schtasks`, `netstat`, `tasklist`, the proxy itself) uses
+  Job Object calls; `tasklist` reports only the image name. Account checks compare SIDs read from the
+  process token (`OpenProcessToken` + `GetTokenInformation(TokenUser)`), never names that console tools
+  print in the OEM code page, where distinct non-ASCII names can decode alike.
+- Every child process the CLI spawns on win32 (`schtasks`, `netstat`, the proxy itself) uses
   `Bun.spawn`'s `windowsHide`.
 - **Spike (phase 0):** a console program started by Task Scheduler opens a console window. Candidates
   without admin rights, in order of preference:
@@ -185,7 +187,7 @@ meanings, so the Rust `Discovery` parser and the `policy` state machine are unch
 | --- | --- | --- | --- |
 | `readUnit` | `plutil` → `inspectUnit` | parse `ExecStart=` and `Environment=` | `schtasks /Query /XML /TN <path>`: the principal must be the current user's SID and the action `<exec> __service-run <spec path>` (through `conhost` if the spike picks it), else `wrapperValid: false`; then read `service.json` |
 | `readJob` | `launchctl print`, `print-disabled` | `systemctl --user show -p LoadState,ActiveState,UnitFileState,MainPID` | `schtasks /Query /V /FO CSV`; `pid` from `service.state.json` when that process is alive and its image is `exec` |
-| Connection ownership | `lsof` | `/proc/net/tcp{,6}`: the uid of the row matching the four-tuple | `netstat -ano -p TCP` and `-p TCPv6` → PID → `tasklist /V /FI "PID eq <pid>" /FO CSV` user equals ours |
+| Connection ownership | `lsof` | `/proc/net/tcp{,6}`: the uid of the row matching the four-tuple | `netstat -ano -p TCP` and `-p TCPv6` → PID → that process's token SID equals ours |
 
 - `matchesJob` keeps its meaning: the instance's PID or PPID equals `job.pid`. The proxy is the
   supervisor's (Windows) or `MainPID`'s (Linux) process or child, as it is the `/bin/sh` wrapper's child
@@ -456,7 +458,7 @@ task XML).
 | --- | --- | --- |
 | Rust `placement` | taskbar on each edge; clamping to the work area | visible misplacement; pure function |
 | Rust `install` | copy plan: missing / older / equal / newer / unreadable; Windows startup recovery from `.old-*` | the no-downgrade invariant; a service never left without its executable |
-| Connection ownership (Rust + TS) | `/proc` and netstat + tasklist parsing; IPv4 and IPv6; four-tuple match; a port that changes owner between listen check and connect is refused | security boundary for the token |
+| Connection ownership (Rust + TS) | `/proc` and netstat parsing, owner by SID on Windows; IPv4 and IPv6; four-tuple match; a port that changes owner between listen check and connect is refused | security boundary for the token |
 | Desktop token (TS, win32) | path derives from the resolved home under `%LOCALAPPDATA%`; two homes get two tokens; a reparse point is rejected; server and CLI resolve the same path | the token's trust boundary on Windows |
 | TS `desktop-connect` | systemd `show`, `schtasks` XML/CSV, `service.json` and state file → `unit` / `job`; a task whose action does not run `__service-run` with our spec, or whose principal is another user, is `unknown`; owner rules equal across platforms | the app's automatic actions depend on it |
 | TS `disabled` mapping | no unit and no marker → `false`; no unit with the uninstall marker → `true`; disabled unit → `true`; failed query → `true` | first run installs; a user's uninstall or stop is not undone |

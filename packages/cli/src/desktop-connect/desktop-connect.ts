@@ -7,7 +7,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import { controlBaseUrl, localControlHost, probeHealth, resolveControlAddress } from '../control-plane';
 import { launchdDomain, launchdJobTarget, managedUnitPath } from '../service';
 import { decodeOutput } from '../service/run-capture';
-import { processImagePath } from '../win32-ffi';
+import { processImagePath, processUserSid } from '../win32-ffi';
 import {
   inspectUnit,
   isRunnable,
@@ -41,6 +41,8 @@ export type DesktopConnectDeps = {
   readonly targetRunnable: (path: string) => boolean;
   /** A process's full image path (win32), to tell the supervisor from any other process with its PID. */
   readonly imagePath: (pid: number) => string | undefined;
+  /** The SID of a process's account (win32): who owns a socket, by the process netstat names. */
+  readonly userSid: (pid: number) => string | undefined;
   readonly readToken: (home: string) => string | undefined;
   /** This process's account: the listener must belong to it before the token is offered. */
   readonly owner: string;
@@ -274,11 +276,7 @@ export const defaultDesktopConnectDeps = async (
   // header to the proxy. `*` bypasses every host (a plain `::1` entry does not match [::1]); set on
   // both spellings because the lowercase one wins. This process only probes the local control address.
   process.env['NO_PROXY'] = process.env['no_proxy'] = '*';
-  return desktopConnectDeps(
-    bundledVersion,
-    spawnDeadline,
-    await currentOwner(process.platform, (cmd) => runWithin(cmd, spawnDeadline)),
-  );
+  return desktopConnectDeps(bundledVersion, spawnDeadline, currentOwner(process.platform));
 };
 
 const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number, owner: string): DesktopConnectDeps => ({
@@ -293,6 +291,7 @@ const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number, owner
   },
   targetRunnable: isRunnable,
   imagePath: processImagePath,
+  userSid: processUserSid,
   readToken: (home) => readDesktopToken(home),
   owner,
   // A killed or budget-exhausted helper degrades its fields like any other probe failure.
@@ -301,7 +300,11 @@ const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number, owner
   identityGet: (host, port, path, token) =>
     verifiedGet(
       process.platform,
-      { run: (cmd) => runWithin(cmd, spawnDeadline), readFile: (path) => readFile(path, 'utf8') },
+      {
+        run: (cmd) => runWithin(cmd, spawnDeadline),
+        readFile: (path) => readFile(path, 'utf8'),
+        userSid: processUserSid,
+      },
       owner,
       host,
       port,

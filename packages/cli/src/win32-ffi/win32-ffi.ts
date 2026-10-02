@@ -1,4 +1,4 @@
-import { dlopen, FFIType, type Pointer } from 'bun:ffi';
+import { dlopen, FFIType, type Pointer, ptr, toArrayBuffer } from 'bun:ffi';
 
 // Every function loads kernel32 on first use, so importing this module on macOS/Linux never calls dlopen.
 const loadKernel32 = () =>
@@ -9,9 +9,23 @@ const loadKernel32 = () =>
     AssignProcessToJobObject: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     QueryFullProcessImageNameW: { args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
     CloseHandle: { args: [FFIType.ptr], returns: FFIType.i32 },
+    LocalFree: { args: [FFIType.ptr], returns: FFIType.ptr },
+    lstrlenW: { args: [FFIType.ptr], returns: FFIType.i32 },
   }).symbols;
 let kernel32Symbols: ReturnType<typeof loadKernel32> | undefined;
 const kernel32 = () => (kernel32Symbols ??= loadKernel32());
+
+const loadAdvapi32 = () =>
+  dlopen('advapi32.dll', {
+    OpenProcessToken: { args: [FFIType.ptr, FFIType.u32, FFIType.ptr], returns: FFIType.i32 },
+    GetTokenInformation: {
+      args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32, FFIType.ptr],
+      returns: FFIType.i32,
+    },
+    ConvertSidToStringSidW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+  }).symbols;
+let advapi32Symbols: ReturnType<typeof loadAdvapi32> | undefined;
+const advapi32 = () => (advapi32Symbols ??= loadAdvapi32());
 
 // bun:ffi types a returned pointer as `Pointer | bigint`; either form is accepted back as a pointer argument.
 export type JobHandle = Pointer | bigint;
@@ -26,6 +40,8 @@ const LIMIT_FLAGS_OFFSET = 16;
 const PROCESS_TERMINATE = 0x0001;
 const PROCESS_SET_QUOTA = 0x0100;
 const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+const TOKEN_QUERY = 0x0008;
+const TOKEN_USER_CLASS = 1;
 // Windows extended-length paths top out at 32,767 UTF-16 units.
 const MAX_IMAGE_PATH_CHARS = 32_768;
 
@@ -74,5 +90,62 @@ export function processImagePath(pid: number): string | undefined {
     }
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * The string SID (`S-1-5-21-…`) of the account `pid` runs as, or `undefined` when it cannot be read (gone,
+ * denied, not win32). A SID, unlike an account name printed by a console tool, survives every code page.
+ */
+export function processUserSid(pid: number): string | undefined {
+  try {
+    const k = kernel32();
+    const proc = k.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+    if (proc === null) return undefined;
+    try {
+      return tokenUserSid(proc);
+    } finally {
+      k.CloseHandle(proc);
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/** This process's own account SID; `undefined` when it cannot be read. */
+export const currentUserSid = (): string | undefined => processUserSid(process.pid);
+
+function tokenUserSid(proc: Pointer | bigint): string | undefined {
+  const k = kernel32();
+  const a = advapi32();
+  const tokenOut = new BigUint64Array(1);
+  if (a.OpenProcessToken(proc, TOKEN_QUERY, tokenOut) === 0 || tokenOut[0] === 0n) return undefined;
+  const token = tokenOut[0]!;
+  try {
+    // The first call fails with ERROR_INSUFFICIENT_BUFFER and reports the size TOKEN_USER needs.
+    const size = new Uint32Array(1);
+    a.GetTokenInformation(token, TOKEN_USER_CLASS, null, 0, size);
+    if (size[0] === undefined || size[0] < 16) return undefined;
+    // TOKEN_USER (winnt.h) on x64 is SID_AND_ATTRIBUTES: PSID at 0, DWORD Attributes at 8; the SID it points
+    // at lives later in the same buffer. 8-byte elements keep that pointer aligned.
+    const info = new BigUint64Array(Math.ceil(size[0] / 8));
+    if (a.GetTokenInformation(token, TOKEN_USER_CLASS, info, info.byteLength, size) === 0) return undefined;
+    const sid = info[0] ?? 0n;
+    const base = BigInt(ptr(info));
+    // Anything but a pointer into our own buffer means the layout is not what we read it as.
+    if (sid < base || sid >= base + BigInt(info.byteLength)) return undefined;
+    const textOut = new BigUint64Array(1);
+    if (a.ConvertSidToStringSidW(sid, textOut) === 0 || textOut[0] === 0n) return undefined;
+    const text = textOut[0]!;
+    try {
+      const length = k.lstrlenW(text);
+      if (length <= 0) return undefined;
+      const value = new TextDecoder('utf-16le').decode(toArrayBuffer(text, 0, length * 2));
+      return value.startsWith('S-1-') ? value : undefined;
+    } finally {
+      k.LocalFree(text);
+    }
+  } finally {
+    k.CloseHandle(token);
   }
 }
