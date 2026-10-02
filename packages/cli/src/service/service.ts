@@ -20,9 +20,7 @@ import {
   startLaunchdJob,
 } from './launchd';
 import { isManagedServiceInstalled } from './managed-unit';
-import { runCapture } from './run-capture';
 import {
-  currentUserSid,
   defaultSchtasksIo,
   exitProcessLater,
   schtasksInstall,
@@ -373,7 +371,7 @@ export async function serviceStatus(): Promise<void> {
   // maps to a nonzero exit).
   const code =
     os === 'win32'
-      ? await schtasksStatus(runManager, await currentUserSid(runCapture))
+      ? await schtasksStatus(await windowsIo())
       : await runManager(
           os === 'darwin' ? ['launchctl', 'list', LAUNCHD_LABEL] : ['systemctl', '--user', 'status', SYSTEMD_UNIT_NAME],
           true,

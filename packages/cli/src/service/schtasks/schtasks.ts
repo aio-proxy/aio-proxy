@@ -11,6 +11,7 @@ import { processImagePath } from '../../win32-ffi';
 import { type CaptureResult, runCapture } from '../run-capture';
 import {
   isOwnTask,
+  type ParsedTask,
   parseServiceSpec,
   parseTaskXml,
   renderServiceSpec,
@@ -86,17 +87,20 @@ export async function queryTaskXml(capture: Capture, path: string): Promise<Task
 }
 
 /**
- * Whether our task exists; refuses one that runs as someone else. The queried XML is only read for whose it
+ * Our task, or undefined when it does not exist; refuses one that runs as someone else. The queried XML is only read for whose it
  * is: its encoding through a pipe is unverified, so it is never fed back to `/Create`.
  */
-async function ownTaskExists(io: SchtasksIo, path: string): Promise<boolean> {
+async function ownTask(io: SchtasksIo, path: string): Promise<ParsedTask | undefined> {
   const query = await queryTaskXml(io.capture, path);
   if (query.kind === 'failed') throw commandFailed(['schtasks', '/Query', '/XML', '/TN', path], query.code);
-  if (query.kind === 'missing') return false;
-  if (!isOwnTask(parseTaskXml(query.xml), { sid: io.sid, account: io.account }))
+  if (query.kind === 'missing') return undefined;
+  const task = parseTaskXml(query.xml);
+  if (!isOwnTask(task, { sid: io.sid, account: io.account }))
     throw new CliExit(EXIT.unrecoverable, m['cli.service.task_owned_by_other_user']({ path }));
-  return true;
+  return task;
 }
+
+const ownTaskExists = async (io: SchtasksIo, path: string): Promise<boolean> => (await ownTask(io, path)) !== undefined;
 
 // schtasks reads the XML file in the encoding its declaration names, and renderTaskXml declares UTF-16.
 function stageTaskXml(io: SchtasksIo, xml: string): string {
@@ -207,9 +211,8 @@ export async function schtasksRestartInService(
   const staged = `${specPath}.new`;
   io.writeFile(staged, spec);
   try {
-    const query = await queryTaskXml(io.capture, path);
-    const current = query.kind === 'found' ? parseTaskXml(query.xml)?.action?.exec : undefined;
-    // A query failure counts as "differs": re-creating is the safe side.
+    // A failed query or a foreign task throws before anything is written: `/Create /F` would overwrite it.
+    const current = (await ownTask(io, path))?.action?.exec;
     if (current !== parseServiceSpec(spec)?.exec) await createTask(io, path, stageTaskXml(io, xml));
     io.rename(staged, specPath);
   } catch (error) {
@@ -242,8 +245,15 @@ export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
   io.writeFile(uninstallMarkerPath('win32', { LOCALAPPDATA: io.localAppData })!, '');
 }
 
-export const schtasksStatus = (run: Run, sid: string): Promise<number> =>
-  run(['schtasks', '/Query', '/TN', taskPath(sid), '/V', '/FO', 'LIST'], true);
+/** Prints the task, then exits 0 only when the supervisor runs: a registered but stopped or disabled task is not active. */
+export async function schtasksStatus(
+  io: Pick<SchtasksIo, 'run' | 'sid' | 'localAppData' | 'readFile' | 'imagePath'>,
+): Promise<number> {
+  const code = await io.run(['schtasks', '/Query', '/TN', taskPath(io.sid), '/V', '/FO', 'LIST'], true);
+  if (code !== 0) return code;
+  const state = parseSupervisorState(io.readFile(serviceStatePath(io.localAppData)));
+  return supervisorAlive(state, io.imagePath) ? 0 : EXIT.transient;
+}
 
 export async function defaultSchtasksIo(
   run: Run,

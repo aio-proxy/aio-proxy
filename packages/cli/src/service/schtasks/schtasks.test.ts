@@ -20,6 +20,7 @@ import {
   schtasksRestart,
   schtasksRestartInService,
   schtasksStart,
+  schtasksStatus,
   schtasksStop,
   schtasksUninstall,
 } from './schtasks';
@@ -247,16 +248,29 @@ test('a managed proxy restarting itself on Windows rewrites the spec and asks it
   expect(onlyFilesBesides(fs).sort()).toEqual([specPath, statePath].sort());
 });
 
-test('an in-service restart leaves the task alone when its exec did not change, and re-creates it when the query fails', async () => {
+test('an in-service restart leaves our unchanged task alone and re-creates a missing one', async () => {
   const exits: number[] = [];
   const same = renderTaskXml({ sid, exec, specPath });
   await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), { task: same });
   expect(recorded()).toEqual([]);
-  for (const task of ['missing', 5] as const) {
-    await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), { task });
-    expect(recorded().map((c) => c[1])).toEqual(['/Create']);
+  await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), { task: 'missing' });
+  expect(recorded().map((c) => c[1])).toEqual(['/Create']);
+  expect(exits).toEqual([75, 75]);
+});
+
+test('an in-service restart fails closed on a foreign task or a failed query: nothing written, no exit', async () => {
+  const foreign = previousXml.replaceAll(sid, 'S-1-5-21-9-9-9-500');
+  for (const task of [foreign, 5]) {
+    const fs = fakeFs({ [specPath]: oldSpec });
+    const exits: number[] = [];
+    await expect(schtasksRestartInService(io({ fs, task }), (code) => void exits.push(code))).rejects.toBeInstanceOf(
+      CliExit,
+    );
+    expect(recorded()).toEqual([]);
+    expect(fs.read(specPath)).toBe(oldSpec);
+    expect(fs.files.size).toBe(1);
+    expect(exits).toEqual([]);
   }
-  expect(exits).toEqual([75, 75, 75]);
 });
 
 test('an in-service restart that cannot re-create the task keeps the old spec and does not exit', async () => {
@@ -389,4 +403,14 @@ test('the current user is the account and SID whoami prints as CSV', async () =>
   expect(await whoami(0, `"${account}","${sid}"\r\n`)).toEqual({ account, sid });
   await expect(whoami(0, 'garbage')).rejects.toBeInstanceOf(CliExit);
   await expect(whoami(1, '')).rejects.toBeInstanceOf(CliExit);
+});
+
+test('status prints the task and succeeds only while the recorded supervisor runs', async () => {
+  const fs = fakeFs({ [statePath]: supervisorState });
+  const alive = io({ fs, imagePath: () => oldExec });
+  expect(await schtasksStatus(alive)).toBe(0);
+  expect(recorded().map((c) => c[1])).toEqual(['/Query']);
+  expect(await schtasksStatus(io({ fs, imagePath: () => undefined }))).not.toBe(0);
+  expect(await schtasksStatus(io({ fs: fakeFs(), imagePath: () => oldExec }))).not.toBe(0);
+  expect(await schtasksStatus({ ...alive, run: async () => 1 })).toBe(1);
 });
