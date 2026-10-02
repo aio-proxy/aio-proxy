@@ -54,15 +54,22 @@ type CommitOptions = {
   readonly platform: NodeJS.Platform;
   readonly rename: (from: string, to: string) => Promise<void>;
   readonly backupPath?: string;
+  /** The upgrading process, which names the Windows backup. */
+  readonly pid?: number;
 };
 
-// Moves the staged binary into place, keeping the old one at the backup path.
-// Windows cannot overwrite or delete a running exe but can rename it, so the
-// running binary is renamed aside to `<target>.old` first; the same two renames
-// work everywhere. A failed second rename puts the old binary back.
+// Windows cannot overwrite or delete a running exe but can rename it, so each upgrade renames the running
+// binary aside. The name is unique per upgrading process: an earlier backup may still be the running image of
+// the in-service supervisor, and a fixed name would make the next upgrade's rename fail until logoff.
+const windowsBackupPath = (target: string, pid: number = process.pid): string => `${target}.old-${pid}`;
+
+// Moves the staged binary into place, keeping the old one at the backup path; the same two renames work
+// everywhere. A failed second rename puts the old binary back.
 export const commitStagedBinary = async (options: CommitOptions): Promise<void> => {
   const backup =
-    options.platform === 'win32' ? `${options.target}.old` : (options.backupPath ?? `${options.target}.old`);
+    options.platform === 'win32'
+      ? windowsBackupPath(options.target, options.pid)
+      : (options.backupPath ?? `${options.target}.old`);
   await options.rename(options.target, backup);
   try {
     await options.rename(options.staged, options.target);
@@ -80,7 +87,7 @@ export const commitStagedBinary = async (options: CommitOptions): Promise<void> 
 export const replaceBinaryForUpdate = async (options: ReplaceOptions): Promise<Verification> => {
   // 阶段一：把旧二进制挪到备份、把新二进制换入。此处任何失败都是系统级错误 → 回滚并 rethrow。
   const platform = options.platform ?? process.platform;
-  const backupPath = platform === 'win32' ? `${options.targetPath}.old` : options.backupPath;
+  const backupPath = platform === 'win32' ? windowsBackupPath(options.targetPath) : options.backupPath;
   try {
     await commitStagedBinary({
       target: options.targetPath,
@@ -111,38 +118,50 @@ export const replaceBinaryForUpdate = async (options: ReplaceOptions): Promise<V
   }
 
   // 成功：清理本次备份后返回。Windows 上旧二进制就是当前运行的进程，无法删除，
-  // 留给下次的 sweepStaleBackups 清理。
+  // 留给之后的 sweepOldBackups 清理。
   await unlinkIfExists(backupPath).catch((err: unknown) => {
     if (platform !== 'win32') throw err;
   });
   return verification;
 };
 
-export const sweepStaleBackups = async (targetPath: string): Promise<void> => {
+// Every Windows backup beside `target` (`<exe>.old-<pid>`, or a fixed `<exe>.old` from an older release),
+// best effort: one that is still some process's running image stays until a later sweep.
+const sweepOldBackups = async (target: string, platform: NodeJS.Platform): Promise<void> => {
+  const dir = dirname(target);
+  const fold = (name: string): string => (platform === 'win32' ? name.toLowerCase() : name);
+  const old = fold(`${basename(target)}.old`);
+  for (const entry of await fs.readdir(dir).catch(() => [] as string[])) {
+    const name = fold(entry);
+    if (name !== old && !name.startsWith(`${old}-`)) continue;
+    await unlinkIfExists(join(dir, entry)).catch(() => undefined);
+  }
+};
+
+export const sweepStaleBackups = async (
+  targetPath: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> => {
   const dir = dirname(targetPath);
   const base = basename(targetPath);
   const entries = await fs.readdir(dir).catch(() => [] as string[]);
   for (const entry of entries) {
-    if (entry === `${base}.old`) {
-      // On Windows the previous run may still hold the file; the next sweep retries.
-      await unlinkIfExists(join(dir, entry)).catch(() => undefined);
-      continue;
-    }
     if (!entry.startsWith(`${base}.`) || !entry.endsWith('.bak')) continue;
     const middle = entry.slice(base.length + 1, entry.length - '.bak'.length);
     if (middle.length > 0 && !/^\d+(\.\d+)*$/.test(middle)) continue;
     await unlinkIfExists(join(dir, entry));
   }
+  await sweepOldBackups(targetPath, platform);
 };
 
-// Windows cannot delete the previous exe while it is the running image, so the
-// upgrade leaves it at `<exe>.old`; the next process start removes it.
+// Windows cannot delete the previous exe while it is a running image, so each upgrade leaves it at
+// `<exe>.old-<pid>`; every process start removes the ones nothing runs any more.
 export const sweepStartupBackup = async (
   execPath: string = process.execPath,
   platform: NodeJS.Platform = process.platform,
 ): Promise<void> => {
   if (platform !== 'win32') return;
-  await unlinkIfExists(`${execPath}.old`).catch(() => undefined);
+  await sweepOldBackups(execPath, platform);
 };
 
 const verifyInstalledVersion = async (binPath: string, expected: string): Promise<Verification> => {

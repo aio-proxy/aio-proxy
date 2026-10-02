@@ -85,8 +85,11 @@ Shared across all three, replacing libc and objc2:
 - `upgrade` accepts win32 end to end: the tarball entry is `package/bin/aio-proxy.exe`, package-manager
   detection (`upgrade/detect.ts`) recognizes `.exe` launchers and splits `PATH` on `path.delimiter`, and the
   native binary next to the JS shim is `aio-proxy.exe`. Binary self-upgrade keeps `upgrade/binary.ts`'s
-  stage-verify-commit-rollback flow; on Windows the commit renames the running `.exe` to `.old` (allowed
-  for a running image), renames the staged file in, and deletes `.old` on the next start.
+  stage-verify-commit-rollback flow; on Windows the commit renames the running `.exe` to `.old-<pid>` (the
+  PID of the upgrading process; allowed for a running image), renames the staged file in, and sweeps every
+  `.old*` at the next start and after each successful upgrade, best effort: a backup that is still some
+  process's running image (the in-service supervisor's, until it relaunches) stays until a later sweep, and
+  its unique name keeps it from blocking the next upgrade.
 - `update-notify` (the OS desktop notification for a new CLI version) stays macOS and Linux only; Windows CLI
   users see the update in the Dashboard and in `aio-proxy upgrade`, and desktop users get the app's own
   update prompt.
