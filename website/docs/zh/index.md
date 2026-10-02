@@ -25,7 +25,7 @@ features:
     details: 通过 OAuth 登录 ChatGPT、Claude、GitHub Copilot、Google Antigravity、Cursor、xAI Grok 等订阅，作为标准 API 端点使用。
     icon: 🔑
   - title: 一条命令接好 Agent
-    details: '`aiop agent configure` 可直接配置 Codex、Grok Build、OpenCode、Pi 与 OMP，其他工具只需修改 Base URL。'
+    details: '`aiop agent configure` 可直接配置 Codex、Claude Code、Grok Build、OpenCode、Pi 与 OMP，其他工具只需修改 Base URL。'
     icon: 🤖
   - title: 请求全程可见
     details: Dashboard 记录每一次请求与 Provider 尝试的状态、延迟、Token、费用与完整链路，并可导出到 OpenTelemetry。

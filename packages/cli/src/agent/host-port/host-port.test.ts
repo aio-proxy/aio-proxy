@@ -4,6 +4,7 @@ import { AgentOperationError } from '@aio-proxy/server';
 import type { AgentTarget } from '@aio-proxy/types';
 
 import type { AgentCommandDeps } from '../agent';
+import type { ClaudeCodeKeySelector, ClaudeCodeListResult } from '../claude-code';
 import type { CodexDashboardDeps, CodexListResult } from '../codex';
 import type { AgentHost, AgentLocation } from '../hosts';
 import type { LocalIntegrationStatus } from '../managed-installation';
@@ -37,6 +38,8 @@ function portFixture(
     readonly grokNewer?: boolean;
     readonly locationError?: Error;
     readonly grokUninstalled?: boolean;
+    readonly claudeCodeDetected?: boolean;
+    readonly claudeCodeConfigure?: (selectKey: ClaudeCodeKeySelector | undefined) => Promise<unknown>;
   } = {},
 ) {
   let installed = false;
@@ -51,6 +54,14 @@ function portFixture(
     integration: 'static-config',
     configPath: '/home/me/.codex/config.toml',
     activeProviderId: 'openai',
+    status: 'absent',
+    connection: 'not_checked',
+    changedPaths: [],
+  };
+  const claudeCodeList: ClaudeCodeListResult = {
+    target: 'claude-code',
+    integration: 'static-config',
+    configPath: '/home/me/.claude/settings.json',
     status: 'absent',
     connection: 'not_checked',
     changedPaths: [],
@@ -82,6 +93,12 @@ function portFixture(
     randomUUID: () => INSTALLATION,
     now: () => 0,
     codex: { list: async () => codexList },
+    claudeCode: {
+      detected: () => options.claudeCodeDetected ?? true,
+      list: async () => claudeCodeList,
+      configure: options.claudeCodeConfigure,
+      plan: async () => ({ configPath: claudeCodeList.configPath, keyChoices: [{ id: 'choice-1', label: 'Laptop' }] }),
+    },
     grok: {
       inspect: async () => ({
         integrationKind: 'auth-command',
@@ -113,6 +130,7 @@ test('inspect reports each Agent in dashboard order with its local status', asyn
     ['omp', 'outdated'],
     ['codex', 'not_configured'],
     ['grok', 'modified'],
+    ['claude-code', 'not_configured'],
   ]);
   expect(rows.find((row) => row.target === 'grok')).toMatchObject({
     installationId: INSTALLATION,
@@ -142,7 +160,7 @@ test('pending Codex recovery outranks every other Codex status', async () => {
 test('plugin configure returns the new installation and the login step', async () => {
   const { port, install } = portFixture();
   const events = { signal: new AbortController().signal, onDevice: () => undefined };
-  const result = await port.configure('opencode', undefined, events);
+  const result = await port.configure('opencode', {}, events);
   expect(install).toHaveBeenCalledTimes(1);
   expect(result).toEqual({
     target: 'opencode',
@@ -156,7 +174,7 @@ test('plugin configure returns the new installation and the login step', async (
 test('configure of a missing host fails with a classified code', async () => {
   const { port } = portFixture({ codexDetected: false });
   const events = { signal: new AbortController().signal, onDevice: () => undefined };
-  await expect(port.configure('pi', undefined, events)).rejects.toMatchObject({ code: 'host_missing' });
+  await expect(port.configure('pi', {}, events)).rejects.toMatchObject({ code: 'host_missing' });
   await expect(port.codexPlan()).rejects.toMatchObject({ code: 'host_missing' });
 });
 
@@ -165,6 +183,7 @@ test('classifyAgentError maps known CLI failures and leaves the rest unknown', (
     'authorization_denied',
   );
   expect(classifyAgentError(new Error('CODEX_SETUP_ENDPOINT_CHANGED'))?.code).toBe('endpoint_changed');
+  expect(classifyAgentError(new Error('CLAUDE_CODE_ENDPOINT_CHANGED'))?.code).toBe('endpoint_changed');
   expect(classifyAgentError(new Error('Codex provider aio is occupied'))?.code).toBe('occupied_provider_id');
   expect(classifyAgentError(new AgentOperationError('plan_stale'))?.code).toBe('plan_stale');
   expect(classifyAgentError(Object.assign(new Error('denied'), { code: 'EACCES' }))?.code).toBe('path_unavailable');
@@ -180,13 +199,16 @@ test('classifyAgentError maps known CLI failures and leaves the rest unknown', (
   expect(classifyAgentError(new Error('Grok configuration modified: auth.auth_provider_command'))?.code).toBe(
     'configuration_modified',
   );
+  expect(classifyAgentError(new Error('Claude Code managed fields changed: env.ANTHROPIC_AUTH_TOKEN'))?.code).toBe(
+    'configuration_modified',
+  );
   expect(classifyAgentError(new Error('disk full'))).toBeUndefined();
 });
 
 test('a configure that wrote its files stays successful when the follow-up lookup fails', async () => {
   const { port, install } = portFixture({ failAfterInstall: true });
   const events = { signal: new AbortController().signal, onDevice: () => undefined };
-  const result = await port.configure('opencode', undefined, events);
+  const result = await port.configure('opencode', {}, events);
   expect(install).toHaveBeenCalledTimes(1);
   expect(result).toMatchObject({ target: 'opencode', status: 'installed' });
   expect(result.installationId).toBeUndefined();
@@ -195,7 +217,7 @@ test('a configure that wrote its files stays successful when the follow-up looku
 test('an Agent location that became unusable fails as path_unavailable before writing', async () => {
   const { port, install } = portFixture({ locationError: new Error('opencode config path must be absolute') });
   const events = { signal: new AbortController().signal, onDevice: () => undefined };
-  await expect(port.configure('opencode', undefined, events)).rejects.toMatchObject({ code: 'path_unavailable' });
+  await expect(port.configure('opencode', {}, events)).rejects.toMatchObject({ code: 'path_unavailable' });
   await expect(port.remove('opencode', events)).rejects.toMatchObject({ code: 'path_unavailable' });
   expect(install).not.toHaveBeenCalled();
 });
@@ -205,8 +227,50 @@ test('a cancelled operation writes nothing', async () => {
   const controller = new AbortController();
   controller.abort();
   const events = { signal: controller.signal, onDevice: () => undefined };
-  await expect(port.configure('opencode', undefined, events)).rejects.toMatchObject({ code: 'cancelled' });
+  await expect(port.configure('opencode', {}, events)).rejects.toMatchObject({ code: 'cancelled' });
   await expect(port.remove('opencode', events)).rejects.toMatchObject({ code: 'cancelled' });
   await expect(port.restoreCodexMigration(INSTALLATION, events)).rejects.toMatchObject({ code: 'cancelled' });
   expect(install).not.toHaveBeenCalled();
+});
+
+test('claude-code configure uses the submitted key choice and returns a token-free result', async () => {
+  let chosen: unknown;
+  const { port } = portFixture({
+    claudeCodeConfigure: async (selectKey) => {
+      chosen = await selectKey?.([{ id: 'choice-1', label: 'Laptop' }]);
+      return {
+        target: 'claude-code',
+        integration: 'static-config',
+        status: 'configured',
+        configPath: '/home/me/.claude/settings.json',
+        baseUrl: ENDPOINT,
+        credential: 'existing',
+        connection: 'ok',
+      };
+    },
+  });
+  const events = { signal: new AbortController().signal, onDevice: () => undefined };
+  const key = { kind: 'existing', id: 'choice-1' } as const;
+  expect(await port.configure('claude-code', { claudeCode: { key } }, events)).toEqual({
+    target: 'claude-code',
+    status: 'configured',
+    configPath: '/home/me/.claude/settings.json',
+  });
+  expect(chosen).toEqual(key);
+});
+
+test('a claude-code key choice that went stale is a stale plan, and a missing host blocks the plan', async () => {
+  const { port } = portFixture({
+    claudeCodeConfigure: async () => {
+      throw new Error('CREDENTIAL_SELECTION_STALE');
+    },
+  });
+  const events = { signal: new AbortController().signal, onDevice: () => undefined };
+  await expect(port.configure('claude-code', { claudeCode: { key: { kind: 'none' } } }, events)).rejects.toMatchObject({
+    code: 'plan_stale',
+  });
+  expect((await port.claudeCodePlan()).keyChoices).toEqual([{ id: 'choice-1', label: 'Laptop' }]);
+  await expect(portFixture({ claudeCodeDetected: false }).port.claudeCodePlan()).rejects.toMatchObject({
+    code: 'host_missing',
+  });
 });

@@ -49,7 +49,7 @@ flowchart LR
 - **The whole AI SDK ecosystem**: Any [Vercel AI SDK](https://ai-sdk.dev) provider package — official or community — loads as a Provider with `kind: "ai-sdk"` and gets the same conversion, routing, and billing as everything else. If the AI SDK supports a vendor, so does AIO Proxy.
 - **Extend it with plugins**: Every built-in subscription above is a plugin built on the public [`@aio-proxy/plugin-sdk`](https://www.npmjs.com/package/@aio-proxy/plugin-sdk). Write your own for an unsupported service or an internal gateway — OAuth login, model catalog, metadata and pricing included — and install it with `aio-proxy plugin add`.
 - **Routing that survives outages**: Provider priority tiers decide who is tried first, Provider weight splits traffic within a tier, session affinity keeps prompt caches warm, and a failed upstream falls through to the next candidate. Priority, weight, price, and context limits can all be overridden per model, with aliases to unify names.
-- **Coding agents in one command**: `aiop agent configure` wires up Codex, Grok Build, OpenCode, Pi, and oh-my-pi with device approval instead of pasted keys; anything else only needs a base URL.
+- **Coding agents in one command**: `aiop agent configure` wires up Codex, Claude Code, Grok Build, OpenCode, Pi, and oh-my-pi, with device approval instead of pasted keys where the Agent supports it; anything else only needs a base URL.
 - **Requests you can see**: The built-in Dashboard records every request and every Provider attempt with status, latency, tokens, and cost, with full traces exportable to OpenTelemetry.
 - **Local-first, configured your way**: Binds to `127.0.0.1` by default; add caller API keys and a Dashboard password when you expose it. Each Provider can declare multiple protocol endpoints, custom headers, and its own HTTP(S)/SOCKS5 proxy with fallback. Configure in the Dashboard or in a schema-checked JSONC file with `{{env.NAME}}` secrets and hot reload.
 
@@ -442,13 +442,14 @@ Each `label` is optional and only helps identify a key. With at least one key co
 
 ## Agent integrations
 
-aio-proxy supports two integration types: managed plugins for OpenCode, Pi, and oh-my-pi, and a Codex global configuration integration with two authentication modes. Plugin integrations install or update an adapter and keep the Agent's native login flow. The Codex integration edits the global `config.toml`; it does not install a plugin or replace native Codex login. Integrations are global to the current user and do not write project-local Agent config.
+aio-proxy supports two integration types: managed plugins for OpenCode, Pi, and oh-my-pi, and a Codex global configuration integration with two authentication modes. Plugin integrations install or update an adapter and keep the Agent's native login flow. The Codex integration edits the global `config.toml`; it does not install a plugin or replace native Codex login. Claude Code is connected the same way, through two keys in its global `settings.json`. Integrations are global to the current user and do not write project-local Agent config.
 
 ```bash
 aio-proxy agent configure opencode
 aio-proxy agent configure pi
 aio-proxy agent configure omp
 aiop agent configure codex
+aiop agent configure claude-code
 aio-proxy agent list --check
 aio-proxy agent list --authorizations
 aiop agent list --check
@@ -461,6 +462,12 @@ The Dashboard's **Agents** page shows the same state and, when opened on the mac
 Supported floors are OpenCode 1.17.10, Pi 0.84.2, and oh-my-pi 17.3.7. After configure, sign in with `opencode auth login --provider aio-proxy` or `/login aio-proxy` in Pi and oh-my-pi. Reload or restart the Agent so it loads the updated adapter. `aio-proxy upgrade` refreshes managed adapters the same way and also requires a reload.
 
 When caller keys are enforced, set `server.password` so Device Approval can authorize the Agent. `aio-proxy agent remove` revokes the installation and deletes aio-proxy's managed files; it does not log the Agent out of its own host account. If the local control plane is offline, remove refuses and leaves files in place.
+
+### Claude Code configuration
+
+`aiop agent configure claude-code` merges two keys into the `env` block of the global `~/.claude/settings.json`, or of the directory selected by `CLAUDE_CONFIG_DIR`: `ANTHROPIC_BASE_URL`, set to the proxy's loopback address, and `ANTHROPIC_AUTH_TOKEN`. The token is required, because with a base URL alone Claude Code keeps using its saved claude.ai login. When `server.apiKeys` is empty, the command writes the non-secret `aio-proxy-local` placeholder and asks nothing. When keys exist, you choose one in the terminal or on the Dashboard's Agents page; it is checked against the proxy and stored as plain text in `settings.json`, which is then restricted to your user. A non-interactive run with keys configured fails without writing anything. Restart Claude Code for the change to take effect.
+
+Every other setting and `env` entry is left as it is, and a symlinked or unparseable `settings.json` is refused. Ownership is recorded in `~/.claude/.aio-proxy/claude-code-config.json`, outside the file Claude Code rewrites. `aiop agent list` reports the integration as `managed`, or as `modified` with the fields you edited, and `--check` probes the proxy with the configured token. `aiop agent remove claude-code` works offline and puts the two keys back to what they were, skipping any you have edited since; proxy keys are retained. Project-level `.claude/settings.json` files are never touched.
 
 ### Codex configuration
 

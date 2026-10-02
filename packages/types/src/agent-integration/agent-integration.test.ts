@@ -184,7 +184,7 @@ test('recognizes both reserved Agent credential families', () => {
   expect(hasReservedAgentTokenPrefix('aio_agent_rt_v1_x')).toBe(true);
   expect(hasReservedAgentTokenPrefix('ordinary-static-key')).toBe(false);
   expect(AgentPluginTargetSchema.options).toEqual(['opencode', 'pi', 'omp']);
-  expect(AgentTargetSchema.options).toEqual(['opencode', 'pi', 'omp', 'codex', 'grok']);
+  expect(AgentTargetSchema.options).toEqual(['opencode', 'pi', 'omp', 'codex', 'grok', 'claude-code']);
 });
 
 test('accepts Codex device credentials while keeping catalog negotiation plugin-only', () => {

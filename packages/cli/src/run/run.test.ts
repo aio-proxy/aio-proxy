@@ -57,7 +57,7 @@ test('local Dashboard setup installs Pi and OMP from the injected adapter assets
       });
       if (setup === undefined) throw new Error('local Dashboard setup was not enabled');
       for (const target of ['pi', 'omp']) {
-        await setup.agentHost.configure(target, undefined, {
+        await setup.agentHost.configure(target, {}, {
           signal: new AbortController().signal,
           onDevice: () => {},
         });

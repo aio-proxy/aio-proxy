@@ -62,6 +62,8 @@ export ANTHROPIC_API_KEY="sk-aio-proxy"
 claude
 ```
 
+To make this permanent without exporting variables, run `aio-proxy agent configure claude-code`; see the [Claude Code Integration Guide](./agents/claude-code.md).
+
 ---
 
 ## Chat UIs (Cherry Studio, NextChat, LobeChat)

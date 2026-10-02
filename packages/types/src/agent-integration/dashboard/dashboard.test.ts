@@ -16,3 +16,13 @@ test('codex setup input is required exactly for codex configure', () => {
   expect(AgentOperationRequestSchema.safeParse({ kind: 'configure', target: 'grok', codex }).success).toBe(false);
   expect(AgentOperationRequestSchema.safeParse({ kind: 'configure', target: 'grok' }).success).toBe(true);
 });
+
+test('claude-code configure always carries an explicit key selection', () => {
+  const claudeCode = { key: { kind: 'none' } };
+  const request = { kind: 'configure', target: 'claude-code' };
+  expect(AgentOperationRequestSchema.safeParse({ ...request, claudeCode }).success).toBe(true);
+  expect(AgentOperationRequestSchema.safeParse(request).success).toBe(false);
+  expect(AgentOperationRequestSchema.safeParse({ kind: 'configure', target: 'grok', claudeCode }).success).toBe(false);
+  const empty = { ...request, claudeCode: { key: { kind: 'existing', id: '' } } };
+  expect(AgentOperationRequestSchema.safeParse(empty).success).toBe(false);
+});

@@ -26,6 +26,7 @@ const descriptor = (
 /** Display order of the dashboard Agents page. */
 export const AGENT_DESCRIPTORS: readonly AgentDescriptor[] = [
   descriptor('codex', 'static-config', { catalog: 'not_applicable', platformSupport: 'verified' }),
+  descriptor('claude-code', 'static-config', { catalog: 'not_applicable', platformSupport: 'verified' }),
   descriptor('grok', 'auth-command', {
     catalog: 'host_managed',
     loginCommand: 'grok login',
@@ -107,6 +108,24 @@ export const CodexSetupPlanSchema = z.strictObject({
 });
 export type CodexSetupPlan = z.output<typeof CodexSetupPlanSchema>;
 
+export const ClaudeCodeSetupPlanSchema = z.strictObject({
+  configPath: z.string(),
+  keyChoices: z.array(z.strictObject({ id: z.string(), label: z.string() })),
+});
+export type ClaudeCodeSetupPlan = z.output<typeof ClaudeCodeSetupPlanSchema>;
+
+/** The opaque ID of a proxy key the user picked; never empty. */
+export const ClaudeCodeKeyIdSchema = z.string().min(1);
+
+/** `none` is only accepted while the proxy has no API keys; a key is never picked on the user's behalf. */
+export const ClaudeCodeConfigureInputSchema = z.strictObject({
+  key: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('none') }),
+    z.strictObject({ kind: z.literal('existing'), id: ClaudeCodeKeyIdSchema }),
+  ]),
+});
+export type ClaudeCodeConfigureInput = z.output<typeof ClaudeCodeConfigureInputSchema>;
+
 /** Codex's built-in model providers; aio-proxy never writes a managed provider under these IDs. */
 export const CODEX_RESERVED_PROVIDER_IDS: readonly string[] = ['openai', 'ollama', 'lmstudio', 'amazon-bedrock'];
 
@@ -145,6 +164,7 @@ export const AgentOperationRequestSchema = z
       kind: z.literal('configure'),
       target: AgentTargetSchema,
       codex: CodexConfigureInputSchema.optional(),
+      claudeCode: ClaudeCodeConfigureInputSchema.optional(),
     }),
     z.strictObject({ kind: z.literal('remove'), target: AgentTargetSchema }),
     z.strictObject({ kind: z.literal('restore_migration'), target: z.literal('codex'), operationId: z.uuid() }),
@@ -153,6 +173,11 @@ export const AgentOperationRequestSchema = z
     if (request.kind !== 'configure') return;
     if ((request.target === 'codex') !== (request.codex !== undefined))
       context.addIssue({ code: 'custom', message: 'codex input is required for codex and only codex' });
+    if ((request.target === 'claude-code') !== (request.claudeCode !== undefined))
+      context.addIssue({
+        code: 'custom',
+        message: 'claudeCode input is required for claude-code and only claude-code',
+      });
   });
 export type AgentOperationRequest = z.output<typeof AgentOperationRequestSchema>;
 export type AgentOperationKind = AgentOperationRequest['kind'];

@@ -4,7 +4,7 @@ description: 了解 AIO Proxy 原生 Agent 集成体系（aio-proxy agent），�
 
 # 原生 Agent 集成概述
 
-现代 AI 编码 Agent（如 OpenAI Codex、xAI Grok Build、OpenCode、Pi、OMP）通常作为本地 CLI 或桌面应用运行，各自拥有专属的配置结构、会话存储与认证机制。
+现代 AI 编码 Agent（如 OpenAI Codex、Anthropic Claude Code、xAI Grok Build、OpenCode、Pi、OMP）通常作为本地 CLI 或桌面应用运行，各自拥有专属的配置结构、会话存储与认证机制。
 
 手动将这些工具对接到本地代理往往需要复制 Base URL、修改深层配置文件，并在更新后重复维护。为此，AIO Proxy 提供了原生的 `aio-proxy agent` 命令体系：
 
@@ -16,13 +16,14 @@ description: 了解 AIO Proxy 原生 Agent 集成体系（aio-proxy agent），�
 
 ## 受支持的 Agent 清单
 
-| Agent 标识 | 目标工具                   | 集成机制与原理                                       | 支持详情                           |
-| :--------- | :------------------------- | :--------------------------------------------------- | :--------------------------------- |
-| `codex`    | OpenAI Codex CLI / Desktop | 交互式向导配置提供商、管理凭据，支持历史会话无损迁移 | [Codex 接入指南](./codex.md)       |
-| `grok`     | xAI Grok Build             | 注入本地 Auth Helper，通过控制台设备码完成一键授权   | [Grok 接入指南](./grok.md)         |
-| `opencode` | OpenCode                   | 自动解析配置目录并注入动态插件模块，支持原生模型协商 | [OpenCode 接入指南](./opencode.md) |
-| `pi`       | Pi Coding Agent            | 探测 `~/.pi/agent/extensions` 扩展体系并注入桥接模块 | [Pi 与 OMP 接入指南](./pi-omp.md)  |
-| `omp`      | Oh-My-Pi (OMP)             | 解析 OMP 活动配置并注入扩展，支持 `/login aio-proxy` | [Pi 与 OMP 接入指南](./pi-omp.md)  |
+| Agent 标识    | 目标工具                   | 集成机制与原理                                       | 支持详情                                 |
+| :------------ | :------------------------- | :--------------------------------------------------- | :--------------------------------------- |
+| `codex`       | OpenAI Codex CLI / Desktop | 交互式向导配置提供商、管理凭据，支持历史会话无损迁移 | [Codex 接入指南](./codex.md)             |
+| `claude-code` | Anthropic Claude Code      | 将代理地址与 Token 合并写入全局 `settings.json`      | [Claude Code 接入指南](./claude-code.md) |
+| `grok`        | xAI Grok Build             | 注入本地 Auth Helper，通过控制台设备码完成一键授权   | [Grok 接入指南](./grok.md)               |
+| `opencode`    | OpenCode                   | 自动解析配置目录并注入动态插件模块，支持原生模型协商 | [OpenCode 接入指南](./opencode.md)       |
+| `pi`          | Pi Coding Agent            | 探测 `~/.pi/agent/extensions` 扩展体系并注入桥接模块 | [Pi 与 OMP 接入指南](./pi-omp.md)        |
+| `omp`         | Oh-My-Pi (OMP)             | 解析 OMP 活动配置并注入扩展，支持 `/login aio-proxy` | [Pi 与 OMP 接入指南](./pi-omp.md)        |
 
 ---
 
@@ -47,7 +48,7 @@ aio-proxy agent list --check
 当需要将某个 Agent 还原至接入前状态时，运行：
 
 ```sh
-aio-proxy agent remove <codex|grok|opencode|pi|omp>
+aio-proxy agent remove <codex|claude-code|grok|opencode|pi|omp>
 ```
 
 AIO Proxy 会：

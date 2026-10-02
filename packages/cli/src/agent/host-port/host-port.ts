@@ -9,6 +9,7 @@ import {
 } from '@aio-proxy/types';
 
 import { agentConfigure, agentRemove, commandDeps, type AgentCommandDeps, type AgentListTargetResult } from '../agent';
+import type { ClaudeCodeListResult } from '../claude-code';
 import {
   buildCodexSetupPlan,
   configureCodexFromDashboard,
@@ -30,13 +31,21 @@ export type AgentHostPortDeps = {
 const ERROR_MESSAGES: ReadonlyArray<readonly [RegExp, AgentOperationErrorCode]> = [
   [/ is not installed$/u, 'host_missing'],
   [/^managed installation is required$/u, 'not_configured'],
-  [/^CODEX_(SETUP_ENDPOINT_CHANGED|AUTH_ENDPOINT_OR_PROVIDER_CHANGED)$/u, 'endpoint_changed'],
+  [
+    /^(CODEX_SETUP_ENDPOINT_CHANGED|CODEX_AUTH_ENDPOINT_OR_PROVIDER_CHANGED|CLAUDE_CODE_ENDPOINT_CHANGED)$/u,
+    'endpoint_changed',
+  ],
   // A blocked revocation leaves a recovery journal behind, like an interrupted authorization.
   [/^CODEX_AUTH_(OPERATION_PENDING|REVOKE_BLOCKED)$/u, 'recovery_required'],
   [/operation is pending$|^Timed out waiting for process lock: |^Grok lock unverifiable$/u, 'locked'],
   [/ is occupied$/u, 'occupied_provider_id'],
+  // The key list changed after the form was loaded, or the form skipped a choice that is now required.
+  [/^CREDENTIAL_(SELECTION_STALE|NO_SELECTION)$/u, 'plan_stale'],
   // Configure never overwrites edited managed fields; the user removes the integration and configures again.
-  [/^(Codex managed fields changed|Grok configuration modified): /u, 'configuration_modified'],
+  [
+    /^(Codex managed fields changed|Grok configuration modified|Claude Code managed fields changed): /u,
+    'configuration_modified',
+  ],
 ];
 
 // Filesystem failures that mean the Agent's directory cannot be used as configured.
@@ -93,6 +102,11 @@ const codexStatus = (codex: CodexListResult, detected: boolean, recovery: boolea
   return codex.status === 'managed' ? 'configured' : codex.status;
 };
 
+const claudeCodeStatus = (claudeCode: ClaudeCodeListResult, detected: boolean): AgentLocalStatus => {
+  if (claudeCode.status === 'absent') return detected ? 'not_configured' : 'not_installed';
+  return claudeCode.status === 'managed' ? 'configured' : claudeCode.status;
+};
+
 const configPathOf = async (target: AgentTarget, deps: AgentCommandDeps): Promise<string | undefined> => {
   try {
     const location = await deps.resolveLocation(target);
@@ -137,7 +151,17 @@ async function inspectLocal(deps: AgentHostPortDeps): Promise<readonly AgentLoca
       ...(list.codex.authMode === undefined ? {} : { authMode: list.codex.authMode }),
     },
   });
-  const order = new Map(['opencode', 'pi', 'omp', 'codex', 'grok'].map((target, index) => [target, index]));
+  const claudeCodeDetected = deps.command.claudeCode.detected();
+  rows.push({
+    target: 'claude-code',
+    host: { detected: claudeCodeDetected, support: 'unknown' },
+    status: claudeCodeStatus(list.claudeCode, claudeCodeDetected),
+    configPath: list.claudeCode.configPath,
+    ...(list.claudeCode.endpointMatches === undefined ? {} : { endpointMatches: list.claudeCode.endpointMatches }),
+  });
+  const order = new Map(
+    ['opencode', 'pi', 'omp', 'codex', 'grok', 'claude-code'].map((target, index) => [target, index]),
+  );
   return rows.sort((left, right) => order.get(left.target)! - order.get(right.target)!);
 }
 
@@ -178,7 +202,10 @@ export function createAgentHostPort(
   // Plugin and Grok writes are short, lock-guarded file transactions; stopping one halfway would leave
   // partial state, so cancellation is honoured before the write starts rather than during it. The
   // location is resolved here too, because it may have become unusable since the snapshot.
-  const beforeWrite = async (target: Exclude<AgentTarget, 'codex'>, events: { readonly signal: AbortSignal }) => {
+  const beforeWrite = async (
+    target: Exclude<AgentTarget, 'codex' | 'claude-code'>,
+    events: { readonly signal: AbortSignal },
+  ) => {
     if (events.signal.aborted) throw new AgentOperationError('cancelled');
     try {
       await deps.command.resolveLocation(target);
@@ -189,8 +216,14 @@ export function createAgentHostPort(
   };
   return {
     inspect,
-    configure: (target, codex, events) =>
+    configure: (target, { codex, claudeCode }, events) =>
       classified(async () => {
+        if (target === 'claude-code') {
+          if (claudeCode === undefined) throw new AgentOperationError('unknown');
+          if (events.signal.aborted) throw new AgentOperationError('cancelled');
+          const result = await deps.command.claudeCode.configure(async () => claudeCode.key);
+          return { target, status: result.status, configPath: result.configPath };
+        }
         if (target === 'codex') {
           requireCodex();
           if (codex === undefined) throw new AgentOperationError('unknown');
@@ -221,9 +254,16 @@ export function createAgentHostPort(
       }),
     remove: (target, events) =>
       classified(async () => {
-        if (target !== 'codex') await beforeWrite(target, events);
+        if (target !== 'codex' && target !== 'claude-code') await beforeWrite(target, events);
         else if (events.signal.aborted) throw new AgentOperationError('cancelled');
         const result = await agentRemove(target, deps.command);
+        if (result.target === 'claude-code')
+          return {
+            target,
+            status: result.status,
+            configPath: result.configPath,
+            preservedPaths: [...result.preservedPaths],
+          };
         if ('revokeStatus' in result)
           return {
             target,
@@ -249,6 +289,11 @@ export function createAgentHostPort(
       classified(async () => {
         requireCodex();
         return buildCodexSetupPlan(deps.codex());
+      }),
+    claudeCodePlan: () =>
+      classified(async () => {
+        if (!deps.command.claudeCode.detected()) throw new AgentOperationError('host_missing');
+        return deps.command.claudeCode.plan();
       }),
     restoreCodexMigration: (operationId, events) =>
       classified(async () => {

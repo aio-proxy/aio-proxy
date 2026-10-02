@@ -40,8 +40,10 @@
       "title_plugin_prune": "aio-proxy · Prune plugins",
       "title_provider_login": "aio-proxy · Provider login",
       "title_codex_configure": "aio-proxy · Configure Codex",
+      "title_claude_code_configure": "aio-proxy · Configure Claude Code",
       "outro_provider_login": "Signed in",
       "outro_codex_configure": "Codex configuration finished",
+      "outro_claude_code_configure": "Claude Code configuration finished",
       "provider_list_empty": "No providers",
       "status_deep_unexpected": "Provider health data could not be displayed",
       "header_name": "name",
@@ -433,6 +435,19 @@
         "restore_option": "Restore a Codex migration by operation UUID",
         "pending_recovery": "A previous Codex configuration operation is pending. Recover it before continuing?",
         "not_installed": "Codex CLI was not found."
+      },
+      "claude_code": {
+        "configured": "claude-code: configuration {status} at {configPath}.",
+        "credential_placeholder": "AIO Proxy has no API key authentication enabled, so a non-secret placeholder token was written; without one, Claude Code keeps using its claude.ai login.",
+        "credential_existing": "The selected AIO Proxy API key was written to ANTHROPIC_AUTH_TOKEN.",
+        "offline": "Claude Code configuration saved, but the proxy could not be verified.",
+        "restart": "Restart Claude Code for the change to take effect.",
+        "key_required": "AIO Proxy API keys are enabled, so one must be chosen. Run this command in an interactive terminal or use the Dashboard Agents page; no files were changed.",
+        "credential_failed": "The AIO Proxy API key could not be resolved ({code}); no files were changed.",
+        "endpoint_changed": "The aio-proxy address changed while Claude Code was being configured; no files were changed. Run the command again.",
+        "modified": "Claude Code settings managed by AIO Proxy were edited: {fields}. Run aiop agent remove claude-code, then configure again; no files were changed.",
+        "removed": "Claude Code managed settings {status} at {configPath}.",
+        "preserved": "Kept fields you edited: {fields}."
       },
       "grok_login": "Sign in with: grok login",
       "grok_models": "List models with grok models, then start a session with grok -m <model-id>.",
@@ -1757,7 +1772,7 @@
         "authorization_denied": "The device was denied.",
         "authorization_expired": "The approval request expired.",
         "recovery_required": "An interrupted setup must be recovered with the CLI first.",
-        "plan_stale": "Codex changed while you were filling in the form. Review it and save again.",
+        "plan_stale": "The setup changed while you were filling in the form. Review it and save again.",
         "cancelled": "Cancelled.",
         "operation_in_progress": "An operation for this Agent is already running.",
         "unknown": "Something went wrong. Check the AIO Proxy logs.",
@@ -1796,6 +1811,7 @@
         "actions": "Actions",
         "empty": "No authorizations yet.",
         "codex_keep": "Keep-ChatGPT mode reaches AIO Proxy with an API key, so it has no authorization here.",
+        "claude_code_static": "Claude Code reaches AIO Proxy with an API key or a placeholder token, so it has no authorization here.",
         "filter": "Filter authorizations",
         "filter_placeholder": "Search installation ID or version"
       },
@@ -1841,6 +1857,11 @@
         "conflict": "config.toml has AIO Proxy entries that conflict with your edits. Resolve them with the CLI.",
         "submit": "Save",
         "current": "Provider {providerId}, {mode}"
+      },
+      "claude_code": {
+        "key_help": "Written to ANTHROPIC_AUTH_TOKEN in Claude Code's settings.json.",
+        "key_placeholder": "Choose an API key",
+        "key_required": "Choose the API key Claude Code should use."
       },
       "card": {
         "via": {

@@ -81,8 +81,8 @@ Options:
 ### 5. 原生 Agent 集成 (`agent`)
 
 - `aio-proxy agent list`：列出已识别的 Agent 宿主环境及配置漂移检测报告。
-- `aio-proxy agent configure <opencode|pi|omp|codex|grok>`：一键配置指定 Agent，免贴 Token 安全桥接。
-- `aio-proxy agent remove <opencode|pi|omp|codex|grok>`：从指定 Agent 中移除 AIO Proxy 集成并还原用户配置。
+- `aio-proxy agent configure <opencode|pi|omp|codex|grok|claude-code>`：一键配置指定 Agent，免贴 Token 安全桥接。
+- `aio-proxy agent remove <opencode|pi|omp|codex|grok|claude-code>`：从指定 Agent 中移除 AIO Proxy 集成并还原用户配置。
 - `aio-proxy agent revoke <installation-id>`：根据安装 ID 撤销特定客户端的访问令牌。
 - `aio-proxy agent auth <codex|grok>`：触发 Agent 专用认证流程。
 

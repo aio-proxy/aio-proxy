@@ -380,6 +380,8 @@ export function formatCliError(err: unknown, locale: Parameters<typeof formatUse
     const modified = /^Grok configuration modified: (.+)$/u.exec(err.message);
     if (modified?.[1] !== undefined) return { message: m['cli.agent.configuration_modified']({ fields: modified[1] }) };
     if (err.message === 'Grok endpoint changed') return { message: m['cli.agent.grok_endpoint_changed']() };
+    const edited = /^Claude Code managed fields changed: (.+)$/u.exec(err.message);
+    if (edited?.[1] !== undefined) return { message: m['cli.agent.claude_code.modified']({ fields: edited[1] }) };
   }
   if (err instanceof CommanderError || isKnownCliUserError(err)) {
     return { message: err.message };

@@ -40,8 +40,10 @@
       "title_plugin_prune": "aio-proxy · プラグインを整理",
       "title_provider_login": "aio-proxy · Provider にログイン",
       "title_codex_configure": "aio-proxy · Codex を設定",
+      "title_claude_code_configure": "aio-proxy · Claude Code を設定",
       "outro_provider_login": "ログインしました",
       "outro_codex_configure": "Codex の設定が完了しました",
+      "outro_claude_code_configure": "Claude Code の設定が完了しました",
       "provider_list_empty": "Provider はありません",
       "status_deep_unexpected": "Provider の健全性データを表示できません",
       "header_name": "名前",
@@ -433,6 +435,19 @@
         "restore_option": "操作 UUID で Codex 移行を復元",
         "pending_recovery": "前回の Codex 設定操作が保留中です。続行する前に復元しますか？",
         "not_installed": "Codex CLI が見つかりません。"
+      },
+      "claude_code": {
+        "configured": "claude-code: 設定を {configPath} に {status} しました。",
+        "credential_placeholder": "AIO Proxy では API キー認証が有効でないため、秘密ではないプレースホルダートークンを書き込みました。これがないと Claude Code は claude.ai ログインを使い続けます。",
+        "credential_existing": "選択した AIO Proxy API キーを ANTHROPIC_AUTH_TOKEN に書き込みました。",
+        "offline": "Claude Code の設定を保存しましたが、プロキシを確認できませんでした。",
+        "restart": "変更を反映するには Claude Code を再起動してください。",
+        "key_required": "AIO Proxy で API キーが有効なため、キーを選択する必要があります。対話型ターミナルでこのコマンドを実行するか、ダッシュボードの Agents ページを使用してください。ファイルは変更されていません。",
+        "credential_failed": "AIO Proxy の API キーを確定できませんでした（{code}）。ファイルは変更されていません。",
+        "endpoint_changed": "Claude Code の設定中に aio-proxy のアドレスが変わりました。ファイルは変更されていません。もう一度コマンドを実行してください。",
+        "modified": "AIO Proxy が管理する Claude Code 設定が変更されています: {fields}。aiop agent remove claude-code を実行してから再設定してください。ファイルは変更されていません。",
+        "removed": "Claude Code の管理設定を {configPath} から {status} しました。",
+        "preserved": "編集済みのフィールドは保持しました: {fields}。"
       },
       "grok_login": "次のコマンドでサインインします: grok login",
       "grok_models": "grok models でモデルを一覧し、grok -m <model-id> でセッションを開始します。",
@@ -1757,7 +1772,7 @@
         "authorization_denied": "デバイスは拒否されました。",
         "authorization_expired": "承認リクエストの期限が切れました。",
         "recovery_required": "中断したセットアップを CLI で先に復旧してください。",
-        "plan_stale": "入力中に Codex の状態が変わりました。確認してもう一度保存してください。",
+        "plan_stale": "入力中に設定の状態が変わりました。確認してもう一度保存してください。",
         "cancelled": "キャンセルしました。",
         "operation_in_progress": "この Agent の操作はすでに実行中です。",
         "unknown": "問題が発生しました。AIO Proxy のログを確認してください。",
@@ -1796,6 +1811,7 @@
         "actions": "操作",
         "empty": "認可はまだありません。",
         "codex_keep": "ChatGPT ログイン維持モードは API キーで AIO Proxy に接続するため、ここに認可はありません。",
+        "claude_code_static": "Claude Code は API キーまたはプレースホルダートークンで AIO Proxy に接続するため、ここに認可はありません。",
         "filter": "認可を絞り込む",
         "filter_placeholder": "Installation ID またはバージョンで検索"
       },
@@ -1841,6 +1857,11 @@
         "conflict": "config.toml の AIO Proxy エントリーがあなたの編集と競合しています。CLI で解決してください。",
         "submit": "保存",
         "current": "プロバイダー {providerId}、{mode}"
+      },
+      "claude_code": {
+        "key_help": "Claude Code の settings.json の ANTHROPIC_AUTH_TOKEN に書き込まれます。",
+        "key_placeholder": "API キーを選択",
+        "key_required": "Claude Code が使う API キーを選択してください。"
       },
       "card": {
         "via": {

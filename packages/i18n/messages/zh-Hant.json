@@ -40,8 +40,10 @@
       "title_plugin_prune": "aio-proxy · 清理外掛",
       "title_provider_login": "aio-proxy · 登入 Provider",
       "title_codex_configure": "aio-proxy · 設定 Codex",
+      "title_claude_code_configure": "aio-proxy · 設定 Claude Code",
       "outro_provider_login": "登入完成",
       "outro_codex_configure": "Codex 設定完成",
+      "outro_claude_code_configure": "Claude Code 設定完成",
       "provider_list_empty": "沒有 Provider",
       "status_deep_unexpected": "無法顯示 Provider 健康資料",
       "header_name": "名稱",
@@ -433,6 +435,19 @@
         "restore_option": "依操作 UUID 復原 Codex 移轉",
         "pending_recovery": "先前的 Codex 設定操作仍在等待處理。是否在繼續前復原？",
         "not_installed": "找不到 Codex CLI。"
+      },
+      "claude_code": {
+        "configured": "已在 {configPath} 完成 claude-code 設定（{status}）。",
+        "credential_placeholder": "AIO Proxy 未啟用 API Key 驗證，已寫入非機密的佔位 token；沒有它，Claude Code 會繼續使用 claude.ai 登入。",
+        "credential_existing": "已將所選的 AIO Proxy API Key 寫入 ANTHROPIC_AUTH_TOKEN。",
+        "offline": "已儲存 Claude Code 設定，但無法驗證代理程式。",
+        "restart": "請重新啟動 Claude Code 以套用設定。",
+        "key_required": "AIO Proxy 已啟用 API Key，必須選擇一把 Key。請在互動式終端機執行此命令，或使用 Dashboard 的 Agents 頁面；未修改檔案。",
+        "credential_failed": "無法確定要使用的 AIO Proxy API Key（{code}）；未修改檔案。",
+        "endpoint_changed": "設定 Claude Code 期間 aio-proxy 位址發生了變化；未修改檔案。請重新執行此命令。",
+        "modified": "AIO Proxy 管理的 Claude Code 設定已被修改：{fields}。請先執行 aiop agent remove claude-code，再重新設定；未修改檔案。",
+        "removed": "已從 {configPath} {status} Claude Code 受管理設定。",
+        "preserved": "保留了你修改過的欄位：{fields}。"
       },
       "grok_login": "使用以下命令登入：grok login",
       "grok_models": "使用 grok models 列出模型，然後用 grok -m <model-id> 開始工作階段。",
@@ -1757,7 +1772,7 @@
         "authorization_denied": "裝置已被拒絕。",
         "authorization_expired": "授權請求已過期。",
         "recovery_required": "有中斷的設定需要先用 CLI 復原。",
-        "plan_stale": "填寫表單期間 Codex 狀態發生了變化，請檢查後重新儲存。",
+        "plan_stale": "填寫表單期間設定狀態發生了變化，請檢查後重新儲存。",
         "cancelled": "已取消。",
         "operation_in_progress": "該 Agent 已有操作在進行中。",
         "unknown": "發生錯誤，請查看 AIO Proxy 日誌。",
@@ -1796,6 +1811,7 @@
         "actions": "操作",
         "empty": "暫無授權。",
         "codex_keep": "保留 ChatGPT 登入模式通過 API Key 存取 AIO Proxy，因此這裡沒有授權紀錄。",
+        "claude_code_static": "Claude Code 通過 API Key 或佔位 token 存取 AIO Proxy，因此這裡沒有授權紀錄。",
         "filter": "篩選授權",
         "filter_placeholder": "搜尋 Installation ID 或版本"
       },
@@ -1841,6 +1857,11 @@
         "conflict": "config.toml 中的 AIO Proxy 項目與你的修改衝突，請用 CLI 處理。",
         "submit": "儲存",
         "current": "Provider {providerId}，{mode}"
+      },
+      "claude_code": {
+        "key_help": "將寫入 Claude Code settings.json 的 ANTHROPIC_AUTH_TOKEN。",
+        "key_placeholder": "選擇 API Key",
+        "key_required": "請選擇 Claude Code 要使用的 API Key。"
       },
       "card": {
         "via": {

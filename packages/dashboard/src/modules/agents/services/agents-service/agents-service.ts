@@ -3,6 +3,7 @@ import type {
   AgentOperationRequest,
   AgentOperationState,
   AgentsSnapshot,
+  ClaudeCodeSetupPlan,
   CodexSetupPlan,
 } from '@aio-proxy/types';
 import { queryOptions } from '@tanstack/react-query';
@@ -55,6 +56,13 @@ export const agentCodexPlanQueryOptions = () =>
   queryOptions({
     queryKey: queryKeys.agentCodexPlan,
     queryFn: async (): Promise<CodexSetupPlan> => requireOk(await agents.codex.plan.$get()),
+    staleTime: 0,
+  });
+
+export const agentClaudeCodePlanQueryOptions = () =>
+  queryOptions({
+    queryKey: queryKeys.agentClaudeCodePlan,
+    queryFn: async (): Promise<ClaudeCodeSetupPlan> => requireOk(await agents['claude-code'].plan.$get()),
     staleTime: 0,
   });
 
