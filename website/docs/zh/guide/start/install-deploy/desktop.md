@@ -21,7 +21,7 @@ AIO Proxy 桌面客户端是一个 macOS 菜单栏应用。它自带代理，无
 首次启动时，如果本机还没有安装代理，客户端会把它安装为[后台守护服务](./service)并启动，地址为 `http://127.0.0.1:9317`。它与命令行版本共用 `~/.aio-proxy/config.jsonc`，接下来按[快速开始](../getting-started)添加第一个 Provider 即可。
 
 :::warning 请从应用程序文件夹运行
-只有从 `/Applications` 或 `~/Applications` 运行时，客户端才会安装后台服务、登录项与 `aiop` 命令。直接从磁盘映像或下载文件夹打开时，它以只读方式运行，并提示 **Move to Applications**。
+只有从 `/Applications` 或 `~/Applications` 运行时，客户端才会安装后台服务与登录项；`aiop` 命令则要求应用位于 `/Applications`。直接从磁盘映像或下载文件夹打开时，它以只读方式运行，并提示 **Move to Applications**。
 :::
 
 ---
@@ -50,7 +50,7 @@ AIO Proxy 桌面客户端是一个 macOS 菜单栏应用。它自带代理，无
 
 ## 卸载
 
-退出客户端后代理仍会继续运行，因为代理由后台服务托管，而不是由客户端托管。要同时移除两者：
+退出客户端后代理仍会继续运行，因为代理由后台服务托管，而不是由客户端托管。要同时移除两者，运行应用内置的命令行工具（如果应用装在 `~/Applications`，请相应替换路径）：
 
 ```sh
 "/Applications/AIO Proxy.app/Contents/MacOS/aio-proxy" service uninstall

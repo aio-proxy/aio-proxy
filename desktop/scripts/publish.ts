@@ -20,6 +20,7 @@ import {
   feedProblems,
   feedState,
   itemProblems,
+  ownsLatestDownload,
   parseAppcast,
   publicKeyFromPrivate,
   verifyEdSignature,
@@ -195,7 +196,7 @@ try {
   // The website's download button links to one unversioned name, which must only ever hold the feed's
   // newest version. It follows the feed commit, so a failed upload here is redone by re-dispatching.
   step(`7. ${LATEST_DMG}`);
-  if (previous.every((item) => Bun.semver.order(item.version, version) <= 0)) {
+  if (ownsLatestDownload(previous, version)) {
     copyFileSync(dmg, join(feedDir, LATEST_DMG));
     // No waitForDownload: right after --clobber the CDN may still serve the previous bytes.
     await $`gh release upload ${FEED_TAG} ${join(feedDir, LATEST_DMG)} --repo ${REPO} --clobber`;

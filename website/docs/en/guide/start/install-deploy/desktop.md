@@ -21,7 +21,7 @@ The app is a companion, not a second Dashboard. Providers, routing, and API keys
 On first launch, if no proxy is installed yet, the app installs and starts it as a [background service](./service) on `http://127.0.0.1:9317`. It uses the same `~/.aio-proxy/config.jsonc` as the CLI, so continue with [Quick Start](../getting-started) to add your first Provider.
 
 :::warning Run it from Applications
-The app only installs the service, the launch-at-login item, and the `aiop` command when it runs from `/Applications` or `~/Applications`. Opened from the disk image or Downloads, it runs read-only and shows **Move to Applications**.
+The app only installs the service and the launch-at-login item when it runs from `/Applications` or `~/Applications`; the `aiop` command needs `/Applications`. Opened from the disk image or Downloads, it runs read-only and shows **Move to Applications**.
 :::
 
 ---
@@ -50,7 +50,7 @@ The app checks for updates itself. When one is ready, the panel shows **Update t
 
 ## Uninstall
 
-Quitting the app leaves the proxy running, because the background service, not the app, owns it. To remove both:
+Quitting the app leaves the proxy running, because the background service, not the app, owns it. To remove both, run the CLI bundled in the app (use `~/Applications` instead if you installed it there):
 
 ```sh
 "/Applications/AIO Proxy.app/Contents/MacOS/aio-proxy" service uninstall
