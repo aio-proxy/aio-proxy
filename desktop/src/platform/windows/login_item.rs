@@ -7,11 +7,13 @@ use std::process::Command;
 use windows_registry::CURRENT_USER;
 
 use crate::platform::LoginItemStatus;
+use crate::platform::startup_approved::startup_approved_disabled;
 
 #[cfg(test)]
 mod tests;
 
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+const STARTUP_APPROVED_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
 const VALUE_NAME: &str = "AIO Proxy";
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -39,7 +41,15 @@ pub fn open_settings() {
 fn status_at(name: &str, exe: &Path) -> LoginItemStatus {
     let data = CURRENT_USER.open(RUN_KEY).and_then(|key| key.get_string(name));
     match data {
-        Ok(data) if run_value_matches(&data, exe) => LoginItemStatus::Enabled,
+        Ok(data) if run_value_matches(&data, exe) => {
+            // Disabled in Settings or Task Manager: the Run value stays, so only the user can turn it back on.
+            let approval = CURRENT_USER.open(STARTUP_APPROVED_KEY).and_then(|key| key.get_value(name));
+            if approval.is_ok_and(|value| startup_approved_disabled(&value)) {
+                LoginItemStatus::RequiresApproval
+            } else {
+                LoginItemStatus::Enabled
+            }
+        }
         _ => LoginItemStatus::NotRegistered,
     }
 }

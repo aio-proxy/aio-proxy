@@ -8,6 +8,8 @@ mod macos;
 #[cfg(any(windows, test))]
 pub mod shell_path;
 #[cfg(any(windows, test))]
+mod startup_approved;
+#[cfg(any(windows, test))]
 mod task_path;
 #[cfg(any(windows, test))]
 mod tcp_row;
@@ -27,7 +29,8 @@ pub use windows::*;
 pub enum LoginItemStatus {
     NotRegistered,
     Enabled,
-    /// Registered, but the user must allow it in System Settings > General > Login Items.
+    /// Registered, but the user must allow it: macOS Login Items, or Windows Startup apps after
+    /// they disabled it there or in Task Manager.
     RequiresApproval,
     NotFound,
     Unavailable,
