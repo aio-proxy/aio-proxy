@@ -183,7 +183,7 @@ const fillBaseURL = (value: string) => {
 
 const pickProtocol = async () => {
   fireEvent.click(within(screen.getByTestId('provider-form-field-protocol')).getByRole('combobox'));
-  fireEvent.keyDown(await screen.findByRole('option', { name: 'OpenAI Compatible' }), { key: 'Enter' });
+  fireEvent.keyDown(await screen.findByRole('option', { name: 'OpenAI Chat Completions' }), { key: 'Enter' });
 };
 
 const saveButton = () => screen.getByRole('button', { name: /Save/u });
