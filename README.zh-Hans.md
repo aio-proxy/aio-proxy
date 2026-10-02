@@ -6,50 +6,52 @@
   </picture>
 </h1>
 
+<h3>所有模型，所有客户端，一个端点。</h3>
+
 [![Version](https://npmx.dev/api/registry/badge/version/aio-proxy)](https://npmx.dev/package/aio-proxy)
 [![Downloads](https://npmx.dev/api/registry/badge/downloads/aio-proxy)](https://npmx.dev/package/aio-proxy)
 [![License](https://img.shields.io/github/license/aio-proxy/aio-proxy?style=flat&colorA=18181B&colorB=46ecd5)](https://github.com/aio-proxy/aio-proxy/blob/main/LICENSE)
 
-[English](./README.md) | 简体中文
+[English](./README.md) | 简体中文 | [文档](https://aioproxy.dev/zh/)
 
 </div>
 
-用一个 API 入口接入和管理多个模型提供商。AIO Proxy 提供可扩展的插件系统、自动路由与故障回退，以及覆盖用量、费用和请求链路的可观测性。
+AIO Proxy 是一个本地模型网关。继续使用你现有的 SDK 和编程 Agent，接入 API Key **或你已经付费的订阅**，就能获得跨协议转换、带自动故障转移的路由，以及完整的请求链路——只需一个二进制、一个端口。
+
+举个例子：Claude Code 使用 Anthropic Messages 协议，你的 ChatGPT 订阅使用 OpenAI Responses 协议，备用 API Key 使用 Gemini 协议。把 Claude Code 指向 AIO Proxy 就能直接用——工具调用、推理内容和流式输出都会实时转换，某个上游失败时请求会自动切到下一个。
 
 ```mermaid
 flowchart LR
-  subgraph Clients["多种客户端"]
-    OpenAIClient["OpenAI 兼容客户端"]
-    AnthropicClient["Anthropic 客户端"]
-    GeminiClient["Gemini 客户端"]
+  subgraph Clients["现有客户端，无需改动"]
+    Agents["编程 Agent<br/>Codex · Claude Code · OpenCode · Pi · Grok Build"]
+    SDKs["SDK 与应用<br/>OpenAI · Anthropic · Gemini"]
   end
 
-  Proxy["AIO Proxy<br/>协议转换 · 智能路由<br/>插件扩展 · 可观测性"]
+  Proxy["AIO Proxy<br/>协议转换 · 路由与故障转移<br/>用量、费用与链路"]
 
-  subgraph Providers["模型提供商"]
-    OpenAI["OpenAI"]
-    Anthropic["Anthropic"]
-    Google["Google"]
-    PluginProviders["其他插件 Provider"]
+  subgraph Upstreams["任意上游"]
+    Keys["API Key<br/>OpenAI · Anthropic · Gemini · 任意兼容 API"]
+    Subs["OAuth 订阅<br/>ChatGPT · Claude · Copilot · Cursor · Grok …"]
+    SDKProviders["AI SDK Provider 包"]
   end
 
-  OpenAIClient --> Proxy
-  AnthropicClient --> Proxy
-  GeminiClient --> Proxy
-
-  Proxy --> OpenAI
-  Proxy --> Anthropic
-  Proxy --> Google
-  Proxy --> PluginProviders
+  Agents --> Proxy
+  SDKs --> Proxy
+  Proxy --> Keys
+  Proxy --> Subs
+  Proxy --> SDKProviders
 ```
 
-## 核心能力
+## 为什么选择 AIO Proxy
 
-- **插件化接入**：通过插件连接不同模型提供商，支持 AI SDK Provider 包和 OAuth 账号。
-- **丰富可观测性**：集中查看请求量、Token 用量、费用和完整请求链路。
-- **主流协议兼容**：支持 OpenAI Chat Completions、OpenAI Responses、OpenAI Images、Anthropic Messages 和 Gemini GenerateContent。
-- **多 Provider 路由**：按模型、Provider priority 和 Provider weight 选择候选，支持模型别名、故障回退和会话亲和。
-- **透明协议转换**：协议一致时原始透传，协议不一致时自动转换。
+- **所有协议，一个端点**：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 与 Gemini 客户端共用一个端口。协议一致时原样透传，不一致时自动转换工具调用、推理内容与流式输出。Embeddings、图像、音频与 Token 计数同样支持。
+- **接入已有订阅**：通过 OAuth 登录 ChatGPT、Claude、GitHub Copilot、Google Antigravity、Cursor、xAI Grok、Kimi Code、OpenRouter 等，作为标准 API 端点使用。
+- **复用 AI SDK 生态**：任意 [Vercel AI SDK](https://ai-sdk.dev) Provider 包（官方或社区）都能以 `kind: "ai-sdk"` 直接作为 Provider 加载，并享有同样的协议转换、路由与计费。AI SDK 支持的厂商，AIO Proxy 就能接。
+- **插件可扩展**：上面所有内置订阅本身就是基于公开的 [`@aio-proxy/plugin-sdk`](https://www.npmjs.com/package/@aio-proxy/plugin-sdk) 编写的插件。官方尚未支持的服务或公司内部网关，可以自己写插件接入——OAuth 登录、模型目录、元数据与价格一应俱全——再用 `aio-proxy plugin add` 安装。
+- **扛得住故障的路由**：Provider priority 决定先试哪一层，Provider weight 在同层内分摊流量，会话亲和保持 Prompt 缓存命中，上游失败时自动切到下一个候选。priority、weight、价格与上下文上限都能按模型单独覆盖，并可用别名统一模型名。
+- **一条命令接好 Agent**：`aiop agent configure` 可直接配置 Codex、Grok Build、OpenCode、Pi 与 oh-my-pi，通过设备授权登录而不是粘贴密钥；其他工具只需修改 Base URL。
+- **请求全程可见**：内置 Dashboard 记录每一次请求与每一次 Provider 尝试的状态、延迟、Token 与费用，完整链路可导出到 OpenTelemetry。
+- **本地优先，按需配置**：默认只监听 `127.0.0.1`，对外暴露时再加上调用方 API Key 与 Dashboard 密码。每个 Provider 都可以声明多个协议端点、自定义请求头，以及支持备用切换的 HTTP(S)/SOCKS5 代理。既可以在 Dashboard 里配置，也可以写带 schema 校验的 JSONC 文件，用 `{{env.NAME}}` 引用密钥并热加载。
 
 ## 安装
 

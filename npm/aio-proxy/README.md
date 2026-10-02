@@ -6,50 +6,52 @@
   </picture>
 </h1>
 
+<h3>Every model. Every client. One endpoint.</h3>
+
 [![Version](https://npmx.dev/api/registry/badge/version/aio-proxy)](https://npmx.dev/package/aio-proxy)
 [![Downloads](https://npmx.dev/api/registry/badge/downloads/aio-proxy)](https://npmx.dev/package/aio-proxy)
 [![License](https://img.shields.io/github/license/aio-proxy/aio-proxy?style=flat&colorA=18181B&colorB=46ecd5)](https://github.com/aio-proxy/aio-proxy/blob/main/LICENSE)
 
-English | [简体中文](https://github.com/aio-proxy/aio-proxy/blob/main/README.zh-Hans.md)
+English | [简体中文](https://github.com/aio-proxy/aio-proxy/blob/main/README.zh-Hans.md) | [Documentation](https://aioproxy.dev)
 
 </div>
 
-Connect and manage multiple model providers through one API endpoint. AIO Proxy provides an extensible plugin system, automatic routing and failover, and observability across usage, cost, and end-to-end request traces.
+AIO Proxy is a local model gateway. Keep the SDKs and coding agents you already use, plug in API keys **or the subscriptions you already pay for**, and get cross-protocol conversion, routing with automatic failover, and full request traces — all from one binary on one port.
+
+For example: Claude Code speaks Anthropic Messages, your ChatGPT subscription speaks OpenAI Responses, and a backup API key speaks Gemini. Point Claude Code at AIO Proxy and it just works — tool calls, reasoning, and streaming are converted on the fly, and when one upstream fails the request falls through to the next.
 
 ```mermaid
 flowchart LR
-  subgraph Clients["Multiple clients"]
-    OpenAIClient["OpenAI-compatible clients"]
-    AnthropicClient["Anthropic clients"]
-    GeminiClient["Gemini clients"]
+  subgraph Clients["Your clients, unchanged"]
+    Agents["Coding agents<br/>Codex · Claude Code · OpenCode · Pi · Grok Build"]
+    SDKs["SDKs and apps<br/>OpenAI · Anthropic · Gemini"]
   end
 
-  Proxy["AIO Proxy<br/>Protocol conversion · Intelligent routing<br/>Plugin extensions · Observability"]
+  Proxy["AIO Proxy<br/>Protocol conversion · Routing & failover<br/>Usage, cost & traces"]
 
-  subgraph Providers["Model providers"]
-    OpenAI["OpenAI"]
-    Anthropic["Anthropic"]
-    Google["Google"]
-    PluginProviders["Other plugin providers"]
+  subgraph Upstreams["Any upstream"]
+    Keys["API keys<br/>OpenAI · Anthropic · Gemini · any compatible API"]
+    Subs["Subscriptions via OAuth<br/>ChatGPT · Claude · Copilot · Cursor · Grok …"]
+    SDKProviders["AI SDK provider packages"]
   end
 
-  OpenAIClient --> Proxy
-  AnthropicClient --> Proxy
-  GeminiClient --> Proxy
-
-  Proxy --> OpenAI
-  Proxy --> Anthropic
-  Proxy --> Google
-  Proxy --> PluginProviders
+  Agents --> Proxy
+  SDKs --> Proxy
+  Proxy --> Keys
+  Proxy --> Subs
+  Proxy --> SDKProviders
 ```
 
-## Key features
+## Why AIO Proxy
 
-- **Plugin-based integrations**: Connect different model providers through plugins, including AI SDK Provider packages and OAuth accounts.
-- **Rich observability**: Track requests, token usage, cost, and complete request traces in one place.
-- **Major protocol support**: Accept OpenAI Chat Completions, OpenAI Responses, OpenAI Images, Anthropic Messages, and Gemini GenerateContent requests.
-- **Multi-Provider routing**: Select candidates by model, Provider priority, and Provider weight, with model aliases, failover, and session affinity.
-- **Transparent protocol conversion**: Use raw passthrough for matching protocols and automatic conversion for cross-protocol requests.
+- **Every protocol, one endpoint**: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and Gemini clients all share one port. Matching protocols pass through raw; everything else is converted, including tools, reasoning, and streaming. Embeddings, images, audio, and token counting are covered too.
+- **Bring your subscriptions**: Log in with OAuth to ChatGPT, Claude, GitHub Copilot, Google Antigravity, Cursor, xAI Grok, Kimi Code, OpenRouter, and more, and use them as standard API endpoints.
+- **The whole AI SDK ecosystem**: Any [Vercel AI SDK](https://ai-sdk.dev) provider package — official or community — loads as a Provider with `kind: "ai-sdk"` and gets the same conversion, routing, and billing as everything else. If the AI SDK supports a vendor, so does AIO Proxy.
+- **Extend it with plugins**: Every built-in subscription above is a plugin built on the public [`@aio-proxy/plugin-sdk`](https://www.npmjs.com/package/@aio-proxy/plugin-sdk). Write your own for an unsupported service or an internal gateway — OAuth login, model catalog, metadata and pricing included — and install it with `aio-proxy plugin add`.
+- **Routing that survives outages**: Provider priority tiers decide who is tried first, Provider weight splits traffic within a tier, session affinity keeps prompt caches warm, and a failed upstream falls through to the next candidate. Priority, weight, price, and context limits can all be overridden per model, with aliases to unify names.
+- **Coding agents in one command**: `aiop agent configure` wires up Codex, Grok Build, OpenCode, Pi, and oh-my-pi with device approval instead of pasted keys; anything else only needs a base URL.
+- **Requests you can see**: The built-in Dashboard records every request and every Provider attempt with status, latency, tokens, and cost, with full traces exportable to OpenTelemetry.
+- **Local-first, configured your way**: Binds to `127.0.0.1` by default; add caller API keys and a Dashboard password when you expose it. Each Provider can declare multiple protocol endpoints, custom headers, and its own HTTP(S)/SOCKS5 proxy with fallback. Configure in the Dashboard or in a schema-checked JSONC file with `{{env.NAME}}` secrets and hot reload.
 
 ## Install
 
