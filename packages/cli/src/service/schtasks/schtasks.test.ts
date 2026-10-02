@@ -177,6 +177,28 @@ test('start re-creates a task whose recorded exec went stale before running it, 
   expect((await recordCalls((io) => schtasksStart(io), { task: same })).map((c) => c[1])).toEqual(['/Change', '/Run']);
 });
 
+test('start leaves a package-manager-owned service alone when the desktop app resolves a different unit', async () => {
+  const external = JSON.stringify(
+    renderServiceSpec({ exec: oldExec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc' }),
+  );
+  const fs = fakeFs({ [specPath]: external });
+  const desktopUnit = async () => ({ exec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc', desktopExec: exec });
+  const run = io({ fs, task: oldTaskXml });
+  await schtasksStart({ ...run, unit: desktopUnit });
+  expect(recorded().map((c) => c[1])).toEqual(['/Change', '/Run']);
+  expect(fs.files.get(specPath)).toBe(external);
+});
+
+test('start re-creates a stale desktop-owned task', async () => {
+  const owned = JSON.stringify(
+    renderServiceSpec({ exec: oldExec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc', desktopExec: oldExec }),
+  );
+  const fs = fakeFs({ [specPath]: owned });
+  const desktopUnit = async () => ({ exec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc', desktopExec: exec });
+  await schtasksStart({ ...io({ fs, task: oldTaskXml }), unit: desktopUnit });
+  expect(recorded().map((c) => c[1])).toEqual(['/Create', '/Run']);
+});
+
 test('start re-creates a task that is missing while the spec is still there, then runs it', async () => {
   const calls = await recordCalls((io) => schtasksStart(io), { task: 'missing' });
   expect(calls.map((c) => c[1])).toEqual(['/Create', '/Run']);

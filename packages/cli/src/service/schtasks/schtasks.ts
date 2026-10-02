@@ -165,6 +165,12 @@ const taskCurrent = (action: ParsedTask['action'] | undefined, exec: string | un
   action.exec.toLowerCase() === exec.toLowerCase() &&
   action.specPath.toLowerCase() === specPath.toLowerCase();
 
+// Same rule as readDesktopOwnedUnit: the unit's program is the symlink the app recorded in its environment.
+const desktopOwned = (unit: ReturnType<typeof parseServiceSpec>): boolean => {
+  const marker = unit?.env['AIO_PROXY_DESKTOP_EXEC'];
+  return marker !== undefined && marker !== '' && marker === unit?.exec;
+};
+
 const endTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/End', '/TN', path], true);
 const runTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/Run', '/TN', path]);
 
@@ -184,7 +190,12 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
   const task = await ownTask(io, path);
   // A task recording an exec that an upgrade since pruned would launch a deleted binary: recreate it from the unit.
   const { spec } = task ? await renderUnit(io) : { spec: '' };
-  if (!task || !taskCurrent(task.action, parseServiceSpec(spec)?.exec, serviceSpecPath(io.localAppData))) {
+  const specPath = serviceSpecPath(io.localAppData);
+  const resolved = parseServiceSpec(spec);
+  // Only refresh a service owned the way the resolved unit is: starting a package-manager-owned service from the
+  // desktop app must not rewrite it and hand ownership over.
+  const sameOwner = desktopOwned(parseServiceSpec(io.readFile(specPath) ?? '')) === desktopOwned(resolved);
+  if (!task || (sameOwner && !taskCurrent(task.action, resolved?.exec, specPath))) {
     await schtasksInstall(io);
   } else await io.run(['schtasks', '/Change', '/TN', path, '/ENABLE']);
   await runTask(io, path);
