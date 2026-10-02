@@ -13,6 +13,7 @@ import {
   managedServicePath,
   readDesktopOwnedUnit,
   resolveExec,
+  resolveUnitOptions,
   serviceRestart,
   serviceStart,
   writeManagedUnit,
@@ -776,4 +777,9 @@ test('managed service PATH uses the platform delimiter and keeps Windows paths',
   const path = managedServicePath('C:\\Users\\Zoë Chen', 'C:\\Windows\\System32;C:\\Tools', ';');
   expect(path.split(';').slice(0, 2)).toEqual(['C:\\Windows\\System32', 'C:\\Tools']);
   expect(path).not.toContain(':/usr/bin');
+});
+
+test('the Windows unit keeps the entries of a `Path` variable split on semicolons', async () => {
+  const unit = await resolveUnitOptions('win32', 'C:\\aio\\aio-proxy.exe', { Path: 'C:\\Windows\\System32;D:\\Tools' });
+  expect(unit.path?.split(';').slice(0, 2)).toEqual(['C:\\Windows\\System32', 'D:\\Tools']);
 });
