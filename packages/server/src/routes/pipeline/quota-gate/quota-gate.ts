@@ -1,5 +1,5 @@
 import type { RouterCandidate } from '@aio-proxy/core';
-import type { OAuthQuotaItemScope } from '@aio-proxy/plugin-sdk';
+import type { OAuthQuotaItemScope, OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 import { ProviderKind } from '@aio-proxy/types';
 import { escapeRegExp } from 'es-toolkit/string';
 
@@ -28,6 +28,13 @@ export function quotaScopeCovers(scope: OAuthQuotaItemScope, modelId: string): b
   );
 }
 
+/** The cached snapshot when it may still steer routing: read successfully and within the max age. */
+export function freshQuotaSnapshot(status: OAuthQuotaCacheStatus, now: number): OAuthQuotaSnapshot | undefined {
+  if (status.kind !== 'ready') return undefined;
+  const { snapshot, sampledAt, stale } = status.entry;
+  return stale || now - sampledAt > QUOTA_SNAPSHOT_MAX_AGE_MS ? undefined : snapshot;
+}
+
 /**
  * When the cached snapshot proves `modelId` is refused upstream, the time it stops being refused;
  * otherwise `undefined`. Reads only what the cache already holds, so it never waits on upstream, and
@@ -35,9 +42,8 @@ export function quotaScopeCovers(scope: OAuthQuotaItemScope, modelId: string): b
  * The latest reset wins: a model covered by two exhausted windows is refused until both reopen.
  */
 export function quotaHeldUntil(status: OAuthQuotaCacheStatus, modelId: string, now: number): number | undefined {
-  if (status.kind !== 'ready') return undefined;
-  const { snapshot, sampledAt, stale } = status.entry;
-  if (stale || now - sampledAt > QUOTA_SNAPSHOT_MAX_AGE_MS) return undefined;
+  const snapshot = freshQuotaSnapshot(status, now);
+  if (snapshot === undefined) return undefined;
   let heldUntil: number | undefined;
   for (const { scope, remainingRatio, resetsAt } of snapshot.items) {
     if (scope === undefined || remainingRatio === undefined || remainingRatio > 0) continue;
