@@ -5,4 +5,4 @@
 '@aio-proxy/i18n': patch
 ---
 
-保留每次上游发送的独立传输计时、重试失败原因和响应来源，并在调用链详情中显示发送次数与序号，避免多次响应的计时被歧义抑制。
+Preserve transport timings, retry failure reasons, and response attribution for each upstream HTTP send. Trace details now show send counts and indices, so retries with multiple responses no longer appear to be missing timing data.
