@@ -11,6 +11,7 @@ use std::time::Duration;
 use crate::process::run_with_timeout;
 use crate::version;
 
+/// Built per OS by `platform::paths`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Paths {
     pub home: PathBuf,
@@ -20,19 +21,6 @@ pub struct Paths {
     pub lock: PathBuf,
     /// The app's own log directory.
     pub logs: PathBuf,
-}
-
-impl Paths {
-    pub fn for_home(home: &Path) -> Self {
-        let support = home.join("Library/Application Support/aio-proxy-desktop");
-        Self {
-            home: home.to_path_buf(),
-            symlink: support.join("bin/aio-proxy"),
-            lock: support.join("instance.lock"),
-            logs: home.join("Library/Logs/aio-proxy-desktop"),
-            support,
-        }
-    }
 }
 
 /// `…/X.app/Contents/MacOS/aio-proxy-desktop` → `…/X.app`.

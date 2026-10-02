@@ -33,9 +33,8 @@ pub struct PanelView {
 
 impl PanelView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        // Click-away closes the panel (passed by hand on 2026-09-30, spike check 2 item 1).
         let activation = cx.observe_window_activation(window, |_, window, cx| {
-            if !window.is_window_active() {
+            if crate::platform::panel::closes_on_deactivate() && !window.is_window_active() {
                 super::window::close(window, cx);
             }
         });

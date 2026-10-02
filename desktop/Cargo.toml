@@ -8,7 +8,23 @@ publish = false
 [dependencies]
 # GPUI Kit pins an exact gpui-pre snapshot; bump this deliberately.
 gpui-kit = "=0.7.0"
+futures = "0.3.34"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+semver = "1.0.28"
+url = "2.5.8"
+# Already in the tree through GPUI; only PNG, for the bundled tray mark.
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+libc = "0.2.189"
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
 tray-icon = "0.25.1"
+
+# The StatusNotifierItem (D-Bus) backend, without GTK.
+[target.'cfg(target_os = "linux")'.dependencies]
+tray-icon = { version = "0.25.1", default-features = false, features = ["ksni"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", features = [
   "NSApplication",
@@ -41,14 +57,6 @@ objc2-foundation = { version = "0.3.2", features = [
 ] }
 block2 = "0.6.2"
 raw-window-handle = "0.6.2"
-futures = "0.3.34"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-semver = "1.0.28"
-url = "2.5.8"
-# Already in the tree through GPUI; only PNG, for the bundled tray mark.
-image = { version = "0.25.10", default-features = false, features = ["png"] }
-libc = "0.2.189"
 
 [dev-dependencies]
 tempfile = "3.27.0"

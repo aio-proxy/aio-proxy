@@ -8,14 +8,14 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Listener {
-    pub uid: u32,
-    pub family: String,
-    pub address: String,
+struct Listener {
+    uid: u32,
+    family: String,
+    address: String,
 }
 
 /// The sockets in `lsof -F tun` output: each file's family and name, under its process's uid.
-pub fn parse_listeners(output: &str) -> Vec<Listener> {
+fn parse_listeners(output: &str) -> Vec<Listener> {
     let mut listeners = Vec::new();
     let (mut uid, mut family) = (None, String::new());
     for line in output.lines() {
@@ -38,7 +38,7 @@ pub fn parse_listeners(output: &str) -> Vec<Listener> {
 /// The serving side of a connection from `local` to `peer`, as `lsof` names it (`peer->local`),
 /// owned by `uid`. An unprivileged `lsof` lists only this user's sockets, so another account's
 /// accepted socket never matches.
-pub fn serves(sockets: &[Listener], uid: u32, peer: SocketAddr, local: SocketAddr) -> bool {
+fn serves(sockets: &[Listener], uid: u32, peer: SocketAddr, local: SocketAddr) -> bool {
     let name = format!("{peer}->{local}");
     sockets.iter().any(|s| s.uid == uid && s.address == name)
 }
@@ -49,8 +49,7 @@ pub fn serves(sockets: &[Listener], uid: u32, peer: SocketAddr, local: SocketAdd
 /// `deadline`; any failure counts as not ours.
 pub fn peer_owned_by_this_user(stream: &TcpStream, deadline: Instant) -> bool {
     let (Ok(local), Ok(peer)) = (stream.local_addr(), stream.peer_addr()) else { return false };
-    // SAFETY: getuid cannot fail.
-    let uid = unsafe { libc::getuid() };
+    let uid = super::host::current_uid();
     loop {
         if let Some(output) = lsof(local.port(), deadline)
             && serves(&parse_listeners(&output), uid, peer, local)

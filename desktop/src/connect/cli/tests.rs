@@ -7,7 +7,7 @@ fn host(exec: &str) -> SystemHost {
     SystemHost {
         exec: PathBuf::from(exec),
         desktop_exec: PathBuf::from("/Users/me/Library/Application Support/aio-proxy-desktop/bin/aio-proxy"),
-        uid: 501,
+        user: "501".into(),
     }
 }
 

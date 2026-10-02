@@ -6,7 +6,9 @@ mod footer;
 mod format;
 mod groups;
 mod header;
-mod placement;
+/// Anchoring under the menu-bar icon.
+#[cfg(target_os = "macos")]
+pub(crate) mod placement;
 mod quota;
 mod states;
 mod status;
@@ -17,4 +19,5 @@ mod usage;
 mod view;
 mod window;
 
+pub(crate) use window::{PANEL_HEIGHT, PANEL_WIDTH};
 pub use window::{PanelWindow, close_open, toggle};

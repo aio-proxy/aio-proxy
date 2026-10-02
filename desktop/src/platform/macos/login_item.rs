@@ -6,15 +6,7 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject};
 use objc2_foundation::NSError;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoginItemStatus {
-    NotRegistered,
-    Enabled,
-    /// Registered, but the user must allow it in System Settings > General > Login Items.
-    RequiresApproval,
-    NotFound,
-    Unavailable,
-}
+use crate::platform::LoginItemStatus;
 
 fn service() -> Option<Retained<AnyObject>> {
     let class = AnyClass::get(c"SMAppService")?;

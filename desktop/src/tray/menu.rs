@@ -1,7 +1,7 @@
 //! The right-click menu's contents, from the same offer table the panel's action row used.
 
 use crate::connect::policy::{Offered, UserAction};
-use crate::login_item::LoginItemStatus;
+use crate::platform::LoginItemStatus;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuCommand {

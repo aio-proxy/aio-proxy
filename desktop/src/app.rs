@@ -27,7 +27,7 @@ use crate::connect::discovery::Discovery;
 use crate::connect::policy::{AutoAction, AutoAttempts, UserAction};
 use crate::connect::run::RunError;
 use crate::install::{InstallState, Paths};
-use crate::login_item::LoginItemStatus;
+use crate::platform::LoginItemStatus;
 use crate::summary::{DegradedReason, SummaryV1, Usage, UsageRange};
 
 /// Everything that reaches the GPUI loop from AppKit callbacks, delivered over one channel.

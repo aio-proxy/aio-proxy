@@ -4,10 +4,9 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::connect::discovery::fixture::discovery;
-use crate::install::Paths;
 
 fn model(patch: impl FnOnce(&mut Value)) -> AppModel {
-    let mut model = AppModel::new(Paths::for_home(Path::new("/Users/me")), None);
+    let mut model = AppModel::new(crate::platform::paths(Path::new("/Users/me")), None);
     model.install = Some(InstallState::Persistent);
     model.discovery = Some(discovery(patch));
     model

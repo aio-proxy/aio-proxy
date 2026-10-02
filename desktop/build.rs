@@ -11,6 +11,9 @@ fn main() {
     let version = json["version"].as_str().expect("npm/aio-proxy/package.json has a string version");
     println!("cargo:rustc-env=AIO_PROXY_VERSION={version}");
 
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
+        return;
+    }
     // SMAppService is looked up by name at runtime; linking loads the framework.
     println!("cargo:rustc-link-lib=framework=ServiceManagement");
 

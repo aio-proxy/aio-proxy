@@ -1,5 +1,5 @@
-//! The real `Host`: the bundled CLI (through the symlink when it exists), launchctl, and the local
-//! transport. Every CLI child gets `AIO_PROXY_DESKTOP_EXEC=<symlink>`, the only input that makes a
+//! The real `Host`: the bundled CLI (through the symlink when it exists), the OS service manager,
+//! and the local transport. Every CLI child gets `AIO_PROXY_DESKTOP_EXEC=<symlink>`, the only input that makes a
 //! plist desktop-owned.
 
 use std::path::{Path, PathBuf};
@@ -14,7 +14,6 @@ use crate::client::transport::{Cancel, Limits, LocalUrl, Method, Request, send};
 use crate::install::{Paths, sidecar_of};
 use crate::process::{run_with_timeout, tail};
 
-pub const LAUNCHD_LABEL: &str = "com.aio-proxy.agent";
 /// The CLI bounds `__desktop-connect` at 10 s; this only catches a wedged process.
 pub const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 /// `service restart` may wait 10 s for bootout, and `kickstart -k` blocks about 7 s.
@@ -25,18 +24,14 @@ pub struct SystemHost {
     /// The symlink when it resolves, else this bundle's sidecar.
     pub exec: PathBuf,
     pub desktop_exec: PathBuf,
-    pub uid: u32,
+    /// The OS account, as `platform::kickstart` names it.
+    pub user: String,
 }
 
 impl SystemHost {
     pub fn new(paths: &Paths, bundle: Option<&Path>) -> Option<Self> {
         let exec = if paths.symlink.exists() { paths.symlink.clone() } else { sidecar_of(bundle?) };
-        exec.exists().then(|| Self {
-            exec,
-            desktop_exec: paths.symlink.clone(),
-            // SAFETY: getuid never fails.
-            uid: unsafe { libc::getuid() },
-        })
+        exec.exists().then(|| Self { exec, desktop_exec: paths.symlink.clone(), user: crate::platform::current_user() })
     }
 
     /// The child environment contract. The app never passes its own `AIO_PROXY_HOME` (discovery
@@ -66,6 +61,12 @@ fn check(command: Command, timeout: Duration, what: &str) -> Result<Vec<u8>, Str
     }
 }
 
+/// `launchctl kickstart -k gui/501/…`: the program's file name and its arguments, for an error.
+fn describe(command: &Command) -> String {
+    let program = Path::new(command.get_program()).file_name().unwrap_or(command.get_program());
+    std::iter::once(program).chain(command.get_args()).map(|part| part.to_string_lossy()).collect::<Vec<_>>().join(" ")
+}
+
 impl Host for SystemHost {
     fn discover(&self) -> Result<Discovery, String> {
         parse_discovery(&check(self.cli(&["__desktop-connect"], None), DISCOVERY_TIMEOUT, "__desktop-connect")?)
@@ -76,21 +77,15 @@ impl Host for SystemHost {
             Mutation::Service(verb) => {
                 check(self.cli(&["service", verb], home), SERVICE_TIMEOUT, &format!("service {verb}")).map(drop)
             }
-            Mutation::Kickstart => {
-                let mut command = Command::new("/bin/launchctl");
-                command.args(["kickstart", "-k", &format!("gui/{}/{LAUNCHD_LABEL}", self.uid)]);
-                check(command, SERVICE_TIMEOUT, "launchctl kickstart -k").map(drop)
-            }
+            Mutation::Kickstart => crate::platform::kickstart(&self.user).into_iter().try_for_each(|command| {
+                let what = describe(&command);
+                check(command, SERVICE_TIMEOUT, &what).map(drop)
+            }),
         }
     }
 
     fn pid_alive(&self, pid: u32) -> bool {
-        // SAFETY: signal 0 only checks existence.
-        if unsafe { libc::kill(pid as libc::pid_t, 0) } == 0 {
-            return true;
-        }
-        // EPERM: it exists under another user.
-        std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+        crate::platform::pid_alive(pid)
     }
 
     fn health_version(&self, control_url: &str) -> Option<String> {

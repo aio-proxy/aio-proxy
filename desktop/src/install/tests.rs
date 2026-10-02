@@ -49,7 +49,7 @@ struct Fixture {
 /// A fake home with this app's bundle and another installed copy, each holding a sidecar file.
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let paths = Paths::for_home(dir.path());
+    let paths = crate::platform::paths(dir.path());
     let make = |name: &str| {
         let bundle = dir.path().join(name);
         fs::create_dir_all(bundle.join("Contents/MacOS")).unwrap();

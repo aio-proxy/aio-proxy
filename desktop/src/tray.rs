@@ -164,7 +164,7 @@ pub fn run(cx: &mut App, command: MenuCommand) {
         MenuCommand::OpenLogs => crate::app::open_logs(cx),
         MenuCommand::InstallCli => crate::app::install_cli(cx),
         MenuCommand::ToggleLogin => crate::app::toggle_login_item(cx),
-        MenuCommand::CheckForUpdates => crate::updater::check_now(),
+        MenuCommand::CheckForUpdates => crate::platform::updater::check_now(),
         // Quitting leaves the proxy running: launchd owns it.
         MenuCommand::Quit => cx.quit(),
     }
