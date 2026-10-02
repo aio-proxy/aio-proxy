@@ -1,3 +1,4 @@
+import { listWindowsSockets } from './netstat';
 import { parseProcNetTcp } from './proc-net';
 
 export type Run = (cmd: readonly string[]) => Promise<{ readonly code: number; readonly stdout: string }>;
@@ -48,6 +49,7 @@ export async function listSockets(
     const v6 = parseProcNetTcp(await deps.readFile('/proc/net/tcp6').catch(failUnlessMissing), 'IPv6');
     return [...v4, ...v6].filter((socket) => touchesPort(socket, port));
   }
+  if (platform === 'win32') return listWindowsSockets(port, deps.run);
   throw new Error(`no socket listing for ${platform}`);
 }
 
@@ -56,10 +58,18 @@ function failUnlessMissing(error: unknown): string {
   throw error;
 }
 
-/** The owner string `Socket.owner` carries for this process's own account. */
-export async function currentOwner(platform: NodeJS.Platform): Promise<string> {
+/**
+ * The owner string `Socket.owner` carries for this process's own account: the uid on POSIX, the
+ * lower-cased `DOMAIN\user` from `whoami` on Windows (account names compare case-insensitively there).
+ */
+export async function currentOwner(platform: NodeJS.Platform, run?: Run): Promise<string> {
   if ((platform === 'darwin' || platform === 'linux') && process.getuid !== undefined) {
     return String(process.getuid());
+  }
+  if (platform === 'win32' && run !== undefined) {
+    const { code, stdout } = await run(['whoami']);
+    const name = stdout.trim();
+    if (code === 0 && name !== '') return name.toLowerCase();
   }
   throw new Error(`no account owner for ${platform}`);
 }

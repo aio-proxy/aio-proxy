@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test';
 
 import { servesConnection } from '../verified-get';
+import { parseNetstat, parseTasklistUser } from './netstat';
 import { parseProcNetTcp } from './proc-net';
-import { listSockets, type Socket } from './sockets';
+import { currentOwner, listSockets, type Run, type Socket } from './sockets';
 
 const V4 = `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
    0: 0100007F:1029 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 1 1
@@ -59,5 +60,72 @@ test('linux listing keeps rows at the port on either end, across both families',
 test('a missing tcp6 is tolerated, any other unreadable file fails closed', async () => {
   expect(await listSockets('linux', 4137, files({ '/proc/net/tcp': V4 }))).toHaveLength(2);
   await expect(listSockets('linux', 4137, files({ '/proc/net/tcp6': V6 }))).rejects.toThrow();
-  await expect(listSockets('win32', 4137, files({}))).rejects.toThrow();
+  await expect(listSockets('freebsd', 4137, files({}))).rejects.toThrow();
+});
+
+test('netstat rows map to lsof spellings for both families', () => {
+  const out = `
+  Proto  Local Address          Foreign Address        State           PID
+  TCP    127.0.0.1:4137         0.0.0.0:0              LISTENING       812
+  TCP    127.0.0.1:4137         127.0.0.1:50000        ESTABLISHED     812
+  TCP    127.0.0.1:4137         127.0.0.1:50002        TIME_WAIT       0
+  TCP    127.0.0.1:4137         127.0.0.1:50003        CLOSE_WAIT      812
+  TCP    [::]:4137              [::]:0                 LISTENING       812
+  TCP    [::1]:4137             [::1]:50001            ESTABLISHED     812
+  TCP    [0:0:0:0:0:0:0:1]:4137 [fe80::1%12]:50004     ESTABLISHED     812`;
+  expect(parseNetstat(out)).toEqual([
+    { family: 'IPv4', address: '127.0.0.1:4137', pid: 812 },
+    { family: 'IPv4', address: '127.0.0.1:4137->127.0.0.1:50000', pid: 812 },
+    { family: 'IPv6', address: '*:4137', pid: 812 },
+    { family: 'IPv6', address: '[::1]:4137->[::1]:50001', pid: 812 },
+  ]);
+});
+
+test('tasklist user column names the owner; N/A is nobody', () => {
+  expect(parseTasklistUser('"bun.exe","812","Console","1","90,000 K","Running","PC\\Zoë Chen","0:00:01","N/A"')).toBe(
+    'PC\\Zoë Chen',
+  );
+  expect(parseTasklistUser('"x.exe","9","Services","0","1 K","Unknown","N/A","0:00:00","N/A"')).toBeUndefined();
+  expect(parseTasklistUser('INFO: No tasks are running which match the specified criteria.')).toBeUndefined();
+});
+
+const NETSTAT_V4 = `  TCP    127.0.0.1:4137   0.0.0.0:0   LISTENING   812
+  TCP    127.0.0.1:4137   127.0.0.1:50000   ESTABLISHED   812
+  TCP    127.0.0.1:50000   127.0.0.1:4137   ESTABLISHED   900
+  TCP    0.0.0.0:135   0.0.0.0:0   LISTENING   4`;
+const NETSTAT_V6 = '  TCP    [::1]:4137   [::1]:50001   ESTABLISHED   813';
+
+const windows = (overrides: Record<string, { code: number; stdout: string }> = {}): Run => {
+  const users: Record<string, string> = { '812': 'PC\\Zoe', '813': 'N/A', '900': 'PC\\Other' };
+  return async (cmd) => {
+    const key = cmd.join(' ');
+    if (key in overrides) return overrides[key] as { code: number; stdout: string };
+    if (cmd[0] === 'netstat') {
+      return { code: 0, stdout: cmd[3] === 'TCPv6' ? NETSTAT_V6 : NETSTAT_V4 };
+    }
+    const pid = /PID eq (\d+)/u.exec(cmd[3] ?? '')?.[1] ?? '';
+    return { code: 0, stdout: `"x.exe","${pid}","Console","1","1 K","Running","${users[pid]}","0:00:01","N/A"` };
+  };
+};
+
+test('windows listing owns sockets by tasklist user, lower-cased; unknown users yield nothing', async () => {
+  const sockets = await listSockets('win32', 4137, { run: windows(), readFile: async () => '' });
+  expect(sockets).toEqual([
+    { owner: 'pc\\zoe', family: 'IPv4', address: '127.0.0.1:4137' },
+    { owner: 'pc\\zoe', family: 'IPv4', address: '127.0.0.1:4137->127.0.0.1:50000' },
+    { owner: 'pc\\other', family: 'IPv4', address: '127.0.0.1:50000->127.0.0.1:4137' },
+  ]);
+});
+
+test('windows listing fails closed when either netstat fails', async () => {
+  for (const proto of ['TCP', 'TCPv6']) {
+    const run = windows({ [`netstat -ano -p ${proto}`]: { code: 1, stdout: '' } });
+    await expect(listSockets('win32', 4137, { run, readFile: async () => '' })).rejects.toThrow();
+  }
+});
+
+test('windows owner is the lower-cased whoami line', async () => {
+  const run: Run = async () => ({ code: 0, stdout: 'PC\\Zoe\r\n' });
+  expect(await currentOwner('win32', run)).toBe('pc\\zoe');
+  await expect(currentOwner('win32', async () => ({ code: 1, stdout: '' }))).rejects.toThrow();
 });

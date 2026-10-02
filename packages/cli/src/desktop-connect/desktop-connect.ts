@@ -259,7 +259,11 @@ export const defaultDesktopConnectDeps = async (
   // header to the proxy. `*` bypasses every host (a plain `::1` entry does not match [::1]); set on
   // both spellings because the lowercase one wins. This process only probes the local control address.
   process.env['NO_PROXY'] = process.env['no_proxy'] = '*';
-  return desktopConnectDeps(bundledVersion, spawnDeadline, await currentOwner(process.platform));
+  return desktopConnectDeps(
+    bundledVersion,
+    spawnDeadline,
+    await currentOwner(process.platform, (cmd) => runWithin(cmd, spawnDeadline)),
+  );
 };
 
 const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number, owner: string): DesktopConnectDeps => ({

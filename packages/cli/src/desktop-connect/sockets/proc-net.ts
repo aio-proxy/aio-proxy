@@ -12,7 +12,7 @@ function addressBytes(hex: string): number[] {
 }
 
 /** RFC 5952 text, which is how lsof spells IPv6: lowercase, longest zero run (two or more groups) as `::`. */
-function ipv6Text(bytes: readonly number[]): string {
+export function ipv6Text(bytes: readonly number[]): string {
   const groups = Array.from({ length: 8 }, (_, i) => ((bytes[2 * i] ?? 0) << 8) | (bytes[2 * i + 1] ?? 0));
   let bestStart = -1;
   let bestLength = 1;
