@@ -1,8 +1,8 @@
 import { promises as fs } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
-import { BINARY_DOWNLOAD_TIMEOUT_MS, BINARY_NPM_SCOPE, NPM_REGISTRY, SUPPORTED_BINARY_TARGETS } from './constants';
-import { parseVersionOutput } from './version-output';
+import { BINARY_DOWNLOAD_TIMEOUT_MS, BINARY_NPM_SCOPE, NPM_REGISTRY, SUPPORTED_BINARY_TARGETS } from '../constants';
+import { parseVersionOutput } from '../version-output';
 
 type Verification = { readonly ok: boolean; readonly actual?: string };
 type ReplaceOptions = {
@@ -11,6 +11,7 @@ type ReplaceOptions = {
   readonly backupPath: string;
   readonly expectedVersion: string;
   readonly verify: (expected: string) => Promise<Verification>;
+  readonly platform?: NodeJS.Platform;
 };
 
 // The os-arch key of the running process, matching the @aio-proxy/cli-<key>
@@ -33,14 +34,42 @@ const unlinkIfExists = async (p: string): Promise<void> => {
   });
 };
 
-// Pull package/bin/aio-proxy out of the downloaded npm tarball. Bun.Archive
-// transparently gunzips the .tgz, matching the layout published by the release
-// pipeline (build-binary.ts writes npm/cli-*/bin/aio-proxy).
-const extractBinaryFromTarball = async (bytes: Uint8Array): Promise<Uint8Array> => {
+// Pull package/bin/aio-proxy (aio-proxy.exe on Windows) out of the downloaded npm
+// tarball. Bun.Archive transparently gunzips the .tgz, matching the layout published
+// by the release pipeline (build-binary.ts writes npm/cli-*/bin/).
+export const extractBinaryFromTarball = async (
+  bytes: Uint8Array,
+  platform: NodeJS.Platform = process.platform,
+): Promise<Uint8Array> => {
+  const name = platform === 'win32' ? 'aio-proxy.exe' : 'aio-proxy';
   const files = await new Bun.Archive(bytes).files();
-  const entry = files.get('package/bin/aio-proxy');
-  if (entry === undefined) throw new Error('downloaded package is missing bin/aio-proxy');
+  const entry = files.get(`package/bin/${name}`);
+  if (entry === undefined) throw new Error(`downloaded package is missing bin/${name}`);
   return entry.bytes();
+};
+
+type CommitOptions = {
+  readonly target: string;
+  readonly staged: string;
+  readonly platform: NodeJS.Platform;
+  readonly rename: (from: string, to: string) => Promise<void>;
+  readonly backupPath?: string;
+};
+
+// Moves the staged binary into place, keeping the old one at the backup path.
+// Windows cannot overwrite or delete a running exe but can rename it, so the
+// running binary is renamed aside to `<target>.old` first; the same two renames
+// work everywhere. A failed second rename puts the old binary back.
+export const commitStagedBinary = async (options: CommitOptions): Promise<void> => {
+  const backup =
+    options.platform === 'win32' ? `${options.target}.old` : (options.backupPath ?? `${options.target}.old`);
+  await options.rename(options.target, backup);
+  try {
+    await options.rename(options.staged, options.target);
+  } catch (err) {
+    await options.rename(backup, options.target);
+    throw err;
+  }
 };
 
 // 返回契约：
@@ -50,16 +79,17 @@ const extractBinaryFromTarball = async (bytes: Uint8Array): Promise<Uint8Array> 
 // - 下载/rename 等系统级错误（在 verify 之前发生）→ 尽力回滚后 rethrow，让调用方看到真实 IO 失败。
 export const replaceBinaryForUpdate = async (options: ReplaceOptions): Promise<Verification> => {
   // 阶段一：把旧二进制挪到备份、把新二进制换入。此处任何失败都是系统级错误 → 回滚并 rethrow。
-  let backupReady = false;
+  const platform = options.platform ?? process.platform;
+  const backupPath = platform === 'win32' ? `${options.targetPath}.old` : options.backupPath;
   try {
-    await fs.rename(options.targetPath, options.backupPath);
-    backupReady = true;
-    await fs.rename(options.tempPath, options.targetPath);
+    await commitStagedBinary({
+      target: options.targetPath,
+      staged: options.tempPath,
+      platform,
+      rename: fs.rename,
+      backupPath,
+    });
   } catch (err) {
-    if (backupReady) {
-      await unlinkIfExists(options.targetPath);
-      await fs.rename(options.backupPath, options.targetPath);
-    }
     await unlinkIfExists(options.tempPath);
     throw err;
   }
@@ -71,17 +101,20 @@ export const replaceBinaryForUpdate = async (options: ReplaceOptions): Promise<V
     verification = await options.verify(options.expectedVersion);
   } catch (err) {
     await unlinkIfExists(options.targetPath);
-    await fs.rename(options.backupPath, options.targetPath);
+    await fs.rename(backupPath, options.targetPath);
     throw err;
   }
   if (!verification.ok) {
     await unlinkIfExists(options.targetPath);
-    await fs.rename(options.backupPath, options.targetPath);
+    await fs.rename(backupPath, options.targetPath);
     return { ok: false, ...(verification.actual === undefined ? {} : { actual: verification.actual }) };
   }
 
-  // 成功：清理本次备份后返回。
-  await unlinkIfExists(options.backupPath);
+  // 成功：清理本次备份后返回。Windows 上旧二进制就是当前运行的进程，无法删除，
+  // 留给下次的 sweepStaleBackups 清理。
+  await unlinkIfExists(backupPath).catch((err: unknown) => {
+    if (platform !== 'win32') throw err;
+  });
   return verification;
 };
 
@@ -90,6 +123,11 @@ export const sweepStaleBackups = async (targetPath: string): Promise<void> => {
   const base = basename(targetPath);
   const entries = await fs.readdir(dir).catch(() => [] as string[]);
   for (const entry of entries) {
+    if (entry === `${base}.old`) {
+      // On Windows the previous run may still hold the file; the next sweep retries.
+      await unlinkIfExists(join(dir, entry)).catch(() => undefined);
+      continue;
+    }
     if (!entry.startsWith(`${base}.`) || !entry.endsWith('.bak')) continue;
     const middle = entry.slice(base.length + 1, entry.length - '.bak'.length);
     if (middle.length > 0 && !/^\d+(\.\d+)*$/.test(middle)) continue;
@@ -98,7 +136,7 @@ export const sweepStaleBackups = async (targetPath: string): Promise<void> => {
 };
 
 const verifyInstalledVersion = async (binPath: string, expected: string): Promise<Verification> => {
-  const proc = Bun.spawn([binPath, '--version'], { stdout: 'pipe', stderr: 'ignore' });
+  const proc = Bun.spawn([binPath, '--version'], { stdout: 'pipe', stderr: 'ignore', windowsHide: true });
   const out = (await new Response(proc.stdout).text()).trim();
   if ((await proc.exited) !== 0) return { ok: false };
   const actual = parseVersionOutput(out);

@@ -1,5 +1,5 @@
 import { existsSync, readdirSync } from 'node:fs';
-import { basename, dirname, join } from 'node:path';
+import { basename, delimiter, dirname, join } from 'node:path';
 
 import type { PackageUpgradeMethod, UpgradeMethod, UpgradeTarget } from './constants';
 import { BINARY_NPM_SCOPE, HOMEBREW_FORMULA, PACKAGE, SUPPORTED_BINARY_TARGETS } from './constants';
@@ -11,7 +11,7 @@ export { isPathInDirectory } from './path-in-directory';
 const PACKAGE_METHODS = ['brew', 'bun', 'npm', 'pnpm'] as const;
 const NODE_MANAGERS = ['bun', 'npm', 'pnpm'] as const;
 const CELLAR_PATTERN = /^(.*)\/Cellar\/aio-proxy\/[^/]+\/bin\/aio-proxy$/;
-const PLATFORM_CLI_BIN = /(?:^|[/\\])node_modules[/\\]@aio-proxy[/\\]cli-[^/\\]+[/\\]bin[/\\]aio-proxy$/;
+const PLATFORM_CLI_BIN = /(?:^|[/\\])node_modules[/\\]@aio-proxy[/\\]cli-[^/\\]+[/\\]bin[/\\]aio-proxy(?:\.exe)?$/;
 type NodeManager = (typeof NODE_MANAGERS)[number];
 
 type UpgradeDirs = { readonly brew?: string; readonly bun?: string; readonly npm?: string; readonly pnpm?: string };
@@ -171,7 +171,7 @@ const platformPackageTarget = (binPath: string, preferred?: PackageUpgradeMethod
 const whichOnPath = (name: string): string | undefined => {
   const pathVar = process.env['PATH'];
   if (pathVar === undefined || pathVar === '') return undefined;
-  for (const dir of pathVar.split(':')) {
+  for (const dir of pathVar.split(delimiter)) {
     if (dir === '') continue;
     const candidate = join(dir, name);
     if (existsSync(candidate)) return candidate;
@@ -301,7 +301,7 @@ const listDir = (dir: string): readonly string[] => {
 };
 
 const nativeAt = (nodeModules: string, platformPkg: string): string | undefined => {
-  const candidate = join(nodeModules, platformPkg, 'bin', PACKAGE);
+  const candidate = join(nodeModules, platformPkg, 'bin', process.platform === 'win32' ? `${PACKAGE}.exe` : PACKAGE);
   return existsSync(candidate) ? candidate : undefined;
 };
 

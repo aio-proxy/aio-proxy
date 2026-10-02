@@ -3,7 +3,13 @@ import { mkdtempSync, mkdirSync, realpathSync, symlinkSync, unlinkSync, writeFil
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { isPathInDirectory, resolveManagedRestartExec, resolveUpgradeMethod, resolveUpgradeTargetFrom } from './detect';
+import {
+  isPathInDirectory,
+  isPlatformCliBinary,
+  resolveManagedRestartExec,
+  resolveUpgradeMethod,
+  resolveUpgradeTargetFrom,
+} from './detect';
 
 const canonicalTempDir = (prefix: string): string => realpathSync(mkdtempSync(join(tmpdir(), prefix)));
 
@@ -1389,6 +1395,20 @@ test('isDesktopManagedInstall recognizes the desktop markers and an app-bundle b
   expect(isDesktopManagedInstall({}, '/opt/homebrew/bin/aio-proxy', (p) => p)).toBe(false);
   // An empty marker (an unset variable exported as '') is not ownership.
   expect(isDesktopManagedInstall({ AIO_PROXY_DESKTOP_EXEC: '' }, '/opt/homebrew/bin/aio-proxy', (p) => p)).toBe(false);
+});
+
+test('a stable desktop copy reached without env markers is desktop-managed', () => {
+  const real = (p: string) => p;
+  expect(isDesktopManagedInstall({}, '/home/u/.local/share/aio-proxy-desktop/bin/aio-proxy', real, 'linux')).toBe(true);
+  expect(
+    isDesktopManagedInstall({}, 'C:\\Users\\U\\AppData\\Local\\AIO-Proxy-Desktop\\bin\\aio-proxy.exe', real, 'win32'),
+  ).toBe(true);
+  expect(isDesktopManagedInstall({}, '/home/u/.bun/bin/aio-proxy', real, 'linux')).toBe(false);
+});
+
+test('the native win32 binary under an npm prefix is recognized as a package install', () => {
+  const exe = 'C:\\Users\\U\\AppData\\Roaming\\npm\\node_modules\\@aio-proxy\\cli-win32-x64\\bin\\aio-proxy.exe';
+  expect(isPlatformCliBinary(exe)).toBe(true);
 });
 
 test('a CLI upgrade installs but never restarts a service the desktop app owns', async () => {
