@@ -1,5 +1,6 @@
 //! macOS: SMAppService, Sparkle, launchd, `lsof`, and the menu-bar PopUp panel.
 
+use std::ffi::OsString;
 use std::path::Path;
 
 use futures::channel::mpsc::UnboundedSender;
@@ -21,6 +22,11 @@ pub use host::{current_user, kickstart, pid_alive};
 pub use peer::peer_owned_by_this_user;
 
 pub fn paths(home: &Path) -> Paths {
+    paths_from(home, |name| std::env::var_os(name))
+}
+
+/// The environment does not move anything on macOS.
+pub fn paths_from(home: &Path, _env: impl Fn(&str) -> Option<OsString>) -> Paths {
     let support = home.join("Library/Application Support/aio-proxy-desktop");
     Paths {
         home: home.to_path_buf(),

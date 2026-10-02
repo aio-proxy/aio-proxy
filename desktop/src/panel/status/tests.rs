@@ -6,7 +6,7 @@ use super::*;
 use crate::connect::discovery::fixture::discovery;
 
 fn model(patch: impl FnOnce(&mut Value)) -> AppModel {
-    let mut model = AppModel::new(crate::platform::paths(Path::new("/Users/me")), None);
+    let mut model = AppModel::new(crate::platform::paths_from(Path::new("/Users/me"), |_| None), None);
     model.install = Some(InstallState::Persistent);
     model.discovery = Some(discovery(patch));
     model

@@ -1,6 +1,8 @@
-//! Windows. Until phase 3 fills these in, every capability fails closed: no login item, no updater,
-//! no connection is vouched for, and no process is reported alive.
+//! Windows. Stubs until phase 3: no login item, no updater, no connection is vouched for (the
+//! token is never sent), no kickstart, and `pid_alive` is always false, so restart verification
+//! rests on the health check alone.
 
+use std::ffi::OsString;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -14,7 +16,12 @@ use crate::install::Paths;
 
 /// `%LOCALAPPDATA%\aio-proxy-desktop`; without it, the same place under the profile.
 pub fn paths(home: &Path) -> Paths {
-    let local = std::env::var_os("LOCALAPPDATA")
+    paths_from(home, |name| std::env::var_os(name))
+}
+
+/// `paths` with the environment passed in, so tests never resolve to the real data directory.
+pub fn paths_from(home: &Path, env: impl Fn(&str) -> Option<OsString>) -> Paths {
+    let local = env("LOCALAPPDATA")
         .map(PathBuf::from)
         .filter(|dir| dir.is_absolute())
         .unwrap_or_else(|| home.join("AppData").join("Local"));
@@ -35,7 +42,7 @@ pub fn current_user() -> String {
     String::new()
 }
 
-/// `schtasks /End` then `/Run` arrive in phase 3.
+/// `schtasks /End` then `/Run` arrive in phase 3; an empty list makes the kickstart fail.
 pub fn kickstart(_user: &str) -> Vec<Command> {
     Vec::new()
 }

@@ -9,7 +9,7 @@ use crate::summary::UsageRange;
 
 #[test]
 fn no_desktop_token_means_the_degraded_panel_without_a_request_or_attention() {
-    let mut model = AppModel::new(crate::platform::paths(Path::new("/Users/me")), None);
+    let mut model = AppModel::new(crate::platform::paths_from(Path::new("/Users/me"), |_| None), None);
     model.discovery = Some(discovery(|v| v["token"] = Value::Null));
     let Err(state) = summary_request(&model, order()) else { panic!("a request was built without a token") };
     assert!(matches!(state, SummaryState::Degraded(DegradedReason::NoToken)));

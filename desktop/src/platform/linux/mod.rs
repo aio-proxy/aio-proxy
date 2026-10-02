@@ -1,6 +1,8 @@
-//! Linux. Until the later tasks fill these in, every capability fails closed: no login item, no
-//! updater, no connection is vouched for, and no process is reported alive.
+//! Linux. Stubs until the later tasks: no login item, no updater, no connection is vouched for
+//! (the token is never sent), and `pid_alive` is always false until Task 5, so restart
+//! verification rests on the health check alone.
 
+use std::ffi::OsString;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -14,8 +16,13 @@ use crate::install::Paths;
 
 /// XDG base directories count only when absolute; the XDG spec says to ignore relative and empty ones.
 pub fn paths(home: &Path) -> Paths {
+    paths_from(home, |name| std::env::var_os(name))
+}
+
+/// `paths` with the environment passed in, so tests never resolve to the real data directory.
+pub fn paths_from(home: &Path, env: impl Fn(&str) -> Option<OsString>) -> Paths {
     let base = |var: &str, default: &str| {
-        std::env::var_os(var).map(PathBuf::from).filter(|dir| dir.is_absolute()).unwrap_or_else(|| home.join(default))
+        env(var).map(PathBuf::from).filter(|dir| dir.is_absolute()).unwrap_or_else(|| home.join(default))
     };
     let support = base("XDG_DATA_HOME", ".local/share").join("aio-proxy-desktop");
     Paths {
