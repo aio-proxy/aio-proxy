@@ -124,3 +124,19 @@ Before any attempt, AIO Proxy removes candidates that cannot serve right now, ev
 - Quota that is unknown, failed to read, or older than 10 minutes never removes a candidate, and the request path never waits on a quota read.
 - If every candidate is removed, the client gets a 429 whose `Retry-After` is the earliest reset.
 - The request trace attribute `aio_proxy.route.skipped_candidates` lists each removed candidate with its reason (`cooldown` or `quota_exhausted`).
+
+### Spending the subscription that resets soonest
+
+By default, candidates in one priority tier share traffic by weight. Set `router.selection` to `"quota-reset"` (or turn on **Spend the subscription that resets soonest first** on the Dashboard Routing page) to spend the allowance that would otherwise expire unused:
+
+```jsonc title="config.jsonc"
+{
+  "router": { "selection": "quota-reset" },
+}
+```
+
+- Within each tier, subscriptions whose quota snapshot is fresh go first, ordered by when their allowance resets. The allowance is the longest window covering the model (a weekly window, not a 5-hour one).
+- Providers without usable quota data (API Providers, plugins that report none, stale snapshots) follow in their weighted order.
+- Response owner and session affinity still go first, so prompt caches stay warm.
+- Token counting and generation use the same order.
+- A reordered attempt records `aio_proxy.route.selection_source = quota_reset`. The Routing page stops flagging traffic deviation, since a lopsided tier is the policy working.

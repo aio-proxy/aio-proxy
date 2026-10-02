@@ -107,3 +107,19 @@ AIO Proxy 会识别请求的逻辑会话（例如 OpenAI `session_id`、Anthropi
 - 配额未知、读取失败或快照超过 10 分钟时，永远不会移除候选；请求路径上也不会为此等待任何网络读取。
 - 若全部候选都被移除，客户端会收到 429，`Retry-After` 为最早的重置时间。
 - 请求 trace 的 `aio_proxy.route.skipped_candidates` 属性会列出每个被移除的候选及原因（`cooldown` 或 `quota_exhausted`）。
+
+#### 优先消耗最快重置的订阅
+
+默认情况下，同一 priority 梯队内的候选按 weight 分配流量。把 `router.selection` 设为 `"quota-reset"`（或在 Dashboard 的 Routing 页打开「优先消耗最快重置的订阅」开关），可以先消耗那些快要过期作废的额度：
+
+```jsonc title="config.jsonc"
+{
+  "router": { "selection": "quota-reset" },
+}
+```
+
+- 同一梯队内，配额快照新鲜的订阅排在前面，按额度重置时间从早到晚排列。这里的额度指覆盖该模型的最长窗口（周窗口，而不是 5 小时窗口）。
+- 没有可用配额数据的 Provider（API Provider、不上报配额的插件、快照过期）按原来的加权顺序排在其后。
+- 响应 owner 和会话亲和仍然优先，以保持 prompt cache 命中。
+- Token 计数与实际生成使用同一顺序。
+- 被重排的尝试会记录 `aio_proxy.route.selection_source = quota_reset`；Routing 页也不再提示流量偏离，因为梯队内流量集中正是该策略的预期结果。
