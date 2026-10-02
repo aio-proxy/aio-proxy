@@ -1702,7 +1702,7 @@
         "not_installed": "本机未找到 {target}。",
         "conflict": "{target} 的文件不是完整的 AIO Proxy 托管集成，请用 CLI 处理。",
         "recovery_required": "有中断的配置需要先恢复，请在终端运行配置命令。",
-        "modified": "AIO Proxy 管理的部分字段被改动过，修复会还原它们。",
+        "modified": "AIO Proxy 管理的部分字段被改动过。请先移除集成（会保留你的改动），再重新配置。",
         "missing": "部分托管文件缺失，修复会重新安装。",
         "outdated": "当前 AIO Proxy 版本带有更新的适配器。"
       },
@@ -1753,6 +1753,7 @@
         "invalid_provider_id": "Provider ID 为空或是保留值。",
         "occupied_provider_id": "该 Provider ID 已在 config.toml 中使用。",
         "endpoint_changed": "配置过程中 AIO Proxy 地址发生了变化，请重试。",
+        "configuration_modified": "AIO Proxy 管理的字段被改动过，因此不会覆盖它们。请先移除集成（会保留你的改动），再重新配置。",
         "authorization_denied": "设备已被拒绝。",
         "authorization_expired": "授权请求已过期。",
         "recovery_required": "有中断的配置需要先用 CLI 恢复。",

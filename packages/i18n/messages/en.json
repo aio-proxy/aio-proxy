@@ -1702,7 +1702,7 @@
         "not_installed": "{target} was not found on this machine.",
         "conflict": "The {target} files are not an intact integration managed by AIO Proxy. Resolve it with the CLI.",
         "recovery_required": "An interrupted setup must be recovered first. Run the configure command in a terminal.",
-        "modified": "Some fields AIO Proxy manages were edited. Repair restores them.",
+        "modified": "Some fields AIO Proxy manages were edited. Remove the integration (your edits are kept), then configure it again.",
         "missing": "Some managed files are missing. Repair reinstalls them.",
         "outdated": "A newer adapter ships with this AIO Proxy version."
       },
@@ -1753,6 +1753,7 @@
         "invalid_provider_id": "That provider ID is empty or reserved.",
         "occupied_provider_id": "That provider ID is already used in config.toml.",
         "endpoint_changed": "The AIO Proxy address changed during setup. Try again.",
+        "configuration_modified": "Fields AIO Proxy manages were edited, so setup will not overwrite them. Remove the integration (your edits are kept), then configure it again.",
         "authorization_denied": "The device was denied.",
         "authorization_expired": "The approval request expired.",
         "recovery_required": "An interrupted setup must be recovered with the CLI first.",

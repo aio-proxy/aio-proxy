@@ -35,6 +35,8 @@ const ERROR_MESSAGES: ReadonlyArray<readonly [RegExp, AgentOperationErrorCode]> 
   [/^CODEX_AUTH_(OPERATION_PENDING|REVOKE_BLOCKED)$/u, 'recovery_required'],
   [/operation is pending$|^Timed out waiting for process lock: |^Grok lock unverifiable$/u, 'locked'],
   [/ is occupied$/u, 'occupied_provider_id'],
+  // Configure never overwrites edited managed fields; the user removes the integration and configures again.
+  [/^(Codex managed fields changed|Grok configuration modified): /u, 'configuration_modified'],
 ];
 
 // Filesystem failures that mean the Agent's directory cannot be used as configured.
