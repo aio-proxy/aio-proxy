@@ -12,8 +12,8 @@ import {
 import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import type { DashboardOAuthSession, DashboardOAuthSessionStart } from '@aio-proxy/types';
 
-import { createDashboardAuthorization, type DashboardAuthorization } from './authorization';
-import { OAuthCallbackError } from './callback';
+import { createDashboardAuthorization, type DashboardAuthorization } from '../authorization';
+import { OAuthCallbackError } from '../callback';
 
 type RegistryLease = { readonly registry: PluginRegistry; readonly release: () => void };
 type ProviderCommitCoordinator = NonNullable<LoginOAuthAccountOptions['coordinateProviderCommit']>;
@@ -65,6 +65,7 @@ const runLoginSession = async (
   session.authorization = authorization;
   try {
     const result = await loginOAuthAccount({
+      localSignIn: input.localSignIn,
       ...(input.targetProviderId === undefined ? {} : { targetProviderId: input.targetProviderId }),
       ...(input.capability === undefined ? {} : { capability: input.capability }),
       ...(input.providerPatch === undefined

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { hasReservedAgentTokenPrefix } from '../../agent-integration';
 import { ServerConfigSchema, ServerLoggingSchema, ServerRetrySchema } from '../../config/index';
 import { DashboardLocalizedTextSchema } from '../../dashboard-localized-text';
-import { DashboardOAuthFormFieldSchema } from '../../dashboard-oauth';
+import { DashboardOAuthFormFieldSchema } from '../../dashboard-oauth/index';
 import { PluginPackageNameSchema, PluginStateSchema } from '../../plugin';
 import { ConfigTemplateStringSchema, HttpProxyUrlSchema } from '../../provider';
 

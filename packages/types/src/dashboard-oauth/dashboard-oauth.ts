@@ -1,17 +1,17 @@
 import { z } from 'zod';
 
-import { AliasConfigSchema, IdSchema } from './common';
-import { DashboardLocalizedTextSchema } from './dashboard-localized-text';
+import { AliasConfigSchema, IdSchema } from '../common';
+import { DashboardLocalizedTextSchema } from '../dashboard-localized-text';
 import {
   HttpProxyUrlSchema,
   validateProxyFallback,
   ProviderMutationProxySchema,
   RoutingPrioritySchema,
   RoutingWeightSchema,
-} from './provider';
-import { validateAliasTargets } from './provider-alias';
-import { AuthoredOAuthAliasSchema } from './provider-alias/oauth-alias';
-import { ProviderTransformsSchema } from './provider-transform/index';
+} from '../provider';
+import { validateAliasTargets } from '../provider-alias';
+import { AuthoredOAuthAliasSchema } from '../provider-alias/oauth-alias';
+import { ProviderTransformsSchema } from '../provider-transform/index';
 
 const dashboardOAuthConditionValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const DashboardOAuthFormConditionSchema = z.union([
@@ -72,6 +72,7 @@ export const DashboardOAuthCapabilitySchema = z.strictObject({
   capability: z.string().min(1),
   displayName: DashboardLocalizedTextSchema,
   description: DashboardLocalizedTextSchema.optional(),
+  localSignIn: z.strictObject({ source: DashboardLocalizedTextSchema }).optional(),
   form: z.array(DashboardOAuthFormFieldSchema),
   defaults: z.record(z.string(), z.json()),
 });
@@ -169,6 +170,7 @@ export const DashboardOAuthSessionStartSchema = z
   .strictObject({
     capability: z.strictObject({ plugin: z.string().min(1), capability: z.string().min(1) }).optional(),
     targetProviderId: IdSchema.optional(),
+    localSignIn: z.boolean().default(false),
     publicValues: z.record(z.string(), z.json()).default({}),
     secrets: z.record(z.string(), z.string()).default({}),
     clearSecrets: z.array(z.string().min(1)).default([]),

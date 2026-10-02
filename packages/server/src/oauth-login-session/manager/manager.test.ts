@@ -1,5 +1,5 @@
-import { expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { expect, mock, test } from 'bun:test';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -8,6 +8,112 @@ import { openDb } from '@aio-proxy/core/db';
 import { zod } from '@aio-proxy/plugin-sdk';
 
 import { createOAuthLoginSessionManager } from './manager';
+
+test.each(['valid', 'bad'] as const)(
+  'a local sign-in session uses the %s host store without authorization',
+  async (store) => {
+    const dir = mkdtempSync(join(tmpdir(), 'aio-oauth-session-local-'));
+    const configPath = join(dir, 'config.json');
+    const hostPath = join(dir, 'host-store.json');
+    const secret = 'synthetic-local-session-token';
+    writeFileSync(configPath, JSON.stringify({ plugins: [], providers: {} }));
+    writeFileSync(hostPath, store === 'valid' ? JSON.stringify({ token: secret }) : `broken store ${secret}`);
+    const database = openDb({ home: dir });
+    const repository = createPluginRepository(database.sqlite);
+    const host = createPluginRegistryHost();
+    const staging = host.stage('@example/oauth');
+    const login = mock(async () => {
+      throw new Error('browser login must not run');
+    });
+    const read = mock(async (_context: unknown, options: { tenant: string }) => {
+      expect(options).toEqual({ tenant: 'work' });
+      const contents = readFileSync(hostPath, 'utf8');
+      if (store === 'bad') throw new Error(contents);
+      return {
+        fingerprint: 'local-person',
+        suggestedKey: 'person',
+        credentials: zod.object({ token: zod.string() }).parse(JSON.parse(contents)),
+      };
+    });
+    const write = mock(async () => {});
+    staging.api.oauth.register({
+      id: 'default',
+      displayName: 'Example OAuth',
+      account: {
+        options: {
+          schema: zod.object({ tenant: zod.string() }),
+          form: [{ type: 'text', key: 'tenant', label: 'Tenant' }],
+        },
+      },
+      credentials: zod.object({ token: zod.string() }),
+      login,
+      localSignIn: { source: 'Example Tool', detect: async () => existsSync(hostPath), read, write },
+      catalog: {
+        policy: { kind: 'static' },
+        async discover(context) {
+          expect(await context.credentials.read()).toMatchObject({ credential: { token: secret } });
+          return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+        },
+      },
+      async createRuntime() {
+        throw new Error('runtime must not run');
+      },
+    });
+    staging.seal();
+    staging.commit();
+    const finished = Promise.withResolvers<void>();
+    const logs: unknown[] = [];
+    const reload = mock(async () => {});
+    const manager = createOAuthLoginSessionManager({
+      configFile: new AtomicConfigFile(configPath),
+      repository,
+      acquireRegistry: () => ({ registry: host.registry, release: () => finished.resolve() }),
+      diagnostics: (code, options) => ({
+        code,
+        summary: code,
+        retryable: options.retryable,
+        occurredAt: new Date(0).toISOString(),
+      }),
+      logger: (event) => {
+        logs.push(event);
+      },
+      coordinateProviderCommit: (_capability, commit) => commit(),
+      validateProviderCommit: () => {},
+      reload,
+    });
+    try {
+      const session = manager.start({
+        capability: { plugin: '@example/oauth', capability: 'default' },
+        localSignIn: true,
+        publicValues: { tenant: 'work' },
+        secrets: {},
+        clearSecrets: [],
+      });
+      await finished.promise;
+      const result = manager.get(session.id);
+      expect(result).toMatchObject(
+        store === 'valid'
+          ? { status: 'succeeded', providerId: 'person' }
+          : { status: 'failed', code: 'OAUTH_LOCAL_SIGN_IN_INVALID' },
+      );
+      expect(login).not.toHaveBeenCalled();
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(write).not.toHaveBeenCalled();
+      expect(JSON.stringify({ result, logs, diagnostics: repository.readDiagnostics('person') })).not.toContain(secret);
+      if (store === 'valid') {
+        expect(repository.readAccount('person')).toMatchObject({ localSignIn: {}, credential: { token: secret } });
+        expect(reload).toHaveBeenCalledTimes(1);
+      } else {
+        expect(repository.readAccount('person')).toBeNull();
+        expect(reload).not.toHaveBeenCalled();
+      }
+    } finally {
+      manager.close();
+      database.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 test('a cancelled OAuth session stays cancelled when a committed login finishes reloading', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'aio-oauth-session-cancel-'));
@@ -72,6 +178,7 @@ test('a cancelled OAuth session stays cancelled when a committed login finishes 
   try {
     const session = manager.start({
       capability: { plugin: '@example/oauth', capability: 'default' },
+      localSignIn: false,
       publicValues: {},
       secrets: {},
       clearSecrets: [],
@@ -139,6 +246,7 @@ test('a proxy-unsupported adapter fails a Dashboard session with the stable code
   try {
     const session = manager.start({
       capability: { plugin: '@example/oauth', capability: 'default' },
+      localSignIn: false,
       publicValues: {},
       secrets: {},
       clearSecrets: [],

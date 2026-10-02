@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { DashboardOAuthFormFieldSchema } from '../dashboard-oauth';
+import { DashboardOAuthFormFieldSchema } from '../dashboard-oauth/index';
 import { ProviderKind, ProviderProtocol } from '../provider';
 import { DashboardOverviewRangeSchema, UsageOverviewRangeSchema } from '../usage';
 import {

@@ -106,7 +106,7 @@ export type ServerState = ProviderRouteSource & {
   readonly refreshProviderCatalog: (providerId: string) => Promise<CatalogRefreshOutcome>;
   readonly quotaCache: OAuthQuotaCache;
   readonly pluginControlPlane: PluginControlPlane;
-  readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];
+  readonly oauthCapabilities: () => Promise<readonly DashboardOAuthCapability[]>;
   readonly oauthProviderEditView: (providerId: string) => DashboardOAuthProviderEdit | undefined;
   readonly oauthLoginSessions: OAuthLoginSessionManager;
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
