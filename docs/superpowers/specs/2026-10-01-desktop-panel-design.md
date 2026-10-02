@@ -161,6 +161,7 @@ The icon's native menu (muda) carries every action. Items appear only when they 
 2. ---
 3. **Start**, **Install and start**, **Take over and start**, **Stop**, **Restart**, **Reload config**: whichever the current offer allows. Each runs the same user action and completion condition as today. The outcome shows in the panel's notice line the next time the panel is open, and in the log.
 4. **Open logs**
+   - **Install aiop command**, only when the user's login shell (`$SHELL -l -i -c 'command -v aiop'`, probed at launch and after an install) has no `aiop`. It links `/usr/local/bin/aiop` to the stable symlink behind the system's admin prompt, and `/usr/local/bin/aio-proxy` too when nothing is there yet (an npm or Homebrew copy is left alone). A non-persistent copy shows it disabled as **Install aiop command (move to Applications first)**.
 5. ---
 6. **Open at login** (a check item). Always listed, so the switch can be found. A non-persistent copy shows it disabled and unchecked as **Open at login (move to Applications first)**: registering would point the login item at wherever that bundle happens to be.
    - In the `RequiresApproval` state it reads **Open at login (needs approval)**, and choosing it opens System Settings › Login Items.

@@ -31,6 +31,50 @@ pub fn start(cx: &mut App) {
             model.login_item = crate::login_item::status();
             changed(cx);
             rediscover(cx);
+            probe_cli(cx);
+        });
+    })
+    .detach();
+}
+
+fn probe_cli(cx: &mut App) {
+    let task = cx.background_executor().spawn(async { crate::cli_command::on_path() });
+    cx.spawn(async move |cx| {
+        let on_path = task.await;
+        cx.update(|cx| {
+            log::info(format!("aiop on PATH: {on_path:?}"));
+            cx.global_mut::<AppModel>().cli_on_path = on_path;
+            changed(cx);
+        });
+    })
+    .detach();
+}
+
+/// Links `/usr/local/bin/aiop` to the stable symlink, so the command survives app updates.
+pub fn install_cli(cx: &mut App) {
+    let model = cx.global::<AppModel>();
+    if !model.persistent() {
+        return;
+    }
+    let target = model.paths.symlink.clone();
+    let task = cx.background_executor().spawn(async move { crate::cli_command::install(&target) });
+    cx.spawn(async move |cx| {
+        let result = task.await;
+        cx.update(|cx| {
+            log::info(format!("install aiop: {result:?}"));
+            let model = cx.global_mut::<AppModel>();
+            // The service-action state machine owns `action` while it runs.
+            if !model.action.is_busy() {
+                match result {
+                    Ok(true) => {
+                        model.action = ActionState::Done(format!("Installed aiop at {}.", crate::cli_command::LINK))
+                    }
+                    Ok(false) => {}
+                    Err(error) => model.action = ActionState::Failed(format!("Install aiop failed: {error}")),
+                }
+            }
+            changed(cx);
+            probe_cli(cx);
         });
     })
     .detach();

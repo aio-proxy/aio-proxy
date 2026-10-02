@@ -139,7 +139,8 @@ pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
         .map(|d| crate::connect::policy::offered_actions(d, model.persistent()))
         .unwrap_or_default();
     let dashboard = !crate::panel::is_down(model);
-    menu_entries(offered, dashboard, model.action.is_busy(), model.persistent(), model.login_item)
+    let cli_missing = model.cli_on_path == Some(false);
+    menu_entries(offered, dashboard, model.action.is_busy(), model.persistent(), model.login_item, cli_missing)
 }
 
 /// Runs a menu command, from the right-click menu or the panel's `⋯` menu.
@@ -148,6 +149,7 @@ pub fn run(cx: &mut App, command: MenuCommand) {
         MenuCommand::OpenDashboard => crate::app::open_dashboard(cx),
         MenuCommand::Run(action) => crate::app::run_user_action(cx, action),
         MenuCommand::OpenLogs => crate::app::open_logs(cx),
+        MenuCommand::InstallCli => crate::app::install_cli(cx),
         MenuCommand::ToggleLogin => crate::app::toggle_login_item(cx),
         MenuCommand::CheckForUpdates => crate::updater::check_now(),
         // Quitting leaves the proxy running: launchd owns it.

@@ -14,8 +14,8 @@ use gpui_kit::{App, Global, Task};
 
 pub use health::{check_now as check_health, start_timer as start_health_timer};
 pub use lifecycle::{
-    open_dashboard, open_dashboard_provider, open_dashboard_providers, open_logs, rediscover, run_user_action,
-    set_login_item, start, toggle_login_item,
+    install_cli, open_dashboard, open_dashboard_provider, open_dashboard_providers, open_logs, rediscover,
+    run_user_action, set_login_item, start, toggle_login_item,
 };
 pub use refresh::{manual_refresh, panel_closed, panel_opened, set_usage_range};
 
@@ -99,6 +99,8 @@ pub struct AppModel {
     /// Last register/unregister failure, shown under the switch; kept out of `action`, which is
     /// the service-action state machine.
     pub login_item_error: Option<String>,
+    /// Whether the user's shell finds `aiop`; `None` until (or unless) it answers.
+    pub cli_on_path: Option<bool>,
     /// The Usage group's window. Remembered across panel closes; `24h` at launch.
     pub usage_range: UsageRange,
     /// The last usage per window, so a switch back renders at once while a fetch runs.
@@ -135,6 +137,7 @@ impl AppModel {
             update_pending: None,
             login_item: LoginItemStatus::Unavailable,
             login_item_error: None,
+            cli_on_path: None,
             usage_range: UsageRange::H24,
             usage_cache: HashMap::new(),
             attempts: AutoAttempts::default(),

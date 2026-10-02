@@ -8,6 +8,7 @@ pub enum MenuCommand {
     OpenDashboard,
     Run(UserAction),
     OpenLogs,
+    InstallCli,
     ToggleLogin,
     CheckForUpdates,
     Quit,
@@ -24,6 +25,7 @@ impl MenuCommand {
             MenuCommand::Run(UserAction::Restart) => "run-restart",
             MenuCommand::Run(UserAction::Reload) => "run-reload",
             MenuCommand::OpenLogs => "open-logs",
+            MenuCommand::InstallCli => "install-cli",
             MenuCommand::ToggleLogin => "login",
             MenuCommand::CheckForUpdates => "check-updates",
             MenuCommand::Quit => "quit",
@@ -40,6 +42,7 @@ impl MenuCommand {
             "run-restart" => MenuCommand::Run(UserAction::Restart),
             "run-reload" => MenuCommand::Run(UserAction::Reload),
             "open-logs" => MenuCommand::OpenLogs,
+            "install-cli" => MenuCommand::InstallCli,
             "login" => MenuCommand::ToggleLogin,
             "check-updates" => MenuCommand::CheckForUpdates,
             "quit" => MenuCommand::Quit,
@@ -60,12 +63,14 @@ fn item(command: MenuCommand, label: &str, enabled: bool) -> MenuEntry {
 }
 
 /// `dashboard` is false while the proxy is down: from live health, not only the last discovery.
+/// `cli_missing` is true only when the user's shell answered that it has no `aiop`.
 pub fn menu_entries(
     offered: Offered,
     dashboard: bool,
     busy: bool,
     persistent: bool,
     login: LoginItemStatus,
+    cli_missing: bool,
 ) -> Vec<MenuEntry> {
     let mut entries = vec![item(MenuCommand::OpenDashboard, "Open Dashboard", dashboard), MenuEntry::Separator];
     let services = [
@@ -82,6 +87,12 @@ pub fn menu_entries(
         }
     }
     entries.push(item(MenuCommand::OpenLogs, "Open logs", true));
+    if cli_missing {
+        // The link targets the stable symlink, which only a persistent copy maintains.
+        let label =
+            if persistent { "Install aiop command" } else { "Install aiop command (move to Applications first)" };
+        entries.push(item(MenuCommand::InstallCli, label, persistent));
+    }
     entries.push(MenuEntry::Separator);
     // Always listed, so the switch is findable; a copy outside Applications cannot register (the
     // login item would point at wherever this bundle happens to be), so there it is disabled.

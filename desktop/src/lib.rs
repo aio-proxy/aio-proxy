@@ -2,6 +2,7 @@
 //! modules is unit-tested without either.
 
 pub mod app;
+pub mod cli_command;
 pub mod client;
 pub mod connect;
 pub mod http;

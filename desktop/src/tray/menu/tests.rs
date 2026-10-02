@@ -17,7 +17,8 @@ fn labels(entries: &[MenuEntry]) -> Vec<String> {
 
 #[test]
 fn a_running_desktop_service_offers_stop_restart_reload_and_login() {
-    let entries = menu_entries(offered(false, false, true, true, true), true, false, true, LoginItemStatus::Enabled);
+    let entries =
+        menu_entries(offered(false, false, true, true, true), true, false, true, LoginItemStatus::Enabled, false);
     assert_eq!(
         labels(&entries),
         [
@@ -45,6 +46,7 @@ fn a_stopped_service_offers_start_and_a_fresh_one_install() {
         false,
         true,
         LoginItemStatus::NotRegistered,
+        false,
     ));
     assert!(stopped.contains(&"Start".to_string()) && !stopped.contains(&"Stop".to_string()));
     let fresh = labels(&menu_entries(
@@ -53,14 +55,21 @@ fn a_stopped_service_offers_start_and_a_fresh_one_install() {
         false,
         true,
         LoginItemStatus::NotRegistered,
+        false,
     ));
     assert!(fresh.contains(&"Install and start".to_string()));
 }
 
 #[test]
 fn a_read_only_copy_lists_login_disabled_and_only_what_it_may_do() {
-    let entries =
-        menu_entries(offered(false, false, false, false, true), true, false, false, LoginItemStatus::Unavailable);
+    let entries = menu_entries(
+        offered(false, false, false, false, true),
+        true,
+        false,
+        false,
+        LoginItemStatus::Unavailable,
+        false,
+    );
     assert_eq!(
         labels(&entries),
         [
@@ -81,8 +90,14 @@ fn a_read_only_copy_lists_login_disabled_and_only_what_it_may_do() {
 
 #[test]
 fn busy_disables_service_actions_and_approval_is_named() {
-    let entries =
-        menu_entries(offered(false, false, true, true, true), true, true, true, LoginItemStatus::RequiresApproval);
+    let entries = menu_entries(
+        offered(false, false, true, true, true),
+        true,
+        true,
+        true,
+        LoginItemStatus::RequiresApproval,
+        false,
+    );
     let enabled_of = |wanted: MenuCommand| {
         entries.iter().find_map(|e| match e {
             MenuEntry::Item { command, enabled, .. } if *command == wanted => Some(*enabled),
@@ -105,12 +120,29 @@ fn busy_disables_service_actions_and_approval_is_named() {
 }
 
 #[test]
+fn install_cli_is_offered_only_when_the_shell_has_no_aiop() {
+    let item = |persistent, cli_missing| {
+        menu_entries(Offered::default(), true, false, persistent, LoginItemStatus::Enabled, cli_missing)
+            .into_iter()
+            .find_map(|e| match e {
+                MenuEntry::Item { command: MenuCommand::InstallCli, label, enabled } => Some((label, enabled)),
+                _ => None,
+            })
+    };
+    assert_eq!(item(true, false), None);
+    assert_eq!(item(true, true), Some(("Install aiop command".into(), true)));
+    // The link would point at a stable symlink only a persistent copy maintains.
+    assert_eq!(item(false, true), Some(("Install aiop command (move to Applications first)".into(), false)));
+}
+
+#[test]
 fn ids_round_trip() {
     // The exhaustive match below stops compiling when `MenuCommand` gains a variant: add it here too.
     let _exhaustive = |c: MenuCommand| match c {
         MenuCommand::OpenDashboard
         | MenuCommand::Run(_)
         | MenuCommand::OpenLogs
+        | MenuCommand::InstallCli
         | MenuCommand::ToggleLogin
         | MenuCommand::CheckForUpdates
         | MenuCommand::Quit => (),
@@ -124,6 +156,7 @@ fn ids_round_trip() {
         MenuCommand::Run(UserAction::Restart),
         MenuCommand::Run(UserAction::Reload),
         MenuCommand::OpenLogs,
+        MenuCommand::InstallCli,
         MenuCommand::ToggleLogin,
         MenuCommand::CheckForUpdates,
         MenuCommand::Quit,

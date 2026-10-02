@@ -1,0 +1,5 @@
+---
+'aio-proxy': minor
+---
+
+The macOS app's menu offers Install aiop command when your shell cannot find `aiop`. After the system password prompt it adds `aiop` to `/usr/local/bin`, plus `aio-proxy` when that name is free, both pointing at the app's bundled CLI so they keep working across app updates.
