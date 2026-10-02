@@ -33,6 +33,26 @@ ChatGPT OAuth 授权通道**仅限个人开发或自用场景**，严禁将其�
 aio-proxy provider login chatgpt
 ```
 
+### 复用本机上的 Codex 登录
+
+如果已在 Codex 中登录，可在 Dashboard 的浏览器授权按钮旁选择 **使用本机上的 Codex 登录**。只有在运行服务器的机器上检测到登录时才显示此选项。没有该登录的容器或无头服务器不会显示；在浏览器所在机器上登录，不会向远程服务器提供登录。
+
+也可以在 `aio-proxy provider login` 的交互提示中选择本机登录，或运行：
+
+```sh
+aio-proxy provider login --local-sign-in
+```
+
+按提示选择 OpenAI ChatGPT。只有明确选择使用本机登录后，aio-proxy 才会读取 `$CODEX_HOME/auth.json`（默认为 `~/.codex/auth.json`）。Codex 配置为 `cli_auth_credentials_store = "keyring"` 时没有登录文件，因此不会显示此选项。
+
+aio-proxy 刷新关联账号时会将轮换后的令牌写回，让 Codex 保持登录。Provider 会显示 **已关联本机上的 Codex 登录** 徽标。移除 Provider 永远不会使 Codex 退出登录，也不会改变其登录文件。
+
+#### 恢复关联的 Provider
+
+- Provider 已禁用但 Codex 仍可用：在该 Provider 上再次使用本机登录。
+- 两边都已退出登录：先在 Codex 中重新登录，再在该 Provider 上使用本机登录。
+- Codex 切换到了其他账号：切回原账号，或为该账号添加新的 Provider。
+
 ## 配置示例
 
 ```jsonc title="config.jsonc"

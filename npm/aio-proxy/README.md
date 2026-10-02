@@ -53,6 +53,18 @@ flowchart LR
 - **Requests you can see**: The built-in Dashboard records every request and every Provider attempt with status, latency, tokens, and cost, with full traces exportable to OpenTelemetry.
 - **Local-first, configured your way**: Binds to `127.0.0.1` by default; add caller API keys and a Dashboard password when you expose it. Each Provider can declare multiple protocol endpoints, custom headers, and its own HTTP(S)/SOCKS5 proxy with fallback. Configure in the Dashboard or in a schema-checked JSONC file with `{{env.NAME}}` secrets and hot reload.
 
+### Reuse a sign-in already on this machine
+
+ChatGPT and GitHub Copilot Providers can reuse the sign-in their tools already keep on this machine. In the Dashboard, choose **Use the Codex sign-in on this machine** or **Use the GitHub Copilot sign-in on this machine** beside the browser authorize button. The option appears only when a sign-in is detected on the machine running the server; containers and headless servers without that sign-in show no option. Codex with `cli_auth_credentials_store = "keyring"` also shows no option because it has no sign-in file.
+
+From the CLI, run `aio-proxy provider login --local-sign-in`, or choose the local sign-in in the interactive `aio-proxy provider login` prompt. Credentials are read only after you choose this option. aio-proxy writes rotated tokens back to keep Codex signed in when it refreshes; the Copilot token is read once at link time and does not rotate.
+
+Linked Providers show a **Linked to {source} on this machine** badge. Removing the Provider never signs the tool out. To recover:
+
+- If the Provider is disabled while the tool still works, use the local sign-in again on that Provider.
+- If both are signed out, sign in again in the tool, then use the local sign-in again.
+- If the tool is on a different account, switch it back or add a new Provider.
+
 ## Install
 
 ### Homebrew

@@ -53,6 +53,18 @@ flowchart LR
 - **请求全程可见**：内置 Dashboard 记录每一次请求与每一次 Provider 尝试的状态、延迟、Token 与费用，完整链路可导出到 OpenTelemetry。
 - **本地优先，按需配置**：默认只监听 `127.0.0.1`，对外暴露时再加上调用方 API Key 与 Dashboard 密码。每个 Provider 都可以声明多个协议端点、自定义请求头，以及支持备用切换的 HTTP(S)/SOCKS5 代理。既可以在 Dashboard 里配置，也可以写带 schema 校验的 JSONC 文件，用 `{{env.NAME}}` 引用密钥并热加载。
 
+### 复用本机已有登录
+
+ChatGPT 和 GitHub Copilot Provider 可以复用对应工具保存在本机上的登录。在 Dashboard 的浏览器授权按钮旁，选择 **使用本机上的 Codex 登录** 或 **使用本机上的 GitHub Copilot 登录**。只有在运行服务器的机器上检测到登录时才显示此选项；没有该登录的容器或无头服务器不会显示。Codex 配置为 `cli_auth_credentials_store = "keyring"` 时没有登录文件，也不会显示此选项。
+
+命令行运行 `aio-proxy provider login --local-sign-in`，或在 `aio-proxy provider login` 的交互提示中选择本机登录。只有明确选择后才会读取凭据。aio-proxy 刷新时会将轮换后的令牌写回，让 Codex 保持登录；Copilot 令牌仅在关联时读取一次，不会轮换。
+
+关联的 Provider 会显示 **已关联本机上的 {source} 登录** 徽标。移除 Provider 永远不会使工具退出登录。恢复方式：
+
+- Provider 已禁用但工具仍可用：在该 Provider 上再次使用本机登录。
+- 两边都已退出登录：先在工具中重新登录，再次使用本机登录。
+- 工具切换到了其他账号：切回原账号，或添加新的 Provider。
+
 ## 安装
 
 ### Homebrew
