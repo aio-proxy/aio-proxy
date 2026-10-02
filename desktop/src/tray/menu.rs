@@ -56,8 +56,8 @@ impl MenuCommand {
 pub enum CliOffer {
     /// The shell has `aiop`, or could not say.
     Hidden,
-    /// Missing, but the machine-wide link may only point into /Applications.
-    Blocked,
+    /// Missing, but installing would not help yet; the label says why.
+    Blocked(&'static str),
     Ready,
     /// The admin prompt is up; a second click must not open another.
     Installing,
@@ -100,7 +100,7 @@ pub fn menu_entries(
     entries.push(item(MenuCommand::OpenLogs, "Open logs", true));
     let cli_item = match cli {
         CliOffer::Hidden => None,
-        CliOffer::Blocked => Some(("Install aiop command (move to /Applications first)", false)),
+        CliOffer::Blocked(label) => Some((label, false)),
         CliOffer::Ready => Some(("Install aiop command", true)),
         CliOffer::Installing => Some(("Installing aiop command…", false)),
     };

@@ -99,8 +99,8 @@ pub struct AppModel {
     /// Last register/unregister failure, shown under the switch; kept out of `action`, which is
     /// the service-action state machine.
     pub login_item_error: Option<String>,
-    /// Whether the user's shell finds `aiop`; `None` until (or unless) it answers.
-    pub cli_on_path: Option<bool>,
+    /// What the user's shell resolves; `None` until (or unless) it answers.
+    pub cli_probe: Option<crate::cli_command::Probe>,
     pub cli_installing: bool,
     /// The Usage group's window. Remembered across panel closes; `24h` at launch.
     pub usage_range: UsageRange,
@@ -138,7 +138,7 @@ impl AppModel {
             update_pending: None,
             login_item: LoginItemStatus::Unavailable,
             login_item_error: None,
-            cli_on_path: None,
+            cli_probe: None,
             cli_installing: false,
             usage_range: UsageRange::H24,
             usage_cache: HashMap::new(),

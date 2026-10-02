@@ -27,34 +27,48 @@ fn login_shell() -> String {
     shell.filter(|shell| !shell.is_empty()).unwrap_or_else(|| "/bin/zsh".into())
 }
 
-/// Printed by the probe itself, so a shell that failed before the lookup ran is told apart from
-/// one that ran it and found nothing.
-const FOUND: &str = "aio-proxy-probe:found";
-const MISSING: &str = "aio-proxy-probe:missing";
+/// Prefixes every line the probe prints, so rc-file chatter on stdout is ignored.
+const MARK: &str = "aio-proxy-probe:";
+const LINK_DIR: &str = "/usr/local/bin";
+
+/// What the user's shell resolves, as their terminal would.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Probe {
+    pub aiop: bool,
+    /// An `aio-proxy` already resolving elsewhere keeps its name: no alias is linked over it.
+    pub aio_proxy: bool,
+    /// Without it, a link in /usr/local/bin would not make `aiop` resolve.
+    pub link_dir_on_path: bool,
+}
 
 /// `None` when the shell could not answer (a slow or broken rc file): the install offer stays hidden,
 /// since installing replaces whatever `aiop` the shell would have found.
-pub fn on_path() -> Option<bool> {
-    // Interactive too, since version managers often extend PATH only in ~/.zshrc. `&&`/`||` rather
-    // than `if`, so fish runs it as well.
+pub fn probe() -> Option<Probe> {
+    // Interactive too, since version managers often extend PATH only in ~/.zshrc. `&&` and `;` only,
+    // so fish runs it as well. The PATH line always prints: it proves the lookups ran.
+    let script = format!(
+        "command -v aiop >/dev/null 2>&1 && echo {MARK}aiop; command -v aio-proxy >/dev/null 2>&1 && echo {MARK}aio-proxy; echo \"{MARK}path:$PATH\""
+    );
     let mut command = Command::new(login_shell());
-    command.args(["-l", "-i", "-c", &format!("command -v aiop >/dev/null 2>&1 && echo {FOUND} || echo {MISSING}")]);
+    command.args(["-l", "-i", "-c", &script]);
     let output = run_with_timeout(command, PROBE_TIMEOUT).ok()?;
-    probe_answer(&String::from_utf8_lossy(&output.stdout))
+    parse_probe(&String::from_utf8_lossy(&output.stdout))
 }
 
-/// rc files may print to stdout too; only a whole marker line counts.
-fn probe_answer(stdout: &str) -> Option<bool> {
-    stdout.lines().rev().find_map(|line| match line.trim() {
-        FOUND => Some(true),
-        MISSING => Some(false),
-        _ => None,
+fn parse_probe(stdout: &str) -> Option<Probe> {
+    let marks: Vec<&str> = stdout.lines().filter_map(|line| line.trim().strip_prefix(MARK)).collect();
+    let path = marks.iter().find_map(|mark| mark.strip_prefix("path:"))?;
+    Some(Probe {
+        aiop: marks.contains(&"aiop"),
+        aio_proxy: marks.contains(&"aio-proxy"),
+        // fish joins its PATH list with spaces inside quotes.
+        link_dir_on_path: path.split([':', ' ']).any(|dir| dir.trim_end_matches('/') == LINK_DIR),
     })
 }
 
-/// Run as root behind the prompt with `$1` target, `$2` aiop, `$3` aio-proxy. An `aiop` is replaced
-/// only when absent, dangling or already ours, since the probe ran earlier and only saw the user's
-/// PATH; `aio-proxy` is linked only when free, so an npm or Homebrew copy is left alone.
+/// Run as root behind the prompt with `$1` target, `$2` aiop, `$3` aio-proxy or empty. An `aiop` is
+/// replaced only when absent, dangling or already ours, since the probe ran earlier and only saw the
+/// user's PATH; `aio-proxy` is linked only when free, so an npm or Homebrew copy is left alone.
 const LINK_SCRIPT: &str = r#"set -e
 /bin/mkdir -p "$(/usr/bin/dirname "$2")"
 if [ -e "$2" ] && [ "$(/usr/bin/readlink "$2")" != "$1" ]; then
@@ -62,16 +76,16 @@ if [ -e "$2" ] && [ "$(/usr/bin/readlink "$2")" != "$1" ]; then
   exit 1
 fi
 /bin/ln -sf "$1" "$2"
-[ -e "$3" ] || [ -L "$3" ] || /bin/ln -s "$1" "$3"
+[ -z "$3" ] || [ -e "$3" ] || [ -L "$3" ] || /bin/ln -s "$1" "$3"
 "#;
 
-/// Points `/usr/local/bin/aiop`, and `aio-proxy` when free, at `target`. `Ok(false)` when the user
-/// cancelled the prompt.
-pub fn install(target: &Path) -> Result<bool, String> {
-    link(target, Path::new(LINK), Path::new(LONG_LINK), true)
+/// Points `/usr/local/bin/aiop`, and `aio-proxy` when `alias` and free, at `target`. `Ok(false)` when
+/// the user cancelled the prompt.
+pub fn install(target: &Path, alias: bool) -> Result<bool, String> {
+    link(target, Path::new(LINK), alias.then_some(Path::new(LONG_LINK)), true)
 }
 
-fn link(target: &Path, aiop: &Path, long: &Path, admin: bool) -> Result<bool, String> {
+fn link(target: &Path, aiop: &Path, alias: Option<&Path>, admin: bool) -> Result<bool, String> {
     let privileges = if admin { " with administrator privileges" } else { "" };
     // Script and paths reach the shell only through `quoted form of`.
     let run = format!("do shell script cmd{privileges}");
@@ -96,7 +110,7 @@ fn link(target: &Path, aiop: &Path, long: &Path, admin: bool) -> Result<bool, St
         ])
         .arg(target)
         .arg(aiop)
-        .arg(long);
+        .arg(alias.unwrap_or(Path::new("")));
     let output = run_with_timeout(command, INSTALL_TIMEOUT).map_err(|error| error.to_string())?;
     if output.status.success() {
         return Ok(true);

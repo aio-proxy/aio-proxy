@@ -38,12 +38,12 @@ pub fn start(cx: &mut App) {
 }
 
 fn probe_cli(cx: &mut App) {
-    let task = cx.background_executor().spawn(async { crate::cli_command::on_path() });
+    let task = cx.background_executor().spawn(async { crate::cli_command::probe() });
     cx.spawn(async move |cx| {
-        let on_path = task.await;
+        let probe = task.await;
         cx.update(|cx| {
-            log::info(format!("aiop on PATH: {on_path:?}"));
-            cx.global_mut::<AppModel>().cli_on_path = on_path;
+            log::info(format!("shell probe: {probe:?}"));
+            cx.global_mut::<AppModel>().cli_probe = probe;
             changed(cx);
         });
     })
@@ -58,9 +58,10 @@ pub fn install_cli(cx: &mut App) {
         return;
     };
     let target = install::sidecar_of(bundle);
+    let alias = model.cli_probe.is_some_and(|probe| !probe.aio_proxy);
     model.cli_installing = true;
     changed(cx);
-    let task = cx.background_executor().spawn(async move { crate::cli_command::install(&target) });
+    let task = cx.background_executor().spawn(async move { crate::cli_command::install(&target, alias) });
     cx.spawn(async move |cx| {
         let result = task.await;
         cx.update(|cx| {

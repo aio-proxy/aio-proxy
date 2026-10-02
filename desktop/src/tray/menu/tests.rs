@@ -137,7 +137,10 @@ fn install_cli_is_listed_only_when_the_shell_has_no_aiop_and_runs_once() {
     };
     assert_eq!(item(CliOffer::Hidden), None);
     assert_eq!(item(CliOffer::Ready), Some(("Install aiop command".into(), true)));
-    assert_eq!(item(CliOffer::Blocked), Some(("Install aiop command (move to /Applications first)".into(), false)));
+    assert_eq!(
+        item(CliOffer::Blocked("Install aiop command (why)")),
+        Some(("Install aiop command (why)".into(), false))
+    );
     // Disabled while the admin prompt is up, so a second click cannot open another.
     assert_eq!(item(CliOffer::Installing), Some(("Installing aiop command…".into(), false)));
 }

@@ -139,10 +139,18 @@ pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
         .map(|d| crate::connect::policy::offered_actions(d, model.persistent()))
         .unwrap_or_default();
     let dashboard = !crate::panel::is_down(model);
-    let cli = match model.cli_on_path {
+    let cli = match model.cli_probe {
         _ if model.cli_installing => CliOffer::Installing,
-        Some(false) if model.can_link_cli() => CliOffer::Ready,
-        Some(false) => CliOffer::Blocked,
+        Some(probe) if !probe.aiop => {
+            if !model.can_link_cli() {
+                CliOffer::Blocked("Install aiop command (move to /Applications first)")
+            } else if !probe.link_dir_on_path {
+                // The link would not make `aiop` resolve, and the offer would come straight back.
+                CliOffer::Blocked("Install aiop command (/usr/local/bin is not on your PATH)")
+            } else {
+                CliOffer::Ready
+            }
+        }
         _ => CliOffer::Hidden,
     };
     menu_entries(offered, dashboard, model.action.is_busy(), model.persistent(), model.login_item, cli)
