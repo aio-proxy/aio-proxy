@@ -36,9 +36,13 @@ export async function discoverProviderModels(
     const models: string[] = [];
     let path: string | undefined = catalogPath(primary.protocol);
     while (path !== undefined) {
-      const response = await raw.invoke(new Request(`http://provider-draft.invalid${path}`, { signal }), undefined, {
-        upstreamStream: false,
-      });
+      const response = await raw.invoke(
+        new Request(`http://provider-model-discovery.invalid${path}`, { signal }),
+        undefined,
+        {
+          upstreamStream: false,
+        },
+      );
       if (!response.ok) {
         await response.body?.cancel();
         return { ok: false, code: 'catalog_unavailable' };
@@ -146,15 +150,14 @@ type CatalogPage = {
 
 function catalogPage(protocol: ProviderProtocol, payload: unknown, strict: boolean): CatalogPage {
   const models = catalogModels(protocol, payload, strict);
-  const pageToken = stringProperty(payload, 'nextPageToken', strict);
-  const hasMore = booleanProperty(payload, 'has_more', strict);
-  const afterId = stringProperty(payload, 'last_id', strict);
   if (geminiCatalog(protocol)) {
+    const pageToken = stringProperty(payload, 'nextPageToken', strict);
     return pageToken === undefined
       ? { models }
       : { models, nextPath: `/v1beta/models?pageToken=${encodeURIComponent(pageToken)}` };
   }
-  if (protocol === ProviderProtocol.Anthropic && hasMore) {
+  if (protocol === ProviderProtocol.Anthropic && booleanProperty(payload, 'has_more', strict)) {
+    const afterId = stringProperty(payload, 'last_id', strict);
     if (afterId === undefined) throw new TypeError('invalid catalog continuation');
     return { models, nextPath: `/v1/models?after_id=${encodeURIComponent(afterId)}` };
   }
@@ -164,14 +167,18 @@ function catalogPage(protocol: ProviderProtocol, payload: unknown, strict: boole
 function stringProperty(payload: unknown, key: string, strict: boolean): string | undefined {
   if (!isPlainObject(payload)) throw new TypeError('invalid catalog');
   const value = payload[key];
-  if (strict && key in payload && typeof value !== 'string') throw new TypeError('invalid catalog pagination');
+  if (strict && value !== undefined && value !== null && typeof value !== 'string') {
+    throw new TypeError('invalid catalog pagination');
+  }
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
 function booleanProperty(payload: unknown, key: string, strict: boolean): boolean {
   if (!isPlainObject(payload)) throw new TypeError('invalid catalog');
   const value = payload[key];
-  if (strict && key in payload && typeof value !== 'boolean') throw new TypeError('invalid catalog pagination');
+  if (strict && value !== undefined && value !== null && typeof value !== 'boolean') {
+    throw new TypeError('invalid catalog pagination');
+  }
   return value === true;
 }
 

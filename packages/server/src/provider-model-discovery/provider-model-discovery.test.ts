@@ -116,11 +116,8 @@ describe('shared Provider model discovery', () => {
 
   test.each([
     [ProviderProtocol.Gemini, { nextPageToken: 42 }],
-    [ProviderProtocol.Gemini, { nextPageToken: null }],
-    [ProviderProtocol.Anthropic, { has_more: 'true' }],
-    [ProviderProtocol.Anthropic, { has_more: null }],
-    [ProviderProtocol.Anthropic, { has_more: false, last_id: 42 }],
-    [ProviderProtocol.Anthropic, { has_more: false, last_id: null }],
+    [ProviderProtocol.GeminiInteractions, { nextPageToken: 42 }],
+    [ProviderProtocol.Anthropic, { has_more: 'yes' }],
   ])('strict discovery rejects malformed pagination for %s: %j', async (protocol, pagination) => {
     const upstream = Bun.serve({
       hostname: '127.0.0.1',
@@ -136,6 +133,72 @@ describe('shared Provider model discovery', () => {
         ok: true,
         models: ['a'],
       });
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
+  test.each([
+    [ProviderProtocol.OpenAICompatible, { has_more: false, last_id: null, first_id: null }],
+    [ProviderProtocol.Anthropic, { has_more: false, last_id: null }],
+    [ProviderProtocol.Anthropic, { has_more: null, last_id: null }],
+    [ProviderProtocol.Gemini, { nextPageToken: null }],
+    [ProviderProtocol.GeminiInteractions, { nextPageToken: null }],
+  ])('strict discovery accepts null pagination fields', async (protocol, pagination) => {
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: () => Response.json({ data: [{ id: 'a' }], models: [{ name: 'models/a' }], ...pagination }),
+    });
+    try {
+      const provider = apiProvider(upstream.url.origin, protocol);
+      for (const strict of [true, false]) {
+        expect(await discoverProviderModels(config, provider, AbortSignal.timeout(5_000), { strict })).toEqual({
+          ok: true,
+          models: ['a'],
+        });
+      }
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
+  test.each([
+    [ProviderProtocol.OpenAICompatible, { has_more: 'yes', last_id: 42, nextPageToken: 42 }],
+    [ProviderProtocol.OpenAIResponse, { has_more: 'yes', last_id: 42, nextPageToken: 42 }],
+    [ProviderProtocol.Gemini, { has_more: 'yes', last_id: 42 }],
+    [ProviderProtocol.GeminiInteractions, { has_more: 'yes', last_id: 42 }],
+    [ProviderProtocol.Anthropic, { has_more: false, last_id: 42, nextPageToken: 42 }],
+  ])('strict discovery ignores unused pagination fields for %s', async (protocol, pagination) => {
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: () => Response.json({ data: [{ id: 'a' }], models: [{ name: 'models/a' }], ...pagination }),
+    });
+    try {
+      const provider = apiProvider(upstream.url.origin, protocol);
+      expect(await discoverProviderModels(config, provider, AbortSignal.timeout(5_000), { strict: true })).toEqual({
+        ok: true,
+        models: ['a'],
+      });
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
+  test.each([null, undefined, 42])('strict discovery rejects a malformed Anthropic cursor', async (lastId) => {
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: () => Response.json({ data: [{ id: 'a' }], has_more: true, last_id: lastId }),
+    });
+    try {
+      const provider = apiProvider(upstream.url.origin, ProviderProtocol.Anthropic);
+      for (const strict of [true, false]) {
+        expect(await discoverProviderModels(config, provider, AbortSignal.timeout(5_000), { strict })).toEqual(
+          unavailable,
+        );
+      }
     } finally {
       await upstream.stop(true);
     }
