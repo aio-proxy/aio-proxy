@@ -38,6 +38,11 @@ pub fn paths_from(home: &Path, _env: impl Fn(&str) -> Option<OsString>) -> Paths
     }
 }
 
+/// Template images are tinted by AppKit, so the color never matters.
+pub fn tray_color(_cx: &App) -> [u8; 3] {
+    [0, 0, 0]
+}
+
 pub fn on_launch(_cx: &mut App, events: UnboundedSender<AppEvent>) {
     // GPUI forces the Regular policy in applicationDidFinishLaunching; LSUIElement covers launch.
     let mtm = MainThreadMarker::new().expect("GPUI runs this callback on the main thread");

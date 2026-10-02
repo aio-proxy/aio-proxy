@@ -5,6 +5,8 @@ use crate::platform::LoginItemStatus;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuCommand {
+    /// Linux only: many status-notifier hosts ignore left clicks.
+    OpenPanel,
     OpenDashboard,
     Run(UserAction),
     OpenLogs,
@@ -17,6 +19,7 @@ pub enum MenuCommand {
 impl MenuCommand {
     pub fn id(self) -> &'static str {
         match self {
+            MenuCommand::OpenPanel => "open-panel",
             MenuCommand::OpenDashboard => "open-dashboard",
             MenuCommand::Run(UserAction::InstallAndStart) => "run-install",
             MenuCommand::Run(UserAction::TakeOver) => "run-take-over",
@@ -34,6 +37,7 @@ impl MenuCommand {
 
     pub fn from_id(id: &str) -> Option<Self> {
         Some(match id {
+            "open-panel" => MenuCommand::OpenPanel,
             "open-dashboard" => MenuCommand::OpenDashboard,
             "run-install" => MenuCommand::Run(UserAction::InstallAndStart),
             "run-take-over" => MenuCommand::Run(UserAction::TakeOver),

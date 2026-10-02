@@ -35,6 +35,11 @@ pub fn paths_from(home: &Path, env: impl Fn(&str) -> Option<OsString>) -> Paths 
     }
 }
 
+/// White until phase 3 reads the taskbar theme.
+pub fn tray_color(_cx: &App) -> [u8; 3] {
+    [255, 255, 255]
+}
+
 pub fn on_launch(_cx: &mut App, _events: UnboundedSender<AppEvent>) {}
 
 /// The account's SID string arrives in phase 3; nothing reads it before then.

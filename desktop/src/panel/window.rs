@@ -23,6 +23,17 @@ pub struct PanelWindow {
 
 impl Global for PanelWindow {}
 
+/// Opens the panel, or focuses it when it is already open.
+pub fn show(cx: &mut App) {
+    if let Some(handle) = cx.global::<PanelWindow>().handle {
+        if handle.update(cx, |_, window, _| window.activate_window()).is_ok() {
+            return;
+        }
+        cx.global_mut::<PanelWindow>().handle = None;
+    }
+    toggle(cx);
+}
+
 pub fn toggle(cx: &mut App) {
     let (handle, closed_at) = {
         let state = cx.global::<PanelWindow>();

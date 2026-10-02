@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use futures::channel::mpsc::UnboundedSender;
-use gpui_kit::App;
+use gpui_kit::{App, WindowAppearance};
 
 use crate::app::AppEvent;
 use crate::install::Paths;
@@ -27,6 +27,15 @@ pub fn paths_from(home: &Path, env: impl Fn(&str) -> Option<OsString>) -> Paths 
         lock: support.join("instance.lock"),
         logs: base("XDG_STATE_HOME", ".local/state").join("aio-proxy-desktop"),
         support,
+    }
+}
+
+/// White on a dark desktop theme, black on a light one: panels follow the theme, and the icon has no
+/// background of its own.
+pub fn tray_color(cx: &App) -> [u8; 3] {
+    match cx.window_appearance() {
+        WindowAppearance::Dark | WindowAppearance::VividDark => [255, 255, 255],
+        _ => [0, 0, 0],
     }
 }
 

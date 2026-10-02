@@ -45,7 +45,7 @@ fn main() {
 
         cx.set_global(AppModel::new(paths, bundle));
         cx.set_global(PanelWindow::default());
-        cx.set_global(tray::build(events.clone()).expect("create the menu-bar icon"));
+        cx.set_global(tray::build(cx, events.clone()).expect("create the menu-bar icon"));
         platform::updater::start(events);
         app::start(cx);
         app::start_health_timer(cx);
