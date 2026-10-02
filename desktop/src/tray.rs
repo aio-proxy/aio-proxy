@@ -170,7 +170,8 @@ pub fn invalidate_menu(cx: &mut App) {
     }
 }
 
-/// The right-click menu for the model's state; the panel's `⋯` menu shows the same.
+/// The right-click menu for the model's state; the panel's `⋯` menu shows the same, and the tray adds
+/// "Open Panel" on Linux.
 pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
     let offered = model
         .discovery
@@ -200,14 +201,7 @@ pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
         }
         _ => CliOffer::Hidden,
     };
-    let mut entries =
-        menu_entries(offered, dashboard, model.action.is_busy(), model.persistent(), model.login_item, cli);
-    if cfg!(target_os = "linux") {
-        // Many hosts show nothing on a left click, so the menu is the way in.
-        entries
-            .insert(0, MenuEntry::Item { command: MenuCommand::OpenPanel, label: "Open Panel".into(), enabled: true });
-    }
-    entries
+    menu_entries(offered, dashboard, model.action.is_busy(), model.persistent(), model.login_item, cli)
 }
 
 /// Runs a menu command, from the right-click menu or the panel's `⋯` menu.
@@ -231,7 +225,12 @@ pub fn sync(cx: &mut App) {
         return;
     };
     let state = tray_state(model.health.state(), model.needs_attention());
-    let entries = entries(model);
+    let mut entries = entries(model);
+    if cfg!(target_os = "linux") {
+        // Many hosts show nothing on a left click, so the menu is the way in.
+        entries
+            .insert(0, MenuEntry::Item { command: MenuCommand::OpenPanel, label: "Open Panel".into(), enabled: true });
+    }
     let shown = (state, crate::platform::tray_color(cx));
     let Some(tray) = cx.try_global::<Tray>() else {
         return;
