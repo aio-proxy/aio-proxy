@@ -215,6 +215,7 @@
       "diagnostic_credential_refresh_failed": "提供商 {provider} 的憑證重新整理失敗",
       "diagnostic_authorization_failed": "提供商 {provider} 授權失敗",
       "diagnostic_catalog_unavailable": "提供商 {provider} 的模型目錄無法使用",
+      "diagnostic_catalog_unsupported": "提供商 {provider} 無法列出上游模型，因此無法使用 syncModels",
       "diagnostic_proxy_unsupported": "提供商 {provider} 不支援目前設定的代理",
       "diagnostic_runtime_create_failed": "無法為提供商 {provider} 建立執行階段",
       "state_failed": "載入失敗"

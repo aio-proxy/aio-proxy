@@ -215,6 +215,7 @@
       "diagnostic_credential_refresh_failed": "提供商 {provider} 的凭据刷新失败",
       "diagnostic_authorization_failed": "提供商 {provider} 授权失败",
       "diagnostic_catalog_unavailable": "提供商 {provider} 的模型目录不可用",
+      "diagnostic_catalog_unsupported": "提供商 {provider} 无法列出上游模型，因此无法使用 syncModels",
       "diagnostic_proxy_unsupported": "提供商 {provider} 不支持当前配置的代理",
       "diagnostic_runtime_create_failed": "无法为提供商 {provider} 创建运行时",
       "state_failed": "加载失败"

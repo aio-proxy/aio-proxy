@@ -215,6 +215,7 @@
       "diagnostic_credential_refresh_failed": "Credential refresh failed for provider {provider}",
       "diagnostic_authorization_failed": "Authorization failed for provider {provider}",
       "diagnostic_catalog_unavailable": "The model catalog is unavailable for provider {provider}",
+      "diagnostic_catalog_unsupported": "Provider {provider} cannot list its upstream models, so syncModels cannot be used",
       "diagnostic_proxy_unsupported": "Provider {provider} does not support the configured proxy",
       "diagnostic_runtime_create_failed": "The runtime could not be created for provider {provider}",
       "state_failed": "failed"

@@ -215,6 +215,7 @@
       "diagnostic_credential_refresh_failed": "プロバイダー {provider} の認証情報の更新に失敗しました",
       "diagnostic_authorization_failed": "プロバイダー {provider} の認可に失敗しました",
       "diagnostic_catalog_unavailable": "プロバイダー {provider} のモデルカタログが利用できません",
+      "diagnostic_catalog_unsupported": "プロバイダー {provider} は上流のモデル一覧を取得できないため、syncModels を使用できません",
       "diagnostic_proxy_unsupported": "プロバイダー {provider} は設定されたプロキシをサポートしていません",
       "diagnostic_runtime_create_failed": "プロバイダー {provider} のランタイムを作成できませんでした",
       "state_failed": "読み込み失敗"

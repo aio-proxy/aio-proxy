@@ -54,6 +54,8 @@ function diagnosticSummary(code: DiagnosticCode, context: DiagnosticContext): st
       return m['cli.plugin.diagnostic_authorization_failed']({ provider });
     case 'CATALOG_UNAVAILABLE':
       return m['cli.plugin.diagnostic_catalog_unavailable']({ provider });
+    case 'CATALOG_UNSUPPORTED':
+      return m['cli.plugin.diagnostic_catalog_unsupported']({ provider });
     case 'PROXY_UNSUPPORTED':
       return m['cli.plugin.diagnostic_proxy_unsupported']({ provider });
     case 'RUNTIME_CREATE_FAILED':

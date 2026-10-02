@@ -215,6 +215,7 @@
       "diagnostic_credential_refresh_failed": "프로바이더 {provider}의 자격 증명 갱신에 실패했습니다",
       "diagnostic_authorization_failed": "프로바이더 {provider}의 인증에 실패했습니다",
       "diagnostic_catalog_unavailable": "프로바이더 {provider}의 모델 카탈로그를 사용할 수 없습니다",
+      "diagnostic_catalog_unsupported": "프로바이더 {provider}는 업스트림 모델 목록을 가져올 수 없으므로 syncModels를 사용할 수 없습니다",
       "diagnostic_proxy_unsupported": "프로바이더 {provider}은(는) 구성된 프록시를 지원하지 않습니다",
       "diagnostic_runtime_create_failed": "프로바이더 {provider}의 런타임을 생성할 수 없습니다",
       "state_failed": "로드 실패"

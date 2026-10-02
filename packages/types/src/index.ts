@@ -26,6 +26,7 @@ export * from './dashboard-provider-draft/index';
 export * from './plugin';
 export * from './model-metadata/index';
 export * from './provider';
+export * from './provider-sync-models/index';
 export * from './provider-transform/index';
 export * from './trace';
 export * from './usage';
