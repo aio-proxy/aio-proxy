@@ -13,7 +13,8 @@ use crate::log;
 use crate::version;
 
 /// Beside the stable copy, so the commit is a same-directory rename.
-const STAGED: &str = ".aio-proxy.tmp";
+/// An `.exe` suffix on Windows, so CreateProcess never relies on extension fallback.
+const STAGED: &str = if cfg!(windows) { ".aio-proxy.tmp.exe" } else { ".aio-proxy.tmp" };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CopyPlan {

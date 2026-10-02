@@ -1,4 +1,4 @@
-//! Windows. Stubs until later phase 3 tasks: no updater and no kickstart. Connection ownership
+//! Windows. Stubs until later phase 3 tasks: no updater. Connection ownership
 //! comes from the TCP table and the owning process's account SID.
 
 use std::ffi::OsString;
@@ -48,9 +48,17 @@ pub fn current_user() -> String {
     process::sid_string(&process::current_user_sid())
 }
 
-/// `schtasks /End` then `/Run` arrive in phase 3; an empty list makes the kickstart fail.
-pub fn kickstart(_user: &str) -> Vec<Command> {
-    Vec::new()
+/// Restart the CLI's scheduled task: `/End` then `/Run`. The path matches the CLI's `taskPath(sid)`.
+pub fn kickstart(sid: &str) -> Vec<Command> {
+    use std::os::windows::process::CommandExt;
+    let task = format!(r"\AIO Proxy\aio-proxy-{sid}");
+    ["/End", "/Run"]
+        .map(|verb| {
+            let mut command = Command::new("schtasks");
+            command.args([verb, "/TN", &task]).creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+            command
+        })
+        .into()
 }
 
 pub use peer::peer_owned_by_this_user;

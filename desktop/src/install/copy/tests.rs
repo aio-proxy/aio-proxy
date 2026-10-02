@@ -138,7 +138,7 @@ fn the_windows_commit_moves_the_running_copy_aside() {
     fs::write(&temp, b"new").unwrap();
     commit_windows(&stable, &temp, |from, to| fs::rename(from, to)).unwrap();
     assert_eq!(fs::read(&stable).unwrap(), b"new");
-    assert!(!temp.exists());
+    assert_eq!(names(&dir.path().join("bin")), ["aio-proxy"]);
 }
 
 #[test]
