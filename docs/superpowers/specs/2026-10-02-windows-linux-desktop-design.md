@@ -1,7 +1,7 @@
 # Windows and Linux desktop clients
 
 Date: 2026-10-02
-Status: draft (rev 2, after a Codex `gpt-6-astra` review)
+Status: draft (rev 3, after two Codex `gpt-6-astra` review rounds)
 Builds on: `2026-09-29-desktop-client-design.md` (the macOS client), `2026-10-01-desktop-panel-design.md`
 
 ## Goal
@@ -68,6 +68,8 @@ Shared across all three, replacing libc and objc2:
   not see remote plugin icons; restoring a platform NSURLSession client is the upgrade path.
 - Single-instance lock: `std::fs::File::try_lock` (toolchain 1.98).
 - Helper timeout kill: `std::process::Child::kill`.
+- Helper spawning (`process.rs`): on Windows every CLI child gets `CREATE_NO_WINDOW`; a GUI-subsystem app
+  starting a console program would otherwise flash a console.
 - Local time in `panel/format.rs`: `chrono::Local` (`chrono` with its clock feature is already in
   `Cargo.lock`) instead of `libc::localtime_r`.
 
@@ -90,15 +92,19 @@ Shared across all three, replacing libc and objc2:
 ### 2b. Desktop token on Windows
 
 `readDesktopToken` (`packages/core/src/desktop-token/`) rejects any file with `mode & 0o077`; Windows stat
-reports `0o666`, so as written the token is always rejected. Windows branch:
+reports `0o666`, so as written the token is always rejected. Tightening the ACL after writing would leave a
+window in which another account opens a handle and keeps reading through it, and `icacls` output carries no
+owner. Windows instead keeps the token where only this user can create files:
 
-- Create: write the file, then `icacls <file> /inheritance:r /grant:r <current user SID>:F`. A failing
-  `icacls` deletes the file and fails token creation.
-- Read: refuse a reparse point (symlink or junction, by `lstat` before opening and on the opened handle's
-  stat); run `icacls <file>` and accept only when the owner is the current user and every ACE grants the
-  current user, `SYSTEM` or `BUILTIN\Administrators`. Anything else, or an unreadable ACL, is rejected
-  (`insecure_mode` / `foreign_owner`), as on POSIX. Applies to a custom `AIO_PROXY_HOME` too.
-- The `__desktop-connect` 10 s budget covers the extra `icacls` spawn.
+- Path: `%LOCALAPPDATA%\aio-proxy\desktop-tokens\<sha256 of the resolved AIO_PROXY_HOME, hex>`, not in
+  `AIO_PROXY_HOME`. `%LOCALAPPDATA%`'s default ACL grants only the user, `SYSTEM` and Administrators, and a
+  new file inherits it at creation, so there is no exposure window and no other account can plant a file
+  or reparse point there. The hash keeps one token per home, as on POSIX.
+- Create: the existing temp-file + `link` flow (exclusive, concurrent creators keep the first token), in
+  that directory.
+- Read: refuse a reparse point (`lstat` before opening); no ACL parsing. The POSIX checks (`O_NOFOLLOW`,
+  owner uid, mode) stay as they are on macOS and Linux.
+- Server and CLI resolve the path through the one `desktop-token` module, so both sides agree.
 
 ### 2c. `service` on Windows
 
@@ -106,30 +112,44 @@ reports `0o666`, so as written the token is always rejected. Windows branch:
   keeps each user's task apart. Every probe and lifecycle command uses this one path. Install overwrites
   (`/F`) only a task whose principal is the current user; anything else fails.
 - `service install` registers it with `schtasks /Create /XML <file> /TN <path> /F`: logon trigger for the
-  current user, no execution time limit, `IgnoreNew` for multiple instances, not stopped on battery. Its
-  only action is `<exec> __service-run <spec>`.
-- Task Scheduler sets no environment and its "restart on failure" reacts only to launch failures, not to
-  exit codes. A hidden subcommand `aio-proxy __service-run <spec>` supervises instead. It reads
+  current user, principal = the current user's SID, no execution time limit, `IgnoreNew` for multiple
+  instances, not stopped on battery, and `RestartOnFailure` (1 minute, 3 times). Its only action is
+  `<exec> __service-run <spec>`. `RestartOnFailure` covers a launch that fails because `<exec>` is
+  mid-replace (section 4).
+- Task Scheduler sets no environment and its restart setting reacts only to launch failures, not to exit
+  codes. A hidden subcommand `aio-proxy __service-run <spec>` supervises instead. It reads
   `%LOCALAPPDATA%\aio-proxy\service.json` — `{ exec, env }` where `env` carries `AIO_PROXY_HOME`,
   `AIO_PROXY_MANAGED`, `PATH`, `AIO_PROXY_UPGRADE_METHOD` and, for a desktop-owned unit,
   `AIO_PROXY_DESKTOP_EXEC` — writes its own PID to `service.state.json`, and runs `<exec> run` as a child
   with that environment:
   - exit 0 or 1 → stop (mirrors `RestartPreventExitStatus=1` and launchd's wrapper);
+  - exit 75 (`EX_TEMPFAIL`, "restart me") → re-read `service.json` and run again at once;
   - any other exit → wait 5 s, run again;
-  - `exec` missing → retry for up to 10 s (it may be mid-replace, section 4), then exit 0 (mirrors the
-    launchd wrapper's `[ -x "$0" ] || exit 0`).
-- On Windows `service.json` is the unit file: the counterpart of the plist and the `.service` file.
+  - `exec` missing → exit 0 (mirrors the launchd wrapper's `[ -x "$0" ] || exit 0`).
+- On Windows `service.json` is the unit file: the counterpart of the plist and the `.service` file. The
+  task XML and `service.json` are always written together.
+- Restart from inside the service: Dashboard apply and auto-update call `restartService` from the running
+  proxy (`upgrade.ts` `runUpgradeCommand`). On Windows `/End` would kill the supervisor and, through its
+  Job Object, the caller before `/Run`. When `AIO_PROXY_MANAGED=1` on win32, `restartService` therefore
+  rewrites `service.json` and exits 75; the supervisor relaunches. An `<exec>` change in that case also
+  rewrites the task XML first (`/Create /F` on a running task replaces its definition for the next launch).
 - Lifecycle, so that a user's stop survives restarts (the policy reads `job.disabled` as the user's intent):
 
 | Command | Linux | Windows |
 | --- | --- | --- |
 | `start` | `systemctl --user enable --now` | `/Change /ENABLE`, then `/Run` |
 | `stop` | `systemctl --user disable --now` (today: `stop` only) | `/End`, then `/Change /DISABLE` |
-| `restart` | rewrite unit, `daemon-reload`, `restart` | rewrite spec, `/End`, `/Run` |
-| `uninstall` | `disable --now`, remove unit | `/End`, wait until the supervisor PID is gone (10 s, else fail), `/Delete /F`, remove spec and state |
+| `restart` (from outside the service) | rewrite unit, `daemon-reload`, `enable`, `restart` | write new XML + spec to temp files; `/End`; `/Create /XML /F` (replaces the action, leaves the task enabled); move the spec into place; `/Run`. Any failure restores the previous XML and spec |
+| `uninstall` | `disable --now`, remove unit, write the uninstall marker | `/End`, wait until the supervisor PID is gone (10 s, else fail), `/Delete /F`, remove spec and state, write the uninstall marker |
+| `install` | remove the uninstall marker, write unit | remove the uninstall marker, write XML + spec |
 
   `/End` terminates the supervisor; the supervisor runs its child in a Job Object with
   `KILL_ON_JOB_CLOSE`, so the proxy ends with it. `schtasks /Delete` alone would leave both running.
+- Uninstall marker: `service-uninstalled` in `AIO_PROXY_HOME`. It plays the role of the disabled override
+  that `launchctl unload -w` leaves on macOS: with no unit present, discovery reports `disabled: true`
+  while the marker exists, so the app does not reinstall a service the user removed.
+- Every child process the CLI spawns on win32 (`schtasks`, `netstat`, `tasklist`, the proxy itself) uses
+  `Bun.spawn`'s `windowsHide`.
 - **Spike (phase 0):** a console program started by Task Scheduler opens a console window. Candidates
   without admin rights, in order of preference:
   1. task action `conhost.exe --headless <exec> __service-run <spec>`;
@@ -147,8 +167,8 @@ meanings, so the Rust `Discovery` parser and the `policy` state machine are unch
 
 | Probe | darwin (today) | linux | win32 |
 | --- | --- | --- | --- |
-| `readUnit` | `plutil` → `inspectUnit` | parse `ExecStart=` and `Environment=` | `schtasks /Query /XML /TN <path>`: the action must be `<exec> __service-run <spec path>` (through `conhost` if the spike picks it), else `wrapperValid: false`; then read `service.json` |
-| `readJob` | `launchctl print`, `print-disabled` | `systemctl --user show -p LoadState,ActiveState,UnitFileState,MainPID`; `disabled` = `UnitFileState != enabled` | `schtasks /Query /V /FO CSV` for `loaded` and `disabled`; `pid` from `service.state.json` when that process is alive and its image is `exec` |
+| `readUnit` | `plutil` → `inspectUnit` | parse `ExecStart=` and `Environment=` | `schtasks /Query /XML /TN <path>`: the principal must be the current user's SID and the action `<exec> __service-run <spec path>` (through `conhost` if the spike picks it), else `wrapperValid: false`; then read `service.json` |
+| `readJob` | `launchctl print`, `print-disabled` | `systemctl --user show -p LoadState,ActiveState,UnitFileState,MainPID` | `schtasks /Query /V /FO CSV`; `pid` from `service.state.json` when that process is alive and its image is `exec` |
 | Connection ownership | `lsof` | `/proc/net/tcp{,6}`: the uid of the row matching the four-tuple | `netstat -ano -p TCP` and `-p TCPv6` → PID → `tasklist /V /FI "PID eq <pid>" /FO CSV` user equals ours |
 
 - `matchesJob` keeps its meaning: the instance's PID or PPID equals `job.pid`. The proxy is the
@@ -161,8 +181,18 @@ meanings, so the Rust `Discovery` parser and the `policy` state machine are unch
   - upgrade protection: `readDesktopOwnedUnit` checks the unit's **own** marker
     (`AIO_PROXY_DESKTOP_EXEC` equals the target), ported from plist-only to the systemd unit and
     `service.json`. `renderSystemdUnit` gains the `desktopExec` environment line it lacks today.
+- `disabled` distinguishes three cases, because `policy.rs` `automatic_action` installs on first run only
+  when `disabled` is false:
+
+| State | Linux | Windows | `disabled` |
+| --- | --- | --- | --- |
+| No unit, no uninstall marker | `LoadState=not-found` | the task query reports the task does not exist | `false` (first run: install) |
+| No unit, uninstall marker present | same | same | `true` |
+| Unit present | `UnitFileState` is not `enabled` | task status `Disabled` | `true` |
+| Query failed for any other reason | — | — | `true` (fail closed) |
+
 - All probes keep failing closed: an unreadable disabled state is `disabled: true`, an unreadable or
-  mismatched task action is `unknown`, an unreadable connection owner is not ours.
+  mismatched task action or principal is `unknown`, an unreadable connection owner is not ours.
 - **The token is sent only after the serving socket of the very connection that carries it is verified**,
   by its full four-tuple and address family, as `verified-get.ts` and `transport.rs` do today. A listener
   check alone is not enough: another account could accept the connection and hand the port back. This
@@ -200,10 +230,14 @@ fixed size. `placement::panel_origin` stays a pure function and gains the four t
 
 ### No tray (Linux)
 
-At startup, if no process owns the D-Bus name `org.kde.StatusNotifierWatcher` (GNOME without the extension),
-the app opens the panel window directly, and closing that window quits the app. The proxy is owned by
+If no process owns the D-Bus name `org.kde.StatusNotifierWatcher` (GNOME without the extension), the app is
+in no-tray mode: the panel window is open, and closing it quits the app. The proxy is owned by
 `systemd --user`, so quitting only removes the monitor; keeping a hidden process alive would need a
 second-instance IPC to show the window again.
+
+The app checks at startup and then watches `NameOwnerChanged` for that name. Losing the watcher while
+running (the user disables the extension) switches to no-tray mode and opens the window; a watcher that
+appears later only adds the tray icon.
 
 ## 4. Install, stable exec, `aiop`, single instance
 
@@ -223,12 +257,13 @@ Linux and Windows keep a real copy instead:
   1. copy to `bin/.aio-proxy.tmp` in the same directory and run it with `--version`; a mismatch with the
      app's version aborts and deletes the temp;
   2. commit — Linux: `rename` over the copy (atomic; a running process keeps the old inode). Windows: rename
-     the current `aio-proxy.exe` to `aio-proxy.exe.old-<pid>`, then rename the temp into place;
+     the current `aio-proxy.exe` to `aio-proxy.exe.old-<pid>`, then rename the temp into place; if that
+     second rename fails, rename the `.old-<pid>` back at once;
   3. after a commit, the existing automatic-action table restarts the proxy.
 - Startup recovery (Windows), before the no-downgrade check: if `aio-proxy.exe` is missing and an
   `.old-*` exists, rename the newest one back; then delete the remaining `.old-*` files (best effort).
-  This closes the window between the two renames; `__service-run`'s 10 s retry (section 2c) covers a
-  service start inside it.
+  This covers a crash between the two renames. A task launch inside that window fails to start and is
+  retried by the task's `RestartOnFailure` (section 2c).
 - No-downgrade: compare `bin/aio-proxy --version` (`probe_version`) with the app's version. Missing or older
   → replace; equal → keep; newer or unreadable → refuse and run read-only. `plan_symlink` becomes a pure
   function over versions, shared by the copy model; macOS keeps its target-path check in front of it.
@@ -244,7 +279,7 @@ Linux and Windows keep a real copy instead:
 | | macOS (unchanged) | Linux | Windows |
 | --- | --- | --- | --- |
 | Install | `/usr/local/bin` behind the admin prompt | symlink `~/.local/bin/aiop` → the stable copy | `bin\shims\aiop.cmd` (`@"<stable exe>" %*`); `shims` appended to the end of the user `PATH` (HKCU `Environment`, then broadcast `WM_SETTINGCHANGE`) |
-| Probe | login shell, `command -v` | same | `where.exe` on the process `PATH` |
+| Probe | login shell, `command -v` | same | `where.exe` with a `PATH` rebuilt from the registry (HKLM then HKCU `Path`, expanded), since the app's own environment predates the install |
 | `aio-proxy` name | only when free | only when free | `aio-proxy.cmd` only when free |
 
 The Windows shims live apart from `bin\` so the real `.exe` never lands on `PATH`, and appending keeps an
@@ -257,9 +292,14 @@ path rule in section 2a keeps it from self-upgrading.
 
 ### Uninstall
 
-- Windows: the NSIS uninstaller runs `aio-proxy service uninstall` when the unit is desktop-owned (which
-  stops before deleting, section 2c), removes the `shims` entry from the user `PATH`, and deletes
+- Windows, a user-initiated uninstall only: the NSIS uninstaller runs `aio-proxy service uninstall` when
+  the unit is desktop-owned (which stops before deleting, section 2c), removes the `shims` entry from the
+  user `PATH`, removes the HKCU `Run` value after checking its name and target, and deletes
   `%LOCALAPPDATA%\aio-proxy-desktop`.
+- Windows, an upgrade: cargo-packager's NSIS template runs the previous version's uninstaller during an
+  interactive upgrade. That run must skip all of the above, so the service definition, the user's
+  stop/start intent, the `aiop` shims and the login item survive the upgrade. How the hook tells the two
+  apart is part of the phase 0 NSIS spike.
 - Linux: an AppImage has no uninstaller. Documented: run `aio-proxy service uninstall` before deleting it.
 
 ### Known ceilings
@@ -319,7 +359,9 @@ platforms; no new secret.
 | Sidecar | `packages/cli/scripts/build-binary.ts` on the native runner | same, `bun-windows-x64` |
 | Notes | built on the oldest supported Ubuntu LTS runner for a low glibc floor; linuxdeploy bundles GPUI's X11 / Wayland / xkbcommon / Vulkan loader libraries | `main.rs` gets `#![cfg_attr(windows, windows_subsystem = "windows")]`; NSIS hooks: close the running app before install, section 4 cleanup on uninstall |
 
-**Spike (phase 0):** whether `cargo-packager`'s NSIS supports those hooks; otherwise a custom NSIS template.
+**Spike (phase 0):** whether `cargo-packager`'s NSIS supports those hooks, and how the uninstall hook
+tells a user uninstall from the previous version's uninstaller run during an upgrade; otherwise a custom
+NSIS template.
 
 Assets on `v<version>`: `aio-proxy-<v>-x86_64.AppImage`, `aio-proxy-<v>-aarch64.AppImage`,
 `aio-proxy-<v>-x64-setup.exe`, and each one's `.minisig`.
@@ -334,20 +376,27 @@ macOS release. Added beside it:
    `persist-credentials: false`, no environment, no secrets. The same tag checks as the macOS job (a
    published, non-prerelease Release whose commit is on `main`; checkout pins that commit); build the
    sidecar and the app, package, upload as workflow artifacts.
-2. `feed` (ubuntu, `desktop-release` environment, `contents: write`, `concurrency: desktop-feed-latest`
-   with `cancel-in-progress: false`, needs every build job):
-   1. If `v<version>` already holds an asset or `.minisig`, verify that pair against the public key and the
-      trusted comment and reuse it; a published asset is never rebuilt, re-signed or replaced. Otherwise
-      sign with `SPARKLE_ED_PRIVATE_KEY` and upload asset and `.minisig` together.
-   2. Read `latest.json` from `desktop-feed`. The job never creates `desktop-feed`; a missing Release fails
+2. `publish-assets` (ubuntu, `desktop-release` environment, `contents: write`, no concurrency group, needs
+   every build job). Per platform, with uploads always in the order asset, then `.minisig`:
+   - neither on `v<version>` → sign the built asset, upload the asset, then its `.minisig`;
+   - asset present, `.minisig` missing (an interrupted run) → download the **published** asset and sign
+     those bytes. Ed25519 and the trusted comment are deterministic, so this yields the one signature that
+     asset can have; it never endorses a different build;
+   - both present → verify the pair against the public key and the trusted comment; a mismatch fails the
+     job. A published asset is never rebuilt, re-signed or replaced.
+3. `feed` (ubuntu, `desktop-release` environment, `contents: write`, `concurrency: desktop-feed-latest` with
+   `cancel-in-progress: false`, needs `publish-assets`):
+   1. Read `latest.json` from `desktop-feed`. The job never creates `desktop-feed`; a missing Release fails
       the job (the macOS job owns its creation, and `publish.ts` refuses a feed Release without
       `appcast.xml`).
-   3. Apply `feedAction`'s rule: same version → re-verify and stop; older than the feed → stop
-      (superseded); newer → write `latest.json` from the Release's `.minisig` files and replace it.
+   2. Apply `feedAction`'s rule: same version → re-verify and stop; older than the feed → stop
+      (superseded); newer → write `latest.json` from the Release's verified `.minisig` files and replace it.
 
-The macOS job keeps the `desktop-feed` group; the two jobs write different files, so separate groups let
-neither cancel the other's pending run. Any platform failing leaves `latest.json` untouched; resume with
-`gh workflow run desktop-release.yml -f tag=v<version>`.
+Only the feed write is serialized. A newer dispatch may replace an older one's pending `feed` run, which is
+harmless because the newer version supersedes it in the feed, while every version's assets still reach its
+own Release through `publish-assets`. The macOS job keeps the `desktop-feed` group; the jobs write different
+files, so separate groups let neither cancel the other's pending run. Any platform failing leaves
+`latest.json` untouched; resume with `gh workflow run desktop-release.yml -f tag=v<version>`.
 
 ### Windows signing hook
 
@@ -383,29 +432,36 @@ task XML).
 | Rust `placement` | taskbar on each edge; clamping to the work area | visible misplacement; pure function |
 | Rust `install` | copy plan: missing / older / equal / newer / unreadable; Windows startup recovery from `.old-*` | the no-downgrade invariant; a service never left without its executable |
 | Connection ownership (Rust + TS) | `/proc` and netstat + tasklist parsing; IPv4 and IPv6; four-tuple match; a port that changes owner between listen check and connect is refused | security boundary for the token |
-| Desktop token (TS, win32) | reparse point, foreign owner, extra ACE, unreadable ACL all rejected; own file accepted | the token's trust boundary on Windows |
-| TS `desktop-connect` | systemd `show`, `schtasks` XML/CSV, `service.json` and state file → `unit` / `job`; a task action that does not run `__service-run` with our spec is `unknown`; owner rules equal across platforms | the app's automatic actions depend on it |
-| TS lifecycle | stop then discover reports `disabled: true` on Linux and Windows; uninstall waits for the supervisor | the user's stop is not undone |
-| TS `__service-run` | exit-code decision: 0/1 stop, other restart, missing exec retried then stop | the systemd semantics it reproduces |
+| Desktop token (TS, win32) | path derives from the resolved home under `%LOCALAPPDATA%`; two homes get two tokens; a reparse point is rejected; server and CLI resolve the same path | the token's trust boundary on Windows |
+| TS `desktop-connect` | systemd `show`, `schtasks` XML/CSV, `service.json` and state file → `unit` / `job`; a task whose action does not run `__service-run` with our spec, or whose principal is another user, is `unknown`; owner rules equal across platforms | the app's automatic actions depend on it |
+| TS `disabled` mapping | no unit and no marker → `false`; no unit with the uninstall marker → `true`; disabled unit → `true`; failed query → `true` | first run installs; a user's uninstall or stop is not undone |
+| TS lifecycle | stop then discover reports `disabled: true` on Linux and Windows; uninstall waits for the supervisor; Windows `restart` after `stop` re-enables and runs; a failed `restart` restores the previous XML and spec | the user's intent survives, and a broken restart leaves the old service |
+| TS `__service-run` | exit-code decision: 0/1 stop, 75 re-read spec and relaunch at once, other restart after 5 s, missing exec stop | the systemd semantics it reproduces, and in-service upgrades |
+| TS `restartService` (win32, managed) | inside the service it rewrites the spec and exits 75 instead of calling `schtasks` | an in-service upgrade does not kill itself before restarting |
 | TS `service` win32 | write and read back `service.json`, desktop-owned marker, paths with spaces | the unit-file contract |
 | TS `upgrade` | an executable under `aio-proxy-desktop/bin/` without env markers is desktop-managed | a terminal `aiop upgrade` cannot fork the desktop's copy |
 | Windows `PATH` edit | append/remove `shims` with duplicates, trailing `;`, case differences | breaking a user's PATH is costly |
 | Signature | a Bun-signed fixture passes through `cargo-packager-updater`'s own verification entry point; a trusted comment with another version or target is refused | encoding contract; a mismatch fails every update or admits a downgrade |
 | `latest.json` | target keys and `format` match the updater; missing platform refused; older version does not replace a newer feed | the feed's all-or-nothing and monotonic rules |
+| `publish-assets` plan | neither / asset only / both present → sign-and-upload / sign the published bytes / verify | an interrupted upload resumes instead of sticking |
 
 Manual checklist before each release:
 
 - Linux: KDE (X11 and Wayland); GNOME with the AppIndicator extension; GNOME without it (no-tray mode, close
   quits); Ubuntu default (menu-only left click, "Open Panel" works).
-- Windows 11: taskbar bottom and top; icon in the overflow area; light and dark taskbar; install, update,
-  uninstall; a second Windows user installing the service.
+- Windows 11: taskbar bottom and top; icon in the overflow area; light and dark taskbar; install, update
+  through the in-app updater and by running a newer installer by hand (service, stop state, `aiop` and
+  login item survive), uninstall (nothing left running, no `Run` value); a second Windows user installing
+  the service; an auto-update triggered from the Dashboard while the proxy runs as the task.
+- Linux: disabling the AppIndicator extension while the app runs switches it to no-tray mode.
 - Updates end to end against a local feed: same version, newer version, bad signature, newer label on an
   older signed package.
 
 ## Phases
 
-0. Spikes: hidden console for the Windows task and `/End` reaching the child (2c); `cargo-packager` NSIS
-   hooks (6); `ksni` clicks on GNOME and KDE (3).
+0. Spikes: hidden console for the Windows task, `/End` reaching the child through the Job Object, and
+   `RestartOnFailure` retrying a launch whose executable is missing (2c); `cargo-packager` NSIS hooks and
+   telling an upgrade's uninstaller run from a user uninstall (4, 6); `ksni` clicks on GNOME and KDE (3).
 1. CLI and core: win32 binary, desktop token on Windows, Task Scheduler backend, `__service-run`, lifecycle
    persistence, `__desktop-connect` on all platforms, upgrade protection.
 2. Desktop platform layer and Linux (sections 1, 3, 4).
