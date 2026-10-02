@@ -79,6 +79,12 @@ pub fn probe() -> Option<Probe> {
     let script = format!(
         "command -v aiop >/dev/null 2>&1 && echo {MARK}aiop; command -v aio-proxy >/dev/null 2>&1 && echo {MARK}aio-proxy; echo \"{MARK}path:$PATH\""
     );
+    // Debian and Ubuntu's ~/.profile adds ~/.local/bin to PATH only when it exists, so on a fresh
+    // account it would never count as on PATH. Failing here just leaves the offer blocked.
+    #[cfg(target_os = "linux")]
+    if let Some(dir) = link_dir_on_path_target() {
+        let _ = std::fs::create_dir_all(dir);
+    }
     let mut command = Command::new(login_shell());
     command.args(["-l", "-i", "-c", &script]);
     let output = run_with_timeout(command, PROBE_TIMEOUT).ok()?;
