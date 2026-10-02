@@ -157,6 +157,7 @@ export async function currentCredential(
         fetch: fetcher,
         signal,
         ...(value.email === undefined ? {} : { email: value.email }),
+        ...(value.idToken === undefined ? {} : { idToken: value.idToken }),
       });
       return {
         value: refreshed,

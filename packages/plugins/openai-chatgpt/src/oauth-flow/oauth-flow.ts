@@ -1,8 +1,8 @@
 import type { RuntimeFetch, ZodType } from '@aio-proxy/plugin-sdk';
 
-import { extractAccountId, extractEmail } from './jwt';
-import type { ChatGPTCredential } from './schema';
-import { refreshTokenResponseSchema, tokenResponseSchema } from './schema';
+import { extractAccountId, extractEmail } from '../jwt';
+import type { ChatGPTCredential } from '../schema';
+import { refreshTokenResponseSchema, tokenResponseSchema } from '../schema';
 
 const TOKEN_ENDPOINT = 'https://auth.openai.com/oauth/token' as const;
 const DEFAULT_REDIRECT_URI = 'http://localhost:1455/auth/callback' as const;
@@ -24,6 +24,7 @@ export type ChatGPTTokenExchangeOptions = {
   readonly redirectUri?: string;
   readonly signal?: AbortSignal;
   readonly email?: string;
+  readonly idToken?: string;
 };
 
 export class ChatGPTTokenExchangeError extends Error {
@@ -85,7 +86,7 @@ export async function refreshAccessToken(
     refreshTokenResponseSchema,
   );
 
-  return toCredential(body, options.now, refreshToken, options.email);
+  return toCredential(body, options.now, refreshToken, options.email, options.idToken);
 }
 
 async function postTokenRequest<T>(
@@ -114,6 +115,7 @@ function toCredential(
   now: (() => number) | undefined,
   fallbackRefreshToken?: string,
   previousEmail?: string,
+  previousIdToken?: string,
 ): ChatGPTCredential {
   const accountId =
     extractAccountId(body.access_token) ?? (body.id_token === undefined ? undefined : extractAccountId(body.id_token));
@@ -126,12 +128,14 @@ function toCredential(
     (body.id_token === undefined ? undefined : extractEmail(body.id_token)) ??
     extractEmail(body.access_token) ??
     previousEmail;
+  const idToken = body.id_token ?? previousIdToken;
 
   return {
     accessToken: body.access_token,
     accountId,
     expiresAt: (now ?? Date.now)() + (body.expires_in ?? DEFAULT_EXPIRES_IN_SECONDS) * 1_000,
     refreshToken,
+    ...(idToken === undefined ? {} : { idToken }),
     ...(email === undefined ? {} : { email }),
   };
 }

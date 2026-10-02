@@ -7,11 +7,11 @@ import {
   type PluginDescriptor,
 } from '@aio-proxy/plugin-sdk';
 
-import packageJson from '../package.json' with { type: 'json' };
-import openAIChatGPTPlugin, { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from '../src';
-import { DEFAULT_CHATGPT_USER_AGENT } from '../src/codex-client';
-import { base64url } from '../src/pkce';
-import type { ChatGPTPluginOptions } from '../src/plugin-options';
+import openAIChatGPTPlugin, { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from '..';
+import packageJson from '../../package.json' with { type: 'json' };
+import { DEFAULT_CHATGPT_USER_AGENT } from '../codex-client';
+import { base64url } from '../pkce';
+import type { ChatGPTPluginOptions } from '../plugin-options';
 
 const originalFetch = globalThis.fetch;
 
