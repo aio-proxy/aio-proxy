@@ -15,7 +15,7 @@ import { setLocale } from '@aio-proxy/i18n';
 import { type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
 
 import { buildProgram, formatCliError } from '../../main';
-import { PromptRequiresTtyError, type CommandSession, type PluginFormPrompts } from '../../ui';
+import { PromptCancelledError, PromptRequiresTtyError, type CommandSession, type PluginFormPrompts } from '../../ui';
 import * as providerLoginDeps from './deps';
 import { createProviderLoginDefaultDeps, isProviderLoginUserError, providerLogin } from './index';
 import { adapter, createProviderLoginTestScope } from './test-support';
@@ -38,7 +38,7 @@ function localFixture(detected = true, visibleFields = false) {
   stores.push({ root, handle });
   const path = join(root, 'host-sign-in.json');
   writeFileSync(path, JSON.stringify({ token: 'temporary-host-token' }), { mode: 0o600 });
-  const detect = mock(async () => detected && existsSync(path));
+  const detect = mock(async (_context: { signal: AbortSignal }) => detected && existsSync(path));
   const read = mock(async () => ({
     fingerprint: 'local-person',
     suggestedKey: 'local-person',
@@ -139,7 +139,7 @@ describe('provider login orchestration', () => {
     let closes = 0;
     await expect(
       createProviderLoginDefaultDeps({
-        config: { read: async () => ({ plugins: [], providers: {} }) } as AtomicConfigFile,
+        config: { read: async () => ({ plugins: [], providers: {} }) } as unknown as AtomicConfigFile,
         openDatabase: () => ({ sqlite: {}, close: () => (closes += 1) }) as never,
         createRepository: () => ({ readPluginSecret: () => null }) as never,
         loadRegistry: async () => {
@@ -188,6 +188,79 @@ describe('provider login local sign-in', () => {
       expect(f.detect).toHaveBeenCalledWith({ signal: expect.any(AbortSignal) });
       expect(f.state.printed).toEqual([detected ? 'local-person' : 'browser-person']);
     }
+  });
+
+  test.each(['reject', 'throw'] as const)(
+    'TTY automatic detection can %s without blocking browser login',
+    async (mode) => {
+      const f = localFixture();
+      f.detect.mockImplementation(() => {
+        const error = new Error('temporary-detection-failure');
+        if (mode === 'throw') throw error;
+        return Promise.reject(error);
+      });
+      f.state.deps = { ...f.state.deps, isTTY: true };
+      await providerLogin('@local/tool#default', {}, f.state.deps);
+      expect(f.detect).toHaveBeenCalledTimes(1);
+      expect(f.selectMethod).not.toHaveBeenCalled();
+      expect(f.read).not.toHaveBeenCalled();
+      expect(f.login).toHaveBeenCalledTimes(1);
+      expect(f.createAuthorization).toHaveBeenCalledTimes(1);
+      expect(f.state.printed).toEqual(['browser-person']);
+      expect(f.state.deps.repository.readAccount('browser-person')).toBeDefined();
+    },
+  );
+
+  test('TTY hanging detection times out, aborts the probe, and completes browser login', async () => {
+    const f = localFixture();
+    let probeSignal: AbortSignal | undefined;
+    f.detect.mockImplementation(({ signal }) => {
+      probeSignal = signal;
+      // Ignore cancellation to cover third-party detectors that never settle.
+      return new Promise<boolean>(() => {});
+    });
+    f.state.deps = { ...f.state.deps, isTTY: true };
+    await providerLogin('@local/tool#default', {}, f.state.deps);
+    expect(probeSignal?.aborted).toBe(true);
+    expect(f.detect).toHaveBeenCalledTimes(1);
+    expect(f.selectMethod).not.toHaveBeenCalled();
+    expect(f.read).not.toHaveBeenCalled();
+    expect(f.login).toHaveBeenCalledTimes(1);
+    expect(f.createAuthorization).toHaveBeenCalledTimes(1);
+    expect(f.state.printed).toEqual(['browser-person']);
+    expect(f.state.deps.repository.readAccount('browser-person')).toBeDefined();
+  }, 4_000);
+
+  test.each([new DOMException('Cancelled', 'AbortError'), new PromptCancelledError()])(
+    'TTY automatic detection preserves cancellation: %s',
+    async (error) => {
+      const f = localFixture();
+      f.detect.mockImplementation(async () => {
+        throw error;
+      });
+      f.state.deps = { ...f.state.deps, isTTY: true };
+      await expect(providerLogin('@local/tool#default', {}, f.state.deps)).rejects.toBe(error);
+      expect(f.selectMethod).not.toHaveBeenCalled();
+      expect(f.read).not.toHaveBeenCalled();
+      expect(f.login).not.toHaveBeenCalled();
+      expect(f.createAuthorization).not.toHaveBeenCalled();
+    },
+  );
+
+  test('--local-sign-in detection rejection still reports unavailable without browser fallback', async () => {
+    const f = localFixture();
+    f.detect.mockImplementation(async () => {
+      throw new Error('temporary-detection-failure');
+    });
+    f.state.deps = { ...f.state.deps, isTTY: true };
+    await expect(providerLogin('@local/tool#default', { localSignIn: true }, f.state.deps)).rejects.toThrow(
+      'No Example tool sign-in was found on this machine.',
+    );
+    expect(f.detect).toHaveBeenCalledTimes(1);
+    expect(f.selectMethod).not.toHaveBeenCalled();
+    expect(f.read).not.toHaveBeenCalled();
+    expect(f.login).not.toHaveBeenCalled();
+    expect(f.createAuthorization).not.toHaveBeenCalled();
   });
 
   test('choosing browser never reads the local sign-in', async () => {

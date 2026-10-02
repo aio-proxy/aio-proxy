@@ -5,6 +5,7 @@ import { LocalizedTextSchema, resolveLocalizedText } from '@aio-proxy/plugin-sdk
 import { canonical, chooseCapability, targetCapability } from './capability';
 import { applyProviderLoginSession, createProviderLoginDefaultDeps, type ProviderLoginDeps } from './deps';
 import { ProviderCapabilityMismatchError, ProviderCapabilityNotFoundError } from './errors';
+import { detectLocalSignIn } from './local-sign-in';
 import { presentProviderLoginUserError } from './presentation';
 
 export { createCapabilitySelector, createManualOnlyConfirmation } from './capability';
@@ -47,9 +48,8 @@ export async function providerLogin(
     localSignInSource = localSignIn === undefined ? undefined : resolveLocalizedText(localSignIn.source, getLocale());
     let useLocalSignIn = options.localSignIn === true;
     if (options.localSignIn === undefined && deps.isTTY && localSignIn !== undefined) {
-      const signal = new AbortController().signal;
-      if (await localSignIn.detect({ signal })) {
-        useLocalSignIn = (await live.selectMethod(localSignInSource!, signal)) === 'local';
+      if (await detectLocalSignIn(localSignIn)) {
+        useLocalSignIn = (await live.selectMethod(localSignInSource!, new AbortController().signal)) === 'local';
       }
     }
     const result = await (deps.login ?? loginOAuthAccount)({
