@@ -3,6 +3,8 @@ import {
   collectSecretStrings,
   createCredentialPort,
   type DiagnosticFactory,
+  linkLocalSignInCredentials,
+  type LocalSignInLink,
   type PluginLogSink,
   type PluginRegistrySnapshot,
   type PluginRepository,
@@ -11,13 +13,14 @@ import {
   type StoredAccount,
   validateConfigSpec,
 } from '@aio-proxy/core';
-import type { CredentialPort, OAuthAdapter } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, LocalizedText, OAuthAdapter } from '@aio-proxy/plugin-sdk';
 import type { DiagnosticCode, OAuthProvider } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 export type OAuthAccountSummary = {
   readonly accountLabel?: string;
   readonly expiresAt?: number;
+  readonly localSignInSource?: LocalizedText;
 };
 
 export class OAuthPluginAccountPreparationError extends Error {
@@ -90,8 +93,12 @@ function unavailable(
 
 function credentialFactory(
   options: CreateCredentialPortOptions<unknown>,
+  link: LocalSignInLink | undefined,
 ): PreparedOAuthAccountBase['createCredentials'] {
-  return () => createCredentialPort(options);
+  return () => {
+    const port = createCredentialPort(options);
+    return link === undefined ? port : linkLocalSignInCredentials(port, link);
+  };
 }
 
 export function prepareOAuthPluginAccount(
@@ -133,9 +140,12 @@ export async function prepareOAuthPluginAccount(
     throw unavailable('CREDENTIALS_MISSING_OR_INVALID', {}, false, hasQuota, canRefreshCredential);
   }
 
-  const accountSummary = {
+  const accountSummary: OAuthAccountSummary = {
     ...(account.label === undefined ? {} : { accountLabel: account.label }),
     ...(account.expiresAt === undefined ? {} : { expiresAt: account.expiresAt }),
+    ...(account.localSignIn === undefined || adapter.localSignIn === undefined
+      ? {}
+      : { localSignInSource: adapter.localSignIn.source }),
   };
 
   const publicOptions = config.options ?? {};
@@ -175,6 +185,31 @@ export async function prepareOAuthPluginAccount(
     onDiagnosticChanged: options.onDiagnosticChanged,
     onCredentialChanged: options.onDiagnosticChanged,
   };
+  const link: LocalSignInLink | undefined =
+    account.localSignIn !== undefined && adapter.localSignIn?.write !== undefined
+      ? {
+          localSignIn: adapter.localSignIn,
+          options: accountOptions,
+          fingerprint: account.fingerprint,
+          account: () => {
+            const a = repository.readAccount(config.id);
+            return a === null
+              ? null
+              : {
+                  revision: a.revision,
+                  linked: a.localSignIn !== undefined,
+                  ...(a.localSignIn?.consumed === undefined ? {} : { consumed: a.localSignIn.consumed }),
+                };
+          },
+          onWriteFailed: () =>
+            options.logger({
+              event: 'plugin.local-sign-in.write.failed',
+              code: 'CREDENTIAL_REFRESH_FAILED',
+              context: { providerId: config.id, plugin: config.plugin, capability: config.capability },
+              error: { name: 'Error', message: 'LOCAL_SIGN_IN_WRITE_FAILED' },
+            }),
+        }
+      : undefined;
   if (options.credentialMode === 'control-plane') {
     const pluginSecretValues = [...(options.pluginSecretValues ?? [])];
     const additionalSecretValues = collectSecretStrings([accountOptions, pluginSecretValues]);
@@ -184,11 +219,14 @@ export async function prepareOAuthPluginAccount(
       accountOptions,
       accountSummary,
       secretValues: collectSecretStrings([account.credential, account.secrets, additionalSecretValues]),
-      createCredentials: credentialFactory({
-        ...credentialBase,
-        mode: 'control-plane',
-        additionalSecretValues,
-      }),
+      createCredentials: credentialFactory(
+        {
+          ...credentialBase,
+          mode: 'control-plane',
+          additionalSecretValues,
+        },
+        link,
+      ),
     };
   }
   return {
@@ -198,10 +236,13 @@ export async function prepareOAuthPluginAccount(
     accountOptions,
     accountOptionsIdentity,
     accountSummary,
-    createCredentials: credentialFactory({
-      ...credentialBase,
-      mode: 'runtime',
-      ...(options.pluginSecrets === undefined ? {} : { pluginSecrets: options.pluginSecrets }),
-    }),
+    createCredentials: credentialFactory(
+      {
+        ...credentialBase,
+        mode: 'runtime',
+        ...(options.pluginSecrets === undefined ? {} : { pluginSecrets: options.pluginSecrets }),
+      },
+      link,
+    ),
   };
 }

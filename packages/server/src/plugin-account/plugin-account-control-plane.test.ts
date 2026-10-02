@@ -3,8 +3,8 @@ import { afterEach, expect, test } from 'bun:test';
 import { collectSecretStrings, type PluginLogSink } from '@aio-proxy/core';
 import { ProviderKind } from '@aio-proxy/types';
 
-import { type PrepareOAuthPluginAccountOptions, prepareOAuthPluginAccount } from './plugin-account';
-import { cleanup, diagnostics, runtimeFixture } from './plugin-runtime/test-support';
+import { type PrepareOAuthPluginAccountOptions, prepareOAuthPluginAccount } from '../plugin-account';
+import { cleanup, diagnostics, runtimeFixture } from '../plugin-runtime/test-support';
 
 afterEach(cleanup);
 

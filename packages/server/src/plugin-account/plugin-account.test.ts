@@ -1,15 +1,15 @@
 import { afterEach, expect, test } from 'bun:test';
 
-import type { PluginLogSink, PluginRepository, StoredAccount } from '@aio-proxy/core';
-import { zod } from '@aio-proxy/plugin-sdk';
+import { localSignInDigest, type PluginLogSink, type PluginRepository, type StoredAccount } from '@aio-proxy/core';
+import { type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
 import { ProviderKind } from '@aio-proxy/types';
 
 import {
   OAuthPluginAccountPreparationError,
   type PreparedOAuthPluginAccount,
   prepareOAuthPluginAccount,
-} from './plugin-account';
-import { catalog, cleanup, diagnostics, runtimeFixture } from './plugin-runtime/test-support';
+} from '../plugin-account';
+import { catalog, cleanup, diagnostics, runtimeFixture } from '../plugin-runtime/test-support';
 
 afterEach(cleanup);
 
@@ -270,4 +270,179 @@ test('propagates unexpected preparation exceptions', async () => {
       } as never,
     }),
   ).rejects.toBe(unexpected);
+});
+
+function localSignInFixture(input: { linked?: boolean; rotating?: boolean; writeFails?: boolean } = {}) {
+  let host = { token: 'host-token-before-refresh' };
+  let reads = 0;
+  let writes = 0;
+  let detects = 0;
+  const observedWrites: { readonly next: unknown; readonly previous: unknown }[] = [];
+  const localSignIn: NonNullable<OAuthAdapter['localSignIn']> = {
+    source: { default: 'Example Tool', 'zh-CN': '示例工具' },
+    async detect() {
+      detects++;
+      return true;
+    },
+    async read() {
+      reads++;
+      return { fingerprint: 'person@example.com', credentials: host };
+    },
+    ...(input.rotating === false
+      ? {}
+      : {
+          async write(_context: unknown, next: unknown, previous: unknown) {
+            writes++;
+            observedWrites.push({ next, previous });
+            if (input.writeFails) {
+              throw new Error('host-token-before-refresh', { cause: 'private-host-store-content' });
+            }
+            host = zod.object({ token: zod.string() }).parse(next);
+          },
+        }),
+  };
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    { localSignIn, ...(input.linked === false ? {} : { accountLocalSignIn: {} }) },
+  );
+  const logs: Parameters<PluginLogSink>[0][] = [];
+  return {
+    ...fixture,
+    localSignIn,
+    logs,
+    observedWrites,
+    host: () => host,
+    calls: () => ({ detects, reads, writes }),
+    input: {
+      config,
+      plugins: fixture.plugins,
+      repository: fixture.repository,
+      diagnostics,
+      logger: (entry: Parameters<PluginLogSink>[0]) => logs.push(entry),
+      onDiagnosticChanged: () => {},
+    },
+  };
+}
+
+const credentialModes = ['runtime', 'control-plane'] as const;
+
+test.each(credentialModes)('a marked account refresh writes back to the host (%s)', async (credentialMode) => {
+  const fixture = localSignInFixture();
+  const prepared =
+    credentialMode === 'runtime'
+      ? await prepareOAuthPluginAccount(fixture.input)
+      : await prepareOAuthPluginAccount({ ...fixture.input, credentialMode });
+  const credentials = prepared.createCredentials();
+  const current = await credentials.read();
+  expect(fixture.calls()).toEqual({ detects: 0, reads: 0, writes: 0 });
+  let exchanged: unknown;
+  const next = { token: 'next-host-token' };
+  const result = await credentials.refresh(current.revision, async (snapshot) => {
+    exchanged = snapshot.value;
+    return { value: next };
+  });
+
+  expect(exchanged).toEqual({ token: 'host-token-before-refresh' });
+  expect(fixture.observedWrites).toEqual([{ next, previous: { token: 'host-token-before-refresh' } }]);
+  expect(fixture.host()).toEqual(next);
+  expect(result).toMatchObject({ status: 'updated', snapshot: { value: next } });
+  expect(fixture.repository.readAccount(config.id)).toMatchObject({
+    credential: next,
+    localSignIn: { consumed: localSignInDigest({ token: 'host-token-before-refresh' }) },
+  });
+  expect(fixture.calls()).toEqual({ detects: 0, reads: 1, writes: 1 });
+});
+
+test.each(credentialModes)('an unmarked account never calls host read or write (%s)', async (credentialMode) => {
+  const fixture = localSignInFixture({ linked: false });
+  const prepared =
+    credentialMode === 'runtime'
+      ? await prepareOAuthPluginAccount(fixture.input)
+      : await prepareOAuthPluginAccount({ ...fixture.input, credentialMode });
+  const credentials = prepared.createCredentials();
+  const current = await credentials.read();
+  let exchanged: unknown;
+  await credentials.refresh(current.revision, async (snapshot) => {
+    exchanged = snapshot.value;
+    return { value: { token: 'next-mirror-token' } };
+  });
+
+  expect(exchanged).toEqual({ token: 'secret' });
+  expect(fixture.calls()).toEqual({ detects: 0, reads: 0, writes: 0 });
+  expect(prepared.accountSummary).not.toHaveProperty('localSignInSource');
+  expect(fixture.repository.readAccount(config.id)).not.toHaveProperty('localSignIn');
+});
+
+test.each(credentialModes)('a non-rotating linked store is never read on refresh (%s)', async (credentialMode) => {
+  const fixture = localSignInFixture({ rotating: false });
+  const prepared =
+    credentialMode === 'runtime'
+      ? await prepareOAuthPluginAccount(fixture.input)
+      : await prepareOAuthPluginAccount({ ...fixture.input, credentialMode });
+  const credentials = prepared.createCredentials();
+  const current = await credentials.read();
+  let exchanged: unknown;
+  await credentials.refresh(current.revision, async (snapshot) => {
+    exchanged = snapshot.value;
+    return { value: { token: 'next-mirror-token' } };
+  });
+
+  expect(exchanged).toEqual({ token: 'secret' });
+  expect(fixture.calls()).toEqual({ detects: 0, reads: 0, writes: 0 });
+  expect(prepared.accountSummary).toMatchObject({ localSignInSource: fixture.localSignIn.source });
+});
+
+test.each(credentialModes)(
+  'write failure logs a fixed error and preserves the consumed mirror (%s)',
+  async (credentialMode) => {
+    const fixture = localSignInFixture({ writeFails: true });
+    for (const next of [{ token: 'next-mirror-token' }, { token: 'latest-mirror-token' }]) {
+      const prepared =
+        credentialMode === 'runtime'
+          ? await prepareOAuthPluginAccount(fixture.input)
+          : await prepareOAuthPluginAccount({ ...fixture.input, credentialMode });
+      const credentials = prepared.createCredentials();
+      const current = await credentials.read();
+      let exchanged: unknown;
+      const result = await credentials.refresh(current.revision, async (snapshot) => {
+        exchanged = snapshot.value;
+        return { value: next };
+      });
+      expect(exchanged).toEqual(
+        next.token === 'next-mirror-token' ? { token: 'host-token-before-refresh' } : { token: 'next-mirror-token' },
+      );
+      expect(result).toMatchObject({ status: 'updated', snapshot: { value: next } });
+    }
+
+    expect(fixture.logs).toEqual(
+      Array.from({ length: 2 }, () => ({
+        event: 'plugin.local-sign-in.write.failed',
+        code: 'CREDENTIAL_REFRESH_FAILED',
+        context: { providerId: config.id, plugin: config.plugin, capability: config.capability },
+        error: { name: 'Error', message: 'LOCAL_SIGN_IN_WRITE_FAILED' },
+      })),
+    );
+    expect(fixture.repository.readDiagnostics(config.id)).toEqual([]);
+    expect(fixture.repository.readAccount(config.id)).toMatchObject({
+      credential: { token: 'latest-mirror-token' },
+      localSignIn: { consumed: localSignInDigest({ token: 'host-token-before-refresh' }) },
+    });
+  },
+);
+
+test('a port prepared while linked rechecks browser relogin before refreshing', async () => {
+  const fixture = localSignInFixture();
+  const prepared = await prepareOAuthPluginAccount(fixture.input);
+  replaceAccount(fixture.repository, { credential: { token: 'browser-login-token' } });
+  const credentials = prepared.createCredentials();
+  const current = await credentials.read();
+  let exchanged: unknown;
+  await credentials.refresh(current.revision, async (snapshot) => {
+    exchanged = snapshot.value;
+    return { value: { token: 'next-browser-token' } };
+  });
+
+  expect(exchanged).toEqual({ token: 'browser-login-token' });
+  expect(fixture.calls()).toEqual({ detects: 0, reads: 0, writes: 0 });
+  expect(fixture.repository.readAccount(config.id)).not.toHaveProperty('localSignIn');
 });
