@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { IdSchema } from '../../common';
-import type { RouterProviderOverride } from '../../config';
+import { type RouterProviderOverride, type RouterSelection, RouterSelectionSchema } from '../../config';
 import {
   type ModelCostInput,
   ModelCostSchema,
@@ -76,7 +76,12 @@ export type DashboardRoutingModel = {
 
 export type DashboardRoutingModelsResponse = {
   readonly writable: boolean;
+  readonly selection: RouterSelection;
   readonly models: readonly DashboardRoutingModel[];
+};
+
+export type DashboardRoutingSelectionMutation = {
+  readonly selection: RouterSelection;
 };
 
 export type DashboardRoutingModelMutation = {
@@ -176,6 +181,7 @@ export const DashboardRoutingModelSchema = matchesDto<DashboardRoutingModel>()(
 export const DashboardRoutingModelsResponseSchema = matchesDto<DashboardRoutingModelsResponse>()(
   z.strictObject({
     writable: z.boolean(),
+    selection: RouterSelectionSchema,
     models: z.array(DashboardRoutingModelSchema).readonly(),
   }),
 );
@@ -212,6 +218,10 @@ export const DashboardRoutingModelMutationSchema = matchesDto<DashboardRoutingMo
     metadata: ModelMetadataSchema.nullable().optional(),
     providers: z.record(IdSchema, DashboardRoutingProviderOverrideSchema),
   }),
+);
+
+export const DashboardRoutingSelectionMutationSchema = matchesDto<DashboardRoutingSelectionMutation>()(
+  z.strictObject({ selection: RouterSelectionSchema }),
 );
 
 export const DashboardRoutingMutationErrorCodeSchema = z.enum([

@@ -254,6 +254,56 @@ test('PUT /routing/models returns typed config, revision, and validation errors'
   );
 });
 
+const putSelection = (routes: Routes, body: unknown) =>
+  routes.request('/routing/selection', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+test('GET /routing/models reports the weighted selection policy by default', async () => {
+  await withRoutingFixture(async ({ routes }) => {
+    const body = DashboardRoutingModelsResponseSchema.parse(await (await routes.request('/routing/models')).json());
+    expect(body.selection).toBe('weighted');
+  });
+});
+
+test('PUT /routing/selection writes router.selection and keeps the rest of router', async () => {
+  await withRoutingFixture(async ({ configPath, routes }) => {
+    const response = await putSelection(routes, { selection: 'quota-reset' });
+    const body = DashboardRoutingModelsResponseSchema.parse(await response.json());
+    const disk = JSON.parse(readFileSync(configPath, 'utf8')) as {
+      router: { selection?: string; models: typeof authored.router.models };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.selection).toBe('quota-reset');
+    expect(disk.router.selection).toBe('quota-reset');
+    expect(disk.router.models).toEqual(authored.router.models);
+  });
+});
+
+test('PUT /routing/selection rejects an unknown policy and a read-only config', async () => {
+  await withRoutingFixture(async ({ configPath, routes }) => {
+    const before = readFileSync(configPath, 'utf8');
+    for (const body of [{ selection: 'soonest' }, {}, { selection: 'weighted', extra: true }]) {
+      const response = await putSelection(routes, body);
+      expect(response.status).toBe(400);
+      expect(((await response.json()) as { error: string }).error).toBe('validation_failed');
+    }
+    expect(readFileSync(configPath, 'utf8')).toBe(before);
+  });
+
+  await withRoutingFixture(
+    async ({ routes }) => {
+      const response = await putSelection(routes, { selection: 'quota-reset' });
+      expect(response.status).toBe(409);
+      expect(((await response.json()) as { error: string }).error).toBe('config_unavailable');
+    },
+    { configPath: false },
+  );
+});
+
 test('PUT /routing/models returns typed validation_failed when reload rejects', async () => {
   const rejectReload = { value: false };
   await withRoutingFixture(
