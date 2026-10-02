@@ -238,7 +238,13 @@ export async function runWithin(
 ): Promise<{ readonly code: number; readonly stdout: string }> {
   const remaining = deadline - Date.now();
   if (remaining <= 0) throw new Error('desktop-connect time budget exhausted');
-  const proc = Bun.spawn([...cmd], { stdout: 'pipe', stderr: 'ignore', timeout: remaining, killSignal: 'SIGKILL' });
+  const proc = Bun.spawn([...cmd], {
+    stdout: 'pipe',
+    stderr: 'ignore',
+    timeout: remaining,
+    killSignal: 'SIGKILL',
+    windowsHide: true,
+  });
   const stdout = await new Response(proc.stdout).text();
   return { code: await proc.exited, stdout };
 }

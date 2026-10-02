@@ -10,6 +10,7 @@ import {
   renderSystemdUnit,
   launchdDomain,
   launchdJobTarget,
+  managedServicePath,
   readDesktopOwnedUnit,
   resolveExec,
   serviceRestart,
@@ -770,3 +771,9 @@ test.skipIf(process.platform !== 'darwin')(
     expect(readDesktopOwnedUnit(join(dir, 'missing.plist'))).toBe(false);
   },
 );
+
+test('managed service PATH uses the platform delimiter and keeps Windows paths', () => {
+  const path = managedServicePath('C:\\Users\\Zoë Chen', 'C:\\Windows\\System32;C:\\Tools', ';');
+  expect(path.split(';').slice(0, 2)).toEqual(['C:\\Windows\\System32', 'C:\\Tools']);
+  expect(path).not.toContain(':/usr/bin');
+});

@@ -10,6 +10,7 @@ const publishTargets = [
   { suffix: 'darwin-x64', target: 'bun-darwin-x64' },
   { suffix: 'linux-x64', target: 'bun-linux-x64' },
   { suffix: 'linux-arm64', target: 'bun-linux-arm64' },
+  { suffix: 'win32-x64', target: 'bun-windows-x64' },
 ] as const;
 
 // musl targets are Docker-only (alpine base); they are never packed for npm publish,
@@ -46,7 +47,7 @@ for (const { suffix, target } of selected) {
   if (explicitOutfile === undefined) {
     const binDir = join(rootDir, 'npm', `cli-${suffix}`, 'bin');
     mkdirSync(binDir, { recursive: true });
-    outfile = join(binDir, 'aio-proxy');
+    outfile = join(binDir, suffix.startsWith('win32') ? 'aio-proxy.exe' : 'aio-proxy');
   } else {
     mkdirSync(dirname(explicitOutfile), { recursive: true });
     outfile = explicitOutfile;

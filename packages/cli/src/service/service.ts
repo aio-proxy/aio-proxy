@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
-import { dirname, isAbsolute, join } from 'node:path';
+import { delimiter as platformDelimiter, dirname, isAbsolute, join, win32 } from 'node:path';
 
 import { configPath } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
@@ -41,19 +41,22 @@ type SupportedPlatform = 'darwin' | 'linux';
 // Service managers do not inherit the user's shell PATH. Keep the configured
 // command directories across restarts, including upgrades initiated by the daemon.
 // The home fallbacks also migrate older units that had no PATH entry at all.
-const managedServicePath = (home: string, inherited: string | undefined): string => {
+export const managedServicePath = (
+  home: string,
+  inherited: string | undefined,
+  delimiter: string = platformDelimiter,
+): string => {
   const userBins = ['.opencode/bin', '.npm-global/bin', '.local/bin', '.local/bin/node/bin', '.grok/bin', '.bun/bin'];
+  // Windows entries use win32 path rules even when computed off-Windows (tests); the POSIX fallback dirs do not apply.
+  const win = delimiter === ';';
+  const join_ = win ? win32.join : join;
+  const abs = win ? win32.isAbsolute : isAbsolute;
   const dirs = [
-    ...(inherited?.split(':') ?? []),
-    ...userBins.map((suffix) => join(home, suffix)),
-    '/opt/homebrew/bin',
-    '/usr/local/bin',
-    '/usr/bin',
-    '/bin',
-    '/usr/sbin',
-    '/sbin',
+    ...(inherited?.split(delimiter) ?? []),
+    ...userBins.map((suffix) => join_(home, suffix)),
+    ...(win ? [] : ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin']),
   ];
-  return [...new Set(dirs.filter(isAbsolute))].join(':');
+  return [...new Set(dirs.filter(abs))].join(delimiter);
 };
 
 function requirePlatform(): SupportedPlatform {
@@ -107,7 +110,7 @@ export function isManagedServiceInstalled(): boolean {
 // Run a manager command, streaming its output. `allowFailure` is for status-style
 // probes where a non-zero code means "not running", not a CLI error.
 async function runManager(cmd: readonly string[], allowFailure = false): Promise<number> {
-  const proc = Bun.spawn(cmd as string[], { stdout: 'inherit', stderr: 'inherit' });
+  const proc = Bun.spawn(cmd as string[], { stdout: 'inherit', stderr: 'inherit', windowsHide: true });
   const code = await proc.exited;
   if (code !== 0 && !allowFailure) {
     throw new CliExit(EXIT.transient, m['cli.service.command_failed']({ command: cmd.join(' '), code }));
