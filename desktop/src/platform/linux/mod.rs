@@ -34,7 +34,7 @@ pub fn paths_from(home: &Path, env: impl Fn(&str) -> Option<OsString>) -> Paths 
 /// background of its own.
 pub fn tray_color(cx: &App) -> [u8; 3] {
     match cx.window_appearance() {
-        WindowAppearance::Dark | WindowAppearance::VividDark => [255, 255, 255],
+        WindowAppearance::Dark | WindowAppearance::VibrantDark => [255, 255, 255],
         _ => [0, 0, 0],
     }
 }
