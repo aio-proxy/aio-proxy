@@ -1,10 +1,99 @@
 import { expect, test } from 'bun:test';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { websocket } from '@aio-proxy/server';
 
 import { EDITS_MULTIPART_ENCODED_LIMIT } from '../../../core/src/ingress/openai-image/multipart-counters';
+import { freePort } from '../../__tests__/cli-test-helpers';
 import { MAX_REQUEST_BODY_SIZE, proxyServeOptions, shutdownProxyServer } from './run';
+
+test('local Dashboard setup installs Pi and OMP from the injected adapter assets', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-proxy-dashboard-adapters-'));
+  const bin = join(root, 'bin');
+  const pi = join(root, 'pi');
+  const omp = join(root, 'omp');
+  const port = freePort();
+  const endpoint = `http://127.0.0.1:${port}`;
+  mkdirSync(bin);
+  const paths = {
+    opencode: join(root, 'opencode.js'),
+    officialPi: join(root, 'official-pi.js'),
+    omp: join(root, 'omp.js'),
+  };
+
+  try {
+    await Bun.write(join(root, 'config.jsonc'), JSON.stringify({ server: { port }, providers: {} }));
+    await Bun.write(paths.opencode, 'export default "embedded-opencode";\n');
+    await Bun.write(paths.officialPi, 'export default "embedded-pi";\n');
+    await Bun.write(paths.omp, 'export default "embedded-omp";\n');
+    await Bun.write(join(bin, 'pi'), '#!/bin/sh\nprintf "0.99.2\\n"\n');
+    await Bun.write(
+      join(bin, 'omp'),
+      `#!/bin/sh\nif [ "$1" = "--version" ]; then printf "17.3.7\\n"; else printf '%s\\n' '${omp}'; fi\n`,
+    );
+    chmodSync(join(bin, 'pi'), 0o755);
+    chmodSync(join(bin, 'omp'), 0o755);
+
+    const script = `
+      import { mock } from 'bun:test';
+      const os = await import('node:os');
+      // Post-install inspection can recover Codex config, so isolate its home too.
+      mock.module('node:os', () => ({
+        ...os,
+        homedir: () => ${JSON.stringify(root)},
+        default: { ...os.default, homedir: () => ${JSON.stringify(root)} },
+      }));
+      const { localAgentHost } = await import(${JSON.stringify(join(import.meta.dir, 'run.ts'))});
+      const deps = {
+        dashboardAssets: () => () => null,
+        agentAssetPaths: () => (${JSON.stringify(paths)}),
+      };
+      const setup = await localAgentHost('127.0.0.1', ${port}, deps, {
+        env: process.env,
+        home: () => ${JSON.stringify(root)},
+        resolveEndpoint: async () => ${JSON.stringify(endpoint)},
+      });
+      if (setup === undefined) throw new Error('local Dashboard setup was not enabled');
+      for (const target of ['pi', 'omp']) {
+        await setup.agentHost.configure(target, undefined, {
+          signal: new AbortController().signal,
+          onDevice: () => {},
+        });
+      }
+    `;
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      AIO_PROXY_HOME: root,
+      AIO_PROXY_AGENT_HOST: 'enabled',
+      PI_CODING_AGENT_DIR: pi,
+      PATH: `${bin}:/usr/bin:/bin`,
+    };
+    for (const key of ['CODEX_HOME', 'CODEX_SQLITE_HOME', 'GROK_CONFIG', 'XDG_CONFIG_HOME']) delete env[key];
+    const child = Bun.spawn([process.execPath, '-e', script], {
+      env,
+      stdout: 'ignore',
+      stderr: 'pipe',
+      timeout: 10_000,
+      killSignal: 'SIGKILL',
+    });
+    try {
+      const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+      expect(stderr).toBe('');
+      expect(exitCode).toBe(0);
+      expect(await Bun.file(join(pi, 'extensions/aio-proxy/index.js')).text()).toBe('export default "embedded-pi";\n');
+      expect(await Bun.file(join(omp, 'extensions/aio-proxy/index.js')).text()).toBe(
+        'export default "embedded-omp";\n',
+      );
+    } finally {
+      child.kill('SIGKILL');
+      await child.exited;
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 15_000);
 
 test('serve maxRequestBodySize matches the edits multipart encoded limit', () => {
   expect(MAX_REQUEST_BODY_SIZE).toBe(EDITS_MULTIPART_ENCODED_LIMIT);
