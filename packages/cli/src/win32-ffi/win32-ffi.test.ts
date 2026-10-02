@@ -11,6 +11,7 @@ onlyOnWindows('processImagePath reads the full executable path of a running proc
 });
 
 onlyOnWindows('killing the job owner ends the processes assigned to its kill-on-close job', async () => {
+  // The child is detached so libuv does not put it in its own kill-on-close job; only ours can end it.
   const moduleUrl = pathToFileURL(join(import.meta.dir, 'win32-ffi.ts')).href;
   const owner = Bun.spawn(
     [
@@ -18,7 +19,7 @@ onlyOnWindows('killing the job owner ends the processes assigned to its kill-on-
       '-e',
       `import { assignToJob, createKillOnCloseJob } from ${JSON.stringify(moduleUrl)};
        const job = createKillOnCloseJob();
-       const child = Bun.spawn([process.execPath, '-e', 'setInterval(() => {}, 1000)'], { windowsHide: true });
+       const child = Bun.spawn([process.execPath, '-e', 'setInterval(() => {}, 1000)'], { windowsHide: true, detached: true });
        assignToJob(job, child.pid);
        console.log(child.pid);
        setInterval(() => {}, 1000);`,
@@ -41,6 +42,7 @@ onlyOnWindows('killing the job owner ends the processes assigned to its kill-on-
     while (processImagePath(childPid) !== undefined && Date.now() < deadline) await Bun.sleep(100);
     expect(processImagePath(childPid)).toBeUndefined();
   } finally {
+    owner.kill();
     try {
       process.kill(childPid);
     } catch {}

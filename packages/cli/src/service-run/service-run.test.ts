@@ -48,3 +48,19 @@ test('supervisor re-reads the spec on 75, backs off 5 s on a crash, and stops cl
 test('an unreadable spec stops the supervisor with 1', async () => {
   expect(await runSupervisor('spec.json', { ...fakes, readSpec: () => undefined })).toBe(1);
 });
+
+test('a launch that throws is retried after 5 s instead of ending the supervisor', async () => {
+  const sleeps: number[] = [];
+  let launches = 0;
+  const code = await runSupervisor('spec.json', {
+    ...fakes,
+    sleep: async (ms) => void sleeps.push(ms),
+    spawnChild: async () => {
+      launches += 1;
+      if (launches === 1) throw new Error('EBUSY');
+      return 0;
+    },
+  });
+  expect(sleeps).toEqual([5000]);
+  expect(code).toBe(0);
+});

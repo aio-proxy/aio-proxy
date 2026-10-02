@@ -34,7 +34,9 @@ export async function runSupervisor(specPath: string, deps: SupervisorDeps): Pro
     if (spec === undefined) return EXIT.unrecoverable;
     // A removed binary means the service was uninstalled or is mid-replace; mirrors launchd's `[ -x "$0" ] || exit 0`.
     if (!deps.exists(spec.exec)) return EXIT.ok;
-    const code = await deps.spawnChild(spec.exec, spec.env);
+    // A launch that throws (exec mid-replace, denied, not executable, job assignment failed) is a crash like
+    // any other: Task Scheduler never restarts on exit codes, so dying here would leave the proxy down.
+    const code = await deps.spawnChild(spec.exec, spec.env).catch(() => EXIT.transient);
     const decision = decide(code);
     if (decision === 'stop') return code;
     if (decision === 'relaunch-later') await deps.sleep(RELAUNCH_DELAY_MS);
