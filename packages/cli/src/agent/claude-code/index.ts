@@ -1,0 +1,15 @@
+export {
+  buildClaudeCodeSetupPlan,
+  configureClaudeCode,
+  configureClaudeCodeAgent,
+  createClaudeCodeDeps,
+  listClaudeCode,
+  removeClaudeCode,
+  resolveClaudeCodeExecutable,
+  resolveClaudeCodeLocation,
+  type ClaudeCodeConfigureResult,
+  type ClaudeCodeDeps,
+  type ClaudeCodeKeySelector,
+  type ClaudeCodeListResult,
+  type ClaudeCodeRemoveResult,
+} from './claude-code';

@@ -4,7 +4,7 @@ description: Learn about native Agent integrations in AIO Proxy (aio-proxy agent
 
 # Native Agents Overview
 
-Modern AI coding agents (such as OpenAI Codex, xAI Grok Build, OpenCode, Pi, and OMP) run as local CLIs or desktop applications, each with distinct configuration layouts, session stores, and authentication models.
+Modern AI coding agents (such as OpenAI Codex, Anthropic Claude Code, xAI Grok Build, OpenCode, Pi, and OMP) run as local CLIs or desktop applications, each with distinct configuration layouts, session stores, and authentication models.
 
 Manually wiring these tools to a local proxy usually requires copying Base URLs, editing nested configuration files, and repeating the process after tool upgrades. AIO Proxy solves this with the native `aio-proxy agent` command suite:
 
@@ -16,13 +16,14 @@ Manually wiring these tools to a local proxy usually requires copying Base URLs,
 
 ## Supported Agents
 
-| Agent Key  | Target Tool                | Integration Mechanism                                     | Guide                                       |
-| :--------- | :------------------------- | :-------------------------------------------------------- | :------------------------------------------ |
-| `codex`    | OpenAI Codex CLI / Desktop | Interactive wizard, provider injection, session migration | [Codex Integration Guide](./codex.md)       |
-| `grok`     | xAI Grok Build             | Native Auth Helper injection, Dashboard device code flow  | [Grok Integration Guide](./grok.md)         |
-| `opencode` | OpenCode                   | Dynamic plugin detection and model catalog negotiation    | [OpenCode Integration Guide](./opencode.md) |
-| `pi`       | Pi Coding Agent            | Extension directory bridge injection                      | [Pi & OMP Integration Guide](./pi-omp.md)   |
-| `omp`      | Oh-My-Pi (OMP)             | Profile detection and extension injection                 | [Pi & OMP Integration Guide](./pi-omp.md)   |
+| Agent Key     | Target Tool                | Integration Mechanism                                     | Guide                                             |
+| :------------ | :------------------------- | :-------------------------------------------------------- | :------------------------------------------------ |
+| `codex`       | OpenAI Codex CLI / Desktop | Interactive wizard, provider injection, session migration | [Codex Integration Guide](./codex.md)             |
+| `claude-code` | Anthropic Claude Code      | Endpoint and token merged into the global `settings.json` | [Claude Code Integration Guide](./claude-code.md) |
+| `grok`        | xAI Grok Build             | Native Auth Helper injection, Dashboard device code flow  | [Grok Integration Guide](./grok.md)               |
+| `opencode`    | OpenCode                   | Dynamic plugin detection and model catalog negotiation    | [OpenCode Integration Guide](./opencode.md)       |
+| `pi`          | Pi Coding Agent            | Extension directory bridge injection                      | [Pi & OMP Integration Guide](./pi-omp.md)         |
+| `omp`         | Oh-My-Pi (OMP)             | Profile detection and extension injection                 | [Pi & OMP Integration Guide](./pi-omp.md)         |
 
 ---
 
@@ -38,7 +39,7 @@ aio-proxy agent list --check
 ### 2. Disconnect Agent
 
 ```sh
-aio-proxy agent remove <codex|grok|opencode|pi|omp>
+aio-proxy agent remove <codex|claude-code|grok|opencode|pi|omp>
 ```
 
 ### 3. Revoke Authorization

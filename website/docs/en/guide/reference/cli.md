@@ -58,7 +58,7 @@ aio-proxy oauth status                # Inspect token validity
 ### `aio-proxy agent`
 
 ```sh
-aio-proxy agent configure <codex|grok|opencode|pi|omp>
+aio-proxy agent configure <codex|claude-code|grok|opencode|pi|omp>
 aio-proxy agent list [--check]
 aio-proxy agent remove <target>
 aio-proxy agent revoke <installation-id>

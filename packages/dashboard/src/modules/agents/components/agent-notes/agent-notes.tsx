@@ -15,6 +15,7 @@ export const AgentNotes: React.FC<AgentNotesProps> = ({ descriptor, localVisible
     ...(descriptor.catalog === 'host_managed' ? [m['dashboard.agents.note.catalog_host_managed']({ target })] : []),
     ...(descriptor.platformSupport === 'macos_only_verified' ? [m['dashboard.agents.note.platform_macos']()] : []),
     ...(descriptor.target === 'codex' ? [m['dashboard.agents.table.codex_keep']()] : []),
+    ...(descriptor.target === 'claude-code' ? [m['dashboard.agents.table.claude_code_static']()] : []),
     ...(localVisible ? [] : [m['dashboard.agents.note.check_local']()]),
   ];
   return (

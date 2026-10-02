@@ -49,7 +49,7 @@ flowchart LR
 - **复用 AI SDK 生态**：任意 [Vercel AI SDK](https://ai-sdk.dev) Provider 包（官方或社区）都能以 `kind: "ai-sdk"` 直接作为 Provider 加载，并享有同样的协议转换、路由与计费。AI SDK 支持的厂商，AIO Proxy 就能接。
 - **插件可扩展**：上面所有内置订阅本身就是基于公开的 [`@aio-proxy/plugin-sdk`](https://www.npmjs.com/package/@aio-proxy/plugin-sdk) 编写的插件。官方尚未支持的服务或公司内部网关，可以自己写插件接入——OAuth 登录、模型目录、元数据与价格一应俱全——再用 `aio-proxy plugin add` 安装。
 - **扛得住故障的路由**：Provider priority 决定先试哪一层，Provider weight 在同层内分摊流量，会话亲和保持 Prompt 缓存命中，上游失败时自动切到下一个候选。priority、weight、价格与上下文上限都能按模型单独覆盖，并可用别名统一模型名。
-- **一条命令接好 Agent**：`aiop agent configure` 可直接配置 Codex、Grok Build、OpenCode、Pi 与 oh-my-pi，通过设备授权登录而不是粘贴密钥；其他工具只需修改 Base URL。
+- **一条命令接好 Agent**：`aiop agent configure` 可直接配置 Codex、Claude Code、Grok Build、OpenCode、Pi 与 oh-my-pi，Agent 支持时通过设备授权登录而不是粘贴密钥；其他工具只需修改 Base URL。
 - **请求全程可见**：内置 Dashboard 记录每一次请求与每一次 Provider 尝试的状态、延迟、Token 与费用，完整链路可导出到 OpenTelemetry。
 - **本地优先，按需配置**：默认只监听 `127.0.0.1`，对外暴露时再加上调用方 API Key 与 Dashboard 密码。每个 Provider 都可以声明多个协议端点、自定义请求头，以及支持备用切换的 HTTP(S)/SOCKS5 代理。既可以在 Dashboard 里配置，也可以写带 schema 校验的 JSONC 文件，用 `{{env.NAME}}` 引用密钥并热加载。
 

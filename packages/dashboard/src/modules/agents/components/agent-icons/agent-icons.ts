@@ -10,4 +10,5 @@ export const AGENT_ICONS: Readonly<Record<AgentTarget, React.FC<{ size?: number;
   omp: OmpIcon,
   codex: withLobeIcon('codex-color'),
   grok: withLobeIcon('grok'),
+  'claude-code': withLobeIcon('claudecode-color'),
 };

@@ -7,6 +7,7 @@ export const AGENT_DISPLAY_NAMES: Readonly<Record<AgentTarget, string>> = {
   omp: 'oh-my-pi',
   codex: 'Codex',
   grok: 'Grok Build',
+  'claude-code': 'Claude Code',
 };
 
 export type PrimaryAgentAction = 'configure' | 'update' | 'repair' | 'reconfigure';

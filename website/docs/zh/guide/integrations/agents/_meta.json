@@ -11,6 +11,11 @@
   },
   {
     "type": "file",
+    "name": "claude-code",
+    "label": "Anthropic Claude Code"
+  },
+  {
+    "type": "file",
     "name": "grok",
     "label": "xAI Grok Build"
   },

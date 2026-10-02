@@ -1,6 +1,12 @@
-import type { AgentLocalState, AgentOperationState, AgentsSnapshot, CodexSetupPlan } from '@aio-proxy/types';
+import type {
+  AgentLocalState,
+  AgentOperationState,
+  AgentsSnapshot,
+  ClaudeCodeSetupPlan,
+  CodexSetupPlan,
+} from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { AgentDetailPage } from './agent-detail-page';
 
@@ -20,6 +26,14 @@ const mocks = rs.hoisted(() => ({
     reset: rs.fn(),
   },
   plan: { data: undefined as CodexSetupPlan | undefined, isError: false, isLoading: false, error: null },
+  claudeCodePlan: {
+    data: undefined as ClaudeCodeSetupPlan | undefined,
+    isError: false,
+    isFetching: false,
+    error: null,
+    dataUpdatedAt: 0,
+    refetch: rs.fn(),
+  },
 }));
 
 rs.mock('@tanstack/react-router', () => ({
@@ -43,6 +57,7 @@ rs.mock('@/components/page-container', () => ({
 rs.mock('../../hooks/use-agents-snapshot', () => ({ useAgentsSnapshot: () => mocks.snapshot }));
 rs.mock('../../hooks/use-agent-operation', () => ({ useAgentOperation: () => mocks.operation }));
 rs.mock('../../hooks/use-codex-plan', () => ({ useCodexPlan: () => mocks.plan }));
+rs.mock('../../hooks/use-claude-code-plan', () => ({ useClaudeCodePlan: () => mocks.claudeCodePlan }));
 rs.mock('../../hooks/use-agent-login', () => ({
   useAgentLogin: () => ({ pending: undefined, decide: rs.fn(), decision: undefined, isDeciding: false, failed: false }),
 }));
@@ -178,4 +193,38 @@ test('reconfiguring an Agent that is already signed in does not ask it to log in
   } as AgentOperationState;
   render(<AgentDetailPage target="opencode" />);
   expect(screen.queryByTestId('login-panel')).toBeNull();
+});
+
+test('Claude Code configures in one click without proxy keys and asks for a key when the proxy has them', async () => {
+  const configure = { name: /^(Configure|配置)$/u };
+  mocks.claudeCodePlan.refetch.mockImplementation(async () => ({ data: mocks.claudeCodePlan.data, isError: false }));
+  mocks.snapshot.data = snapshot('claude-code', 'not_configured', { installations: [] });
+  mocks.claudeCodePlan.data = { configPath: '/home/me/.claude/settings.json', keyChoices: [] };
+  const first = render(<AgentDetailPage target="claude-code" />);
+  fireEvent.click(screen.getByRole('button', configure));
+  await waitFor(() =>
+    expect(mocks.operation.start).toHaveBeenCalledWith({
+      kind: 'configure',
+      target: 'claude-code',
+      claudeCode: { key: { kind: 'none' } },
+    }),
+  );
+  expect(screen.queryByTestId('claude-code-setup-form')).toBeNull();
+  first.unmount();
+
+  mocks.operation.start.mockReset();
+  mocks.claudeCodePlan.data = {
+    configPath: '/home/me/.claude/settings.json',
+    keyChoices: [{ id: 'k1', label: 'Laptop' }],
+  };
+  render(<AgentDetailPage target="claude-code" />);
+  fireEvent.click(screen.getByRole('button', configure));
+  fireEvent.submit(await screen.findByTestId('claude-code-setup-form'));
+  await waitFor(() =>
+    expect(mocks.operation.start).toHaveBeenCalledWith({
+      kind: 'configure',
+      target: 'claude-code',
+      claudeCode: { key: { kind: 'existing', id: 'k1' } },
+    }),
+  );
 });

@@ -242,6 +242,14 @@ const listResult: AgentListResult = {
     connection: 'not_checked',
     changedPaths: [],
   },
+  claudeCode: {
+    target: 'claude-code',
+    integration: 'static-config',
+    configPath: '/tmp/claude/settings.json',
+    status: 'absent',
+    connection: 'not_checked',
+    changedPaths: [],
+  },
 };
 const configureResult: AgentConfigureResult = {
   target: 'opencode',
@@ -344,8 +352,8 @@ test('agent configure and remove help render the supported target grammar', () =
   const program = buildProgram();
   const agent = program.commands.find((command) => command.name() === 'agent');
   const help = agent?.helpInformation() ?? '';
-  expect(help).toContain('configure [options] <opencode|pi|omp|codex|grok>');
-  expect(help).toContain('remove <opencode|pi|omp|codex|grok>');
+  expect(help).toContain('configure [options] <opencode|pi|omp|codex|grok|claude-code>');
+  expect(help).toContain('remove <opencode|pi|omp|codex|grok|claude-code>');
   expect(help).toContain('auth');
   expect(help).not.toContain('<target>');
 });
