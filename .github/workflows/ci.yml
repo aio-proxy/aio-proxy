@@ -53,6 +53,7 @@ jobs:
   cli-windows:
     if: github.event_name == 'push' || !github.event.pull_request.draft
     runs-on: windows-2025
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
