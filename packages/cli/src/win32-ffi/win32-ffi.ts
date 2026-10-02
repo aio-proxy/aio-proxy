@@ -113,9 +113,11 @@ export function processCreationTime(pid: number): string | undefined {
     const proc = k.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
     if (proc === null) return undefined;
     try {
-      const [created, exited, kernel, user] = [1, 2, 3, 4].map(() => new BigUint64Array(1));
-      if (k.GetProcessTimes(proc, created, exited, kernel, user) === 0) return undefined;
-      return created![0]!.toString();
+      const created = new BigUint64Array(1);
+      const unused = new BigUint64Array(3);
+      if (k.GetProcessTimes(proc, created, unused.subarray(0, 1), unused.subarray(1, 2), unused.subarray(2)) === 0)
+        return undefined;
+      return created[0]!.toString();
     } finally {
       k.CloseHandle(proc);
     }
