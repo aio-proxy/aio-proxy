@@ -51,9 +51,9 @@ export type OAuthLocalSignIn<AccountOptions, Credential> = {
 };
 // OAuthAdapter: readonly localSignIn?: OAuthLocalSignIn<AccountOptions, Credential>;
 ```
-JSDoc: `detect` presence only; `read` must return `expiresAt`; `write` only for rotating stores, must replace only when the host still holds `previous`, otherwise return without writing.
+JSDoc: `detect` presence only; `read` must build its credential deterministically from the store (the framework compares digests of two reads); `write` only for rotating stores, must replace only when the host still holds `previous` (same account, same refresh token, re-checked immediately before the atomic replace), otherwise return without writing.
 
-- [ ] **Step 1: Failing tests** — `registers an adapter with localSignIn and keeps its methods bound`; `rejects localSignIn missing detect/read or with a non-function write` (expects `Error('Invalid OAuth adapter')`).
+- [ ] **Step 1: Failing tests** — `registers an adapter with localSignIn and keeps its methods bound`; `rejects localSignIn missing detect/read, with a non-function write, or with a source that fails LocalizedTextSchema` (expects `Error('Invalid OAuth adapter')`).
 - [ ] **Step 2: Run** `bun test packages/core/src/plugins` (registry tests) — FAIL.
 - [ ] **Step 3: Implement** types and `validateLocalSignIn(value: unknown): OAuthAdapter['localSignIn'] | undefined` (`isRecord`, bind methods).
 - [ ] **Step 4: Run** — PASS.
@@ -71,29 +71,36 @@ export type LocalSignInLink = {
   readonly localSignIn: OAuthLocalSignIn<unknown, unknown>; // write is defined
   readonly options: unknown;
   readonly fingerprint: string;
-  /** Current marker and mirror expiry, read inside the lease; null/linked:false → plain exchange. */
-  readonly account: () => { readonly linked: boolean; readonly expiresAt?: number } | null;
-  readonly onWriteFailed: () => void;
+  /** Read inside the lease. null or linked:false → plain exchange. */
+  readonly account: () => { readonly linked: boolean; readonly consumed?: string } | null;
+  /** Persist the digest of a host observation aio-proxy is about to have consumed. */
+  readonly recordConsumed: (digest: string) => void;
+  readonly onWriteFailed: () => void; // caller logs an event with no error object
 };
+export function localSignInDigest(credential: unknown): string; // SHA-256 hex of JSON.stringify(credential), Bun.CryptoHasher
 export function linkLocalSignInCredentials(port: CredentialPort<unknown>, link: LocalSignInLink): CredentialPort<unknown>;
 export class LocalSignInAccountChangedError extends CredentialRefreshError; // retryable false, reason 'local_sign_in_account_changed'
 export class LocalSignInUnavailableError extends CredentialRefreshError;    // retryable true, reason 'local_sign_in_unavailable', no cause
 ```
 `refresh(rev, exchange)` → `port.refresh(rev, async (current, signal) => …)`:
-1. `account()` not linked → `return exchange(current, signal)`.
-2. `host = read(...)`; any throw → `LocalSignInUnavailableError`. `host.fingerprint !== fingerprint` → `LocalSignInAccountChangedError`.
-3. `base = (host.expiresAt ?? 0) > (account().expiresAt ?? 0) ? host.credentials : current.value`.
-4. `result = exchange({ ...current, value: base }, signal)`; a throw is rethrown through `redactPluginError(error, { secretValues: collectSecretStrings([host.credentials, base]) })`.
-5. If `!signal.aborted`: `write({ signal }, result.value, base)`; a throw is caught and reported through `link.onWriteFailed()` (no error object passed), never rethrown, since the mirror must still be updated. Return `result`.
+1. `state = account()`; not linked → `return exchange(current, signal)`.
+2. `observed = read(...)` (any throw → `LocalSignInUnavailableError`); `observed.fingerprint !== fingerprint` → `LocalSignInAccountChangedError`. `h = localSignInDigest(observed.credentials)`.
+3. `stale = h === state.consumed`; `base = stale ? current.value : observed.credentials`.
+4. `result = exchange({ ...current, value: base }, signal)`. A throw is rethrown as a **new error of the same safe class**: `CredentialRefreshError` → `new CredentialRefreshError(redacted.message, error.options)`, otherwise `new Error(redacted.message)`, where `redacted = redactPluginError(error, { secretValues: collectSecretStrings([observed.credentials, base]) })`; no `cause`. Nothing is recorded on failure: an exchange that failed did not provably consume the host token.
+5. If `!stale`: `recordConsumed(h)` — after the exchange succeeded, before writing back, so a later read that still sees `h` proves the write-back did not land.
+6. `write({ signal }, result.value, observed.credentials)` with no abort check; a throw → `onWriteFailed()`, never rethrown. Return `result`.
 
-- [ ] **Step 1: Failing tests** (fake `localSignIn` over an in-memory "host", fake exchange that rotates `refreshToken` and records its input):
-  - `uses the host credential when the host refreshed after the mirror`
-  - `uses the mirror and repairs the host when the last write-back failed` (host expiry older than mirror)
-  - `writes the rotated credential back with the base as previous`
+- [ ] **Step 1: Failing tests** (fake `localSignIn` over an in-memory host whose `write` implements the real conditional rule; fake exchange that rotates `refreshToken`, records its input, and rejects a token it has already seen):
+  - `uses the host observation when the host refreshed on its own`
+  - `after a failed write-back, uses the mirror and repairs the host` — fail one write, refresh again: exchange gets the mirror token, host ends with the newest token
+  - `a second failed write-back still recovers on the third refresh`
+  - `writes back with the observed host credential as previous and skips when the host changed during exchange` (Review Focus 3)
   - `a failing write still returns the rotated credential so the mirror is updated`
-  - `skips write when the signal aborted during exchange` (late callback)
+  - `a failed exchange records nothing, so the next refresh still uses the host observation`
+  - `writes back even after the signal aborted, because the host token was consumed`
   - `fails non-retryably and does not write when the host holds a different account`
-  - `exchanges plainly without reading the host once the marker is cleared` (stale runtime after browser re-login)
+  - `exchanges plainly without reading the host once the marker is cleared`
+  - `a retryable CredentialRefreshError from exchange stays retryable after redaction`
   - `errors from read, exchange, and write carry no host credential string in message, stack, or cause`
 - [ ] **Step 2: Run** `bun test packages/core/src/plugins/local-sign-in` — FAIL.
 - [ ] **Step 3: Implement.**
@@ -103,18 +110,18 @@ export class LocalSignInUnavailableError extends CredentialRefreshError;    // r
 ### Task 3: Account marker and local-sign-in login path
 
 **Files:**
-- Modify: `packages/core/src/db/schema/plugin-oauth.ts` — `localSignIn: integer('local_sign_in', { mode: 'boolean' }).notNull().default(false)`
+- Modify: `packages/core/src/db/schema/plugin-oauth.ts` — on `oauthAccount`: `localSignIn: integer('local_sign_in', { mode: 'boolean' }).notNull().default(false)`, `localSignInConsumed: text('local_sign_in_consumed')`
 - Create: migration with `bunx drizzle-kit generate` in `packages/core`, then `bun run build:migrations`
-- Modify: `packages/core/src/plugins/repository/{types.ts,rows.ts,accounts.ts,pending-operations.ts}` — `StoredAccount.localSignIn?: true`, `AccountWrite.localSignIn?: true`, insert/update persist it (update writes it unconditionally so a browser re-login clears it)
+- Modify: `packages/core/src/plugins/repository/{types.ts,rows.ts,accounts.ts,pending-operations.ts}` — `StoredAccount.localSignIn?: { readonly consumed?: string }` (absent when unmarked), `AccountWrite.localSignIn?: { readonly consumed?: string }`; insert/update persist both columns (update writes them unconditionally so a browser re-login clears them); new `PluginRepository.recordLocalSignInConsumed(providerId: string, digest: string): void` (plain UPDATE of `local_sign_in_consumed`)
 - Modify: `packages/core/src/plugins/account-login/login.ts`; create `account-login/login/local-sign-in.ts` for the read branch; `login/stage.ts` (`buildAccountWrite` copies `ctx.localSignIn`)
 - Modify: `account-login/errors.ts` + `account-login/index.ts` exports — `OAuthLocalSignInUnavailableError` (message `OAUTH_LOCAL_SIGN_IN_UNAVAILABLE`), `OAuthLocalSignInInvalidError` (message `OAUTH_LOCAL_SIGN_IN_INVALID`, no cause)
 - Test: `packages/core/src/plugins/account-login/local-sign-in.test.ts`
 
 **Interfaces:**
 - Consumes: `linkLocalSignInCredentials` (Task 2).
-- Produces: `LoginOAuthAccountOptions.localSignIn?: boolean`. When true: account options render as usual; `createAuthorization` is never called; `detect` false or no `localSignIn` → `OAuthLocalSignInUnavailableError`; `read` throw → `OAuthLocalSignInInvalidError`; when the adapter has `write`, the discovery port from `inMemoryCredentialPort` is wrapped with `linkLocalSignInCredentials` (`account: () => ({ linked: true, expiresAt: current metadata expiresAt })`); the staged account carries `localSignIn: true`.
+- Produces: `LoginOAuthAccountOptions.localSignIn?: boolean`. When true: account options render as usual; `createAuthorization` is never called; `detect` false or no `localSignIn` → `OAuthLocalSignInUnavailableError`; `read` throw → `OAuthLocalSignInInvalidError`; when the adapter has `write`, the discovery port from `inMemoryCredentialPort` is wrapped with `linkLocalSignInCredentials` with an in-memory link (`account: () => ({ linked: true, consumed })`, `recordConsumed: (d) => { consumed = d; }`, `onWriteFailed` → logger event); the staged account carries `localSignIn: { consumed }`.
 
-- [ ] **Step 1: Failing tests** — `stores the read credential and marks the account`; `never creates an authorization port`; `fails with OAUTH_LOCAL_SIGN_IN_UNAVAILABLE when detect is false without calling read`; `a read failure surfaces OAUTH_LOCAL_SIGN_IN_INVALID with no cause`; `an expired host credential refreshed during discovery is written back to the host` (Review Focus 4); `browser re-login of a marked Provider clears the marker`; `existing accounts read as unmarked after migration`.
+- [ ] **Step 1: Failing tests** — `stores the read credential and marks the account`; `never creates an authorization port`; `fails with OAUTH_LOCAL_SIGN_IN_UNAVAILABLE when detect is false without calling read`; `a read failure surfaces OAUTH_LOCAL_SIGN_IN_INVALID with no cause`; `an expired host credential refreshed during discovery is written back to the host` (Review Focus 4); `a write-back failure during discovery persists the consumed digest so the first runtime refresh repairs the host`; `browser re-login of a marked Provider clears the marker`; `existing accounts read as unmarked after migration`.
 - [ ] **Step 2: Run** `bun test packages/core/src/plugins/account-login/local-sign-in.test.ts` — FAIL.
 - [ ] **Step 3: Implement** (keep `login.ts` ≤ 400 lines).
 - [ ] **Step 4: Run** `bun test packages/core` — PASS.
@@ -123,7 +130,7 @@ export class LocalSignInUnavailableError extends CredentialRefreshError;    // r
 ### Task 4: Server runtime wiring and summary
 
 **Files:**
-- Modify: `packages/server/src/plugin-account.ts` — when `account.localSignIn === true && adapter.localSignIn?.write !== undefined`, wrap both credential factories with `linkLocalSignInCredentials` (`account: () => { const a = repository.readAccount(config.id); return a && { linked: a.localSignIn === true, ...(a.expiresAt === undefined ? {} : { expiresAt: a.expiresAt }) }; }`); `OAuthAccountSummary.localSignInSource?: LocalizedText` when marked and the adapter has `localSignIn`
+- Modify: `packages/server/src/plugin-account.ts` — when `account.localSignIn !== undefined && adapter.localSignIn?.write !== undefined`, wrap both credential factories with `linkLocalSignInCredentials` (`account: () => { const a = repository.readAccount(config.id); return a === null ? null : { linked: a.localSignIn !== undefined, ...(a.localSignIn?.consumed === undefined ? {} : { consumed: a.localSignIn.consumed }) }; }`, `recordConsumed: (d) => repository.recordLocalSignInConsumed(config.id, d)`); `OAuthAccountSummary.localSignInSource?: LocalizedText` when marked and the adapter has `localSignIn`
 - Modify: `packages/server/src/plugin-runtime/catalog.ts` `summary(...)` persisted input + mapping; its callers in `plugin-runtime/materialize.ts`
 - Modify: `packages/types/src/dashboard/dashboard.ts` — `DashboardProviderSummarySchema.localSignInSource: DashboardLocalizedTextSchema.optional()`
 - Move: `plugin-account.ts` → `packages/server/src/plugin-account/{index.ts,plugin-account.ts}` (import paths unchanged via `index.ts`); Test: `plugin-account/plugin-account.test.ts`
@@ -139,7 +146,7 @@ export class LocalSignInUnavailableError extends CredentialRefreshError;    // r
 
 **Files:**
 - Create: `packages/plugins/openai-chatgpt/src/local-sign-in/{index.ts,codex-store.ts,codex-store.test.ts}`
-- Modify: `schema.ts` (`ChatGPTCredential.idToken?: string`), `oauth-flow.ts` (`toCredential` keeps `id_token`, falls back to the previous `idToken` on refresh), `plugin/plugin.ts` (credential zod `idToken` optional; adapter `localSignIn`), presentation text `source: 'Codex'`
+- Modify: `schema.ts` (`ChatGPTCredential.idToken?: string`); `oauth-flow.ts` (`ChatGPTTokenExchangeOptions.idToken?: string`; `toCredential` keeps `id_token`, else falls back to `options.idToken`); both refresh call sites pass the previous value — `runtime/runtime.ts:156` and `plugin/plugin.ts` `refreshCredential` (`...(value.idToken === undefined ? {} : { idToken: value.idToken })`); `plugin/plugin.ts` credential zod `idToken` optional and adapter `localSignIn`; presentation text `source: 'Codex'`
 
 **Interfaces — Produces:**
 ```ts
@@ -148,17 +155,17 @@ export function createCodexLocalSignIn(input?: { readonly home?: () => string; r
 export class CodexSignInInvalidError extends Error; // 'Codex local sign-in is invalid or incomplete', never a cause
 ```
 - `detect`: `Bun.file(join(home, 'auth.json')).exists()`.
-- `read`: `isPlainObject` + zod; `auth_mode` absent or `/^chatgpt/` (reject `apikey`); `tokens.access_token`, `tokens.refresh_token` required; `id_token`, `account_id` optional. `expiresAt` from the access-token JWT `exp`. Same `fingerprint`/`suggestedKey`/`accountLabel` as browser login.
-- `write(ctx, next, previous)`: `realpath`; re-read; if not parseable or `tokens.refresh_token !== previous.refreshToken` → return; replace `tokens.{access_token,refresh_token,id_token,account_id}` and `last_refresh` (ISO from `now`); write `.auth.json.<uuid>.tmp` in the same dir with mode `0o600`; `rename`.
+- `read`: `isPlainObject` + zod; `auth_mode` absent or `/^chatgpt/` (reject `apikey`); `tokens.access_token`, `tokens.refresh_token` required; `id_token`, `account_id` optional. `expiresAt` from the access-token JWT `exp` (seconds → ms) for the account summary only. Same `fingerprint`/`suggestedKey`/`accountLabel` as browser login.
+- `write(ctx, next, previous)`: `realpath`; re-read; if not parseable, `auth_mode` is not ChatGPT, account id ≠ `previous.accountId`, or `tokens.refresh_token !== previous.refreshToken` → return; build the temp file, then re-read and repeat the same check immediately before `rename` (narrows, cannot close, the window against Codex's own writes — no shared lock exists); replace `tokens.{access_token,refresh_token,id_token,account_id}` and `last_refresh` (ISO from `now`); write `.auth.json.<uuid>.tmp` in the same dir with mode `0o600`; `rename`.
 
 - [ ] **Step 1: Failing tests** (temp `CODEX_HOME`):
   - `detect is false when auth.json is absent`; `detect is true for an unreadable (chmod 000) file`
   - `read rejects malformed JSON, missing tokens, and apikey mode with leftover tokens; error message/stack contain no fixture value` (Review Focus 1)
   - `read matches browser login fingerprint and reports JWT expiry`
   - `write preserves auth_mode, OPENAI_API_KEY, unknown fields, sets last_refresh, keeps 0600`
-  - `write skips when the host refresh token no longer equals previous` (Review Focus 3)
+  - `write skips when the host refresh token or account no longer equals previous` (Review Focus 3)
   - `write through a symlink updates the target and keeps the link` (Review Focus 2)
-  - `refresh keeps the previous id_token when the response omits it`
+  - `runtime refresh and manual refresh keep the previous id_token when the response omits it`
 - [ ] **Step 2: Run** `bun test packages/plugins/openai-chatgpt/src/local-sign-in` — FAIL.
 - [ ] **Step 3: Implement** and wire into the adapter.
 - [ ] **Step 4: Run** `bun test packages/plugins/openai-chatgpt` — PASS.
@@ -189,7 +196,7 @@ export function createCopilotLocalSignIn(input?: { readonly dir?: () => string }
 
 **Files:**
 - Modify: `packages/types/src/dashboard-oauth.ts` — `DashboardOAuthCapabilitySchema.localSignIn: z.strictObject({ source: DashboardLocalizedTextSchema }).optional()`; `DashboardOAuthSessionStartSchema.localSignIn: z.boolean().default(false)`
-- Modify: `packages/server/src/dashboard-routes/oauth-capabilities.ts` — `dashboardOAuthCapabilities(registry): Promise<readonly DashboardOAuthCapability[]>`; each `detect` gets a 2 s `AbortSignal.timeout`; throw/timeout → omitted
+- Modify: `packages/server/src/dashboard-routes/oauth-capabilities.ts` — `dashboardOAuthCapabilities(registry): Promise<readonly DashboardOAuthCapability[]>`; each `detect` is raced against a 2 s timer (and receives the matching abort signal); throw or losing the race → omitted, so a detect that ignores its signal cannot stall the route
 - Modify: `packages/server/src/server-state/oauth-views.ts` and `server-state/types.ts` (`oauthCapabilities` returns a Promise; await detection inside the `try` so the snapshot lease is held until detection settles); `dashboard-routes/config.ts` awaits it
 - Modify: `packages/server/src/oauth-login-session/manager.ts` — pass `localSignIn: input.localSignIn`
 - Test: `packages/server/src/dashboard-routes/oauth-capabilities.test.ts` (new colocated dir if the file is moved), new case in `packages/server/__tests__/account-removal/finalize.test.ts`
@@ -223,7 +230,7 @@ Follow `packages/dashboard/AGENTS.md`.
 - Modify: `packages/i18n/messages/*.json` — `cli.provider_login.method_prompt`, `cli.provider_login.method_local({ source })`, `cli.provider_login.method_browser`, error messages
 - Test: `packages/cli/src/plugin-commands/provider-login/login.test.ts`
 
-Behavior: `--local-sign-in` → `loginOAuthAccount({ …, localSignIn: true })`, skipping the method question; account options still render as for browser login (prompts need a TTY when the form has visible fields, same as today). Without the flag on a TTY, if the adapter has `localSignIn` and `detect` is true, ask browser vs local. Non-TTY without the flag never calls `detect`.
+Behavior: `--local-sign-in` → `loginOAuthAccount({ …, localSignIn: true })`, skipping the method question (not a non-interactive mode by itself); account options still render as for browser login (prompts need a TTY when the form has visible fields, same as today). Without the flag on a TTY, if the adapter has `localSignIn` and `detect` is true, ask browser vs local. Non-TTY without the flag never calls `detect`.
 
 - [ ] **Step 1: Failing tests** — `--local-sign-in links without creating authorization`; `TTY method prompt appears only when detect is true`; `non-TTY without the flag never calls detect`; `nothing detected prints the localized unavailable error`.
 - [ ] **Step 2: Run** `bun test packages/cli/src/plugin-commands/provider-login` — FAIL.
