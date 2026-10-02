@@ -102,7 +102,7 @@ pub mod panel {
         })
     }
 
-    pub fn after_open(_window: &mut Window) {}
+    pub fn after_open(_handle: AnyWindowHandle, _cx: &mut App) {}
 
     pub fn closes_on_deactivate() -> bool {
         false

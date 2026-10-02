@@ -68,7 +68,6 @@ fn open(cx: &mut App) {
                 if transparent && let Some(Some(root)) = window.root::<gpui_kit::base::Root>() {
                     root.update(cx, |root, _| root.style().background = Some(transparent_black().into()));
                 }
-                platform::panel::after_open(window);
                 // The window manager's close (its button, Alt+F4): forget the window, or quit.
                 #[cfg(target_os = "linux")]
                 window.on_window_should_close(cx, |_, cx| {
@@ -79,6 +78,8 @@ fn open(cx: &mut App) {
                     true
                 });
             });
+            // Outside the update: showing the window re-enters GPUI, which must not find it borrowed.
+            platform::panel::after_open(handle, cx);
             cx.global_mut::<PanelWindow>().handle = Some(handle);
             crate::app::panel_opened(cx);
         }

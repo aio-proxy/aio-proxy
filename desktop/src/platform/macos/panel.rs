@@ -41,8 +41,9 @@ pub fn window_options(_cx: &App, tray: Option<&Tray>) -> Option<WindowOptions> {
     })
 }
 
-pub fn after_open(window: &mut Window) {
-    if let Some(native) = native_window(window) {
+/// Takes the handle, not the window, so the native calls run with the window released.
+pub fn after_open(handle: AnyWindowHandle, cx: &mut App) {
+    if let Some(native) = handle.update(cx, |_, window, _| native_window(window)).ok().flatten() {
         // AppKit's utility-window animation otherwise runs on its own thread for every open and close.
         native.setAnimationBehavior(NSWindowAnimationBehavior::None);
         frost(&native);

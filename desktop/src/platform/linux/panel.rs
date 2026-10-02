@@ -23,7 +23,7 @@ pub fn window_options(cx: &App, _tray: Option<&Tray>) -> Option<WindowOptions> {
     })
 }
 
-pub fn after_open(_window: &mut Window) {}
+pub fn after_open(_handle: AnyWindowHandle, _cx: &mut App) {}
 
 /// A normal window stays open when another one takes focus.
 pub fn closes_on_deactivate() -> bool {
