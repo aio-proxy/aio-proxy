@@ -33,6 +33,8 @@ async function fixture(
     readonly settings?: unknown;
     readonly apiKeys?: readonly ProxyKey[];
     readonly check?: 'ok' | 'offline' | 'unauthorized';
+    /** Runs while the key probe is in flight. */
+    readonly duringProbe?: (setKeys: (apiKeys: readonly ProxyKey[]) => Promise<unknown>) => Promise<void>;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'aio-claude-code-'));
@@ -58,7 +60,10 @@ async function fixture(
         file: new AtomicConfigFile(proxyConfig),
         loadEnvironment() {},
         readEnvironment: () => ({}),
-        check: async () => options.check ?? 'ok',
+        check: async () => {
+          await options.duringProbe?.(setKeys);
+          return options.check ?? 'ok';
+        },
       }),
     probe: async (_endpoint, token) => {
       probed.push(token);
@@ -247,6 +252,30 @@ test('a key removed while configure waits for the settings lock is not written',
   await lock.release();
   await expect(pending).rejects.toMatchObject({ code: 'CREDENTIAL_SELECTION_STALE' });
   expect(await f.exists()).toBe(false);
+});
+
+test('a key list or address that changes during the key probe is caught before the write', async () => {
+  const rotated = await fixture({
+    apiKeys: [{ key: 'sk-old' }],
+    duringProbe: async (setKeys) => {
+      await setKeys([{ key: 'sk-new' }]);
+    },
+  });
+  await expect(configureClaudeCode(firstKey, rotated.deps)).rejects.toMatchObject({
+    code: 'CREDENTIAL_SELECTION_STALE',
+  });
+  expect(await rotated.exists()).toBe(false);
+
+  let moved = false;
+  const relocated = await fixture({
+    apiKeys: [{ key: 'sk-live' }],
+    duringProbe: async () => {
+      moved = true;
+    },
+  });
+  const deps = { ...relocated.deps, resolveEndpoint: async () => (moved ? 'http://127.0.0.1:9400' : ENDPOINT) };
+  await expect(configureClaudeCode(firstKey, deps)).rejects.toThrow('CLAUDE_CODE_ENDPOINT_CHANGED');
+  expect(await relocated.exists()).toBe(false);
 });
 
 test('with proxy keys and no way to choose one, configure fails instead of writing a bare endpoint', async () => {

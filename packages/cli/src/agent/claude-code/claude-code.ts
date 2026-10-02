@@ -5,6 +5,7 @@ import { isAbsolute, join } from 'node:path';
 import { acquireProcessFileLock } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 import type { ClaudeCodeSetupPlan } from '@aio-proxy/types';
+import { isEqual } from 'es-toolkit/predicate';
 
 import { CliExit, EXIT } from '../../exit';
 import { canPrompt, openProductionSession, type CommandSession } from '../../ui';
@@ -130,11 +131,14 @@ export async function configureClaudeCode(
   const keys = await deps.inspectKeys(endpoint);
   const selection = await selectKey(keys.choices);
   // The prompt stays outside the lock so other runs never wait on a human. Everything the choice was
-  // based on is rechecked inside it, right before the write: the proxy address (a port-only change
-  // passes key validation) and the key list, which `resolve` rereads and rejects if it changed.
+  // based on is rechecked inside it, after `resolve`'s network probe and right before the write: the
+  // proxy address (a port-only change passes key validation) and the key list.
   const { status, credential } = await withSettingsLock(deps.location, async () => {
-    if ((await deps.resolveEndpoint()) !== endpoint) throw new Error('CLAUDE_CODE_ENDPOINT_CHANGED');
     const resolved = await keys.resolve(selection);
+    if ((await deps.resolveEndpoint()) !== endpoint) throw new Error('CLAUDE_CODE_ENDPOINT_CHANGED');
+    // Choice IDs are derived from the whole key list, so any change to it changes them.
+    const current = await deps.inspectKeys(endpoint);
+    if (!isEqual(current.choices, keys.choices)) throw new CredentialError('CREDENTIAL_SELECTION_STALE');
     return {
       credential: resolved,
       status: await configureClaudeCodeSettings(deps.location, {
