@@ -155,6 +155,17 @@ test('start re-enables a stopped task before running it', async () => {
   ]);
 });
 
+test('start re-creates a task that is missing while the spec is still there, then runs it', async () => {
+  const calls = await recordCalls((io) => schtasksStart(io), { task: 'missing' });
+  expect(calls.map((c) => c[1])).toEqual(['/Create', '/Run']);
+});
+
+test('start fails on a task query failure without touching the task', async () => {
+  const fs = fakeFs({ [specPath]: oldSpec });
+  await expect(schtasksStart(io({ fs, task: 5 }))).rejects.toBeInstanceOf(CliExit);
+  expect(recorded()).toEqual([]);
+});
+
 test('install clears the uninstall marker and writes the spec and a UTF-16 task XML together', async () => {
   const marker = uninstallMarkerPath('win32', env)!;
   const fs = fakeFs({ [marker]: '' });

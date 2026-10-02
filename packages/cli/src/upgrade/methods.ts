@@ -1,4 +1,4 @@
-import { dirname } from 'node:path';
+import { posix, win32 } from 'node:path';
 
 import { HOMEBREW_FORMULA, PACKAGE, type UpgradeTarget } from './constants';
 
@@ -25,10 +25,18 @@ export const buildHomebrewUpdateArgs = (force: boolean): string[] => [
   HOMEBREW_FORMULA,
 ];
 
-export const interpreterSafePath = (command: string): string =>
-  [dirname(command), '/usr/bin', '/bin', process.env['PATH']]
-    .filter((part) => part !== undefined && part !== '')
-    .join(':');
+export const interpreterSafePath = (
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): string => {
+  // Windows has no /usr/bin fallbacks, separates with `;`, and may spell the variable `Path`.
+  const win = platform === 'win32';
+  const parts = win
+    ? [win32.dirname(command), env['PATH'] ?? env['Path']]
+    : [posix.dirname(command), '/usr/bin', '/bin', env['PATH']];
+  return parts.filter((part) => part !== undefined && part !== '').join(win ? ';' : ':');
+};
 
 const exec = async (cmd: string[]): Promise<void> => {
   const proc = Bun.spawn(cmd, {

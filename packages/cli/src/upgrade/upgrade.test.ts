@@ -48,6 +48,7 @@ import {
   buildHomebrewUpdateArgs,
   buildNpmInstallArgs,
   buildPnpmInstallArgs,
+  interpreterSafePath,
   runPackageManagerUpgrade,
 } from './methods';
 
@@ -75,6 +76,13 @@ test('buildPnpmInstallArgs pins registry and version', () => {
     'aio-proxy@1.2.3',
   ]);
 });
+test('interpreterSafePath builds a `;` PATH on Windows and the POSIX fallbacks elsewhere', () => {
+  expect(interpreterSafePath('C:\\npm\\npm.cmd', 'win32', { Path: 'C:\\Windows' })).toBe('C:\\npm;C:\\Windows');
+  expect(interpreterSafePath('/opt/bin/npm', 'linux', { PATH: '/usr/local/bin' })).toBe(
+    '/opt/bin:/usr/bin:/bin:/usr/local/bin',
+  );
+});
+
 test('buildHomebrewUpdateArgs switches on force', () => {
   expect(buildHomebrewUpdateArgs(false)).toEqual(['upgrade', 'aio-proxy/tap/aio-proxy']);
   expect(buildHomebrewUpdateArgs(true)).toEqual(['reinstall', 'aio-proxy/tap/aio-proxy']);

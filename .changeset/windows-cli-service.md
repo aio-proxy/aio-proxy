@@ -1,6 +1,7 @@
 ---
 'aio-proxy': minor
 '@aio-proxy/cli': minor
+'@aio-proxy/cli-win32-x64': minor
 '@aio-proxy/core': minor
 ---
 
