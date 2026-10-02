@@ -392,7 +392,7 @@ test('win32: a desktop-owned running task is identified end to end through the s
     [specPath]: JSON.stringify(
       renderServiceSpec({ exec: winLink, configPath: join(home(), 'config.jsonc'), desktopExec: winLink }),
     ),
-    [serviceStatePath(localAppData)]: JSON.stringify({ pid: 4310 }),
+    [serviceStatePath(localAppData)]: JSON.stringify({ pid: 4310, exec: winLink }),
   };
   const result = await desktopConnect({
     ...deps({ token: 'T'.repeat(43), summaryPid: 4312, summaryPpid: 4310 }),

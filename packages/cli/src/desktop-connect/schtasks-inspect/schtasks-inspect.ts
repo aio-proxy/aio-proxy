@@ -1,15 +1,9 @@
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { currentUser, queryTaskXml, type TaskQuery, windowsLocalAppData } from '../../service/schtasks';
-import {
-  parseServiceSpec,
-  parseServiceState,
-  parseTaskXml,
-  serviceStatePath,
-  taskPath,
-} from '../../service/schtasks-unit';
+import { parseServiceSpec, parseTaskXml, serviceStatePath, taskPath } from '../../service/schtasks-unit';
+import { parseSupervisorState, supervisorAlive } from '../../service/supervisor-state';
 import { uninstallMarkerExists } from '../../service/uninstall-marker';
-import { processImagePath } from '../../win32-ffi';
 import type { JobState, UnitInspection } from '../launchd-inspect';
 import type { Run } from '../sockets';
 
@@ -48,15 +42,6 @@ export function inspectTask(
   };
 }
 
-/** Whether `pid` runs `exec`, by its full image path: another `aio-proxy.exe` elsewhere is not the job. */
-export function pidAliveAs(
-  pid: number,
-  exec: string,
-  imagePath: (pid: number) => string | undefined = processImagePath,
-): boolean {
-  return imagePath(pid)?.toLowerCase() === exec.toLowerCase();
-}
-
 // `Settings/Enabled` is what `/Change /DISABLE` flips. It is ASCII, so encoding-safe, unlike the localized
 // status column of `schtasks /Query /V /FO CSV`. Absent means enabled; an unreadable task is not.
 function taskEnabled(xml: string): boolean {
@@ -70,20 +55,13 @@ function taskEnabled(xml: string): boolean {
   }
 }
 
-/** `statePid` is the supervisor's PID from `service.state.json`; it is the job only while it runs `exec`. */
-export function taskJob(
-  query: TaskQuery,
-  markerExists: boolean,
-  statePid: number | undefined,
-  exec: string | null,
-  alive: (pid: number, exec: string) => boolean,
-): JobState {
+/** `supervisorPid` is the running supervisor's PID from `service.state.json`, or null when none runs. */
+export function taskJob(query: TaskQuery, markerExists: boolean, supervisorPid: number | null): JobState {
   // No task at all: a first run, unless the user uninstalled the service.
   if (query.kind === 'missing') return { loaded: false, disabled: markerExists, pid: null };
   if (query.kind === 'failed') return { loaded: false, disabled: true, pid: null };
   const disabled = !taskEnabled(query.xml);
-  const pid = statePid !== undefined && exec !== null && alive(statePid, exec) ? statePid : null;
-  return { loaded: !disabled, disabled, pid };
+  return { loaded: !disabled, disabled, pid: supervisorPid };
 }
 
 type TaskProbeDeps = {
@@ -109,10 +87,9 @@ export async function readTask(deps: TaskProbeDeps): Promise<{ unit: UnitInspect
       query.kind === 'missing'
         ? NO_UNIT
         : inspectTask(query.kind === 'found' ? query.xml : undefined, await read(deps.unitPath), user, deps.unitPath);
-    const statePid = parseServiceState((await read(serviceStatePath(localAppData))) ?? '');
+    const state = parseSupervisorState(await read(serviceStatePath(localAppData)));
     const markerExists = uninstallMarkerExists('win32', deps.env);
-    const alive = (pid: number, exec: string) => pidAliveAs(pid, exec, deps.imagePath);
-    return { unit, job: taskJob(query, markerExists, statePid, unit.target, alive) };
+    return { unit, job: taskJob(query, markerExists, supervisorAlive(state, deps.imagePath) ? state.pid : null) };
   } catch {
     return {
       unit: { present: true, wrapperValid: false, target: null, home: null },

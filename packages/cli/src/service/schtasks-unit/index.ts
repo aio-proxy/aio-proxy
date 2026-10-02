@@ -1,11 +1,11 @@
 export {
   parseServiceSpec,
-  parseServiceState,
   parseTaskXml,
   renderServiceSpec,
   renderTaskXml,
   serviceSpecPath,
   serviceStatePath,
+  serviceStatePathBeside,
   taskPath,
   TASK_FOLDER,
   type ParsedTask,

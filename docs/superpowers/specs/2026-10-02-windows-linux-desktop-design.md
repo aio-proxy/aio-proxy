@@ -126,7 +126,7 @@ owner. Windows instead keeps the token where only this user can create files:
   codes. A hidden subcommand `aio-proxy __service-run <spec>` supervises instead. It reads
   `%LOCALAPPDATA%\aio-proxy\service.json` — `{ exec, env }` where `env` carries `AIO_PROXY_HOME`,
   `AIO_PROXY_MANAGED`, `PATH`, `AIO_PROXY_UPGRADE_METHOD` and, for a desktop-owned unit,
-  `AIO_PROXY_DESKTOP_EXEC` — writes its own PID to `service.state.json`, and runs `<exec> run` as a child
+  `AIO_PROXY_DESKTOP_EXEC` — writes `{ pid, exec }` (its own PID and image path) to `service.state.json`, and runs `<exec> run` as a child
   with that environment:
   - exit 0 or 1 → stop (mirrors `RestartPreventExitStatus=1` and launchd's wrapper);
   - exit 75 (`EX_TEMPFAIL`, "restart me") → re-read `service.json` and run again at once;
@@ -162,7 +162,7 @@ owner. Windows instead keeps the token where only this user can create files:
   service the user removed.
 - Task Scheduler queries capture stdout and stderr and pass `/HRESULT`, so "the task does not exist"
   (`0x80070002`) is told apart from every other failure. Process identity checks (the state file's PID
-  running `exec`) read the full image path with `QueryFullProcessImageNameW` through `bun:ffi`, beside the
+  running the image it recorded) read the full image path with `QueryFullProcessImageNameW` through `bun:ffi`, beside the
   Job Object calls; `tasklist` reports only the image name. Account checks compare SIDs read from the
   process token (`OpenProcessToken` + `GetTokenInformation(TokenUser)`), never names that console tools
   print in the OEM code page, where distinct non-ASCII names can decode alike.
@@ -186,7 +186,7 @@ meanings, so the Rust `Discovery` parser and the `policy` state machine are unch
 | Probe | darwin (today) | linux | win32 |
 | --- | --- | --- | --- |
 | `readUnit` | `plutil` → `inspectUnit` | parse `ExecStart=` and `Environment=` | `schtasks /Query /XML /TN <path>`: the principal must be the current user's SID and the action `<exec> __service-run <spec path>` (through `conhost` if the spike picks it), else `wrapperValid: false`; then read `service.json` |
-| `readJob` | `launchctl print`, `print-disabled` | `systemctl --user show -p LoadState,ActiveState,UnitFileState,MainPID` | `schtasks /Query /V /FO CSV`; `pid` from `service.state.json` when that process is alive and its image is `exec` |
+| `readJob` | `launchctl print`, `print-disabled` | `systemctl --user show -p LoadState,ActiveState,UnitFileState,MainPID` | `schtasks /Query /V /FO CSV`; `pid` from `service.state.json` when that process is alive and its image is the `exec` recorded there (uninstall waits on the same check) |
 | Connection ownership | `lsof` | `/proc/net/tcp{,6}`: the uid of the row matching the four-tuple | `netstat -ano -p TCP` and `-p TCPv6` → PID → that process's token SID equals ours |
 
 - `matchesJob` keeps its meaning: the instance's PID or PPID equals `job.pid`. The proxy is the

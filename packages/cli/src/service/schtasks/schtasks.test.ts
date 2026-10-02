@@ -39,6 +39,8 @@ const oldSpec = JSON.stringify(
 // What `/Query /XML` hands back: non-ASCII may not survive the pipe, so it must never be re-registered.
 const previousXml = renderTaskXml({ sid, exec: 'C:\\Users\\Zo?\\old\\aio-proxy.exe', specPath });
 const oldTaskXml = renderTaskXml({ sid, exec: oldExec, specPath });
+// The supervisor records its own image beside its PID.
+const supervisorState = JSON.stringify({ pid: 4242, exec: oldExec });
 
 type FakeFs = ReturnType<typeof fakeFs>;
 
@@ -68,7 +70,7 @@ type Options = {
   readonly failAlways?: boolean;
   /** What `/Query /XML` finds: the task XML (default `previousXml`), nothing, or a failure exit code. */
   readonly task?: string | 'missing' | number;
-  readonly pidAlive?: (pid: number) => boolean;
+  readonly imagePath?: (pid: number) => string | undefined;
 };
 
 function io({
@@ -76,7 +78,7 @@ function io({
   failOn,
   failAlways = false,
   task = previousXml,
-  pidAlive = () => false,
+  imagePath = () => undefined,
 }: Options = {}): SchtasksIo {
   const calls: string[][] = [];
   const warnings: string[] = [];
@@ -119,7 +121,7 @@ function io({
       fs.files.set(to, data);
     },
     remove: (p) => void fs.files.delete(p),
-    pidAlive,
+    imagePath,
     sleep: async (ms) => void (clock += ms),
     now: () => clock,
     warn: (line) => void warnings.push(line),
@@ -127,7 +129,7 @@ function io({
 }
 
 async function recordRun(fn: (io: SchtasksIo) => Promise<void>, options: Options = {}) {
-  const fs = options.fs ?? fakeFs({ [specPath]: oldSpec, [statePath]: '{"pid":4242}' });
+  const fs = options.fs ?? fakeFs({ [specPath]: oldSpec, [statePath]: supervisorState });
   await fn(io({ ...options, fs }));
   return { calls: recorded(), fs };
 }
@@ -248,7 +250,7 @@ test('the default scheduled exit ends the process with 75 after the restart alre
       unit: async () => ({ exec: 'C:/a.exe', configPath: 'C:/c.jsonc' }),
       readFile: (p) => files.get(p), writeFile: (p, d) => void files.set(p, d),
       rename: (a, b) => { files.set(b, files.get(a)); files.delete(a); }, remove: (p) => void files.delete(p),
-      pidAlive: () => false, sleep: async () => {}, now: Date.now, warn: () => {},
+      imagePath: () => undefined, sleep: async () => {}, now: Date.now, warn: () => {},
     };
     await schtasksRestartInService(io, exitProcessLater);
     console.log('returned');
@@ -294,9 +296,9 @@ test('uninstall waits for the supervisor to exit before deleting, then leaves th
   const { calls, fs } = await recordRun((io) =>
     schtasksUninstall({
       ...io,
-      pidAlive: (pid) => {
+      imagePath: (pid) => {
         asked.push(pid);
-        return alive.shift() ?? false;
+        return alive.shift() === true ? oldExec : undefined;
       },
     }),
   );
@@ -309,10 +311,28 @@ test('uninstall waits for the supervisor to exit before deleting, then leaves th
 });
 
 test('uninstall fails without deleting when the supervisor outlives 10 s', async () => {
-  const fs = fakeFs({ [specPath]: oldSpec, [statePath]: '{"pid":4242}' });
-  await expect(schtasksUninstall(io({ fs, pidAlive: () => true }))).rejects.toBeInstanceOf(CliExit);
+  const fs = fakeFs({ [specPath]: oldSpec, [statePath]: supervisorState });
+  await expect(schtasksUninstall(io({ fs, imagePath: () => oldExec }))).rejects.toBeInstanceOf(CliExit);
   expect(recorded().some((c) => c[1] === '/Delete')).toBe(false);
   expect(fs.exists(specPath)).toBe(true);
+});
+
+test('uninstall does not wait on a supervisor PID that another program now holds', async () => {
+  const asked: number[] = [];
+  const { calls } = await recordRun((io) =>
+    schtasksUninstall({
+      ...io,
+      imagePath: (pid) => {
+        asked.push(pid);
+        return 'C:\\Windows\\System32\\svchost.exe';
+      },
+      sleep: async () => {
+        throw new Error('waited on a recycled PID');
+      },
+    }),
+  );
+  expect(asked).toEqual([4242]);
+  expect(calls.map((c) => c[1])).toEqual(['/End', '/Delete']);
 });
 
 test('uninstall of a task that no longer exists still removes the files and leaves the marker', async () => {

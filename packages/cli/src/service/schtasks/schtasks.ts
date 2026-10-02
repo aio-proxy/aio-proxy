@@ -12,7 +12,6 @@ import { processImagePath } from '../../win32-ffi';
 import { type CaptureResult, runCapture } from '../run-capture';
 import {
   parseServiceSpec,
-  parseServiceState,
   parseTaskXml,
   renderServiceSpec,
   renderTaskXml,
@@ -20,6 +19,7 @@ import {
   serviceStatePath,
   taskPath,
 } from '../schtasks-unit';
+import { parseSupervisorState, supervisorAlive } from '../supervisor-state';
 import { uninstallMarkerPath } from '../uninstall-marker';
 import type { UnitOptions } from '../unit-templates';
 
@@ -43,7 +43,8 @@ export type SchtasksIo = {
   readonly writeFile: (path: string, data: string | Uint8Array) => void;
   readonly rename: (from: string, to: string) => void;
   readonly remove: (path: string) => void;
-  readonly pidAlive: (pid: number) => boolean;
+  /** A process's full image path, to tell the supervisor from a later process given its PID. */
+  readonly imagePath: (pid: number) => string | undefined;
   readonly sleep: (ms: number) => Promise<void>;
   readonly now: () => number;
   /** One line for the user on stderr. */
@@ -133,9 +134,6 @@ async function renderUnit(io: SchtasksIo): Promise<{ spec: string; xml: string }
     xml: renderTaskXml({ sid: io.sid, exec: unit.exec, specPath }),
   };
 }
-
-const readSupervisorPid = (io: SchtasksIo): number | undefined =>
-  parseServiceState(io.readFile(serviceStatePath(io.localAppData)) ?? '');
 
 const endTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/End', '/TN', path], true);
 const runTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/Run', '/TN', path]);
@@ -235,9 +233,9 @@ export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   if (await ownTaskExists(io, path)) {
     await endTask(io, path);
-    const pid = readSupervisorPid(io);
+    const state = parseSupervisorState(io.readFile(serviceStatePath(io.localAppData)));
     const deadline = io.now() + SUPERVISOR_EXIT_TIMEOUT_MS;
-    while (pid !== undefined && io.pidAlive(pid)) {
+    while (supervisorAlive(state, io.imagePath)) {
       if (io.now() >= deadline) {
         throw new CliExit(
           EXIT.transient,
@@ -284,7 +282,7 @@ export async function defaultSchtasksIo(
     },
     rename: renameSync,
     remove: (path) => rmSync(path, { force: true }),
-    pidAlive: (pid) => processImagePath(pid) !== undefined,
+    imagePath: processImagePath,
     sleep: (ms) => Bun.sleep(ms),
     now: Date.now,
     warn: (line) => console.error(line),

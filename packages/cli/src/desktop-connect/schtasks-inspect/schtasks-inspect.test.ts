@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
 
-import { renderServiceSpec, renderTaskXml } from '../../service/schtasks-unit';
+import { renderServiceSpec, renderTaskXml, serviceSpecPath, serviceStatePath } from '../../service/schtasks-unit';
 import { unitOwner } from '../launchd-inspect';
-import { inspectTask, pidAliveAs, taskJob } from './schtasks-inspect';
+import { inspectTask, readTask, taskJob } from './schtasks-inspect';
 
 const sid = 'S-1-5-21-1-2-3-1001';
 const user = { sid, account: 'DESKTOP-1\\Ada' };
@@ -67,19 +67,37 @@ test.each([
   ['query failed', { kind: 'failed', code: 1 } as const, false, true],
   ['unreadable XML', { kind: 'found', xml: 'garbage' } as const, false, true],
 ])('Windows %s → disabled=%s', (_n, query, marker, disabled) => {
-  expect(taskJob(query, marker, undefined, link, () => true).disabled).toBe(disabled);
+  expect(taskJob(query, marker, null).disabled).toBe(disabled);
 });
 
-test('Windows job pid comes from the state file only while that process runs exec', () => {
+test('Windows job pid is the running supervisor, reported only for a task that exists', () => {
   const found = { kind: 'found', xml: xmlFor(sid) } as const;
-  expect(taskJob(found, false, 77, link, () => true)).toEqual({ loaded: true, disabled: false, pid: 77 });
-  expect(taskJob(found, false, 77, link, () => false).pid).toBeNull();
-  expect(taskJob(found, false, 77, null, () => true).pid).toBeNull();
+  expect(taskJob(found, false, 77)).toEqual({ loaded: true, disabled: false, pid: 77 });
+  expect(taskJob(found, false, null).pid).toBeNull();
+  expect(taskJob({ kind: 'missing' }, false, 77).pid).toBeNull();
 });
 
-test('a process with the same image name in another directory is not the job', () => {
-  const imagePath = (pid: number) => (pid === 77 ? 'C:\\Other\\aio-proxy.exe' : undefined);
-  expect(pidAliveAs(77, link, imagePath)).toBe(false);
-  expect(pidAliveAs(78, link, imagePath)).toBe(false);
-  expect(pidAliveAs(77, link, () => link.toUpperCase())).toBe(true);
+// The supervisor keeps running from the image it started with while an in-service restart points the spec
+// (and the task) at a new exec; until it relaunches, it is still the job.
+test('discovery after an exec change still reports the running supervisor, and not a recycled PID', async () => {
+  const localAppData = 'C:\\Users\\Ada\\AppData\\Local';
+  const unitPath = serviceSpecPath(localAppData);
+  const moved = 'C:\\Users\\Ada\\.bun\\install\\global\\node_modules\\aio-proxy-1.2.0\\aio-proxy.exe';
+  const read = (imagePath: (pid: number) => string | undefined) =>
+    readTask({
+      env: { LOCALAPPDATA: localAppData },
+      unitPath,
+      imagePath,
+      run: async (cmd) =>
+        cmd[0] === 'whoami'
+          ? { code: 0, stdout: `"${user.account}","${sid}"\r\n` }
+          : { code: 0, stdout: renderTaskXml({ sid, exec: moved, specPath: unitPath }) },
+      readFile: async (path) => {
+        if (path === unitPath) return specFor(moved);
+        if (path === serviceStatePath(localAppData)) return JSON.stringify({ pid: 4310, exec: link });
+        throw new Error(`ENOENT ${path}`);
+      },
+    });
+  expect((await read((pid) => (pid === 4310 ? link : undefined))).job.pid).toBe(4310);
+  expect((await read(() => 'C:\\Windows\\System32\\svchost.exe')).job.pid).toBeNull();
 });

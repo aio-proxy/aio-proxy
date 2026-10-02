@@ -7,6 +7,7 @@ import {
   renderTaskXml,
   serviceSpecPath,
   serviceStatePath,
+  serviceStatePathBeside,
   taskPath,
 } from './schtasks-unit';
 
@@ -71,4 +72,9 @@ test('task and file paths follow the documented layout', () => {
   expect(taskPath(sid)).toBe(`\\AIO Proxy\\aio-proxy-${sid}`);
   expect(serviceSpecPath('C:\\L')).toBe('C:\\L\\aio-proxy\\service.json');
   expect(serviceStatePath('C:\\L')).toBe('C:\\L\\aio-proxy\\service.state.json');
+});
+
+test('the supervisor finds the state file beside the spec it was started with, in either separator', () => {
+  expect(serviceStatePathBeside(serviceSpecPath('C:\\L'))).toBe(serviceStatePath('C:\\L'));
+  expect(serviceStatePathBeside('/tmp/x/aio-proxy/service.json')).toBe('/tmp/x/aio-proxy/service.state.json');
 });

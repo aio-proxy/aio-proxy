@@ -10,8 +10,9 @@ export const taskPath = (sid: string): string => `${TASK_FOLDER}aio-proxy-${sid}
 export type ServiceSpec = { readonly exec: string; readonly env: Readonly<Record<string, string>> };
 
 export const serviceSpecPath = (localAppData: string): string => win32.join(localAppData, 'aio-proxy', 'service.json');
-export const serviceStatePath = (localAppData: string): string =>
-  win32.join(localAppData, 'aio-proxy', 'service.state.json');
+/** `service.state.json` beside a spec file, in that path's own separators: `__service-run` knows only the spec path. */
+export const serviceStatePathBeside = (specPath: string): string => specPath.replace(/[^\\/]*$/u, 'service.state.json');
+export const serviceStatePath = (localAppData: string): string => serviceStatePathBeside(serviceSpecPath(localAppData));
 
 export const renderServiceSpec = (o: UnitOptions): ServiceSpec => ({ exec: o.exec, env: unitEnv(o, win32.dirname) });
 
@@ -26,17 +27,6 @@ export function parseServiceSpec(text: string): ServiceSpec | undefined {
   const env = value['env'];
   if (!isPlainObject(env) || !Object.values(env).every((v) => typeof v === 'string')) return undefined;
   return { exec: value['exec'], env: env as Record<string, string> };
-}
-
-/** The supervisor PID in `service.state.json`; undefined when the file does not hold one. */
-export function parseServiceState(text: string): number | undefined {
-  try {
-    const state: unknown = JSON.parse(text);
-    const pid = isPlainObject(state) ? state['pid'] : undefined;
-    return typeof pid === 'number' && Number.isInteger(pid) && pid > 0 ? pid : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 const TASK_NAMESPACE = 'http://schemas.microsoft.com/windows/2004/02/mit/task';
