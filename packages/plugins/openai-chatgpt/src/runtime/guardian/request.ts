@@ -251,7 +251,9 @@ function inlineHistory(input: readonly unknown[]): boolean {
         return false;
       if (item['role'] === 'developer') {
         // The evaluator receives all developer instructions; policy text is not a routing protocol.
-        policySeen ||= item['content'].some((part) => part['text'].trim().length > 0);
+        // An empty permission envelope is still empty when its tags span content parts.
+        const text = item['content'].map((part) => part['text']).join('\n');
+        policySeen ||= text.replace(/<permissions instructions>\s*<\/permissions instructions>/g, '').trim().length > 0;
       }
     } else if (item['type'] === 'custom_tool_call') {
       if (

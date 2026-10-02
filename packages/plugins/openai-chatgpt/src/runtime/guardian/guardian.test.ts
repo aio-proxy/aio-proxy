@@ -99,6 +99,82 @@ test('requires visible developer policy text and preserves supplementary instruc
   ).toBeDefined();
 });
 
+for (const strategy of ['systemOne', 'systemOneReviewDenied'] as const)
+  test(`${strategy} bypasses empty permission wrappers before disclosing approval context`, async () => {
+    for (const parts of [
+      ['<permissions instructions>\n</permissions instructions>'],
+      [' \r\n<permissions instructions> \r\n </permissions instructions>\t'],
+      ['<permissions instructions>', ' \n ', '</permissions instructions>'],
+      [
+        '<permissions instructions>\n</permissions instructions>',
+        '<permissions instructions></permissions instructions>',
+      ],
+    ]) {
+      const body = await (await configuredGuardianRequest(false)).json();
+      body.input[0].content = parts.map((text) => ({ type: 'input_text', text }));
+      body.input.splice(1, 0, {
+        type: 'message',
+        role: 'developer',
+        content: [{ type: 'input_text', text: '<permissions instructions></permissions instructions>' }],
+      });
+      const text = JSON.stringify(body);
+      let evaluations = 0;
+      let originals = 0;
+      const invoke = createGuardianRawInvoke({
+        pluginOptions: { ...wrapperOptions, guardianStrategy: strategy },
+        original: async (request) => {
+          originals++;
+          expect(await request.text()).toBe(text);
+          return new Response('original');
+        },
+        evaluate: async () => {
+          evaluations++;
+          return choiceResult('low', 'unknown', 'allow');
+        },
+      });
+      const response = await invoke(
+        new Request('https://example.test/v1/responses', { method: 'POST', body: text }),
+        wrapperContext,
+      );
+      expect(evaluations).toBe(0);
+      expect(originals).toBe(1);
+      expect(await response.text()).toBe('original');
+    }
+  });
+
+test('preserves substantive review instructions inside or alongside permission wrappers', async () => {
+  const policy = syntheticGuardianInput[0]!.content![0]!.text!;
+  for (const parts of [
+    [`<permissions instructions>\n${policy}\n</permissions instructions>`],
+    ['<permissions instructions>', policy, '</permissions instructions>'],
+    ['<permissions instructions>\n</permissions instructions>', policy],
+  ]) {
+    const body = await (await configuredGuardianRequest(false)).json();
+    body.input[0].content = parts.map((text) => ({ type: 'input_text', text }));
+    let evaluations = 0;
+    let originals = 0;
+    const invoke = createGuardianRawInvoke({
+      pluginOptions: wrapperOptions,
+      original: async () => {
+        originals++;
+        return new Response('original');
+      },
+      evaluate: async ({ body: evaluation }) => {
+        evaluations++;
+        expect(evaluation).toMatchObject({ state: { input: body.input } });
+        return choiceResult('low', 'unknown', 'allow');
+      },
+    });
+    const response = await invoke(
+      new Request('https://example.test/v1/responses', { method: 'POST', body: JSON.stringify(body) }),
+      wrapperContext,
+    );
+    expect(evaluations).toBe(1);
+    expect(originals).toBe(0);
+    expect(JSON.parse((await response.json()).output_text)).toEqual({ outcome: 'allow' });
+  }
+});
+
 const cases: [string, (body: any) => void][] = [
   [
     'nested metadata reference',
