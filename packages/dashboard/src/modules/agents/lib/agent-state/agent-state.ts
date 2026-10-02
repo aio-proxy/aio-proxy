@@ -20,7 +20,6 @@ export const primaryAgentAction = (local: AgentLocalState | undefined): PrimaryA
       return 'configure';
     case 'outdated':
       return 'update';
-    case 'modified':
     case 'missing':
       return 'repair';
     case 'configured':

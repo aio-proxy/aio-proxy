@@ -173,6 +173,13 @@ test('classifyAgentError maps known CLI failures and leaves the rest unknown', (
   );
   // "BLOCKED" contains "LOCK" but is a blocked revocation, not a held lock.
   expect(classifyAgentError(new Error('CODEX_AUTH_REVOKE_BLOCKED'))?.code).toBe('recovery_required');
+  // Configure refuses to overwrite user-edited managed fields; the user must remove and configure again.
+  expect(classifyAgentError(new Error('Codex managed fields changed: model_providers.aio.base_url'))?.code).toBe(
+    'configuration_modified',
+  );
+  expect(classifyAgentError(new Error('Grok configuration modified: auth.auth_provider_command'))?.code).toBe(
+    'configuration_modified',
+  );
   expect(classifyAgentError(new Error('disk full'))).toBeUndefined();
 });
 

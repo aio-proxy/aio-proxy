@@ -102,11 +102,12 @@ test('a plugin Agent offers one-click configure, notes, and its authorizations',
   );
 });
 
-test('Grok shows its platform note and can be removed when configured', () => {
+test('Grok shows its platform note, and edited managed fields leave only Remove', () => {
   mocks.snapshot.data = snapshot('grok', 'modified');
   render(<AgentDetailPage target="grok" />);
   expect(screen.getByTestId('agent-notes').textContent).toMatch(/macOS/u);
-  expect(screen.getByRole('button', { name: /^(Repair|修复)$/u })).toBeTruthy();
+  // Configure refuses to overwrite the edits, so a Repair button could only fail.
+  expect(screen.queryByRole('button', { name: /^(Repair|修复)$/u })).toBeNull();
   expect(screen.getByRole('button', { name: /^(Remove|移除)$/u })).toBeTruthy();
 });
 
