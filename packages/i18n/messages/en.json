@@ -1075,7 +1075,13 @@
         "reauthorize_helper": "Account setting changes are saved only after authorization succeeds",
         "copied_device_code": "Copied the device code to the clipboard",
         "open_authorization_aria": "Open authorization page",
-        "start_failed": "Authorization could not be started. Check the server and try again."
+        "start_failed": "Authorization could not be started. Check the server and try again.",
+        "use_local_sign_in": "Use {source} sign-in",
+        "local_sign_in_confirm_title": "Use the {source} sign-in on this machine?",
+        "local_sign_in_confirm_description": "aio-proxy will read the sign-in {source} keeps on this machine and keep it in sync when tokens refresh. Removing this Provider will not sign {source} out.",
+        "local_sign_in_unavailable": "The sign-in on this machine is no longer available. Sign in with the tool, then try again.",
+        "local_sign_in_invalid": "The sign-in on this machine could not be used. Sign in again with the tool, then try again.",
+        "local_sign_in_stale": "aio-proxy already has a newer sign-in. The sign-in on this machine will be updated when tokens refresh."
       },
       "transforms": {
         "description": "Customize the request rewrites applied before the request goes upstream. Match conditions and update actions run in rule order, so later rules see the results of earlier ones.",
@@ -1477,7 +1483,9 @@
       "new_title": "New Provider",
       "edit_title": "Edit Provider",
       "aliases_title": "Provider Aliases",
-      "kind_not_supported": "Provider kind \"{kind}\" is not supported for creation via the UI"
+      "kind_not_supported": "Provider kind \"{kind}\" is not supported for creation via the UI",
+      "local_sign_in_badge": "Linked to {source} on this machine",
+      "local_sign_in_delete_note": "This Provider uses the {source} sign-in on this machine. Removing it will not sign {source} out."
     },
     "usage": {
       "range_label": "Time range",

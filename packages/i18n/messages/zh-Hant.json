@@ -1075,7 +1075,13 @@
         "reauthorize_helper": "帳戶設定變更只會在授權成功後儲存",
         "copied_device_code": "已將裝置碼複製到剪貼簿",
         "open_authorization_aria": "開啟授權頁面",
-        "start_failed": "無法開始授權。請檢查伺服器後重試。"
+        "start_failed": "無法開始授權。請檢查伺服器後重試。",
+        "use_local_sign_in": "使用 {source} 登入",
+        "local_sign_in_confirm_title": "使用本機上的 {source} 登入？",
+        "local_sign_in_confirm_description": "aio-proxy 將讀取 {source} 儲存在本機上的登入資訊，並在權杖重新整理時保持同步。移除此 Provider 不會使 {source} 登出。",
+        "local_sign_in_unavailable": "本機上的登入資訊已無法使用。請先在該工具中登入，然後重試。",
+        "local_sign_in_invalid": "無法使用本機上的登入資訊。請在該工具中重新登入，然後重試。",
+        "local_sign_in_stale": "aio-proxy 已持有更新的登入資訊。本機上的登入資訊將在權杖重新整理時更新。"
       },
       "transforms": {
         "description": "自訂發往上游前的請求改寫。比對條件與更新動作按規則順序執行，後面的規則會看到前面規則的結果。",
@@ -1477,7 +1483,9 @@
       "new_title": "新增提供商",
       "edit_title": "編輯提供商",
       "aliases_title": "提供商別名",
-      "kind_not_supported": "不支援透過 UI 建立 \"{kind}\" 類型的提供商"
+      "kind_not_supported": "不支援透過 UI 建立 \"{kind}\" 類型的提供商",
+      "local_sign_in_badge": "已連結本機上的 {source} 登入",
+      "local_sign_in_delete_note": "此 Provider 使用本機上的 {source} 登入。移除它不會使 {source} 登出。"
     },
     "usage": {
       "range_label": "時間範圍",

@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
+import type { DashboardOAuthCapability, DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { useQuery } from '@tanstack/react-query';
 import { CircleCheckIcon } from 'lucide-react';
@@ -7,9 +7,10 @@ import { CircleCheckIcon } from 'lucide-react';
 import { PluginIcon } from '@/components/plugin-icon';
 import { resolveDashboardText } from '@/lib/localized-text';
 
-import type { OAuthProviderForm } from '../hooks/use-oauth-provider-form';
-import { providerPluginPresentationsQueryOptions } from '../services/provider-plugin-labels';
-import { OAuthAccountFields } from './oauth-account-fields';
+import type { OAuthProviderForm } from '../../hooks/use-oauth-provider-form';
+import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
+import { OAuthAccountFields } from '../oauth-account-fields';
+import { OAuthLocalSignInButton } from '../oauth-local-sign-in-button';
 
 interface OAuthProviderEditFieldsProps {
   readonly provider: OAuthProvider;
@@ -19,6 +20,8 @@ interface OAuthProviderEditFieldsProps {
   readonly isReauthorizing: boolean;
   readonly isReauthorizeBlocked: boolean;
   readonly accountLocked?: boolean;
+  readonly localSignIn?: DashboardOAuthCapability['localSignIn'];
+  readonly onLocalSignIn?: (() => void) | undefined;
 }
 
 export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = ({
@@ -29,6 +32,8 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
   isReauthorizing,
   isReauthorizeBlocked,
   accountLocked = false,
+  localSignIn,
+  onLocalSignIn,
 }) => {
   const plugin = (useQuery(providerPluginPresentationsQueryOptions()).data?.plugins ?? []).find(
     (candidate) => candidate.packageName === provider.plugin,
@@ -56,6 +61,13 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
         >
           {m['dashboard.providers.oauth.reauthorize']()}
         </Button>
+        {localSignIn === undefined ? null : (
+          <OAuthLocalSignInButton
+            source={localSignIn.source}
+            disabled={isReauthorizing || isReauthorizeBlocked || accountLocked || onLocalSignIn === undefined}
+            onConfirm={onLocalSignIn ?? (() => undefined)}
+          />
+        )}
         <p role="status" className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <CircleCheckIcon className="size-4 text-primary" />
           {m['dashboard.providers.oauth.connected_account']({ account: oauth.accountLabel })}

@@ -1,11 +1,13 @@
 import { m } from '@aio-proxy/i18n';
 import { type DashboardProviderSummary, ProviderKind } from '@aio-proxy/types';
+import { Badge } from '@aio-proxy/ui/components/badge';
 import { CardDescription } from '@aio-proxy/ui/components/card';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { Link } from '@tanstack/react-router';
 import type React from 'react';
 
 import { ProviderMark } from '@/components/provider-mark';
+import { resolveDashboardText } from '@/lib/localized-text';
 import { providerDisplayName } from '@/lib/provider-display-name';
 
 import { PROVIDER_KIND_LABEL } from '../../lib/constants';
@@ -106,6 +108,14 @@ export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
           </>
         )}
       </CardDescription>
+
+      {provider.localSignInSource === undefined ? null : (
+        <div>
+          <Badge variant="outline">
+            {m['dashboard.providers.local_sign_in_badge']({ source: resolveDashboardText(provider.localSignInSource) })}
+          </Badge>
+        </div>
+      )}
 
       {hint === undefined ? null : (
         <p className="truncate text-xs text-amber-600 dark:text-amber-500" data-testid="provider-card-diagnostic-hint">
