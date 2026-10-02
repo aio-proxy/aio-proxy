@@ -1,6 +1,15 @@
 import type { ProviderProtocol } from '@aio-proxy/types';
 
 export {
+  linkLocalSignInCredentials,
+  LocalSignInAccountChangedError,
+  localSignInDigest,
+  type LocalSignInLink,
+  LocalSignInSupersededError,
+  LocalSignInUnavailableError,
+} from './plugins/local-sign-in';
+
+export {
   AgentInstallationTargetMismatchError,
   createAgentIdentityService,
   type AgentAccessAuthentication,

@@ -71,6 +71,13 @@
       "when": 1790825268128,
       "tag": "0009_spooky_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790947498266,
+      "tag": "0010_volatile_trauma",
+      "breakpoints": true
     }
   ]
 }
