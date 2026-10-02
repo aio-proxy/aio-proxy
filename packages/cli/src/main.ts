@@ -173,6 +173,15 @@ const registerHiddenDesktopConnect = (program: Command): void => {
   });
 };
 
+// What the Windows Task Scheduler task runs: supervises `<exec> run` per the spec file. Not platform-gated
+// so it can be exercised anywhere; the kill-on-close Job Object exists only on win32.
+const registerHiddenServiceRun = (program: Command): void => {
+  program.command('__service-run <spec>', { hidden: true }).action(async (specPath: string) => {
+    const { defaultSupervisorDeps, runSupervisor } = await import('./service-run');
+    process.exitCode = await runSupervisor(specPath, defaultSupervisorDeps(specPath));
+  });
+};
+
 export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invokedProgramName()) => {
   const program = new Command()
     .name(programName)
@@ -335,6 +344,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
 
   registerHiddenPostUpgrade(program, deps);
   registerHiddenDesktopConnect(program);
+  registerHiddenServiceRun(program);
   applyHelpStyle(program, createStyle(process.stdout));
 
   return program;
