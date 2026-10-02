@@ -180,6 +180,44 @@ test('an expired host credential refreshed during discovery is written back to t
   });
 });
 
+test.each([
+  ['with write', true],
+  ['without write', false],
+] as const)(
+  'a discovery failure after refresh never exposes previous host credentials (%s)',
+  async (_label, writeBack) => {
+    const f = setup();
+    const { write: _write, ...readOnly } = f.localSignIn;
+    const next = { token: 'refreshed-discovery-access', refresh: 'refreshed-discovery-refresh' };
+    const retainedRequestError = new Error(`request used ${f.initial.token} ${f.initial.refresh}`, {
+      cause: new Error(`request used ${f.initial.refresh}`),
+    });
+    const result = await loginOAuthAccount(
+      f.loginOptions({
+        localSignIn: writeBack ? f.localSignIn : readOnly,
+        discover: async ({ credentials }) => {
+          const current = await credentials.read();
+          await credentials.refresh(current.revision, async () => ({ value: next }));
+          throw retainedRequestError;
+        },
+      }),
+    );
+    expect(accountOf(f.state, 'person').credential).toEqual(next);
+    expect(f.state.repository.readDiagnostics('person')).toMatchObject([{ code: 'CATALOG_UNAVAILABLE' }]);
+    const exposed = JSON.stringify({ result, logs: f.logs, config: configOf(f.state) });
+    for (const value of [f.initial.token, f.initial.refresh!, next.token, next.refresh]) {
+      expect(exposed).not.toContain(value);
+    }
+    expect(f.logs).toMatchObject([
+      {
+        event: 'plugin.catalog.discovery.failed',
+        code: 'CATALOG_UNAVAILABLE',
+        error: { name: 'Error', message: 'CATALOG_UNAVAILABLE' },
+      },
+    ]);
+  },
+);
+
 test('a write-back failure during discovery persists the consumed digest so the first runtime refresh repairs the host', async () => {
   const f = setup();
   let writeFails = true;

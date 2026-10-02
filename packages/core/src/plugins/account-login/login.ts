@@ -242,6 +242,7 @@ async function persistOAuthAccount(input: {
     secrets: rendered.secrets,
     credentialPort,
     currentCredential: credentials.current,
+    localSignIn: input.localSignIn === true,
     discoverOptions: parsedOptions,
     deadline,
     discoveryDeadline,
