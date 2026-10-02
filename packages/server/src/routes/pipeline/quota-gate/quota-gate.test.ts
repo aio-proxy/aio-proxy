@@ -1,9 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { RouterCandidate } from '@aio-proxy/core';
 import type { OAuthQuotaItem } from '@aio-proxy/plugin-sdk';
+import { ProviderKind } from '@aio-proxy/types';
 
 import type { OAuthQuotaCacheStatus } from '../../../plugin-quota';
-import { QUOTA_SNAPSHOT_MAX_AGE_MS, quotaHeldUntil, quotaScopeCovers } from './quota-gate';
+import type { RuntimeProviderInstance } from '../../../runtime';
+import { ProviderCooldownStore } from '../provider-cooldown';
+import { candidateHold, QUOTA_SNAPSHOT_MAX_AGE_MS, quotaHeldUntil, quotaScopeCovers } from './quota-gate';
 
 const now = 1_000_000_000;
 
@@ -86,5 +90,45 @@ describe('quotaHeldUntil', () => {
 
   test.each(['none', 'loading', 'failed', 'unsupported'] as const)('an unread (%s) quota never holds', (kind) => {
     expect(quotaHeldUntil({ kind }, 'm', now)).toBeUndefined();
+  });
+});
+
+describe('candidateHold', () => {
+  const candidate = (kind: string) =>
+    ({ provider: { id: 'p', kind }, modelId: 'm' }) as unknown as RouterCandidate<RuntimeProviderInstance>;
+
+  function source(cooldownMs: number, status: OAuthQuotaCacheStatus) {
+    const cooldown = new ProviderCooldownStore();
+    cooldown.cool('p', 'm', cooldownMs);
+    const warmed: string[] = [];
+    return {
+      warmed,
+      source: { cooldown, quotaStatus: () => status, warmProviderQuota: (id: string) => warmed.push(id) },
+    };
+  }
+
+  test('a candidate both cooling and exhausted is held for the longer of the two', () => {
+    const quotaLonger = source(30_000, ready([exhausted(now + 3_600_000)]));
+    expect(candidateHold(quotaLonger.source, candidate(ProviderKind.OAuth), now)).toEqual({
+      reason: 'quota_exhausted',
+      remainingMs: 3_600_000,
+    });
+    const cooldownLonger = source(30_000, ready([exhausted(now + 10_000)]));
+    expect(candidateHold(cooldownLonger.source, candidate(ProviderKind.OAuth), now)?.reason).toBe('cooldown');
+  });
+
+  test('warms only a subscription that quota holds', () => {
+    const held = source(0, ready([exhausted(now + 60_000)]));
+    candidateHold(held.source, candidate(ProviderKind.OAuth), now);
+    expect(held.warmed).toEqual(['p']);
+    const open = source(0, { kind: 'none' });
+    expect(candidateHold(open.source, candidate(ProviderKind.OAuth), now)).toBeUndefined();
+    expect(open.warmed).toEqual([]);
+  });
+
+  test('quota never holds a provider that is not a subscription', () => {
+    const plain = source(0, ready([exhausted(now + 60_000)]));
+    expect(candidateHold(plain.source, candidate('api'), now)).toBeUndefined();
+    expect(plain.warmed).toEqual([]);
   });
 });

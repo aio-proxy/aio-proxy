@@ -1,7 +1,13 @@
+import type { RouterCandidate } from '@aio-proxy/core';
 import type { OAuthQuotaItemScope } from '@aio-proxy/plugin-sdk';
+import { ProviderKind } from '@aio-proxy/types';
 import { escapeRegExp } from 'es-toolkit/string';
 
 import type { OAuthQuotaCacheStatus } from '../../../plugin-quota';
+import type { ProviderRouteSource, RuntimeProviderInstance } from '../../../runtime';
+
+/** Why selection removed a candidate before attempting it, and for how much longer. */
+export type CandidateHold = { readonly reason: 'cooldown' | 'quota_exhausted'; readonly remainingMs: number };
 
 /**
  * How long a sampled snapshot may steer routing. Two of the cache's 5-minute read cooldowns, so one
@@ -39,4 +45,30 @@ export function quotaHeldUntil(status: OAuthQuotaCacheStatus, modelId: string, n
     heldUntil = Math.max(heldUntil ?? 0, resetsAt);
   }
   return heldUntil;
+}
+
+/**
+ * Whether `candidate` must sit this request out: a live cooldown, a cached snapshot proving its
+ * subscription is refused for this model, or both — in which case the longer wait wins, since the
+ * candidate is unusable until both clear.
+ *
+ * A held subscription is warmed so an early reset (a redeemed credit, an upgraded plan) is noticed
+ * while it is skipped. Only held candidates are: a candidate about to serve is warmed after its body
+ * settles, and a read started here would pre-empt that one with the pre-request balance.
+ */
+export function candidateHold(
+  source: Pick<ProviderRouteSource, 'cooldown' | 'quotaStatus' | 'warmProviderQuota'>,
+  candidate: RouterCandidate<RuntimeProviderInstance>,
+  now: number,
+): CandidateHold | undefined {
+  const { provider, modelId } = candidate;
+  const cooldownMs = source.cooldown.remainingMs(provider.id, modelId);
+  const heldUntil =
+    provider.kind === ProviderKind.OAuth && source.quotaStatus !== undefined
+      ? quotaHeldUntil(source.quotaStatus(provider.id), modelId, now)
+      : undefined;
+  if (heldUntil !== undefined) source.warmProviderQuota?.(provider.id);
+  const quotaMs = heldUntil === undefined ? 0 : heldUntil - now;
+  if (quotaMs > cooldownMs) return { reason: 'quota_exhausted', remainingMs: quotaMs };
+  return cooldownMs > 0 ? { reason: 'cooldown', remainingMs: cooldownMs } : undefined;
 }

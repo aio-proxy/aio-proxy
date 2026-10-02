@@ -37,6 +37,18 @@ export function warmProviderQuota(
   });
 }
 
+/**
+ * A 429 from a subscription is usually its quota running out. Warming here gives selection the
+ * snapshot it needs to skip the Provider next time, even when it never served a request since start.
+ */
+export function warmQuotaOnRefusal(
+  source: ProviderRouteSource,
+  provider: RuntimeProviderInstance,
+  status: number | undefined,
+): void {
+  if (status === 429 && provider.kind === ProviderKind.OAuth) source.warmProviderQuota?.(provider.id);
+}
+
 // `highWaterMark: 0` keeps this a pass-through that never reads ahead of the client, so it cannot turn
 // a slow consumer into buffered memory.
 function observeSettlement(source: ReadableStream<Uint8Array>, onSettled: () => void): ReadableStream<Uint8Array> {

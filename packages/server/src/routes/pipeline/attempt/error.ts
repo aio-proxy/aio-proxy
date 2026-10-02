@@ -8,6 +8,7 @@ import type { SpanTerminal } from '../tracing';
 import type { AnyAttemptLoopContext, AttemptStep, CandidateSlot } from './context';
 import { cooldownTtlMs } from './cooldown-write';
 import { attemptLog } from './emit';
+import { warmQuotaOnRefusal } from './warm-quota';
 
 // Ends the candidate's attempt span: reuses the span opened before the provider
 // call when present, otherwise opens and closes one for pre-invocation failures.
@@ -118,6 +119,7 @@ export function handleAttemptError<TRequest, TContext>(
       const cooldownMs = cooldownTtlMs(status, retryAfter, ctx.retryAfterCapMs);
       if (cooldownMs > 0) ctx.cooldown.cool(provider.id, candidate.modelId, cooldownMs);
     }
+    warmQuotaOnRefusal(ctx.source, provider, status);
   }
 
   if (!cancelled) {
