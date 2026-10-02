@@ -88,6 +88,23 @@ fn icon(state: TrayState, color: [u8; 3]) -> Icon {
     Icon::from_rgba(icon_rgba(state, color), ICON_WIDTH, ICON_HEIGHT).expect("icon buffer matches its size")
 }
 
+/// Only when the executable's path is unknown. Never change it.
+#[cfg(windows)]
+const FALLBACK_GUID: u128 = 0x0967_9fb3_76f4_7c3a_3bb6_c89c_2a69_d6d8;
+
+/// The notification-area icon's GUID, so the user's "always show" choice survives updates. Windows
+/// binds a GUID to one executable path and silently refuses the icon from any other, so each path
+/// (an install, a dev build) gets its own: FNV-1a 128 over the lower-cased path's UTF-8, stable
+/// across Rust versions. Changing this function re-creates every user's icon.
+pub fn tray_guid(exe: &std::path::Path) -> u128 {
+    const OFFSET: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
+    const PRIME: u128 = 0x0000_0000_0100_0000_0000_0000_0000_013b;
+    exe.to_string_lossy()
+        .to_lowercase()
+        .bytes()
+        .fold(OFFSET, |hash, byte| (hash ^ u128::from(byte)).wrapping_mul(PRIME))
+}
+
 pub struct Tray {
     pub icon: TrayIcon,
     /// What the icon currently shows; the color changes with the system theme off macOS.
@@ -129,10 +146,12 @@ fn build(cx: &App, events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
     let builder = TrayIconBuilder::new().with_icon(icon(TrayState::Down, color));
     #[cfg(target_os = "macos")]
     let builder = builder.with_icon_as_template(true);
-    // Identifies the notification-area icon across launches, so the user's "always show" choice
-    // sticks. Must never change: a new value is a new icon to Windows.
     #[cfg(windows)]
-    let builder = builder.with_guid(0x0967_9fb3_76f4_7c3a_3bb6_c89c_2a69_d6d8);
+    let builder = builder.with_guid(
+        std::env::current_exe()
+            .map(|exe| tray_guid(&std::fs::canonicalize(&exe).unwrap_or(exe)))
+            .unwrap_or(FALLBACK_GUID),
+    );
     let icon =
         builder.with_tooltip("AIO Proxy").with_menu_on_left_click(false).build().map_err(|error| error.to_string())?;
     let clicks = events.clone();

@@ -45,3 +45,18 @@ fn the_attention_dot_adds_pixels_the_running_icon_lacks() {
     let attention = icon_rgba(TrayState::Attention, [0, 0, 0]);
     assert!(running.chunks(4).zip(attention.chunks(4)).any(|(r, a)| r[3] == 0 && a[3] > 0));
 }
+
+#[test]
+fn the_tray_guid_follows_the_executable_path_but_not_its_case() {
+    let installed = std::path::Path::new(r"C:\Users\a\AppData\Local\AIO Proxy\aio-proxy-desktop.exe");
+    let upper = std::path::Path::new(r"C:\USERS\A\APPDATA\LOCAL\AIO PROXY\AIO-PROXY-DESKTOP.EXE");
+    let dev = std::path::Path::new(r"C:\src\aio-proxy\desktop\target\debug\aio-proxy-desktop.exe");
+    assert_eq!(tray_guid(installed), tray_guid(upper));
+    assert_ne!(tray_guid(installed), tray_guid(dev));
+}
+
+#[test]
+fn the_tray_guid_for_a_path_never_changes() {
+    // FNV-1a 128 test vector ("a"): a changed hash would orphan every user's pinned icon.
+    assert_eq!(tray_guid(std::path::Path::new("a")), 0xd228_cb69_6f1a_8caf_7891_2b70_4e4a_8964);
+}

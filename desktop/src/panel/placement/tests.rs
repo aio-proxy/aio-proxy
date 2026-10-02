@@ -81,3 +81,9 @@ fn a_monitor_left_of_the_primary_has_negative_coordinates() {
     let icon = Rect { x: -40.0, y: 1040.0, width: 24.0, height: 32.0 };
     assert_eq!(popup_origin(icon, work, PANEL), (-360.0, 472.0));
 }
+
+#[test]
+fn an_icon_in_the_upper_half_of_the_work_area_opens_below_it() {
+    let icon = Rect { x: 1700.0, y: 100.0, width: 24.0, height: 24.0 };
+    assert_eq!(popup_origin(icon, WORK, PANEL), (1712.0 - 180.0, 124.0));
+}
