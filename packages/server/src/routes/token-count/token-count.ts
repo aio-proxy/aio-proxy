@@ -142,6 +142,8 @@ async function handleTokenCountInContext<TRequest, TContext>(
         lease.snapshot.config?.router.selection,
         source,
         Date.now(),
+        // Token counting spends no quota and has no post-success warm, so warm the leader here too.
+        { warmLeader: true },
       );
       const affinityOrdered =
         resolution.affinity?.active === true

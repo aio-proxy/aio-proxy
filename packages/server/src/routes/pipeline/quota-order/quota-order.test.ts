@@ -122,6 +122,51 @@ describe('orderByQuotaReset', () => {
     expect(ordered[1]?.selectionSource).toBe('weighted_random');
   });
 
+  test('a covering window without a reset makes the allowance unknown', () => {
+    const ordered = orderByQuotaReset(
+      [candidate('a'), candidate('b')],
+      statuses({
+        a: ready([
+          window(HOUR, FIVE_HOURS),
+          {
+            id: 'weekly',
+            displayName: 'Weekly',
+            remainingRatio: 0.5,
+            scope: 'account',
+            windowMinutes: WEEK,
+          } satisfies OAuthQuotaItem,
+        ]),
+        b: ready([window(DAY, WEEK)]),
+      }),
+      now,
+    );
+    expect(ids(ordered)).toEqual(['b', 'a']);
+    expect(ordered[1]?.selectionSource).toBe('weighted_random');
+  });
+
+  test('a covering window whose reset has passed makes the allowance unknown', () => {
+    const ordered = orderByQuotaReset(
+      [candidate('a'), candidate('b')],
+      statuses({
+        a: ready([
+          window(HOUR, FIVE_HOURS),
+          {
+            id: 'weekly',
+            displayName: 'Weekly',
+            remainingRatio: 0.5,
+            resetsAt: now - 1,
+            scope: 'account',
+            windowMinutes: WEEK,
+          } satisfies OAuthQuotaItem,
+        ]),
+        b: ready([window(DAY, WEEK)]),
+      }),
+      now,
+    );
+    expect(ids(ordered)).toEqual(['b', 'a']);
+    expect(ordered[1]?.selectionSource).toBe('weighted_random');
+  });
+
   test('never reorders across priority tiers', () => {
     const ordered = orderByQuotaReset(
       [candidate('a', { priority: 10 }), candidate('b')],
@@ -171,6 +216,14 @@ describe('orderByQuotaReset', () => {
     const warmed: string[] = [];
     orderByQuotaReset([candidate('a'), candidate('c')], statuses({}), now, (providerId) => warmed.push(providerId));
     expect(warmed).toEqual(['c']);
+  });
+
+  test('warms the leading subscription too when asked (token counting)', () => {
+    const warmed: string[] = [];
+    orderByQuotaReset([candidate('a'), candidate('c')], statuses({}), now, (providerId) => warmed.push(providerId), {
+      warmLeader: true,
+    });
+    expect(warmed).toEqual(['a', 'c']);
   });
 
   test('ties keep the router order', () => {
