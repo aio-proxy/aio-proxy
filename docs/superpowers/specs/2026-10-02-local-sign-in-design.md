@@ -48,8 +48,8 @@ export type OAuthLocalSignIn<AccountOptions, Credential> = {
 
 ## 入口
 
-- core：`linkLocalSignIn()` 与 `importOAuthAccount` 共用 `persistOAuthAccount`，账号选项与浏览器登录一样先渲染（Copilot 需选 github.com/Enterprise），写入时带标记。只创建新 Provider，不支持把已有 Provider 改为关联。
-- server：插件能力列表为每个 adapter 附带 `localSignIn: { source }`，仅当 `detect` 为 true 时出现；新增关联路由。Docker/无头环境没有宿主存储，选项自然不出现。
+- core：`loginOAuthAccount` 增加 `localSignIn` 开关，用 `read` 代替授权步骤，其余（账号选项渲染、fingerprint 校验、目录发现、持久化）不变，写入时带标记；之后用浏览器重新登录会清除标记。因此关联也适用于已有 Provider 的重新登录。
+- server：插件能力列表为每个 adapter 附带 `localSignIn: { source }`，仅当 `detect` 为 true 时出现；Dashboard 登录会话的启动参数增加 `localSignIn`。Docker/无头环境没有宿主存储，选项自然不出现。
 - Dashboard：OAuth 授权面板登录按钮旁增加"使用本机 {source} 登录"，仅检测到时显示，点击前说明将读取另一个应用的凭据。
 - CLI：`provider login` 检测到本机登录时在交互选择中提供该选项，另有非交互参数 `--local-sign-in`。
 
