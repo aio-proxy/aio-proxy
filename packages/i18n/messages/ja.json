@@ -269,6 +269,7 @@
       "task_owned_by_other_user": "スケジュールされたタスク {path} は別のユーザーとして実行されます。置き換えは行いません",
       "supervisor_timeout": "`schtasks /End` から {seconds} 秒経ってもサービスのスーパーバイザーがまだ実行中です。タスクは削除しません",
       "local_app_data_missing": "LOCALAPPDATA が設定されていないため、Windows サービスのファイルの場所を特定できません",
+      "restore_failed": "以前のサービス定義を復元できませんでした。`aio-proxy service install` を実行して修復してください",
       "unsupported_platform": "service コマンドはこのプラットフォームをサポートしていません: {platform}",
       "system_unsupported": "システムスコープのインストールは現在未対応です。代わりにユーザーごとのサービスとしてインストールしてください",
       "exec_not_found": "PATH 上に \"aio-proxy\" 実行ファイルが見つかりません。サービスをインストールする前に aio-proxy をグローバルにインストールしてください (例: `npm i -g aio-proxy`)",

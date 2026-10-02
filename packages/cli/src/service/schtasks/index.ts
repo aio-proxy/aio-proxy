@@ -1,4 +1,5 @@
 export {
+  currentUser,
   currentUserSid,
   defaultSchtasksIo,
   queryTaskXml,

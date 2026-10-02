@@ -7,9 +7,17 @@ import { m } from '@aio-proxy/i18n';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { CliExit, EXIT } from '../../exit';
+import { createStyle } from '../../ui';
 import { processImagePath } from '../../win32-ffi';
 import { type CaptureResult, runCapture } from '../run-capture';
-import { renderServiceSpec, renderTaskXml, serviceSpecPath, serviceStatePath, taskPath } from '../schtasks-unit';
+import {
+  parseServiceSpec,
+  renderServiceSpec,
+  renderTaskXml,
+  serviceSpecPath,
+  serviceStatePath,
+  taskPath,
+} from '../schtasks-unit';
 import { uninstallMarkerPath } from '../uninstall-marker';
 import type { UnitOptions } from '../unit-templates';
 
@@ -22,6 +30,8 @@ export type SchtasksIo = {
   /** Queries; their output is parsed, never shown. */
   readonly capture: Capture;
   readonly sid: string;
+  /** `DOMAIN\user`: exported task XML may name the principal by account instead of SID. */
+  readonly account: string;
   readonly localAppData: string;
   /** Where the task XML is staged for `/Create /XML`. */
   readonly tempDir: string;
@@ -34,6 +44,8 @@ export type SchtasksIo = {
   readonly pidAlive: (pid: number) => boolean;
   readonly sleep: (ms: number) => Promise<void>;
   readonly now: () => number;
+  /** One line for the user on stderr. */
+  readonly warn: (line: string) => void;
 };
 
 export type TaskQuery = { kind: 'found'; xml: string } | { kind: 'missing' } | { kind: 'failed'; code: number };
@@ -53,14 +65,16 @@ export function windowsLocalAppData(env: NodeJS.ProcessEnv): string {
   return value;
 }
 
-export async function currentUserSid(capture: Capture): Promise<string> {
+export async function currentUser(capture: Capture): Promise<{ sid: string; account: string }> {
   const cmd = ['whoami', '/user', '/fo', 'csv', '/nh'];
   const { code, stdout } = await capture(cmd);
   // `"DOMAIN\user","S-1-5-21-…"`: user names cannot contain a double quote.
-  const sid = /^"[^"]*","(S-1-[\d-]+)"$/.exec(stdout.trim())?.[1];
-  if (code !== 0 || sid === undefined) throw commandFailed(cmd, code);
-  return sid;
+  const match = /^"([^"]+)","(S-1-[\d-]+)"$/.exec(stdout.trim());
+  if (code !== 0 || match === null) throw commandFailed(cmd, code);
+  return { account: match[1]!, sid: match[2]! };
 }
+
+export const currentUserSid = async (capture: Capture): Promise<string> => (await currentUser(capture)).sid;
 
 export async function queryTaskXml(capture: Capture, path: string): Promise<TaskQuery> {
   const { code, stdout } = await capture(['schtasks', '/Query', '/XML', '/TN', path, '/HRESULT']);
@@ -79,15 +93,19 @@ function taskPrincipal(xml: string): unknown {
   }
 }
 
-/** The current task definition, or undefined when none exists. Never hands back a task that runs as someone else. */
-async function queryOwnTask(io: SchtasksIo, path: string): Promise<string | undefined> {
+/**
+ * Whether our task exists; refuses one that runs as someone else. The queried XML is only read for its
+ * principal: its encoding through a pipe is unverified, so it is never fed back to `/Create`.
+ */
+async function ownTaskExists(io: SchtasksIo, path: string): Promise<boolean> {
   const query = await queryTaskXml(io.capture, path);
   if (query.kind === 'failed') throw commandFailed(['schtasks', '/Query', '/XML', '/TN', path], query.code);
-  if (query.kind === 'missing') return undefined;
-  if (taskPrincipal(query.xml) !== io.sid) {
-    throw new CliExit(EXIT.unrecoverable, m['cli.service.task_owned_by_other_user']({ path }));
-  }
-  return query.xml;
+  if (query.kind === 'missing') return false;
+  const principal = taskPrincipal(query.xml);
+  const ours =
+    principal === io.sid || (typeof principal === 'string' && principal.toLowerCase() === io.account.toLowerCase());
+  if (!ours) throw new CliExit(EXIT.unrecoverable, m['cli.service.task_owned_by_other_user']({ path }));
+  return true;
 }
 
 // schtasks reads the XML file in the encoding its declaration names, and renderTaskXml declares UTF-16.
@@ -129,7 +147,7 @@ const runTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/Run', '/
 
 export async function schtasksInstall(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
-  await queryOwnTask(io, path);
+  await ownTaskExists(io, path);
   io.remove(uninstallMarkerPath('win32', { LOCALAPPDATA: io.localAppData })!);
   const { spec, xml } = await renderUnit(io);
   const file = stageTaskXml(io, xml);
@@ -153,7 +171,7 @@ export async function schtasksStop(io: SchtasksIo): Promise<void> {
 export async function schtasksRestart(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   const specPath = serviceSpecPath(io.localAppData);
-  const previousXml = await queryOwnTask(io, path);
+  await ownTaskExists(io, path);
   const previousSpec = io.readFile(specPath);
   // Stage both files first, so a failed write leaves the running task untouched.
   const { spec, xml } = await renderUnit(io);
@@ -168,15 +186,18 @@ export async function schtasksRestart(io: SchtasksIo): Promise<void> {
     await runTask(io, path);
   } catch (error) {
     io.remove(staged);
-    // Bring the previous definition back rather than leave the proxy offline.
+    // Bring the previous definition back rather than leave the proxy offline. It is rendered from the
+    // spec we wrote, which names the same exec and spec path the previous task XML did.
     try {
       if (previousSpec === undefined) io.remove(specPath);
       else io.writeFile(specPath, previousSpec);
-      if (previousXml !== undefined) {
-        await createTask(io, path, stageTaskXml(io, previousXml));
-        await runTask(io, path);
-      }
-    } catch {}
+      const previousExec = previousSpec === undefined ? undefined : parseServiceSpec(previousSpec)?.exec;
+      if (previousExec === undefined) throw new Error('no readable previous service spec');
+      await createTask(io, path, stageTaskXml(io, renderTaskXml({ sid: io.sid, exec: previousExec, specPath })));
+      await runTask(io, path);
+    } catch {
+      io.warn(`${createStyle(process.stderr).mark('warn')} ${m['cli.service.restore_failed']()}`);
+    }
     throw error;
   }
 }
@@ -184,7 +205,7 @@ export async function schtasksRestart(io: SchtasksIo): Promise<void> {
 // `/End` kills the supervisor, whose Job Object takes the proxy with it; `/Delete` alone would leave both running.
 export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
-  if ((await queryOwnTask(io, path)) !== undefined) {
+  if (await ownTaskExists(io, path)) {
     await endTask(io, path);
     const pid = readSupervisorPid(io);
     const deadline = io.now() + SUPERVISOR_EXIT_TIMEOUT_MS;
@@ -213,10 +234,12 @@ export async function defaultSchtasksIo(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<SchtasksIo> {
   const localAppData = windowsLocalAppData(env);
+  const { sid, account } = await currentUser(runCapture);
   return {
     run,
     capture: runCapture,
-    sid: await currentUserSid(runCapture),
+    sid,
+    account,
     localAppData,
     tempDir: tmpdir(),
     unit,
@@ -236,5 +259,6 @@ export async function defaultSchtasksIo(
     pidAlive: (pid) => processImagePath(pid) !== undefined,
     sleep: (ms) => Bun.sleep(ms),
     now: Date.now,
+    warn: (line) => console.error(line),
   };
 }

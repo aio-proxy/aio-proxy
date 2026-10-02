@@ -269,6 +269,7 @@
       "task_owned_by_other_user": "排程工作 {path} 以其他使用者身分執行，未取代",
       "supervisor_timeout": "執行 `schtasks /End` {seconds} 秒後服務監督程序仍在執行，未刪除該工作",
       "local_app_data_missing": "未設定 LOCALAPPDATA，無法定位 Windows 服務檔案",
+      "restore_failed": "無法還原先前的服務定義，請執行 `aio-proxy service install` 進行修復",
       "unsupported_platform": "service 命令不支援目前平台：{platform}",
       "system_unsupported": "暫不支援系統層級安裝，請改用使用者層級服務安裝",
       "exec_not_found": "在 PATH 中找不到 “aio-proxy” 可執行檔。請先全域安裝 aio-proxy（例如 `npm i -g aio-proxy`）再安裝服務",
