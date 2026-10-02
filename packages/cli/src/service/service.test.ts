@@ -406,26 +406,34 @@ test('rewriting an older launchd unit restores user Agent directories from a min
   expect(contents).toContain(join(homedir(), '.npm-global/bin'));
 });
 
-test('resolveStableManagedExec maps a Cellar path to the stable Homebrew launcher', () => {
-  expect(resolveStableManagedExec('/opt/homebrew/Cellar/aio-proxy/0.3.0/bin/aio-proxy')).toBe(
-    '/opt/homebrew/bin/aio-proxy',
-  );
-  expect(resolveStableManagedExec('/home/linuxbrew/.linuxbrew/Cellar/aio-proxy/1.10.0/bin/aio-proxy')).toBe(
-    '/home/linuxbrew/.linuxbrew/bin/aio-proxy',
-  );
-});
+// POSIX-only: Homebrew Cellar layout with forward-slash prefixes.
+test.skipIf(process.platform === 'win32')(
+  'resolveStableManagedExec maps a Cellar path to the stable Homebrew launcher',
+  () => {
+    expect(resolveStableManagedExec('/opt/homebrew/Cellar/aio-proxy/0.3.0/bin/aio-proxy')).toBe(
+      '/opt/homebrew/bin/aio-proxy',
+    );
+    expect(resolveStableManagedExec('/home/linuxbrew/.linuxbrew/Cellar/aio-proxy/1.10.0/bin/aio-proxy')).toBe(
+      '/home/linuxbrew/.linuxbrew/bin/aio-proxy',
+    );
+  },
+);
 
-test('resolveExec maps a Cellar execPath to the stable Homebrew launcher when PATH is empty', () => {
-  const versioned = '/opt/homebrew/Cellar/aio-proxy/0.3.0/bin/aio-proxy';
-  expect(
-    resolveExec(
-      () => null,
-      versioned,
-      (p) => p,
-      () => true,
-    ),
-  ).toBe('/opt/homebrew/bin/aio-proxy');
-});
+// POSIX-only: Homebrew Cellar layout with forward-slash prefixes.
+test.skipIf(process.platform === 'win32')(
+  'resolveExec maps a Cellar execPath to the stable Homebrew launcher when PATH is empty',
+  () => {
+    const versioned = '/opt/homebrew/Cellar/aio-proxy/0.3.0/bin/aio-proxy';
+    expect(
+      resolveExec(
+        () => null,
+        versioned,
+        (p) => p,
+        () => true,
+      ),
+    ).toBe('/opt/homebrew/bin/aio-proxy');
+  },
+);
 
 test('writeManagedUnit persists npm when ExecStart is the native cli-* binary and PATH has the shim', async () => {
   const prefix = join(tmpdir(), `aio-npm-unit-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -546,35 +554,39 @@ test('writeManagedUnit does not persist npm for a standalone binary that only si
   expect(contents).not.toContain('AIO_PROXY_UPGRADE_METHOD');
 });
 
-test('writeManagedUnit persists npm from the PATH shim when the native cli-* prefix has no manager', async () => {
-  const nativeRoot = join(tmpdir(), `aio-native-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const pathRoot = join(tmpdir(), `aio-path-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const native = join(nativeRoot, 'node_modules', '@aio-proxy', 'cli-linux-x64', 'bin', 'aio-proxy');
-  const shim = join(pathRoot, 'bin', 'aio-proxy');
-  mkdirSync(join(native, '..'), { recursive: true });
-  mkdirSync(join(pathRoot, 'bin'), { recursive: true });
-  writeFileSync(native, '#!/bin/sh\n');
-  writeFileSync(shim, '#!/bin/sh\n');
-  writeFileSync(join(pathRoot, 'bin', 'npm'), '#!/bin/sh\n');
-  chmodSync(native, 0o755);
-  chmodSync(shim, 0o755);
-  chmodSync(join(pathRoot, 'bin', 'npm'), 0o755);
+// POSIX-only: extensionless shebang shims and a `:`-delimited PATH.
+test.skipIf(process.platform === 'win32')(
+  'writeManagedUnit persists npm from the PATH shim when the native cli-* prefix has no manager',
+  async () => {
+    const nativeRoot = join(tmpdir(), `aio-native-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const pathRoot = join(tmpdir(), `aio-path-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const native = join(nativeRoot, 'node_modules', '@aio-proxy', 'cli-linux-x64', 'bin', 'aio-proxy');
+    const shim = join(pathRoot, 'bin', 'aio-proxy');
+    mkdirSync(join(native, '..'), { recursive: true });
+    mkdirSync(join(pathRoot, 'bin'), { recursive: true });
+    writeFileSync(native, '#!/bin/sh\n');
+    writeFileSync(shim, '#!/bin/sh\n');
+    writeFileSync(join(pathRoot, 'bin', 'npm'), '#!/bin/sh\n');
+    chmodSync(native, 0o755);
+    chmodSync(shim, 0o755);
+    chmodSync(join(pathRoot, 'bin', 'npm'), 0o755);
 
-  const plistPath = join(pathRoot, 'LaunchAgents', 'com.aio-proxy.agent.plist');
-  const previous = process.env['PATH'];
-  process.env['PATH'] = `${join(pathRoot, 'bin')}:/usr/bin:/bin`;
-  try {
-    await writeManagedUnit('darwin', native, plistPath);
-  } finally {
-    if (previous === undefined) delete process.env['PATH'];
-    else process.env['PATH'] = previous;
-  }
+    const plistPath = join(pathRoot, 'LaunchAgents', 'com.aio-proxy.agent.plist');
+    const previous = process.env['PATH'];
+    process.env['PATH'] = `${join(pathRoot, 'bin')}:/usr/bin:/bin`;
+    try {
+      await writeManagedUnit('darwin', native, plistPath);
+    } finally {
+      if (previous === undefined) delete process.env['PATH'];
+      else process.env['PATH'] = previous;
+    }
 
-  const contents = readFileSync(plistPath, 'utf8');
-  expect(contents).toContain('<key>AIO_PROXY_UPGRADE_METHOD</key>');
-  expect(contents).toContain('<string>npm</string>');
-  expect(contents).toContain(`<string>${native}</string>`);
-});
+    const contents = readFileSync(plistPath, 'utf8');
+    expect(contents).toContain('<key>AIO_PROXY_UPGRADE_METHOD</key>');
+    expect(contents).toContain('<string>npm</string>');
+    expect(contents).toContain(`<string>${native}</string>`);
+  },
+);
 
 test('systemd and launchd templates persist AIO_PROXY_UPGRADE_METHOD when known', () => {
   const unit = renderSystemdUnit({
@@ -730,21 +742,29 @@ test('serviceRestart restarts the old plist when the staged one cannot replace i
 const runWrapper = (exec: string) =>
   Bun.spawnSync(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, exec], { stdout: 'ignore', stderr: 'ignore' }).exitCode;
 
-test('the launchd wrapper exits cleanly when its executable is gone, so KeepAlive does not respawn it', () => {
-  expect(runWrapper(join(tmpdir(), 'aio-proxy-missing', 'aio-proxy'))).toBe(0);
-});
+// POSIX-only: executes the launchd /bin/sh wrapper.
+test.skipIf(process.platform === 'win32')(
+  'the launchd wrapper exits cleanly when its executable is gone, so KeepAlive does not respawn it',
+  () => {
+    expect(runWrapper(join(tmpdir(), 'aio-proxy-missing', 'aio-proxy'))).toBe(0);
+  },
+);
 
-test('the launchd wrapper still reports real failures and remaps only exit 1', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'aio-wrapper-'));
-  const exitsWith = (code: number) => {
-    const path = join(dir, `exit-${code}`);
-    writeFileSync(path, `#!/bin/sh\nexit ${code}\n`);
-    chmodSync(path, 0o755);
-    return path;
-  };
-  expect(runWrapper(exitsWith(3))).toBe(3);
-  expect(runWrapper(exitsWith(1))).toBe(0);
-});
+// POSIX-only: executes the launchd /bin/sh wrapper with shebang scripts.
+test.skipIf(process.platform === 'win32')(
+  'the launchd wrapper still reports real failures and remaps only exit 1',
+  () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aio-wrapper-'));
+    const exitsWith = (code: number) => {
+      const path = join(dir, `exit-${code}`);
+      writeFileSync(path, `#!/bin/sh\nexit ${code}\n`);
+      chmodSync(path, 0o755);
+      return path;
+    };
+    expect(runWrapper(exitsWith(3))).toBe(3);
+    expect(runWrapper(exitsWith(1))).toBe(0);
+  },
+);
 
 test.skipIf(process.platform !== 'darwin')(
   'a desktop-owned unit keeps the symlink path and carries both desktop markers',
@@ -843,13 +863,13 @@ test('linux restart rewrites the unit, then enables before restarting', async ()
 test('linux uninstall leaves the marker and install clears it', async () => {
   await withLinuxHome(async (home, calls, io) => {
     const marker = uninstallMarkerPath('linux', { XDG_CONFIG_HOME: home });
-    await serviceInstall({}, () => {}, io);
+    await serviceInstall({}, () => {}, { ...io, exec: '/opt/aio-proxy/bin/aio-proxy' });
     expect(existsSync(join(home, 'systemd', 'user', 'aio-proxy.service'))).toBe(true);
     await serviceUninstall(() => {}, io);
     expect(existsSync(marker!)).toBe(true);
     expect(existsSync(join(home, 'systemd', 'user', 'aio-proxy.service'))).toBe(false);
     expect(calls).toContainEqual(['systemctl', '--user', 'disable', '--now', 'aio-proxy.service']);
-    await serviceInstall({}, () => {}, io);
+    await serviceInstall({}, () => {}, { ...io, exec: '/opt/aio-proxy/bin/aio-proxy' });
     expect(existsSync(marker!)).toBe(false);
   });
 });

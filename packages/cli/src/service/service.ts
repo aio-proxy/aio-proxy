@@ -177,6 +177,8 @@ const windowsIo = (run: ServiceRestartIo['runManager'] = runManager, exec?: stri
 type ServiceLifecycleIo = {
   readonly platform?: SupportedPlatform;
   readonly runManager?: ServiceRestartIo['runManager'];
+  // Injected so install does not depend on whether this host has an `aio-proxy` on PATH.
+  readonly exec?: string;
 };
 
 export async function serviceInstall(
@@ -189,12 +191,12 @@ export async function serviceInstall(
   const run = io.runManager ?? runManager;
   let target: string;
   if (os === 'win32') {
-    const winIo = await windowsIo();
+    const winIo = await windowsIo(undefined, io.exec);
     await schtasksInstall(winIo);
     target = serviceSpecPath(winIo.localAppData);
   } else {
     clearUninstallMarker(os);
-    target = await writeManagedUnit(os, undefined, undefined, process.env, run);
+    target = await writeManagedUnit(os, io.exec, undefined, process.env, run);
   }
   if (os === 'linux') await run(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
   print(`${createStyle(process.stdout).mark('ok')} ${m['cli.service.installed']({ path: target })}`);
