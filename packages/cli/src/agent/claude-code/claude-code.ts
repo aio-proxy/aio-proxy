@@ -216,9 +216,11 @@ export async function listClaudeCode(
     status,
     ...(baseUrl === undefined ? {} : { baseUrl }),
     ...(credential === undefined ? {} : { credential }),
+    // What Claude Code actually uses, not what the marker says was written; an edited or deleted
+    // value is a mismatch even though the marker still names this proxy.
     ...(endpoint === undefined || configuredEndpoint === undefined
       ? {}
-      : { endpointMatches: endpoint === configuredEndpoint }),
+      : { endpointMatches: baseUrl === configuredEndpoint }),
     connection: probe ? await deps.probe(baseUrl, token) : 'not_checked',
     changedPaths,
   };

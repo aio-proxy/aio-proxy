@@ -137,9 +137,17 @@ test('ownership survives Claude Code rewriting the file in its own format', asyn
 test('a managed key the user edited is neither overwritten by configure nor reverted by remove', async () => {
   const f = await fixture();
   await configureClaudeCode(noKey, f.deps);
+  await f.write({ env: { ANTHROPIC_BASE_URL: 'https://gateway.example', ANTHROPIC_AUTH_TOKEN: 'my-own-token' } });
+  expect(await listClaudeCode(false, ENDPOINT, f.deps)).toMatchObject({
+    status: 'modified',
+    baseUrl: 'https://gateway.example',
+    endpointMatches: false,
+    changedPaths: ['env.ANTHROPIC_BASE_URL', 'env.ANTHROPIC_AUTH_TOKEN'],
+  });
   await f.write({ env: { ANTHROPIC_BASE_URL: ENDPOINT, ANTHROPIC_AUTH_TOKEN: 'my-own-token' } });
   expect(await listClaudeCode(false, ENDPOINT, f.deps)).toMatchObject({
     status: 'modified',
+    endpointMatches: true,
     changedPaths: ['env.ANTHROPIC_AUTH_TOKEN'],
   });
   await expect(configureClaudeCode(noKey, f.deps)).rejects.toThrow(
