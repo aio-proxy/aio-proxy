@@ -108,6 +108,9 @@ export type ServerState = ProviderRouteSource & {
   readonly pluginControlPlane: PluginControlPlane;
   readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];
   readonly oauthProviderEditView: (providerId: string) => DashboardOAuthProviderEdit | undefined;
+  readonly syncedProviderEditView: (
+    providerId: string,
+  ) => { readonly models: readonly string[]; readonly refreshedAt?: string } | undefined;
   readonly oauthLoginSessions: OAuthLoginSessionManager;
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;

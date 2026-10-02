@@ -24,6 +24,7 @@ import { findPluginEntry } from '../plugin-control-plane/plugin-config';
 import type { OAuthQuotaCache } from '../plugin-quota';
 import { createRuntimeFetch } from '../plugin-runtime';
 import type { SnapshotManager } from '../plugin-snapshot';
+import { isSyncedProvider, modelSourceDigest } from '../provider-model-sync';
 import { effectiveProxy, providerDiff } from '../provider-runtime';
 import { stopOtelExport, syncOtelDestinations } from '../request-tracing';
 import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
@@ -228,6 +229,24 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     modelRouting: parts.modelRouting,
     oauthCapabilities: () => oauthCapabilities(manager),
     oauthProviderEditView: (providerId) => oauthProviderEditView(manager, repository, providerId),
+    syncedProviderEditView(providerId) {
+      const provider = (manager.current() as Snapshot).config.providers.find(({ id }) => id === providerId);
+      if (provider === undefined || !isSyncedProvider(provider)) return undefined;
+      try {
+        const stored = runtime.providerModels.read(providerId);
+        if (stored === null || stored.sourceDigest !== modelSourceDigest(provider) || stored.models === null) {
+          return { models: [] };
+        }
+        // The editor must retain hidden models so users can un-hide them.
+        return {
+          models: stored.models,
+          ...(stored.refreshedAt === null ? {} : { refreshedAt: new Date(stored.refreshedAt).toISOString() }),
+        };
+      } catch {
+        // A corrupt stored row must leave the editor usable.
+        return { models: [] };
+      }
+    },
     oauthLoginSessions: parts.oauthLoginSessions,
     pluginControlPlane: parts.pluginControlPlane,
     providerSummaries: parts.providerSummaries,

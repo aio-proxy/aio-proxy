@@ -10,6 +10,7 @@ import {
 
 import { oauthExposedModels } from '../../plugin-runtime';
 import { discoverProviderModels } from '../../provider-model-discovery';
+import { isSyncedProvider } from '../../provider-model-sync';
 import { materializeProviders } from '../../provider-runtime';
 import { withAttemptLogContext, withRequestLogContext } from '../../request-logging';
 import type { RuntimeProviderInstance } from '../../runtime';
@@ -40,10 +41,25 @@ export async function testProviderDraft(
   modelId: string,
 ): Promise<DashboardProviderDraftTestResponse> {
   if (provider.kind === ProviderKind.OAuth) return testOAuthProvider(state, provider, modelId);
-  if (!provider.models?.includes(modelId)) return failure('model_not_enabled');
-
   try {
-    const testProvider = ProviderSchema.parse({ ...provider, alias: undefined, enabled: true, models: [modelId] });
+    if (isSyncedProvider(provider)) {
+      const discovery = await discoverProviderModels(state.currentConfig(), provider, AbortSignal.timeout(5_000), {
+        strict: false,
+      });
+      if (!discovery.ok || !discovery.models.includes(modelId) || provider.excludedModels?.includes(modelId)) {
+        return failure('model_not_enabled');
+      }
+    } else if (!provider.models?.includes(modelId)) {
+      return failure('model_not_enabled');
+    }
+    const testProvider = ProviderSchema.parse({
+      ...provider,
+      alias: undefined,
+      enabled: true,
+      models: [modelId],
+      syncModels: undefined,
+      excludedModels: undefined,
+    });
     // Unreachable: the entry point routes oauth to testOAuthProvider. Kept because
     // ProviderSchema.parse returns the full union — this narrows testProvider for
     // materializeDraftRuntime's Exclude<Provider, { kind: OAuth }> parameter.
