@@ -1,5 +1,17 @@
 # aio-proxy
 
+## 0.38.0
+
+### Minor Changes
+
+- [#467](https://github.com/aio-proxy/aio-proxy/pull/467) [`e6b2bfd`](https://github.com/aio-proxy/aio-proxy/commit/e6b2bfd0303784a19c23fa504a35a070987ebb30) Thanks @baranwang - The macOS app's menu offers Install aiop command when your shell cannot find `aiop` and the app is in `/Applications`. After the system password prompt it adds `aiop` to `/usr/local/bin`, plus `aio-proxy` when your shell has none, both pointing at the CLI inside the app so they keep working across app updates. A command already installed there by something else is never replaced.
+
+### Patch Changes
+
+- [#466](https://github.com/aio-proxy/aio-proxy/pull/466) [`4e3078f`](https://github.com/aio-proxy/aio-proxy/commit/4e3078fcc014f81825e2bf144336d2f920e8f6a6) Thanks @baranwang - Fix Dashboard installation and updates for Pi, OMP, and OpenCode in standalone and desktop builds.
+
+- [#468](https://github.com/aio-proxy/aio-proxy/pull/468) [`24d77d0`](https://github.com/aio-proxy/aio-proxy/commit/24d77d05fd4e27bfa918a568d904e71ce3593f3b) Thanks @baranwang - Preserve transport timings, retry failure reasons, and response attribution for each upstream HTTP send. Trace details now show send counts and indices, so retries with multiple responses no longer appear to be missing timing data.
+
 ## 0.37.0
 
 ### Minor Changes

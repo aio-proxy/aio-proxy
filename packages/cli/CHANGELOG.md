@@ -1,5 +1,23 @@
 # @aio-proxy/cli
 
+## 0.38.0
+
+### Patch Changes
+
+- [#466](https://github.com/aio-proxy/aio-proxy/pull/466) [`4e3078f`](https://github.com/aio-proxy/aio-proxy/commit/4e3078fcc014f81825e2bf144336d2f920e8f6a6) Thanks @baranwang - Fix Dashboard installation and updates for Pi, OMP, and OpenCode in standalone and desktop builds.
+- Updated dependencies [[`24d77d0`](https://github.com/aio-proxy/aio-proxy/commit/24d77d05fd4e27bfa918a568d904e71ce3593f3b)]:
+  - @aio-proxy/server@0.38.0
+  - @aio-proxy/core@0.38.0
+  - @aio-proxy/plugin-sdk@0.38.0
+  - @aio-proxy/shared@0.38.0
+  - @aio-proxy/dashboard@0.38.0
+  - @aio-proxy/i18n@0.38.0
+  - @aio-proxy/logger@0.38.0
+  - @aio-proxy/opencode-provider@0.38.0
+  - @aio-proxy/pi-provider@0.38.0
+  - @aio-proxy/agent-provider-runtime@0.38.0
+  - @aio-proxy/types@0.38.0
+
 ## 0.37.0
 
 ### Minor Changes

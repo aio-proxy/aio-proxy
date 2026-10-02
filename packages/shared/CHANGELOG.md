@@ -1,5 +1,11 @@
 # @aio-proxy/shared
 
+## 0.38.0
+
+### Patch Changes
+
+- [#468](https://github.com/aio-proxy/aio-proxy/pull/468) [`24d77d0`](https://github.com/aio-proxy/aio-proxy/commit/24d77d05fd4e27bfa918a568d904e71ce3593f3b) Thanks @baranwang - Preserve transport timings, retry failure reasons, and response attribution for each upstream HTTP send. Trace details now show send counts and indices, so retries with multiple responses no longer appear to be missing timing data.
+
 ## 0.37.0
 
 No changes in this release.

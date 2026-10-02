@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/cli-darwin-arm64",
-  "version": "0.37.0",
+  "version": "0.38.0",
   "description": "AIO Proxy binary for darwin-arm64",
   "repository": {
     "type": "git",
