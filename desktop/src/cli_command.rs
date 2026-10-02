@@ -11,7 +11,9 @@ use std::process::Command;
 use std::time::Duration;
 
 #[cfg(unix)]
-use crate::process::{run_with_timeout, tail};
+use crate::process::run_with_timeout;
+#[cfg(target_os = "macos")]
+use crate::process::tail;
 
 pub const LINK: &str = "/usr/local/bin/aiop";
 #[cfg(target_os = "macos")]
