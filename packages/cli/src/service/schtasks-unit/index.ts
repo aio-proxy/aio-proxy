@@ -1,4 +1,5 @@
 export {
+  isOwnTask,
   parseServiceSpec,
   parseTaskXml,
   renderServiceSpec,
@@ -10,4 +11,5 @@ export {
   TASK_FOLDER,
   type ParsedTask,
   type ServiceSpec,
+  type WindowsUser,
 } from './schtasks-unit';

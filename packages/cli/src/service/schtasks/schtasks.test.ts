@@ -161,7 +161,12 @@ test('install clears the uninstall marker and writes the spec and a UTF-16 task 
   const calls = await recordCalls((io) => schtasksInstall(io), { fs, task: 'missing' });
   expect(calls.map((c) => c.slice(0, 3))).toEqual([['schtasks', '/Create', '/XML']]);
   expect(calls[0]!.slice(4)).toEqual(['/TN', path, '/F']);
-  expect(parseTaskXml(fs.lastXmlCreated()!)).toEqual({ sid, triggerUser: sid, exec, specPath });
+  expect(parseTaskXml(fs.lastXmlCreated()!)).toEqual({
+    sid,
+    triggerUser: sid,
+    enabled: true,
+    action: { exec, specPath },
+  });
   expect(parseServiceSpec(fs.read(specPath)!)?.exec).toBe(exec);
   expect(fs.exists(marker)).toBe(false);
   expect(onlyFilesBesides(fs)).toEqual([specPath]);
@@ -196,7 +201,7 @@ test('restart after stop rewrites XML and spec, re-creates the task enabled, the
   const { calls, fs } = await recordRun((io) => schtasksRestart(io));
   expect(calls.map((c) => c[1])).toEqual(['/End', '/Create', '/Run']);
   expect(calls[1]).toContain('/F');
-  expect(parseTaskXml(fs.lastXmlCreated()!)?.exec).toBe(exec);
+  expect(parseTaskXml(fs.lastXmlCreated()!)?.action?.exec).toBe(exec);
   expect(parseServiceSpec(fs.read(specPath)!)?.exec).toBe(exec);
   expect(onlyFilesBesides(fs).sort()).toEqual([specPath, statePath].sort());
   expect(fs.files.size).toBe(2);
@@ -209,7 +214,7 @@ test('a managed proxy restarting itself on Windows rewrites the spec and asks it
   );
   expect(calls.map((c) => c[1])).toEqual(['/Create']);
   expect(calls[0]).toContain('/F');
-  expect(parseTaskXml(fs.lastXmlCreated()!)?.exec).toBe(exec);
+  expect(parseTaskXml(fs.lastXmlCreated()!)?.action?.exec).toBe(exec);
   expect(exits).toEqual([[75, 1000]]);
   expect(parseServiceSpec(fs.read(specPath)!)?.exec).toBe(exec);
   expect(onlyFilesBesides(fs).sort()).toEqual([specPath, statePath].sort());

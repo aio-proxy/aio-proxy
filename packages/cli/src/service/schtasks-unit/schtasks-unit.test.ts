@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import {
+  isOwnTask,
   parseServiceSpec,
   parseTaskXml,
   renderServiceSpec,
@@ -21,8 +22,8 @@ test('task XML round-trips an exec path with spaces, non-ASCII and XML metachara
     expect(parseTaskXml(renderTaskXml({ sid, exec: e, specPath }))).toEqual({
       sid,
       triggerUser: sid,
-      exec: e,
-      specPath,
+      enabled: true,
+      action: { exec: e, specPath },
     });
   }
 });
@@ -35,13 +36,26 @@ test('the task XML declares UTF-16 and the restart policy schtasks needs', () =>
   expect(xml).toContain('<Count>3</Count>');
 });
 
-test('a task that runs anything but __service-run with a spec is not ours', () => {
+test('a task that runs anything but __service-run with a spec has no action of ours', () => {
   const xml = renderTaskXml({ sid, exec, specPath: 'C:\\s.json' });
-  expect(parseTaskXml(xml.replace('__service-run', 'run'))).toBeUndefined();
-  expect(parseTaskXml(xml.replace('conhost.exe', 'cmd.exe'))).toBeUndefined();
-  expect(parseTaskXml(xml.replace(' "C:\\s.json"', ''))).toBeUndefined();
-  expect(parseTaskXml(xml.replace('"C:\\s.json"', '"C:\\s.json" --extra'))).toBeUndefined();
+  expect(parseTaskXml(xml.replace('__service-run', 'run'))?.action).toBeUndefined();
+  expect(parseTaskXml(xml.replace('conhost.exe', 'cmd.exe'))?.action).toBeUndefined();
+  expect(parseTaskXml(xml.replace(' "C:\\s.json"', ''))?.action).toBeUndefined();
+  expect(parseTaskXml(xml.replace('"C:\\s.json"', '"C:\\s.json" --extra'))?.action).toBeUndefined();
+  // Whose the task is still reads, so install can refuse another user's task at our path.
+  expect(parseTaskXml(xml.replace('conhost.exe', 'cmd.exe'))?.sid).toBe(sid);
   expect(parseTaskXml('not xml')).toBeUndefined();
+});
+
+test('a task is ours when its principal and its trigger, if any, name this user by SID or account', () => {
+  const user = { sid, account: 'DESKTOP-1\\Zoë Chen' };
+  const xml = renderTaskXml({ sid, exec, specPath });
+  const withTrigger = (name: string) => xml.replace(/(<LogonTrigger>[\s\S]*?<UserId>)[^<]*/u, `$1${name}`);
+  expect(isOwnTask(parseTaskXml(xml), user)).toBe(true);
+  expect(isOwnTask(parseTaskXml(withTrigger('desktop-1\\ZOË CHEN')), user)).toBe(true);
+  expect(isOwnTask(parseTaskXml(withTrigger('DESKTOP-1\\Bob')), user)).toBe(false);
+  expect(isOwnTask(parseTaskXml(renderTaskXml({ sid: 'S-1-5-21-9', exec, specPath })), user)).toBe(false);
+  expect(isOwnTask(undefined, user)).toBe(false);
 });
 
 test('service spec carries the desktop marker only for a desktop-owned unit', () => {

@@ -81,14 +81,14 @@ export type ParsedTask = {
   readonly sid: string;
   /** The logon trigger's `UserId`, which Task Scheduler may spell differently from the principal. */
   readonly triggerUser: string | undefined;
-  readonly exec: string;
-  readonly specPath: string;
+  /** `Settings/Enabled`, what `/Change /DISABLE` flips; ASCII, so unlike the localized `/V` status it reads
+   * the same through any encoding. Absent means enabled. */
+  readonly enabled: boolean;
+  /** The `<exec> __service-run <spec>` action `renderTaskXml` writes; undefined for any other action. */
+  readonly action: { readonly exec: string; readonly specPath: string } | undefined;
 };
 
-/**
- * Reads the action `renderTaskXml` writes; anything else (another command, extra arguments) is not ours.
- * Whose task it is, the caller judges from `sid` and `triggerUser`.
- */
+/** A task in our namespace with a principal; whose it is, `isOwnTask` judges. */
 export function parseTaskXml(xml: string): ParsedTask | undefined {
   let task: unknown;
   try {
@@ -97,13 +97,22 @@ export function parseTaskXml(xml: string): ParsedTask | undefined {
     return undefined;
   }
   if (!isPlainObject(task) || task['@xmlns'] !== TASK_NAMESPACE) return undefined;
-  const principal = child(child(task, 'Principals'), 'Principal');
-  const sid = child(principal, 'UserId');
-  const exec = child(child(task, 'Actions'), 'Exec');
-  const args = child(exec, 'Arguments');
+  const sid = child(child(child(task, 'Principals'), 'Principal'), 'UserId');
   const triggerUser = child(child(child(task, 'Triggers'), 'LogonTrigger'), 'UserId');
   if (typeof sid !== 'string' || (triggerUser !== undefined && typeof triggerUser !== 'string')) return undefined;
-  if (child(exec, 'Command') !== COMMAND || typeof args !== 'string') return undefined;
-  const match = ARGUMENTS.exec(args);
-  return match === null ? undefined : { sid, triggerUser, exec: match[1]!, specPath: match[2]! };
+  const settings = child(task, 'Settings');
+  const enabled = isPlainObject(settings) && (settings['Enabled'] === undefined || settings['Enabled'] === 'true');
+  const exec = child(child(task, 'Actions'), 'Exec');
+  const args = child(exec, 'Arguments');
+  const match = child(exec, 'Command') === COMMAND && typeof args === 'string' ? ARGUMENTS.exec(args) : null;
+  return { sid, triggerUser, enabled, action: match === null ? undefined : { exec: match[1]!, specPath: match[2]! } };
+}
+
+/** The current Windows user, as Task Scheduler may name it: by SID or by `DOMAIN\user`. */
+export type WindowsUser = { readonly sid: string; readonly account: string };
+
+/** Whether the task runs as `user`: its principal and, when present, its logon trigger name them. */
+export function isOwnTask(task: ParsedTask | undefined, user: WindowsUser): boolean {
+  const isUser = (id: string) => [user.sid, user.account].some((name) => name.toLowerCase() === id.toLowerCase());
+  return task !== undefined && isUser(task.sid) && (task.triggerUser === undefined || isUser(task.triggerUser));
 }

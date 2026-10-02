@@ -1,1 +1,1 @@
-export { inspectTask, readTask, taskJob, type WindowsUser } from './schtasks-inspect';
+export { inspectTask, readTask, taskJob } from './schtasks-inspect';

@@ -4,13 +4,13 @@ import { tmpdir } from 'node:os';
 import { dirname, win32 } from 'node:path';
 
 import { m } from '@aio-proxy/i18n';
-import { isPlainObject } from 'es-toolkit/predicate';
 
 import { CliExit, EXIT } from '../../exit';
 import { createStyle } from '../../ui';
 import { processImagePath } from '../../win32-ffi';
 import { type CaptureResult, runCapture } from '../run-capture';
 import {
+  isOwnTask,
   parseServiceSpec,
   parseTaskXml,
   renderServiceSpec,
@@ -85,29 +85,16 @@ export async function queryTaskXml(capture: Capture, path: string): Promise<Task
   return code === TASK_NOT_FOUND || code === (TASK_NOT_FOUND | 0) ? { kind: 'missing' } : { kind: 'failed', code };
 }
 
-function taskPrincipal(xml: string): unknown {
-  try {
-    const task = (Bun.XML.parse(xml) as Record<string, unknown>)['Task'];
-    const principals = isPlainObject(task) ? task['Principals'] : undefined;
-    const principal = isPlainObject(principals) ? principals['Principal'] : undefined;
-    return isPlainObject(principal) ? principal['UserId'] : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
- * Whether our task exists; refuses one that runs as someone else. The queried XML is only read for its
- * principal: its encoding through a pipe is unverified, so it is never fed back to `/Create`.
+ * Whether our task exists; refuses one that runs as someone else. The queried XML is only read for whose it
+ * is: its encoding through a pipe is unverified, so it is never fed back to `/Create`.
  */
 async function ownTaskExists(io: SchtasksIo, path: string): Promise<boolean> {
   const query = await queryTaskXml(io.capture, path);
   if (query.kind === 'failed') throw commandFailed(['schtasks', '/Query', '/XML', '/TN', path], query.code);
   if (query.kind === 'missing') return false;
-  const principal = taskPrincipal(query.xml);
-  const ours =
-    principal === io.sid || (typeof principal === 'string' && principal.toLowerCase() === io.account.toLowerCase());
-  if (!ours) throw new CliExit(EXIT.unrecoverable, m['cli.service.task_owned_by_other_user']({ path }));
+  if (!isOwnTask(parseTaskXml(query.xml), { sid: io.sid, account: io.account }))
+    throw new CliExit(EXIT.unrecoverable, m['cli.service.task_owned_by_other_user']({ path }));
   return true;
 }
 
@@ -217,7 +204,7 @@ export async function schtasksRestartInService(
   io.writeFile(staged, spec);
   try {
     const query = await queryTaskXml(io.capture, path);
-    const current = query.kind === 'found' ? parseTaskXml(query.xml)?.exec : undefined;
+    const current = query.kind === 'found' ? parseTaskXml(query.xml)?.action?.exec : undefined;
     // A query failure counts as "differs": re-creating is the safe side.
     if (current !== parseServiceSpec(spec)?.exec) await createTask(io, path, stageTaskXml(io, xml));
     io.rename(staged, specPath);

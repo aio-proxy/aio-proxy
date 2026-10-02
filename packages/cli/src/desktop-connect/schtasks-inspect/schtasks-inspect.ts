@@ -1,13 +1,16 @@
-import { isPlainObject } from 'es-toolkit/predicate';
-
 import { currentUser, queryTaskXml, type TaskQuery, windowsLocalAppData } from '../../service/schtasks';
-import { parseServiceSpec, parseTaskXml, serviceStatePath, taskPath } from '../../service/schtasks-unit';
+import {
+  isOwnTask,
+  parseServiceSpec,
+  parseTaskXml,
+  serviceStatePath,
+  taskPath,
+  type WindowsUser,
+} from '../../service/schtasks-unit';
 import { parseSupervisorState, supervisorAlive } from '../../service/supervisor-state';
 import { uninstallMarkerExists } from '../../service/uninstall-marker';
 import type { JobState, UnitInspection } from '../launchd-inspect';
 import type { Run } from '../sockets';
-
-export type WindowsUser = { readonly sid: string; readonly account: string };
 
 // `schtasks /Query /XML` output reaches us in an unverified encoding, so non-ASCII path text from it may
 // come back mangled (U+FFFD or another code page). Only its ASCII characters are compared.
@@ -24,16 +27,14 @@ export function inspectTask(
   specPath: string,
 ): UnitInspection {
   const task = xml === undefined ? undefined : parseTaskXml(xml);
+  const action = task?.action;
   const service = spec === undefined ? undefined : parseServiceSpec(spec);
-  // Task Scheduler may name a user by SID or by account, and spell the principal and the trigger apart.
-  const isUser = (id: string) => [user.sid, user.account].some((name) => name.toLowerCase() === id.toLowerCase());
   const wrapperValid =
-    task !== undefined &&
+    action !== undefined &&
     service !== undefined &&
-    isUser(task.sid) &&
-    (task.triggerUser === undefined || isUser(task.triggerUser)) &&
-    asciiFolded(task.exec) === asciiFolded(service.exec) &&
-    asciiFolded(task.specPath) === asciiFolded(specPath);
+    isOwnTask(task, user) &&
+    asciiFolded(action.exec) === asciiFolded(service.exec) &&
+    asciiFolded(action.specPath) === asciiFolded(specPath);
   return {
     present: true,
     wrapperValid,
@@ -42,25 +43,13 @@ export function inspectTask(
   };
 }
 
-// `Settings/Enabled` is what `/Change /DISABLE` flips. It is ASCII, so encoding-safe, unlike the localized
-// status column of `schtasks /Query /V /FO CSV`. Absent means enabled; an unreadable task is not.
-function taskEnabled(xml: string): boolean {
-  try {
-    const task = (Bun.XML.parse(xml) as Record<string, unknown>)['Task'];
-    const settings = isPlainObject(task) ? task['Settings'] : undefined;
-    if (!isPlainObject(settings)) return false;
-    return settings['Enabled'] === undefined || settings['Enabled'] === 'true';
-  } catch {
-    return false;
-  }
-}
-
 /** `supervisorPid` is the running supervisor's PID from `service.state.json`, or null when none runs. */
 export function taskJob(query: TaskQuery, markerExists: boolean, supervisorPid: number | null): JobState {
   // No task at all: a first run, unless the user uninstalled the service.
   if (query.kind === 'missing') return { loaded: false, disabled: markerExists, pid: null };
   if (query.kind === 'failed') return { loaded: false, disabled: true, pid: null };
-  const disabled = !taskEnabled(query.xml);
+  // An unreadable task is not enabled.
+  const disabled = parseTaskXml(query.xml)?.enabled !== true;
   return { loaded: !disabled, disabled, pid: supervisorPid };
 }
 
