@@ -1,4 +1,5 @@
 export {
+  asciiFolded,
   isOwnTask,
   parseServiceSpec,
   parseTaskXml,

@@ -7,7 +7,7 @@ import { m } from '@aio-proxy/i18n';
 
 import { CliExit, EXIT } from '../../exit';
 import { createStyle } from '../../ui';
-import { processImagePath } from '../../win32-ffi';
+import { accountForSid, currentUserSid as nativeUserSid, processImagePath } from '../../win32-ffi';
 import { type CaptureResult, runCapture } from '../run-capture';
 import {
   isOwnTask,
@@ -69,7 +69,20 @@ export function windowsLocalAppData(env: NodeJS.ProcessEnv): string {
   return value;
 }
 
-export async function currentUser(capture: Capture): Promise<{ sid: string; account: string }> {
+/** The current user from the token, in UTF-16; undefined when FFI is unavailable or fails. */
+const nativeUser = (): { sid: string; account: string } | undefined => {
+  const sid = nativeUserSid();
+  const account = sid === undefined ? undefined : accountForSid(sid);
+  return sid === undefined || account === undefined ? undefined : { sid, account };
+};
+
+// whoami prints the console code page through a pipe, which garbles a non-ASCII account: it is only the fallback.
+export async function currentUser(
+  capture: Capture,
+  native: () => { sid: string; account: string } | undefined = nativeUser,
+): Promise<{ sid: string; account: string }> {
+  const own = native();
+  if (own !== undefined) return own;
   const cmd = ['whoami', '/user', '/fo', 'csv', '/nh'];
   const { code, stdout } = await capture(cmd);
   // `"DOMAIN\user","S-1-5-21-…"`: user names cannot contain a double quote.

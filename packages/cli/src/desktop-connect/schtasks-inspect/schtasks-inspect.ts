@@ -1,5 +1,6 @@
 import { currentUser, queryTaskXml, type TaskQuery, windowsLocalAppData } from '../../service/schtasks';
 import {
+  asciiFolded,
   isOwnTask,
   parseServiceSpec,
   parseTaskXml,
@@ -11,10 +12,6 @@ import { parseSupervisorState, supervisorAlive } from '../../service/supervisor-
 import { uninstallMarkerExists } from '../../service/uninstall-marker';
 import type { JobState, UnitInspection } from '../launchd-inspect';
 import type { Run } from '../sockets';
-
-// `schtasks /Query /XML` output reaches us in an unverified encoding, so non-ASCII path text from it may
-// come back mangled (U+FFFD or another code page). Only its ASCII characters are compared.
-const asciiFolded = (text: string): string => text.replace(/[\u0080-\u{10FFFF}]/gu, '').toLowerCase();
 
 /**
  * The task is ours only when its principal is this user and it runs `<exec> __service-run <spec>` for the

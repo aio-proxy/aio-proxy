@@ -111,8 +111,13 @@ export function parseTaskXml(xml: string): ParsedTask | undefined {
 /** The current Windows user, as Task Scheduler may name it: by SID or by `DOMAIN\user`. */
 export type WindowsUser = { readonly sid: string; readonly account: string };
 
+// `schtasks /Query /XML` output reaches us in an unverified encoding, so non-ASCII text from it may come
+// back mangled (U+FFFD or another code page). Only its ASCII characters are compared.
+export const asciiFolded = (text: string): string => text.replace(/[\u0080-\u{10FFFF}]/gu, '').toLowerCase();
+
 /** Whether the task runs as `user`: its principal and, when present, its logon trigger name them. */
 export function isOwnTask(task: ParsedTask | undefined, user: WindowsUser): boolean {
-  const isUser = (id: string) => [user.sid, user.account].some((name) => name.toLowerCase() === id.toLowerCase());
+  // The SID match is the trust boundary; the ASCII-folded account match only tolerates a mangled name.
+  const isUser = (id: string) => id === user.sid || asciiFolded(id) === asciiFolded(user.account);
   return task !== undefined && isUser(task.sid) && (task.triggerUser === undefined || isUser(task.triggerUser));
 }

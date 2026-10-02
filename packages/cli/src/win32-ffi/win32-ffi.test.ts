@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { currentUserSid, processImagePath, processUserSid } from './win32-ffi';
+import { accountForSid, currentUserSid, processImagePath, processUserSid } from './win32-ffi';
 
 const onlyOnWindows = test.skipIf(process.platform !== 'win32');
 
@@ -66,4 +66,10 @@ test('an unreadable process has no SID', () => {
   // Off Windows the FFI cannot load; on Windows PID 0 is the idle process, which an unprivileged token
   // cannot open. Both fail closed.
   expect(processUserSid(0)).toBeUndefined();
+});
+
+onlyOnWindows('the current SID resolves to a DOMAIN\\name account', () => {
+  const sid = currentUserSid();
+  expect(sid).toBeDefined();
+  expect(accountForSid(sid!)).toMatch(/^[^\\]+\\[^\\]+$/u);
 });

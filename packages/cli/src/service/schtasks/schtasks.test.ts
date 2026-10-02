@@ -398,8 +398,17 @@ test('a task query tells "does not exist" apart from every other failure', async
   expect(await query(1)).toEqual({ kind: 'failed', code: 1 });
 });
 
-test('the current user is the account and SID whoami prints as CSV', async () => {
-  const whoami = (code: number, stdout: string) => currentUser(async () => ({ code, stdout, stderr: '' }));
+test('the current user comes from the token, and whoami is only the fallback when that fails', async () => {
+  const native = { sid, account: 'DESKTOP-1\\张三' };
+  const failing = async () => {
+    throw new Error('whoami must not run');
+  };
+  expect(await currentUser(failing, () => native)).toEqual(native);
+  const whoami = (code: number, stdout: string) =>
+    currentUser(
+      async () => ({ code, stdout, stderr: '' }),
+      () => undefined,
+    );
   expect(await whoami(0, `"${account}","${sid}"\r\n`)).toEqual({ account, sid });
   await expect(whoami(0, 'garbage')).rejects.toBeInstanceOf(CliExit);
   await expect(whoami(1, '')).rejects.toBeInstanceOf(CliExit);

@@ -516,6 +516,20 @@ test('resolveUpgradeTargetFrom maps a brew+npm sibling that is not a Cellar link
   });
 });
 
+test('resolveUpgradeTargetFrom on Windows picks the npm .cmd shim, never the extensionless shell script', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-win-npm-shim-'));
+  const bin = join(dir, 'aio-proxy.cmd');
+  writeFileSync(bin, '');
+  writeFileSync(join(dir, 'npm'), '#!/bin/sh\n');
+  const env = { AIO_PROXY_UPGRADE_METHOD: 'npm' };
+  const resolve = () => withEmptyManagerPath(() => resolveUpgradeTargetFrom(bin, env, {}, 'win32'));
+  // Only the extensionless script: it is skipped and resolution falls back to PATH lookup.
+  const fallback = await resolve().catch(() => undefined);
+  expect(fallback !== undefined && 'command' in fallback ? fallback.command : undefined).not.toBe(join(dir, 'npm'));
+  writeFileSync(join(dir, 'npm.cmd'), '');
+  expect(await resolve()).toEqual({ method: 'npm', command: join(dir, 'npm.cmd'), bin });
+});
+
 test('resolveUpgradeTargetFrom does not treat a standalone binary next to npm as npm-owned', async () => {
   const prefix = mkdtempSync(join(tmpdir(), 'aio-curl-npm-sibling-'));
   const bin = join(prefix, 'bin', 'aio-proxy');

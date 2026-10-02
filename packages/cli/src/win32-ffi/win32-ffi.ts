@@ -23,6 +23,11 @@ const loadAdvapi32 = () =>
       returns: FFIType.i32,
     },
     ConvertSidToStringSidW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+    ConvertStringSidToSidW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
+    LookupAccountSidW: {
+      args: [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr],
+      returns: FFIType.i32,
+    },
   }).symbols;
 let advapi32Symbols: ReturnType<typeof loadAdvapi32> | undefined;
 const advapi32 = () => (advapi32Symbols ??= loadAdvapi32());
@@ -114,6 +119,43 @@ export function processUserSid(pid: number): string | undefined {
 
 /** This process's own account SID; `undefined` when it cannot be read. */
 export const currentUserSid = (): string | undefined => processUserSid(process.pid);
+
+/**
+ * `DOMAIN\name` for a string SID, read in UTF-16 so a non-ASCII account survives (console tools print it in
+ * the console code page); `undefined` when it cannot be resolved or not on win32.
+ */
+export function accountForSid(sid: string): string | undefined {
+  try {
+    const k = kernel32();
+    const a = advapi32();
+    const sidOut = new BigUint64Array(1);
+    if (a.ConvertStringSidToSidW(Buffer.from(`${sid}\0`, 'utf16le'), sidOut) === 0 || sidOut[0] === 0n)
+      return undefined;
+    const psid = sidOut[0]!;
+    try {
+      // The first call fails with ERROR_INSUFFICIENT_BUFFER and reports both lengths, terminators included.
+      const nameLength = new Uint32Array(1);
+      const domainLength = new Uint32Array(1);
+      const use = new Uint32Array(1);
+      a.LookupAccountSidW(null, psid, null, nameLength, null, domainLength, use);
+      if (!nameLength[0] || !domainLength[0]) return undefined;
+      const name = new Uint16Array(nameLength[0]);
+      const domain = new Uint16Array(domainLength[0]);
+      if (a.LookupAccountSidW(null, psid, name, nameLength, domain, domainLength, use) === 0) return undefined;
+      // On success the lengths exclude the terminator.
+      const decode = (buffer: Uint16Array, length: number | undefined) =>
+        new TextDecoder('utf-16le').decode(buffer.subarray(0, length));
+      const account = decode(name, nameLength[0]);
+      const domainName = decode(domain, domainLength[0]);
+      if (account === '') return undefined;
+      return domainName === '' ? account : `${domainName}\\${account}`;
+    } finally {
+      k.LocalFree(psid);
+    }
+  } catch {
+    return undefined;
+  }
+}
 
 function tokenUserSid(proc: Pointer | bigint): string | undefined {
   const k = kernel32();

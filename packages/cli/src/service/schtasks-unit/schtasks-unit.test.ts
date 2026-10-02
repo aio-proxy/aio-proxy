@@ -58,6 +58,14 @@ test('a task is ours when its principal and its trigger, if any, name this user 
   expect(isOwnTask(undefined, user)).toBe(false);
 });
 
+test('a non-ASCII account read back mangled from the task XML still matches by its ASCII characters', () => {
+  const user = { sid, account: 'DESKTOP-1\\张三' };
+  const withTrigger = (name: string) =>
+    parseTaskXml(renderTaskXml({ sid, exec, specPath }).replace(/(<LogonTrigger>[\s\S]*?<UserId>)[^<]*/u, `$1${name}`));
+  expect(isOwnTask(withTrigger('DESKTOP-1\\\uFFFD\uFFFD'), user)).toBe(true);
+  expect(isOwnTask(withTrigger('DESKTOP-1\\Bob'), user)).toBe(false);
+});
+
 test('service spec carries the desktop marker only for a desktop-owned unit', () => {
   const spec = renderServiceSpec({
     exec,
