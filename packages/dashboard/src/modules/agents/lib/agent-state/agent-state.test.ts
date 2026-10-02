@@ -22,6 +22,8 @@ test('the primary action moves each repairable state forward and leaves CLI-only
   expect(primaryAgentAction(undefined)).toBeUndefined();
   // Config left behind by an uninstalled Agent is only removable.
   expect(primaryAgentAction(local('modified', { host: { detected: false, support: 'unknown' } }))).toBeUndefined();
+  // Edited Claude Code keys are kept by configure, so only remove can move them forward.
+  expect(primaryAgentAction(local('modified', { target: 'claude-code' }))).toBeUndefined();
 });
 
 const installation = (installationId: string): AgentInstallationSummary => ({

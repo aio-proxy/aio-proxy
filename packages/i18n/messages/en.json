@@ -1717,6 +1717,7 @@
         "conflict": "The {target} files are not an intact integration managed by AIO Proxy. Resolve it with the CLI.",
         "recovery_required": "An interrupted setup must be recovered first. Run the configure command in a terminal.",
         "modified": "Some fields AIO Proxy manages were edited. Repair restores them.",
+        "modified_remove": "You edited fields AIO Proxy manages, and setup will not overwrite them. Remove the integration (your edits are kept), then configure again.",
         "missing": "Some managed files are missing. Repair reinstalls them.",
         "outdated": "A newer adapter ships with this AIO Proxy version."
       },

@@ -1717,6 +1717,7 @@
         "conflict": "{target} 的文件不是完整的 AIO Proxy 托管集成，请用 CLI 处理。",
         "recovery_required": "有中断的配置需要先恢复，请在终端运行配置命令。",
         "modified": "AIO Proxy 管理的部分字段被改动过，修复会还原它们。",
+        "modified_remove": "你修改过 AIO Proxy 管理的字段，配置不会覆盖它们。请先移除集成（会保留你的修改），再重新配置。",
         "missing": "部分托管文件缺失，修复会重新安装。",
         "outdated": "当前 AIO Proxy 版本带有更新的适配器。"
       },

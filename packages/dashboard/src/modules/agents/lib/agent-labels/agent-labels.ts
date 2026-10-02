@@ -17,7 +17,11 @@ const STATUS: Readonly<Record<AgentLocalStatus, () => string>> = {
 export const statusLabel = (status: AgentLocalStatus | undefined): string =>
   status === undefined ? m['dashboard.agents.status.unknown']() : STATUS[status]();
 
-export const statusHint = (status: AgentLocalStatus, target: string): string | undefined => {
+export const statusHint = (
+  status: AgentLocalStatus,
+  target: string,
+  repairable: boolean = true,
+): string | undefined => {
   switch (status) {
     case 'not_installed':
       return m['dashboard.agents.status_hint.not_installed']({ target });
@@ -26,7 +30,9 @@ export const statusHint = (status: AgentLocalStatus, target: string): string | u
     case 'recovery_required':
       return m['dashboard.agents.status_hint.recovery_required']();
     case 'modified':
-      return m['dashboard.agents.status_hint.modified']();
+      return repairable
+        ? m['dashboard.agents.status_hint.modified']()
+        : m['dashboard.agents.status_hint.modified_remove']();
     case 'missing':
       return m['dashboard.agents.status_hint.missing']();
     case 'outdated':

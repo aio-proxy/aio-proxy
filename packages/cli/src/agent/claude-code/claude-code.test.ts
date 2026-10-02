@@ -16,6 +16,7 @@ import {
   resolveClaudeCodeLocation,
   type ClaudeCodeDeps,
 } from './claude-code';
+import { configureClaudeCodeSettings } from './managed-settings';
 
 const ENDPOINT = 'http://127.0.0.1:9317';
 const PLACEHOLDER = 'aio-proxy-local';
@@ -144,6 +145,33 @@ test('a managed key the user edited is neither overwritten by configure nor reve
     preservedPaths: ['env.ANTHROPIC_AUTH_TOKEN'],
   });
   expect(await f.read()).toEqual({ env: { ANTHROPIC_AUTH_TOKEN: 'my-own-token' } });
+});
+
+test('a reconfigure interrupted before settings.json was written can be finished or removed', async () => {
+  const original = { env: { ANTHROPIC_BASE_URL: 'https://gateway.example' }, model: 'opus' };
+  const f = await fixture({ settings: original });
+  await configureClaudeCode(noKey, f.deps);
+  const configured = await f.read();
+  const crash = () =>
+    configureClaudeCodeSettings(
+      f.location,
+      { endpoint: 'http://127.0.0.1:9400', token: 'aio-proxy-other', credential: 'placeholder' },
+      {
+        afterMarker: async () => {
+          throw new Error('crashed');
+        },
+      },
+    );
+  await expect(crash()).rejects.toThrow('crashed');
+  expect(await f.read()).toEqual(configured);
+  // The previous run's values are recognised as aio-proxy's own, not as user edits.
+  expect((await configureClaudeCode(noKey, f.deps)).status).toBe('configured');
+  expect(await f.read()).toEqual(configured);
+  expect(await Bun.file(f.location.markerPath).text()).not.toContain('superseded');
+
+  await expect(crash()).rejects.toThrow('crashed');
+  expect(await removeClaudeCode(f.deps)).toMatchObject({ status: 'removed', preservedPaths: [] });
+  expect(await f.read()).toEqual(original);
 });
 
 test('with proxy keys and no way to choose one, configure fails instead of writing a bare endpoint', async () => {

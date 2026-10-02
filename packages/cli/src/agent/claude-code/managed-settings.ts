@@ -20,9 +20,11 @@ const SlotSchema = z.union([
   z.strictObject({ present: z.literal(true), value: z.json() }),
 ]);
 type Slot = z.output<typeof SlotSchema>;
+const DigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
 // `applied` is a digest: Claude Code rewrites settings.json itself, so ownership cannot live in
-// that file, and the sidecar must not become a second copy of a live proxy key.
-const FieldSchema = z.strictObject({ before: SlotSchema, applied: z.string().regex(/^[0-9a-f]{64}$/u) });
+// that file, and the sidecar must not become a second copy of a live proxy key. `superseded` is the
+// value a reconfigure is replacing; it is only on disk while that settings write is in flight.
+const FieldSchema = z.strictObject({ before: SlotSchema, applied: DigestSchema, superseded: DigestSchema.optional() });
 const MarkerSchema = z.strictObject({
   format: z.literal(1),
   managedBy: z.literal('aio-proxy'),
@@ -110,9 +112,18 @@ const slotOf = (env: Settings | undefined, key: ManagedKey): Slot =>
     ? { present: true, value: env[key] as Extract<Slot, { present: true }>['value'] }
     : { present: false };
 
-const isApplied = (env: Settings | undefined, key: ManagedKey, marker: Marker): boolean => {
+const digestOf = (env: Settings | undefined, key: ManagedKey): string | undefined => {
   const value = env?.[key];
-  return typeof value === 'string' && digest(value) === marker.fields[key].applied;
+  return typeof value === 'string' ? digest(value) : undefined;
+};
+
+const isApplied = (env: Settings | undefined, key: ManagedKey, marker: Marker): boolean =>
+  digestOf(env, key) === marker.fields[key].applied;
+
+/** Written by aio-proxy: the current value, or the one an interrupted reconfigure was replacing. */
+const isOwned = (env: Settings | undefined, key: ManagedKey, marker: Marker): boolean => {
+  const value = digestOf(env, key);
+  return value !== undefined && (value === marker.fields[key].applied || value === marker.fields[key].superseded);
 };
 
 const pathsOf = (keys: readonly ManagedKey[]): readonly string[] => keys.map((key) => `env.${key}`);
@@ -124,7 +135,7 @@ async function loadConfigurable(location: ClaudeCodeLocation) {
   if (previous !== undefined) {
     // A value still equal to `before` is an interrupted write, not a user edit.
     const drift = MANAGED_KEYS.filter(
-      (key) => !isApplied(env, key, previous.marker) && !isEqual(slotOf(env, key), previous.marker.fields[key].before),
+      (key) => !isOwned(env, key, previous.marker) && !isEqual(slotOf(env, key), previous.marker.fields[key].before),
     );
     if (drift.length > 0) throw new Error(`Claude Code managed fields changed: ${pathsOf(drift).join(', ')}`);
   }
@@ -170,6 +181,8 @@ export async function inspectClaudeCodeSettings(location: ClaudeCodeLocation): P
 export async function configureClaudeCodeSettings(
   location: ClaudeCodeLocation,
   input: { readonly endpoint: string; readonly token: string; readonly credential: Marker['credential'] },
+  /** Simulates a crash between the marker and settings writes. */
+  testDeps?: { readonly afterMarker?: () => Promise<void> },
 ): Promise<'configured' | 'unchanged'> {
   // With a base URL and no credential variable, Claude Code keeps using its saved claude.ai login.
   if (input.token.trim() === '') throw new Error('Claude Code needs a non-empty ANTHROPIC_AUTH_TOKEN');
@@ -182,7 +195,7 @@ export async function configureClaudeCodeSettings(
     before: previous?.marker.fields[key].before ?? slotOf(env, key),
     applied: digest(applied[key]),
   });
-  const marker: Marker = {
+  const settled: Marker = {
     format: 1,
     managedBy: 'aio-proxy',
     agent: 'claude-code',
@@ -192,10 +205,26 @@ export async function configureClaudeCodeSettings(
     createdEnv: previous?.marker.createdEnv ?? env === undefined,
     fields: { ANTHROPIC_BASE_URL: field('ANTHROPIC_BASE_URL'), ANTHROPIC_AUTH_TOKEN: field('ANTHROPIC_AUTH_TOKEN') },
   };
-  if (isEqual(previous?.marker, marker) && MANAGED_KEYS.every((key) => env?.[key] === applied[key])) return 'unchanged';
-  // Marker first: a crash in between leaves a marker whose fields still equal `before`, which both
-  // configure and remove recognise. The reverse order would leave written keys nobody owns.
-  await replaceFile(location.markerPath, serialize(marker), previous?.file);
+  if (isEqual(previous?.marker, settled) && MANAGED_KEYS.every((key) => env?.[key] === applied[key]))
+    return 'unchanged';
+  // Marker first: a crash in between leaves each field at `before` or at the `superseded` value of a
+  // reconfigure, which configure and remove both recognise. The reverse order would leave written
+  // keys nobody owns.
+  const supersede = (key: ManagedKey) => {
+    const current = digestOf(env, key);
+    return previous !== undefined && isOwned(env, key, previous.marker) && current !== settled.fields[key].applied
+      ? { ...settled.fields[key], superseded: current }
+      : settled.fields[key];
+  };
+  const journal: Marker = {
+    ...settled,
+    fields: {
+      ANTHROPIC_BASE_URL: supersede('ANTHROPIC_BASE_URL'),
+      ANTHROPIC_AUTH_TOKEN: supersede('ANTHROPIC_AUTH_TOKEN'),
+    },
+  };
+  await replaceFile(location.markerPath, serialize(journal), previous?.file);
+  await testDeps?.afterMarker?.();
   try {
     await replaceFile(
       location.settingsPath,
@@ -212,6 +241,11 @@ export async function configureClaudeCodeSettings(
       // Best-effort rollback must not replace the original failure.
     }
     throw error;
+  }
+  if (!isEqual(journal, settled)) {
+    const written = await readRegular(location.markerPath).catch(() => undefined);
+    // A leftover `superseded` only widens what remove restores; failing to drop it is harmless.
+    await replaceFile(location.markerPath, serialize(settled), written).catch(() => undefined);
   }
   return 'configured';
 }
@@ -235,7 +269,7 @@ export async function removeClaudeCodeSettings(
   for (const key of MANAGED_KEYS) {
     const { before } = marker.fields[key];
     if (isEqual(slotOf(parsed.env, key), before)) continue;
-    if (!isApplied(parsed.env, key, marker)) {
+    if (!isOwned(parsed.env, key, marker)) {
       preserved.push(key);
       continue;
     }

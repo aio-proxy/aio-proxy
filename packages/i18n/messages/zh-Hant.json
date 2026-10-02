@@ -1717,6 +1717,7 @@
         "conflict": "{target} 的檔案不是完整的 AIO Proxy 託管整合，請用 CLI 處理。",
         "recovery_required": "有中斷的設定需要先復原，請在終端機執行設定指令。",
         "modified": "AIO Proxy 管理的部分欄位被變更過，修復會還原它們。",
+        "modified_remove": "你修改過 AIO Proxy 管理的欄位，設定不會覆寫它們。請先移除整合（會保留你的修改），再重新設定。",
         "missing": "部分託管檔案缺失，修復會重新安裝。",
         "outdated": "目前 AIO Proxy 版本帶有更新的轉接器。"
       },

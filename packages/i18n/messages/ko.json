@@ -1717,6 +1717,7 @@
         "conflict": "{target} 파일이 온전한 AIO Proxy 관리 통합이 아닙니다. CLI로 해결하세요.",
         "recovery_required": "중단된 설정을 먼저 복구해야 합니다. 터미널에서 configure 명령을 실행하세요.",
         "modified": "AIO Proxy가 관리하는 일부 필드가 수정되었습니다. 복구하면 되돌립니다.",
+        "modified_remove": "AIO Proxy가 관리하는 필드를 직접 수정해 구성에서 덮어쓰지 않습니다. 통합을 제거한 뒤(수정 내용은 유지됨) 다시 구성하세요.",
         "missing": "일부 관리 파일이 없습니다. 복구하면 다시 설치합니다.",
         "outdated": "이 AIO Proxy 버전에 더 새로운 어댑터가 포함되어 있습니다."
       },

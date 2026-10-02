@@ -16,6 +16,8 @@ export type PrimaryAgentAction = 'configure' | 'update' | 'repair' | 'reconfigur
 export const primaryAgentAction = (local: AgentLocalState | undefined): PrimaryAgentAction | undefined => {
   // A config left behind by an uninstalled Agent can only be removed, never rewritten.
   if (local?.host.detected === false) return undefined;
+  // Claude Code configure never overwrites keys the user edited, so Repair could only fail.
+  if (local?.target === 'claude-code' && local.status === 'modified') return undefined;
   switch (local?.status) {
     case 'not_configured':
       return 'configure';
