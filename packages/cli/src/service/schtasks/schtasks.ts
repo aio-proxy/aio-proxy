@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, win32 } from 'node:path';
 
@@ -47,6 +47,7 @@ export type SchtasksIo = {
   /** The unit to write: resolved only by the commands that write one. */
   readonly unit: () => Promise<UnitOptions>;
   readonly readFile: (path: string) => string | undefined;
+  /** Whether `path` is a regular file: a directory at an exec path is as unrunnable as nothing. */
   readonly exists: (path: string) => boolean;
   readonly writeFile: (path: string, data: string | Uint8Array) => void;
   readonly rename: (from: string, to: string) => void;
@@ -376,7 +377,7 @@ export async function defaultSchtasksIo(
     },
     rename: renameSync,
     remove: (path) => rmSync(path, { force: true }),
-    exists: existsSync,
+    exists: (path) => statSync(path, { throwIfNoEntry: false })?.isFile() === true,
     imagePath: processImagePath,
     creationTime: processCreationTime,
     kill: (pid) => process.kill(pid),
