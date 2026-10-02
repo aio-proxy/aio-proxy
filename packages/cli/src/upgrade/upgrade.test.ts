@@ -530,6 +530,25 @@ test('resolveUpgradeTargetFrom on Windows picks the npm .cmd shim, never the ext
   expect(await resolve()).toEqual({ method: 'npm', command: join(dir, 'npm.cmd'), bin });
 });
 
+test('resolveUpgradeTargetFrom on Windows maps the npm-generated aio-proxy.cmd launcher to npm', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-win-npm-cmd-'));
+  const pkg = join(prefix, 'node_modules', 'aio-proxy');
+  const bin = join(prefix, 'aio-proxy.cmd');
+  mkdirSync(join(pkg, 'bin'), { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeFileSync(join(pkg, 'bin', 'aio-proxy.js'), '');
+  writeFileSync(
+    bin,
+    '@ECHO off\r\nSETLOCAL\r\nSET dp0=%~dp0\r\n"%_prog%"  "%dp0%\\node_modules\\aio-proxy\\bin\\aio-proxy.js" %*\r\n',
+  );
+  writeFileSync(join(prefix, 'npm.cmd'), '');
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'win32')).toEqual({
+    method: 'npm',
+    command: join(prefix, 'npm.cmd'),
+    bin,
+  });
+});
+
 test('resolveUpgradeTargetFrom does not treat a standalone binary next to npm as npm-owned', async () => {
   const prefix = mkdtempSync(join(tmpdir(), 'aio-curl-npm-sibling-'));
   const bin = join(prefix, 'bin', 'aio-proxy');
