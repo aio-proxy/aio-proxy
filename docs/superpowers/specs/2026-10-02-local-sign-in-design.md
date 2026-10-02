@@ -14,15 +14,21 @@
 
 一次性复制会让先刷新的一方作废另一方的 refresh token；永不刷新则在 Codex 不运行时 token 过期后不可用。因此：**对会轮换的存储，以宿主存储为准并写回**。
 
-aio-proxy 仍保存一份镜像，摘要、刷新调度、加密等现有机制不变。关联账号的每次刷新在刷新租约内：
+aio-proxy 仍保存一份镜像，摘要、刷新调度、加密等现有机制不变。同步逻辑是 core 中包装凭据端口的一个函数，运行在框架 exchange 回调里，即刷新租约内、CAS 之前。关联账号的每次刷新：
 
-1. 调用插件 `read` 读取宿主存储。fingerprint 与账号不同则以不可重试错误失败，诊断提示重新关联；宿主凭据与镜像不同（工具自己刷新过）则以宿主为当前值。
-2. 用当前值执行 exchange。
-3. 先调用插件 `write` 写回宿主，再 CAS 写入镜像。CAS 失败可在下次刷新时从宿主自愈；写回失败只记录脱敏错误，镜像仍更新。
+1. 重新读取账号行，标记已清除（期间改为浏览器登录）则按普通账号刷新，不触碰宿主。
+2. 调用插件 `read` 读取宿主存储。fingerprint 与账号不同则以不可重试错误失败，诊断提示重新关联。
+3. **较新者为准**：宿主 `expiresAt` 晚于镜像时以宿主为基准（工具自己刷新过），否则以镜像为基准（上次写回失败时由此修复宿主）。
+4. 用基准执行 exchange。
+5. 若未中止，调用插件 `write(next, previous)` 写回。插件仅在宿主仍持有 `previous`（同一账号、同一 refresh token）时替换，否则跳过，避免覆盖用户在 exchange 期间切换的账号或迟到回调覆盖更新的值。写回失败只记录脱敏错误，结果仍返回给框架 CAS 进镜像。
+
+首次关联的目录发现使用同一包装（基于内存端口），因此关联时宿主 access token 已过期也会写回。
 
 插件不实现 `write` 表示其存储不轮换：关联时一次性复制，之后刷新不再读取宿主存储（Copilot）。
 
-残余风险：运行中的 Codex 进程若在主动刷新前不重载磁盘，内存中的旧 refresh token 可能失败一次。实现完成后在真实机器上做一次端到端验证。
+残余风险：
+- 运行中的 Codex 进程若在主动刷新前不重载磁盘，内存中的旧 refresh token 可能失败一次。实现完成后在真实机器上做一次端到端验证。
+- 写回成功后租约丢失导致 CAS 失败时，账号进入不可重试诊断；恢复方式是对该 Provider 再次"使用本机登录"（fingerprint 相同，直接采纳宿主的新值）。租约丢失本身罕见，不为此增加自动恢复路径。
 
 ## SDK
 
@@ -33,7 +39,7 @@ export type OAuthLocalSignIn<AccountOptions, Credential> = {
   readonly source: LocalizedText;
   readonly detect: (context: { readonly signal: AbortSignal }) => Promise<boolean>;
   readonly read: (context: OAuthCredentialImportContext, options: AccountOptions) => Promise<OAuthLoginResult<Credential>>;
-  readonly write?: (context: { readonly signal: AbortSignal }, credential: Credential) => Promise<void>;
+  readonly write?: (context: { readonly signal: AbortSignal }, next: Credential, previous: Credential) => Promise<void>;
 };
 ```
 
@@ -55,12 +61,12 @@ export type OAuthLocalSignIn<AccountOptions, Credential> = {
 
 ## 插件实现
 
-- ChatGPT：`detect` 对 `$CODEX_HOME/auth.json` 做 stat；`read` 用 `isPlainObject` 与 zod 解析，要求 `auth_mode` 为 chatgpt 且 token 齐全，否则抛不含文件内容的通用错误；`write` 读取当前文件，只替换 `tokens` 与 `last_refresh`，保留其他字段，0600 临时文件后 rename。凭据新增可选 `idToken`，保证写回的 id_token 是新的。
+- ChatGPT：`detect` 对 `$CODEX_HOME/auth.json` 做 stat；`read` 用 `isPlainObject` 与 zod 解析，要求 `auth_mode` 缺省或以 `chatgpt` 开头（拒绝 `apikey`）且 token 齐全，否则抛不含文件内容的通用错误；`write` 读取当前文件，确认其 `refresh_token` 仍等于 `previous` 后，只替换 `tokens` 与 `last_refresh`（刷新响应省略 id_token 时保留原值），保留其他字段，0600 临时文件后 rename。凭据新增可选 `idToken`，保证写回的 id_token 是新的。
 - Copilot：`detect` 检查 `$XDG_CONFIG_HOME/github-copilot`（默认 `~/.config/github-copilot`）下 `apps.json` 或 `hosts.json` 存在；`read` 按账号选项的主机选条目，优先 appId 与插件 client_id 相同者，用 token 换一次 Copilot token 并取用户 ID 作 fingerprint；不实现 `write`。
 
 ## 隐私
 
-宿主存储读出的任何值都不进入日志、trace、诊断或错误消息；解析失败只报告"本机登录无效或不完整"。所有读取都发生在用户选择之后。
+宿主存储读出的凭据值不进入日志、trace、诊断、错误消息或 API 响应。框架在插件调用边界规范化错误：`read`/`write` 的失败替换为只含错误码的错误（关联时为 `OAUTH_LOCAL_SIGN_IN_INVALID`），exchange 的错误按宿主凭据值脱敏。账号 ID 等身份标识与浏览器登录同等对待（例如出现在建议的 Provider ID 中），不属于凭据。所有读取都发生在用户选择之后。
 
 ## 验证
 
