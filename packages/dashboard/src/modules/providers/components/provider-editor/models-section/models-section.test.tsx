@@ -1,10 +1,11 @@
-import { m } from '@aio-proxy/i18n';
-import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { getLocale, m } from '@aio-proxy/i18n';
+import { ProviderKind, ProviderMutationBodySchema, ProviderProtocol } from '@aio-proxy/types';
 import { Toaster } from '@aio-proxy/ui/components/toast';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 
 import {
   type ProviderEditorForm,
@@ -12,7 +13,9 @@ import {
   useProviderEditorForm,
 } from '../../../hooks/use-provider-editor-form';
 import type { ProviderAlias } from '../../../lib/alias-editor';
+import { serializeAlias } from '../../../lib/alias-editor';
 import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
+import { normalizeProviderFormValue, type ProviderFormShape } from '../../../lib/provider-form-value';
 import { providerEditViewQueryOptions } from '../../../services/providers-service';
 import { ModelsSection } from './models-section';
 
@@ -58,6 +61,7 @@ interface HarnessProps {
    * is observing — an unobserved cache entry stays quiet and would let a wrong invalidation pass.
    */
   readonly observeQueries?: boolean;
+  readonly refreshedAt?: string;
 }
 
 const Harness: React.FC<HarnessProps> = ({
@@ -67,8 +71,10 @@ const Harness: React.FC<HarnessProps> = ({
   pluginAliases,
   persistedProviderId,
   observeQueries,
+  refreshedAt,
 }) => {
   const form = useProviderEditorForm({ kind, initial });
+  const [catalog, setCatalog] = useState<{ models: readonly string[]; refreshedAt?: string }>();
   section = form;
   const observing = observeQueries === true && persistedProviderId !== undefined;
   const editView = useQuery({
@@ -83,7 +89,10 @@ const Harness: React.FC<HarnessProps> = ({
       form={form}
       kind={kind}
       persistedProviderId={persistedProviderId}
-      candidates={observed ?? candidates}
+      initial={initial}
+      candidates={catalog?.models ?? observed ?? candidates}
+      refreshedAt={catalog?.refreshedAt ?? refreshedAt}
+      onCatalogLoaded={setCatalog}
       pluginAliases={pluginAliases}
       summary={{ status: 'ok', hint: '' }}
     />
@@ -133,6 +142,215 @@ beforeEach(() => {
 });
 
 describe('ModelsSection', () => {
+  test.each([ProviderKind.Api, ProviderKind.AiSdk])(
+    'switching to sync probes the catalog and saves syncModels (%s)',
+    async (kind) => {
+      mocks.fetchCatalog.mockResolvedValue({ ok: true, models: ['a', 'b'] });
+      renderSection({
+        kind,
+        initial:
+          kind === ProviderKind.Api
+            ? apiInitial(['old'])
+            : { kind, id: 'provider', packageName: '@ai-sdk/openai', models: ['old'] },
+      });
+
+      fireEvent.click(screen.getByTestId('models-sync-switch'));
+
+      await waitFor(() => expect(section.state.values.syncModels).toBe(true));
+      expect(mocks.fetchCatalog).toHaveBeenCalledOnce();
+      expect(section.state.values.models).toEqual([]);
+      expect(section.state.values.excludedModels).toEqual([]);
+      expect(within(screen.getByTestId('model-row-b')).getByRole('checkbox')).toBeChecked();
+      expect(screen.queryByLabelText(m['dashboard.providers.editor.models_manual_add']())).toBeNull();
+      expect(within(screen.getByTestId('model-row-a')).queryByTestId('model-row-remove')).toBeNull();
+    },
+  );
+
+  test.each([
+    ['unsupported', { ok: false, error: { code: 'catalog_unsupported' } }, 'catalog_unsupported'],
+    ['empty', { ok: true, models: [] }, 'catalog_unavailable'],
+  ])('switch stays off when the catalog is %s', async (_reason, result, code) => {
+    mocks.fetchCatalog.mockResolvedValue(result);
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['old']) });
+    fireEvent.click(screen.getByTestId('models-sync-switch'));
+
+    await screen.findByText(m['dashboard.providers.form.catalog_failed']({ code: code as string }));
+    expect(section.state.values.syncModels).not.toBe(true);
+    expect(section.state.values.models).toEqual(['old']);
+    expect(screen.getByTestId('models-sync-switch')).not.toBeChecked();
+  });
+
+  test('hiding a discovered model writes excludedModels', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: { ...apiInitial([]), syncModels: true }, candidates: ['a', 'b'] });
+    fireEvent.click(within(screen.getByTestId('model-row-b')).getByRole('checkbox'));
+
+    await waitFor(() => expect(section.state.values.excludedModels).toEqual(['b']));
+    expect(section.state.values.models).toEqual([]);
+  });
+
+  test('switching to manual seeds models from exposed models and alias targets', async () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: {
+        ...apiInitial([]),
+        syncModels: true,
+        excludedModels: ['b', 'c'],
+        alias: { fast: { model: 'b', preserve: false } },
+      },
+      candidates: ['a', 'b', 'c'],
+    });
+    fireEvent.click(screen.getByTestId('models-sync-switch'));
+
+    await waitFor(() => expect(section.state.values.models).toEqual(['a', 'b']));
+    expect(section.state.values.syncModels).toBeUndefined();
+    expect(section.state.values.excludedModels).toBeUndefined();
+    const body = normalizeProviderFormValue({
+      ...section.state.values,
+      alias: serializeAlias(section.state.values.alias ?? [], 'edit'),
+    } as ProviderFormShape);
+    expect(body).not.toHaveProperty('syncModels');
+    expect(body).not.toHaveProperty('excludedModels');
+    expect(ProviderMutationBodySchema.safeParse(body).success).toBe(true);
+    expect(mocks.fetchCatalog).not.toHaveBeenCalled();
+  });
+
+  test('an alias may target a hidden model in sync mode', async () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: {
+        ...apiInitial([]),
+        syncModels: true,
+        excludedModels: ['b'],
+        alias: { fast: { model: 'b', preserve: false } },
+      },
+      candidates: ['a', 'b'],
+    });
+
+    const card = screen.getByTestId('provider-alias-card');
+    expect(within(card).getByLabelText(UPSTREAM_LABEL)).not.toHaveAttribute('aria-invalid', 'true');
+    expect(await targetOptions()).toEqual(['a', 'b']);
+  });
+
+  test('refresh uses the draft probe after the base URL changes', async () => {
+    mocks.fetchCatalog.mockResolvedValue({ ok: true, models: ['fresh'] });
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: { ...apiInitial([]), syncModels: true },
+      candidates: ['old'],
+      persistedProviderId: 'provider',
+    });
+    section.setFieldValue('baseURL', 'https://changed.example/v1');
+    section.setFieldValue('endpoints', {
+      shape: 'shared',
+      baseURL: 'https://changed.example/v1',
+      protocols: [ProviderProtocol.OpenAICompatible],
+    });
+    fireEvent.click(screen.getByTestId('models-catalog-load'));
+
+    await screen.findByTestId('model-row-fresh');
+    expect(mocks.fetchCatalog).toHaveBeenCalledOnce();
+    expect(mocks.fetchEditView).not.toHaveBeenCalled();
+  });
+
+  test('shows when the catalog was last refreshed', () => {
+    const refreshedAt = '2026-10-02T03:04:05.000Z';
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: { ...apiInitial([]), syncModels: true },
+      candidates: ['a'],
+      refreshedAt,
+    });
+
+    expect(screen.getByTestId('models-sync-refreshed')).toHaveTextContent(
+      m['dashboard.providers.form.models_sync_refreshed_at']({
+        time: new Date(refreshedAt).toLocaleString(getLocale()),
+      }),
+    );
+  });
+
+  test.each([ProviderKind.Api, ProviderKind.AiSdk])(
+    'an unchanged saved synced Provider refreshes its stored catalog (%s)',
+    async (kind) => {
+      const refreshedAt = '2026-10-02T06:07:08.000Z';
+      mocks.fetchEditView.mockResolvedValue({
+        provider: { kind, id: 'provider' },
+        sync: { models: ['a', 'fresh'], refreshedAt },
+        catalogRefreshed: true,
+      });
+      renderSection({
+        kind,
+        initial:
+          kind === ProviderKind.Api
+            ? { ...apiInitial([]), syncModels: true }
+            : {
+                kind,
+                id: 'provider',
+                packageName: '@ai-sdk/openai',
+                options: { baseURL: 'https://api.example/v1' },
+                syncModels: true,
+              },
+        candidates: ['a'],
+        persistedProviderId: 'provider',
+      });
+
+      fireEvent.click(screen.getByTestId('models-catalog-load'));
+
+      await screen.findByTestId('model-row-fresh');
+      expect(mocks.fetchEditView).toHaveBeenCalledWith('provider', { refreshCatalog: true });
+      expect(mocks.fetchCatalog).not.toHaveBeenCalled();
+      expect(screen.getByTestId('models-sync-refreshed')).toHaveTextContent(
+        m['dashboard.providers.form.models_sync_refreshed_at']({
+          time: new Date(refreshedAt).toLocaleString(getLocale()),
+        }),
+      );
+    },
+  );
+
+  test('a sync mode enabled but not saved refreshes through the draft probe', async () => {
+    mocks.fetchCatalog
+      .mockResolvedValueOnce({ ok: true, models: ['a'] })
+      .mockResolvedValueOnce({ ok: true, models: ['fresh'] });
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['old']), persistedProviderId: 'provider' });
+    fireEvent.click(screen.getByTestId('models-sync-switch'));
+    await waitFor(() => expect(section.state.values.syncModels).toBe(true));
+    expect(screen.getByTestId('models-sync-refreshed')).toHaveTextContent(
+      m['dashboard.providers.form.models_sync_never'](),
+    );
+
+    fireEvent.click(screen.getByTestId('models-catalog-load'));
+
+    await screen.findByTestId('model-row-fresh');
+    expect(mocks.fetchCatalog).toHaveBeenCalledTimes(2);
+    expect(mocks.fetchEditView).not.toHaveBeenCalled();
+  });
+
+  test('a failed synced refresh preserves the last good models and refreshed time', async () => {
+    const refreshedAt = '2026-10-02T06:07:08.000Z';
+    mocks.fetchEditView.mockResolvedValue({
+      provider: { kind: ProviderKind.Api, id: 'provider' },
+      sync: { models: ['untrusted'], refreshedAt: '2026-10-02T07:00:00.000Z' },
+      catalogRefreshed: false,
+    });
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: { ...apiInitial([]), syncModels: true },
+      candidates: ['a'],
+      refreshedAt,
+      persistedProviderId: 'provider',
+    });
+
+    fireEvent.click(screen.getByTestId('models-catalog-load'));
+
+    await screen.findByText(m['dashboard.providers.form.catalog_failed']({ code: 'catalog_unavailable' }));
+    expect(screen.getByTestId('model-row-a')).toBeInTheDocument();
+    expect(screen.queryByTestId('model-row-untrusted')).toBeNull();
+    expect(screen.getByTestId('models-sync-refreshed')).toHaveTextContent(
+      m['dashboard.providers.form.models_sync_refreshed_at']({
+        time: new Date(refreshedAt).toLocaleString(getLocale()),
+      }),
+    );
+  });
+
   test('renders one row per whitelisted model', () => {
     renderSection({
       kind: ProviderKind.Api,

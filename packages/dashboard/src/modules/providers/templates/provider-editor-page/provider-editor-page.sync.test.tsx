@@ -1,0 +1,138 @@
+import { m } from '@aio-proxy/i18n';
+import { ProviderKind, ProviderMutationBodySchema, ProviderProtocol } from '@aio-proxy/types';
+import { Toaster } from '@aio-proxy/ui/components/toast';
+import { beforeEach, expect, rs, test } from '@rstest/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+
+import { ProviderFormMode } from '../../lib/constants';
+import { ProviderEditorPage } from './provider-editor-page';
+
+const mocks = rs.hoisted(() => ({
+  catalog: rs.fn(),
+  testDraft: rs.fn(),
+  update: rs.fn(),
+  editView: rs.fn(),
+  navigate: rs.fn(),
+}));
+
+// Keep Form and Query real so a catalog result must travel through the page's shared state.
+rs.mock('../../services/provider-draft', () => ({
+  fetchProviderDraftCatalog: mocks.catalog,
+  testProviderDraftModel: mocks.testDraft,
+}));
+rs.mock('../../services/providers-service', () => ({
+  fetchProviderEditView: mocks.editView,
+  updateProviderMutationFn: mocks.update,
+  createProviderMutationFn: rs.fn(),
+  deleteProviderMutationFn: rs.fn(),
+}));
+rs.mock('../../services/oauth-service', () => ({
+  oauthCapabilitiesQueryOptions: () => ({
+    queryKey: ['oauth-capabilities'],
+    queryFn: async () => ({ capabilities: [] }),
+  }),
+  oauthSessionQueryOptions: () => ({ queryKey: ['oauth-session'], queryFn: rs.fn(), enabled: false }),
+  startOAuthSession: rs.fn(),
+  submitOAuthCallback: rs.fn(),
+  cancelOAuthSession: rs.fn(),
+}));
+rs.mock('@tanstack/react-router', () => ({
+  Link: ({ children }: React.PropsWithChildren) => <button type="button">{children}</button>,
+  useNavigate: () => mocks.navigate,
+}));
+
+beforeEach(() => {
+  mocks.catalog.mockReset();
+  mocks.catalog.mockResolvedValue({ ok: true, models: ['a', 'b'] });
+  mocks.testDraft.mockReset();
+  mocks.testDraft.mockResolvedValue({ ok: true });
+  mocks.update.mockReset();
+  mocks.update.mockResolvedValue({ provider: { id: 'provider' } });
+  mocks.editView.mockReset();
+});
+
+test('a draft sync catalog updates preview, save status and test models together', async () => {
+  const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <Toaster />
+      <ProviderEditorPage
+        mode={ProviderFormMode.Edit}
+        kind={ProviderKind.Api}
+        providerId="provider"
+        initial={{
+          id: 'provider',
+          protocol: ProviderProtocol.OpenAICompatible,
+          baseURL: 'https://api.example/v1',
+          models: ['old'],
+        }}
+        onSessionIdChange={rs.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByTestId('models-sync-switch'));
+  await screen.findByTestId('model-row-b');
+
+  expect(screen.getByTestId('exposure-panel')).toHaveTextContent('a');
+  expect(screen.getByTestId('exposure-panel')).toHaveTextContent('b');
+  expect(screen.getByTestId('exposure-panel')).not.toHaveTextContent('old');
+  const picker = screen.getByRole('combobox', { name: m['dashboard.providers.editor.validate_model']() });
+  expect(picker).toHaveTextContent('a');
+  fireEvent.click(within(screen.getByTestId('model-row-a')).getByRole('checkbox'));
+  await waitFor(() => expect(picker).toHaveTextContent('b'));
+  expect(screen.queryByTestId('exposure-route-a')).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: m['dashboard.providers.editor.validate_action']() }));
+  await waitFor(() =>
+    expect(mocks.testDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'b',
+        draft: expect.objectContaining({ syncModels: true, excludedModels: ['a'] }),
+      }),
+    ),
+  );
+  const save = within(screen.getByTestId('editor-footer')).getByRole('button', {
+    name: m['dashboard.providers.editor.footer_save'](),
+  });
+  expect(save).toBeEnabled();
+  fireEvent.click(save);
+  await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+  const input = mocks.update.mock.calls[0]?.[0] as { body: unknown };
+  expect(input.body).toMatchObject({ syncModels: true, models: [], excludedModels: ['a'] });
+  expect(ProviderMutationBodySchema.safeParse(input.body).success).toBe(true);
+  expect(mocks.editView).not.toHaveBeenCalled();
+  queryClient.clear();
+});
+
+test('pulling a manual catalog does not expose or make unchecked models testable', async () => {
+  const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ProviderEditorPage
+        mode={ProviderFormMode.Edit}
+        kind={ProviderKind.Api}
+        providerId="provider"
+        initial={{
+          id: 'provider',
+          protocol: ProviderProtocol.OpenAICompatible,
+          baseURL: 'https://api.example/v1',
+          models: [],
+        }}
+        onSessionIdChange={rs.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByTestId('models-catalog-load'));
+  await screen.findByTestId('model-row-b');
+
+  expect(within(screen.getByTestId('model-row-b')).getByRole('checkbox')).not.toBeChecked();
+  expect(screen.queryByTestId('exposure-route-b')).toBeNull();
+  expect(screen.queryByRole('button', { name: m['dashboard.providers.editor.validate_action']() })).toBeNull();
+  expect(
+    within(screen.getByTestId('editor-footer')).getByRole('button', {
+      name: m['dashboard.providers.editor.footer_save'](),
+    }),
+  ).toBeDisabled();
+  queryClient.clear();
+});

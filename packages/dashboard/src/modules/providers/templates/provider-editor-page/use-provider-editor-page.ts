@@ -25,7 +25,6 @@ import {
 } from '../../hooks/use-provider-editor-form';
 import { useProviderCreate, useProviderUpdate } from '../../hooks/use-provider-mutations';
 import {
-  aliasEditorIssues,
   isOAuthInheritOff,
   serializeAlias,
   serializeOAuthAlias,
@@ -33,13 +32,14 @@ import {
   toOAuthAliasRows,
 } from '../../lib/alias-editor';
 import { ProviderFormMode } from '../../lib/constants';
-import { oauthEditorExposedModels } from '../../lib/exposed-models';
+import { editorSectionInput } from '../../lib/editor-section-input';
 import { oauthAccountSubmission } from '../../lib/oauth-account-submission';
 import { capabilityKey } from '../../lib/oauth-capability-key';
 import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
 import { normalizeProviderFormValue, type ProviderFormShape } from '../../lib/provider-form-value';
-import { blockingSections, sectionOrder, sectionStatuses, type SectionStatusInput } from '../../lib/section-status';
+import { blockingSections, sectionOrder, sectionStatuses } from '../../lib/section-status';
 import { oauthCapabilitiesQueryOptions } from '../../services/oauth-service';
+import type { ProviderSyncView } from '../../services/providers-service';
 import { useOAuthEditorSession } from './use-oauth-editor-session';
 
 const accountDraft = (values: {
@@ -240,53 +240,10 @@ export interface ProviderEditorPageProps {
   readonly initial?: ProviderEditorInitial | undefined;
   readonly oauth?: DashboardOAuthProviderEdit | undefined;
   readonly provider?: OAuthProvider | undefined;
+  readonly sync?: ProviderSyncView | undefined;
   readonly sessionId?: string | undefined;
   readonly onSessionIdChange: (sessionId: string | undefined) => void;
 }
-
-const editorSectionInput = (
-  values: ProviderEditorShape,
-  kind: ProviderKind,
-  mode: ProviderFormMode,
-  extras: {
-    readonly aliasIssues: SectionStatusInput['aliasIssues'];
-    readonly authorized: boolean;
-    readonly capabilityKey: string;
-    readonly discoveredModels: readonly string[] | undefined;
-    readonly excludedModels?: readonly string[] | undefined;
-    readonly hasApiKey: boolean;
-    readonly models: readonly string[];
-    readonly optionsValid: boolean;
-    readonly transformsValid: boolean;
-    readonly transformCount: number;
-  },
-): SectionStatusInput => ({
-  kind: values.kind ?? kind,
-  mode,
-  id: values.id ?? '',
-  ...(values.kind === 'api'
-    ? {
-        baseURL: values.baseURL,
-        protocol: values.protocol,
-        endpoints: values.endpoints,
-        apiKey: values.apiKey,
-        hasApiKey: extras.hasApiKey,
-      }
-    : {}),
-  capabilityKey: extras.capabilityKey,
-  authorized: extras.authorized,
-  packageName: values.kind === 'ai-sdk' ? values.packageName : undefined,
-  models: extras.models,
-  excludedModels: extras.excludedModels,
-  discoveredModels: extras.discoveredModels,
-  aliasCount: (values.alias ?? []).length,
-  aliasIssues: extras.aliasIssues,
-  transformsValid: extras.transformsValid,
-  transformCount: extras.transformCount,
-  headerCount: values.kind === 'api' ? Object.keys(values.headers ?? {}).length : 0,
-  proxyCustom: values.proxy !== undefined && values.proxy !== null,
-  optionsValid: extras.optionsValid,
-});
 
 const nameAfterOAuthSuccess = (
   form: ReturnType<typeof useProviderEditorForm>,
@@ -336,11 +293,15 @@ export const useProviderEditorPage = ({
   initial,
   oauth,
   provider,
+  sync,
   sessionId,
   onSessionIdChange,
 }: ProviderEditorPageProps) => {
   const [optionsValid, setOptionsValid] = useState(kind !== 'ai-sdk');
   const [transformsValid, setTransformsValid] = useState(true);
+  const [draftCatalog, setDraftCatalog] = useState<ProviderSyncView>();
+  const catalog = draftCatalog ?? sync;
+  const candidates = draftCatalog?.models ?? oauth?.models ?? sync?.models;
   const form = useProviderEditorForm({ kind, initial });
   const accountForm = useOAuthProviderForm(
     () => undefined,
@@ -384,23 +345,16 @@ export const useProviderEditorPage = ({
   const values = useSelector(form.store, (state) => state.values);
   const accountValues = useSelector(accountForm.store, (state) => state.values);
   const capabilities = capabilitiesQuery.data?.capabilities ?? [];
-  const models = values.kind === 'oauth' ? [] : (values.models ?? []);
-  const excludedModels = values.kind === 'oauth' ? (values.excludedModels ?? []) : undefined;
-  const oauthExposed = kind === 'oauth' ? oauthEditorExposedModels(oauth?.models, excludedModels) : undefined;
-  const aliasIssues = aliasEditorIssues(values.alias ?? [], oauthExposed ?? models);
   const authorized =
     mode === ProviderFormMode.Edit || authorizedProviderId !== undefined || session?.status === 'succeeded';
   const transforms = values.transforms as ProviderTransforms | undefined;
   const hasApiKey = initial !== undefined && 'apiKey' in initial && (initial.apiKey ?? '') !== '';
   const summaries = sectionStatuses(
     editorSectionInput(values, kind, mode, {
-      aliasIssues,
       authorized,
       capabilityKey: accountValues.capabilityKey,
-      discoveredModels: oauth?.models,
-      excludedModels,
+      discoveredModels: candidates,
       hasApiKey,
-      models,
       optionsValid,
       transformsValid,
       transformCount: transforms?.request?.length ?? 0,
@@ -441,6 +395,9 @@ export const useProviderEditorPage = ({
   return {
     form,
     accountForm,
+    candidates,
+    refreshedAt: catalog?.refreshedAt,
+    onCatalogLoaded: setDraftCatalog,
     kind,
     mode,
     capabilities,
