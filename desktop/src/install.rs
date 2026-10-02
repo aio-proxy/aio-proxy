@@ -3,7 +3,6 @@
 use std::cmp::Ordering;
 use std::fs::{self, File, OpenOptions};
 use std::io;
-use std::os::fd::AsRawFd;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -83,6 +82,7 @@ pub fn location_allows_persistence(bundle: &Path, home: &Path, read_only_volume:
 }
 
 /// Unknown counts as read-only.
+#[cfg(unix)]
 pub fn volume_is_read_only(path: &Path) -> bool {
     let Ok(c_path) = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()) else {
         return true;
@@ -91,6 +91,12 @@ pub fn volume_is_read_only(path: &Path) -> bool {
     // SAFETY: statvfs writes the struct on success; we read it only then.
     let rc = unsafe { libc::statvfs(c_path.as_ptr(), stats.as_mut_ptr()) };
     rc != 0 || unsafe { stats.assume_init() }.f_flag & libc::ST_RDONLY != 0
+}
+
+/// ponytail: Windows has no read-only-volume concept in this policy yet; revisit with the Windows installer.
+#[cfg(windows)]
+pub fn volume_is_read_only(_path: &Path) -> bool {
+    false
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -136,7 +142,10 @@ pub fn repoint(symlink: &Path, target: &Path) -> io::Result<()> {
     fs::create_dir_all(dir)?;
     let temp = dir.join(format!(".aio-proxy.{}.tmp", std::process::id()));
     let _ = fs::remove_file(&temp);
+    #[cfg(unix)]
     std::os::unix::fs::symlink(target, &temp)?;
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(target, &temp)?;
     fs::rename(&temp, symlink).inspect_err(|_| {
         let _ = fs::remove_file(&temp);
     })
@@ -185,7 +194,7 @@ pub fn probe_version(exec: &Path) -> Option<String> {
     output.status.success().then(|| version::parse_version_output(&String::from_utf8_lossy(&output.stdout)))?
 }
 
-/// Held for the life of the process; the kernel drops the flock when it exits.
+/// Held for the life of the process; the OS drops the lock when it exits.
 #[derive(Debug)]
 #[must_use = "dropping releases the single-instance lock"]
 pub struct InstanceLock {
@@ -198,12 +207,11 @@ pub fn acquire_instance_lock(path: &Path) -> io::Result<Option<InstanceLock>> {
         fs::create_dir_all(dir)?;
     }
     let file = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(path)?;
-    // SAFETY: flock on a descriptor we own.
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
-        return Ok(Some(InstanceLock { _file: file }));
+    match file.try_lock() {
+        Ok(()) => Ok(Some(InstanceLock { _file: file })),
+        Err(fs::TryLockError::WouldBlock) => Ok(None),
+        Err(fs::TryLockError::Error(error)) => Err(error),
     }
-    let error = io::Error::last_os_error();
-    if error.raw_os_error() == Some(libc::EWOULDBLOCK) { Ok(None) } else { Err(error) }
 }
 
 #[cfg(test)]

@@ -33,6 +33,7 @@ fn a_service_command_carries_the_plist_home() {
     assert_eq!(env_of(&command, "AIO_PROXY_HOME"), Some(Some(OsStr::new("/Users/me/.aio-proxy-work"))));
 }
 
+#[cfg(unix)]
 #[test]
 fn discovery_reads_the_childs_stdout_and_reports_failures_without_it() {
     let dir = tempfile::tempdir().unwrap();
@@ -54,6 +55,7 @@ fn discovery_reads_the_childs_stdout_and_reports_failures_without_it() {
     assert!(error.contains("boom") && !error.contains("tok-leak"), "{error}");
 }
 
+#[cfg(unix)]
 #[test]
 fn a_failing_discovery_is_an_error_even_when_stdout_is_valid_json() {
     let dir = tempfile::tempdir().unwrap();

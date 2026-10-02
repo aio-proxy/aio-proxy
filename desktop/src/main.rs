@@ -1,7 +1,5 @@
 //! The menu-bar app: GPUI application, single-instance lock, tray, `--version`.
 
-use std::path::PathBuf;
-
 use aio_proxy_desktop::app::{self, AppEvent, AppModel, changed};
 use aio_proxy_desktop::install;
 use aio_proxy_desktop::panel::{self, PanelWindow};
@@ -16,13 +14,13 @@ fn main() {
         println!("{APP_VERSION}");
         return;
     }
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
-        eprintln!("aio-proxy-desktop: HOME is not set");
+    let Some(home) = std::env::home_dir() else {
+        eprintln!("aio-proxy-desktop: cannot find the home directory");
         std::process::exit(1);
     };
     let paths = platform::paths(&home);
     log::init(&paths.logs);
-    // Held until the process exits; the kernel drops the flock then.
+    // Held until the process exits; the OS drops the lock then.
     let _lock = match install::acquire_instance_lock(&paths.lock) {
         Ok(Some(lock)) => lock,
         Ok(None) => {
@@ -41,8 +39,7 @@ fn main() {
     gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
         theme::apply(cx.window_appearance(), cx);
-        #[cfg(target_os = "macos")]
-        cx.set_http_client(std::sync::Arc::new(aio_proxy_desktop::http::UrlSession));
+        cx.set_http_client(std::sync::Arc::new(reqwest_client::ReqwestClient::new()));
         let (events, mut inbox) = mpsc::unbounded::<AppEvent>();
         platform::on_launch(cx, events.clone());
 

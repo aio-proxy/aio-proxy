@@ -1,4 +1,5 @@
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -115,10 +116,13 @@ fn an_unreadable_installed_copy_is_left_alone() {
 fn a_second_instance_cannot_take_the_lock() {
     let dir = tempfile::tempdir().unwrap();
     let lock = dir.path().join("support/instance.lock");
-    let _first = acquire_instance_lock(&lock).unwrap().expect("the first copy takes the lock");
+    let first = acquire_instance_lock(&lock).unwrap().expect("the first copy takes the lock");
     assert!(acquire_instance_lock(&lock).unwrap().is_none(), "a second copy must exit");
+    drop(first);
+    assert!(acquire_instance_lock(&lock).unwrap().is_some(), "exiting releases the lock");
 }
 
+#[cfg(unix)]
 #[test]
 fn probes_a_copy_version_with_its_cli() {
     let dir = tempfile::tempdir().unwrap();

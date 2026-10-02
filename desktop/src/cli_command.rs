@@ -1,20 +1,28 @@
 //! The `aiop` shell command: whether the user's shell finds one, and installing ours into
 //! /usr/local/bin (on every PATH through /etc/paths) behind the system's admin prompt.
 
+#[cfg(unix)]
 use std::ffi::CStr;
 use std::path::Path;
+#[cfg(unix)]
 use std::process::Command;
+#[cfg(unix)]
 use std::time::Duration;
 
+#[cfg(unix)]
 use crate::process::{run_with_timeout, tail};
 
 pub const LINK: &str = "/usr/local/bin/aiop";
+#[cfg(unix)]
 /// Linked only when free: an npm or Homebrew `aio-proxy` already there is left alone.
 const LONG_LINK: &str = "/usr/local/bin/aio-proxy";
+#[cfg(unix)]
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(unix)]
 /// Long enough for the user to type a password.
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
 
+#[cfg(unix)]
 /// The user's login shell from the account database: an app launched from Finder has launchd's PATH,
 /// not the one the user's terminal builds.
 fn login_shell() -> String {
@@ -27,8 +35,10 @@ fn login_shell() -> String {
     shell.filter(|shell| !shell.is_empty()).unwrap_or_else(|| "/bin/zsh".into())
 }
 
+#[cfg(unix)]
 /// Prefixes every line the probe prints, so rc-file chatter on stdout is ignored.
 const MARK: &str = "aio-proxy-probe:";
+#[cfg(unix)]
 const LINK_DIR: &str = "/usr/local/bin";
 
 /// What the user's shell resolves, as their terminal would.
@@ -43,6 +53,7 @@ pub struct Probe {
 
 /// `None` when the shell could not answer (a slow or broken rc file): the install offer stays hidden,
 /// since installing replaces whatever `aiop` the shell would have found.
+#[cfg(unix)]
 pub fn probe() -> Option<Probe> {
     // Interactive too, since version managers often extend PATH only in ~/.zshrc. `&&` and `;` only,
     // so fish runs it as well. The PATH line always prints: it proves the lookups ran.
@@ -55,6 +66,7 @@ pub fn probe() -> Option<Probe> {
     parse_probe(&String::from_utf8_lossy(&output.stdout))
 }
 
+#[cfg(unix)]
 fn parse_probe(stdout: &str) -> Option<Probe> {
     let marks: Vec<&str> = stdout.lines().filter_map(|line| line.trim().strip_prefix(MARK)).collect();
     let path = marks.iter().find_map(|mark| mark.strip_prefix("path:"))?;
@@ -66,6 +78,7 @@ fn parse_probe(stdout: &str) -> Option<Probe> {
     })
 }
 
+#[cfg(unix)]
 /// Run as root behind the prompt with `$1` target, `$2` aiop, `$3` aio-proxy or empty. An `aiop` is
 /// replaced only when absent, dangling or already ours, since the probe ran earlier and only saw the
 /// user's PATH; `aio-proxy` is linked only when free, so an npm or Homebrew copy is left alone.
@@ -81,10 +94,12 @@ fi
 
 /// Points `/usr/local/bin/aiop`, and `aio-proxy` when `alias` and free, at `target`. `Ok(false)` when
 /// the user cancelled the prompt.
+#[cfg(unix)]
 pub fn install(target: &Path, alias: bool) -> Result<bool, String> {
     link(target, Path::new(LINK), alias.then_some(Path::new(LONG_LINK)), true)
 }
 
+#[cfg(unix)]
 fn link(target: &Path, aiop: &Path, alias: Option<&Path>, admin: bool) -> Result<bool, String> {
     let privileges = if admin { " with administrator privileges" } else { "" };
     // Script and paths reach the shell only through `quoted form of`.
@@ -120,5 +135,16 @@ fn link(target: &Path, aiop: &Path, alias: Option<&Path>, admin: bool) -> Result
     if stderr.contains("(-128)") { Ok(false) } else { Err(stderr) }
 }
 
-#[cfg(test)]
+/// ponytail: the Windows `aiop` install is a later task; until then the offer stays hidden.
+#[cfg(windows)]
+pub fn probe() -> Option<Probe> {
+    None
+}
+
+#[cfg(windows)]
+pub fn install(_target: &Path, _alias: bool) -> Result<bool, String> {
+    Err("not available on Windows".into())
+}
+
+#[cfg(all(test, unix))]
 mod tests;

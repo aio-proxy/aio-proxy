@@ -5,9 +5,6 @@ pub mod app;
 pub mod cli_command;
 pub mod client;
 pub mod connect;
-// NSURLSession; replaced by a shared client in the next task.
-#[cfg(target_os = "macos")]
-pub mod http;
 pub mod install;
 pub mod log;
 pub mod panel;

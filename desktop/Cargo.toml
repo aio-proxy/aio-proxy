@@ -15,6 +15,11 @@ semver = "1.0.28"
 url = "2.5.8"
 # Already in the tree through GPUI; only PNG, for the bundled tray mark.
 image = { version = "0.25.10", default-features = false, features = ["png"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# GPUI ships no HTTP client on native platforms; this one loads remote plugin icons for `img()`.
+reqwest_client = { package = "gpui-pre-reqwest-client", version = "=0.3.7" }
+
+[target.'cfg(unix)'.dependencies]
 libc = "0.2.189"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
@@ -50,8 +55,6 @@ objc2-foundation = { version = "0.3.2", features = [
   "NSOperation",
   "NSString",
   "NSURL",
-  "NSURLResponse",
-  "NSURLSession",
   "NSValue",
   "block2",
 ] }
