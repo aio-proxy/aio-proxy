@@ -25,6 +25,14 @@ test('a principal given as the account name matches case-insensitively', () => {
   expect(inspectTask(xmlFor('desktop-1\\ada'), specFor(), user, specPath).wrapperValid).toBe(true);
 });
 
+test('a trigger user spelled as the account beside a SID principal is still ours; another account is not', () => {
+  const withTrigger = (name: string) => xmlFor(sid).replace(/(<LogonTrigger>[\s\S]*?<UserId>)[^<]*/u, `$1${name}`);
+  expect(inspectTask(withTrigger('desktop-1\\ADA'), specFor(), user, specPath).wrapperValid).toBe(true);
+  expect(unitOwner(inspectTask(withTrigger('DESKTOP-1\\Bob'), specFor(), user, specPath), link, () => true)).toBe(
+    'unknown',
+  );
+});
+
 test('a task owned by another principal, or running something else, is unknown', () => {
   expect(unitOwner(inspectTask(xmlFor('S-1-5-21-9'), specFor(), user, specPath), link, () => true)).toBe('unknown');
   expect(

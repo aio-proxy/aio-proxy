@@ -159,7 +159,7 @@ test('install clears the uninstall marker and writes the spec and a UTF-16 task 
   const calls = await recordCalls((io) => schtasksInstall(io), { fs, task: 'missing' });
   expect(calls.map((c) => c.slice(0, 3))).toEqual([['schtasks', '/Create', '/XML']]);
   expect(calls[0]!.slice(4)).toEqual(['/TN', path, '/F']);
-  expect(parseTaskXml(fs.lastXmlCreated()!)).toEqual({ sid, exec, specPath });
+  expect(parseTaskXml(fs.lastXmlCreated()!)).toEqual({ sid, triggerUser: sid, exec, specPath });
   expect(parseServiceSpec(fs.read(specPath)!)?.exec).toBe(exec);
   expect(fs.exists(marker)).toBe(false);
   expect(onlyFilesBesides(fs)).toEqual([specPath]);

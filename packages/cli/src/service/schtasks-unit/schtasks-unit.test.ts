@@ -17,7 +17,12 @@ const specPath = 'C:\\Users\\Zoë Chen\\AppData\\Local\\aio-proxy\\service.json'
 test('task XML round-trips an exec path with spaces, non-ASCII and XML metacharacters', () => {
   const odd = 'C:\\Tools & <Co>\\aio-proxy.exe';
   for (const e of [exec, odd]) {
-    expect(parseTaskXml(renderTaskXml({ sid, exec: e, specPath }))).toEqual({ sid, exec: e, specPath });
+    expect(parseTaskXml(renderTaskXml({ sid, exec: e, specPath }))).toEqual({
+      sid,
+      triggerUser: sid,
+      exec: e,
+      specPath,
+    });
   }
 });
 
@@ -36,11 +41,6 @@ test('a task that runs anything but __service-run with a spec is not ours', () =
   expect(parseTaskXml(xml.replace(' "C:\\s.json"', ''))).toBeUndefined();
   expect(parseTaskXml(xml.replace('"C:\\s.json"', '"C:\\s.json" --extra'))).toBeUndefined();
   expect(parseTaskXml('not xml')).toBeUndefined();
-});
-
-test('a task whose trigger user differs from its principal is not ours', () => {
-  const xml = renderTaskXml({ sid, exec, specPath: 'C:\\s.json' });
-  expect(parseTaskXml(xml.replace(`<UserId>${sid}</UserId>`, '<UserId>S-1-5-21-9</UserId>'))).toBeUndefined();
 });
 
 test('service spec carries the desktop marker only for a desktop-owned unit', () => {

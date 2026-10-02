@@ -31,11 +31,13 @@ export function inspectTask(
 ): UnitInspection {
   const task = xml === undefined ? undefined : parseTaskXml(xml);
   const service = spec === undefined ? undefined : parseServiceSpec(spec);
-  const principal = task?.sid.toLowerCase();
+  // Task Scheduler may name a user by SID or by account, and spell the principal and the trigger apart.
+  const isUser = (id: string) => [user.sid, user.account].some((name) => name.toLowerCase() === id.toLowerCase());
   const wrapperValid =
     task !== undefined &&
     service !== undefined &&
-    (principal === user.sid.toLowerCase() || principal === user.account.toLowerCase()) &&
+    isUser(task.sid) &&
+    (task.triggerUser === undefined || isUser(task.triggerUser)) &&
     asciiFolded(task.exec) === asciiFolded(service.exec) &&
     asciiFolded(task.specPath) === asciiFolded(specPath);
   return {

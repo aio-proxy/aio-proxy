@@ -86,8 +86,20 @@ export function renderTaskXml(o: { sid: string; exec: string; specPath: string }
 
 const child = (parent: unknown, key: string): unknown => (isPlainObject(parent) ? parent[key] : undefined);
 
-/** Reads back exactly what `renderTaskXml` writes; anything else (another command, extra arguments) is not ours. */
-export function parseTaskXml(xml: string): { sid: string; exec: string; specPath: string } | undefined {
+export type ParsedTask = {
+  /** The principal's `UserId`: a SID, or an account name once Task Scheduler has rewritten it. */
+  readonly sid: string;
+  /** The logon trigger's `UserId`, which Task Scheduler may spell differently from the principal. */
+  readonly triggerUser: string | undefined;
+  readonly exec: string;
+  readonly specPath: string;
+};
+
+/**
+ * Reads the action `renderTaskXml` writes; anything else (another command, extra arguments) is not ours.
+ * Whose task it is, the caller judges from `sid` and `triggerUser`.
+ */
+export function parseTaskXml(xml: string): ParsedTask | undefined {
   let task: unknown;
   try {
     task = (Bun.XML.parse(xml) as Record<string, unknown>)['Task'];
@@ -99,10 +111,9 @@ export function parseTaskXml(xml: string): { sid: string; exec: string; specPath
   const sid = child(principal, 'UserId');
   const exec = child(child(task, 'Actions'), 'Exec');
   const args = child(exec, 'Arguments');
-  if (typeof sid !== 'string' || child(child(child(task, 'Triggers'), 'LogonTrigger'), 'UserId') !== sid) {
-    return undefined;
-  }
+  const triggerUser = child(child(child(task, 'Triggers'), 'LogonTrigger'), 'UserId');
+  if (typeof sid !== 'string' || (triggerUser !== undefined && typeof triggerUser !== 'string')) return undefined;
   if (child(exec, 'Command') !== COMMAND || typeof args !== 'string') return undefined;
   const match = ARGUMENTS.exec(args);
-  return match === null ? undefined : { sid, exec: match[1]!, specPath: match[2]! };
+  return match === null ? undefined : { sid, triggerUser, exec: match[1]!, specPath: match[2]! };
 }

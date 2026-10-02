@@ -8,5 +8,6 @@ export {
   serviceStatePath,
   taskPath,
   TASK_FOLDER,
+  type ParsedTask,
   type ServiceSpec,
 } from './schtasks-unit';
