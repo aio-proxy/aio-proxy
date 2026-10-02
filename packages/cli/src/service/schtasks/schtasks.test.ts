@@ -249,14 +249,18 @@ test('a managed proxy restarting itself on Windows rewrites the spec and asks it
   expect(onlyFilesBesides(fs).sort()).toEqual([specPath, statePath].sort());
 });
 
-test('an in-service restart leaves our unchanged task alone and re-creates a missing one', async () => {
+test('an in-service restart leaves our unchanged task alone and re-creates a missing or stale one', async () => {
   const exits: number[] = [];
-  const same = renderTaskXml({ sid, exec, specPath });
+  const same = renderTaskXml({ sid, exec: exec.toUpperCase(), specPath: specPath.toUpperCase() });
   await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), { task: same });
   expect(recorded()).toEqual([]);
   await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), { task: 'missing' });
   expect(recorded().map((c) => c[1])).toEqual(['/Create']);
-  expect(exits).toEqual([75, 75]);
+  // Same exec, but the supervisor would re-read a spec this restart never wrote.
+  const staleSpec = renderTaskXml({ sid, exec, specPath: 'C:\\Users\\Zoë\\old\\service.json' });
+  await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), { task: staleSpec });
+  expect(recorded().map((c) => c[1])).toEqual(['/Create']);
+  expect(exits).toEqual([75, 75, 75]);
 });
 
 test('an in-service restart fails closed on a foreign task or a failed query: nothing written, no exit', async () => {

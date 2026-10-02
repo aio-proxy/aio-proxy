@@ -227,7 +227,7 @@ export const exitProcessLater = (code: number, ms: number): void => {
 
 /**
  * Restart from inside the service. `/End` would kill our own supervisor (and, through its Job Object, this
- * process) before `/Run`, so instead refresh the spec (and the task when its `exec` moved) and exit with the
+ * process) before `/Run`, so instead refresh the spec (and the task when its `exec` or spec path moved) and exit with the
  * restart code: the supervisor re-reads the spec and relaunches. Returns normally so a caller that awaits the
  * restart (the auto-update task) does not see a failure.
  */
@@ -242,8 +242,15 @@ export async function schtasksRestartInService(
   io.writeFile(staged, spec);
   try {
     // A failed query or a foreign task throws before anything is written: `/Create /F` would overwrite it.
-    const current = (await ownTask(io, path))?.action?.exec;
-    if (current !== parseServiceSpec(spec)?.exec) await createTask(io, path, stageTaskXml(io, xml));
+    // The supervisor re-reads the spec the task names, so a stale spec path needs a new task as much as a moved exec.
+    const action = (await ownTask(io, path))?.action;
+    const exec = parseServiceSpec(spec)?.exec;
+    const current =
+      action !== undefined &&
+      exec !== undefined &&
+      action.exec.toLowerCase() === exec.toLowerCase() &&
+      action.specPath.toLowerCase() === specPath.toLowerCase();
+    if (!current) await createTask(io, path, stageTaskXml(io, xml));
     io.rename(staged, specPath);
   } catch (error) {
     io.remove(staged);
