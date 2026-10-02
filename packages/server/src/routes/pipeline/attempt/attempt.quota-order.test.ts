@@ -105,8 +105,8 @@ test('policy off: the weighted draw decides, as today', async () => {
   }
 });
 
-test('session affinity still wins under the policy', async () => {
-  const { late, soon, send } = setup('quota-reset', {
+test('response owner still wins under the policy', async () => {
+  const { late, soon, route, send } = setup('quota-reset', {
     logicalSessionStore: new LogicalSessionStore({
       repository: {
         resolveResponse: () => ({
@@ -130,6 +130,36 @@ test('session affinity still wins under the policy', async () => {
   expect(response.status).toBe(200);
   expect(late.calls.model).toHaveLength(1);
   expect(soon.calls.model).toHaveLength(0);
+  expect(route.recording.attempts[0]).toEqual(
+    expect.objectContaining({ providerId: 'late', selectionSource: 'response_owner' }),
+  );
+});
+
+test('session affinity alone still wins under the quota-reset policy', async () => {
+  const { late, soon, route, send } = setup('quota-reset', {
+    logicalSessionStore: new LogicalSessionStore({
+      repository: {
+        resolveResponse: () => undefined,
+        findAffinity: () => ({ providerId: 'late', revision: 1, active: true }),
+      },
+    }),
+  });
+
+  const response = await send(
+    new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: REQUESTED_MODEL, input: 'next', prompt_cache_key: 'session-1' }),
+    }),
+    true,
+  );
+
+  expect(response.status).toBe(200);
+  expect(late.calls.model).toHaveLength(1);
+  expect(soon.calls.model).toHaveLength(0);
+  expect(route.recording.attempts).toEqual([
+    expect.objectContaining({ providerId: 'late', selectionSource: 'session_affinity' }),
+  ]);
 });
 
 test('a provider-qualified request keeps its public slug under the policy', async () => {

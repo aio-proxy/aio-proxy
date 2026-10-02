@@ -138,5 +138,5 @@ By default, candidates in one priority tier share traffic by weight. Set `router
 - Within each tier, subscriptions whose quota snapshot is fresh go first, ordered by when their allowance resets. The allowance is the longest window covering the model (a weekly window, not a 5-hour one).
 - Providers without usable quota data (API Providers, plugins that report none, stale snapshots) follow in their weighted order.
 - Response owner and session affinity still go first, so prompt caches stay warm.
-- Token counting and generation use the same order.
+- Token counting and generation share one order when config, stable session, and quota cache state match; the cache is not pinned per session, so refreshes, failed reads, window resets, or crossing the 10-minute age bound between requests can change it.
 - A reordered attempt records `aio_proxy.route.selection_source = quota_reset`. The Routing page stops flagging traffic deviation, since a lopsided tier is the policy working.

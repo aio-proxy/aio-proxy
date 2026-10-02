@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardRoutingProvider } from '@aio-proxy/types';
+import type { DashboardRoutingProvider, RouterSelection } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import {
   DropdownMenu,
@@ -37,6 +37,7 @@ interface RoutingBoardItemProps {
   /** The configured share, compared with `actual` to flag drift. `null` when not comparable. */
   readonly configuredShare: number | null;
   readonly actual: RoutingTierShare | undefined;
+  readonly selection?: RouterSelection;
   /** Why a parked Provider takes no traffic; `undefined` for a Provider in a tier. */
   readonly parkedReason: string | undefined;
   readonly hasOverride: boolean;
@@ -54,6 +55,7 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
   shareLabel,
   configuredShare,
   actual,
+  selection = 'weighted',
   parkedReason,
   hasOverride,
   writable,
@@ -63,6 +65,7 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
   onReset,
 }) => {
   const drift =
+    selection === 'weighted' &&
     configuredShare !== null &&
     actual !== undefined &&
     actual.actualShare !== null &&
