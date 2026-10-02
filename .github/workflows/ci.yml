@@ -107,16 +107,27 @@ jobs:
   rust:
     needs: desktop-changes
     if: needs.desktop-changes.outputs.rust == 'true'
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: desktop
     steps:
       - uses: actions/checkout@v7
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev pkg-config
       - name: Install the pinned Rust toolchain
         run: |
           channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin
+          rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy --target ${{ matrix.target }}
       - uses: actions/cache@v6
         with:
           path: |
