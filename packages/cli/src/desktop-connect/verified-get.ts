@@ -2,40 +2,30 @@
 // bearer is written. A listener check alone leaves a window: the proxy can exit and another account
 // take the port between that check and a separate `fetch`. Mirrors the app's `client/listener.rs`.
 
-export type Run = (cmd: readonly string[]) => Promise<{ readonly code: number; readonly stdout: string }>;
-
-export type Socket = { readonly uid: number; readonly family: string; readonly address: string };
-
-/** The sockets in `lsof -F tun` output: each file's family and name, under its process's uid. */
-export function parseSockets(lsofOutput: string): readonly Socket[] {
-  const sockets: Socket[] = [];
-  let uid = -1;
-  let family = '';
-  for (const line of lsofOutput.split('\n')) {
-    const value = line.slice(1);
-    if (line.startsWith('u')) uid = Number(value);
-    else if (line.startsWith('f')) family = '';
-    else if (line.startsWith('t')) family = value;
-    else if (line.startsWith('n')) sockets.push({ uid, family, address: value });
-  }
-  return sockets;
-}
+import { listSockets, type ListSocketsDeps, type Socket } from './sockets';
 
 const endpoint = (host: string, port: number | string): string =>
   host.includes(':') ? `[${host}]:${port}` : `${host}:${port}`;
 
-/** `uid` holds the serving end of the connection from `local` to `peer`, which lsof names `peer->local`. */
-export function servesConnection(sockets: readonly Socket[], uid: number, peer: string, local: string): boolean {
-  return sockets.some((socket) => socket.uid === uid && socket.address === `${peer}->${local}`);
+/** `owner` holds the serving end of the connection from `local` to `peer`, which is named `peer->local`. */
+export function servesConnection(sockets: readonly Socket[], owner: string, peer: string, local: string): boolean {
+  return sockets.some((socket) => socket.owner === owner && socket.address === `${peer}->${local}`);
 }
 
 const RETRY_MS = 25;
 
-async function servedByUs(run: Run, uid: number, peer: string, local: string, localPort: number, deadline: number) {
+async function servedByUs(
+  platform: NodeJS.Platform,
+  deps: ListSocketsDeps,
+  owner: string,
+  peer: string,
+  local: string,
+  localPort: number,
+  deadline: number,
+) {
   for (;;) {
     try {
-      const { stdout } = await run(['/usr/sbin/lsof', '-nP', `-iTCP:${localPort}`, '-Ftun']);
-      if (servesConnection(parseSockets(stdout), uid, peer, local)) return true;
+      if (servesConnection(await listSockets(platform, localPort, deps), owner, peer, local)) return true;
     } catch {
       return false;
     }
@@ -68,13 +58,14 @@ export function parseResponse(raw: string): { readonly status: number; readonly 
 }
 
 /**
- * GETs `path` from `host:port` with the bearer, only after `lsof` shows this user's socket serving
+ * GETs `path` from `host:port` with the bearer, only after the socket listing shows this user's socket serving
  * this very connection; otherwise sends nothing and returns `undefined`. Loopback only: the caller
  * has already reduced the address to a literal loopback host.
  */
 export async function verifiedGet(
-  run: Run,
-  uid: number,
+  platform: NodeJS.Platform,
+  deps: ListSocketsDeps,
+  owner: string,
   host: string,
   port: string,
   path: string,
@@ -100,8 +91,9 @@ export async function verifiedGet(
   }
   try {
     const ours = await servedByUs(
-      run,
-      uid,
+      platform,
+      deps,
+      owner,
       endpoint(host, port),
       endpoint(host, socket.localPort),
       socket.localPort,

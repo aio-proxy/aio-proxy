@@ -165,10 +165,10 @@ const registerHiddenPostUpgrade = (program: Command, deps: CliDeps): void => {
 const registerHiddenDesktopConnect = (program: Command): void => {
   program.command('__desktop-connect', { hidden: true }).action(async () => {
     const { defaultDesktopConnectDeps, printDesktopConnect } = await import('./desktop-connect');
-    const deps = defaultDesktopConnectDeps(VERSION);
-    if (deps.platform !== 'darwin') {
-      throw new CliExit(EXIT.unrecoverable, m['cli.service.unsupported_platform']({ platform: deps.platform }));
+    if (process.platform !== 'darwin') {
+      throw new CliExit(EXIT.unrecoverable, m['cli.service.unsupported_platform']({ platform: process.platform }));
     }
+    const deps = await defaultDesktopConnectDeps(VERSION);
     await printDesktopConnect(deps, (text) => process.stdout.write(text));
   });
 };

@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 
 import { aioHome, configPathIn, readDesktopToken } from '@aio-proxy/core';
 import { isPlainObject } from 'es-toolkit/predicate';
@@ -14,7 +15,8 @@ import {
   type UnitOwner,
   unitOwner,
 } from './launchd-inspect';
-import { parseSockets, type Socket, verifiedGet } from './verified-get';
+import { currentOwner, listSockets, type Socket } from './sockets';
+import { verifiedGet } from './verified-get';
 
 const PROBE_TIMEOUT_MS = 2_000;
 // The spec bounds the whole command at 10 s. The two HTTP probes take at most 2 s each, so the
@@ -32,9 +34,10 @@ export type DesktopConnectDeps = {
   /** Whether the plist's wrapper target is still something launchd can run. */
   readonly targetRunnable: (path: string) => boolean;
   readonly readToken: (home: string) => string | undefined;
-  /** This process's uid: the listener must belong to it before the token is offered. */
-  readonly uid: number;
+  /** This process's account: the listener must belong to it before the token is offered. */
+  readonly owner: string;
   readonly run: (cmd: readonly string[]) => Promise<{ readonly code: number; readonly stdout: string }>;
+  readonly readFile: (path: string) => Promise<string>;
   readonly fetch: typeof fetch;
   /** The token-bearing identity GET, sent only over a connection this user's process serves. */
   readonly identityGet: (
@@ -123,16 +126,16 @@ async function summaryIdentity(
 }
 
 /**
- * Whether `uid` listens where the probe connects: on `host` itself or on its family's wildcard. The
+ * Whether `owner` listens where the probe connects: on `host` itself or on its family's wildcard. The
  * kernel refuses a second user the same port within one family, but not across IPv4 and IPv6, so a
  * listener of this user on `127.0.0.1` proves nothing about `::1`.
  */
-export function listensAt(listeners: readonly Socket[], uid: number, host: string, port: string): boolean {
+export function listensAt(listeners: readonly Socket[], owner: string, host: string, port: string): boolean {
   const ipv6 = host.includes(':');
   const exact = ipv6 ? `[${host}]:${port}` : `${host}:${port}`;
   const family = ipv6 ? 'IPv6' : 'IPv4';
   return listeners.some(
-    (l) => l.uid === uid && l.family === family && (l.address === exact || l.address === `*:${port}`),
+    (l) => l.owner === owner && l.family === family && (l.address === exact || l.address === `*:${port}`),
   );
 }
 
@@ -144,8 +147,7 @@ export function listensAt(listeners: readonly Socket[], uid: number, host: strin
 async function listenerIsOurs(deps: DesktopConnectDeps, host: string, port: string): Promise<boolean> {
   if (!/^\d+$/u.test(port)) return false;
   try {
-    const { code, stdout } = await deps.run(['/usr/sbin/lsof', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Ftun']);
-    return code === 0 && listensAt(parseSockets(stdout), deps.uid, host, port);
+    return listensAt(await listSockets(deps.platform, Number(port), deps), deps.owner, host, port);
   } catch {
     return false;
   }
@@ -249,18 +251,18 @@ export async function runWithin(
   return { code: await proc.exited, stdout };
 }
 
-export const defaultDesktopConnectDeps = (
+export const defaultDesktopConnectDeps = async (
   bundledVersion: string,
   spawnDeadline: number = Date.now() + SPAWN_BUDGET_MS,
-): DesktopConnectDeps => {
+): Promise<DesktopConnectDeps> => {
   // Bun's fetch honours HTTP_PROXY even for loopback, which would hand the desktop token's bearer
   // header to the proxy. `*` bypasses every host (a plain `::1` entry does not match [::1]); set on
   // both spellings because the lowercase one wins. This process only probes the local control address.
   process.env['NO_PROXY'] = process.env['no_proxy'] = '*';
-  return desktopConnectDeps(bundledVersion, spawnDeadline);
+  return desktopConnectDeps(bundledVersion, spawnDeadline, await currentOwner(process.platform));
 };
 
-const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number): DesktopConnectDeps => ({
+const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number, owner: string): DesktopConnectDeps => ({
   platform: process.platform,
   env: process.env,
   bundledVersion,
@@ -272,13 +274,15 @@ const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number): Desk
   },
   targetRunnable: isRunnable,
   readToken: (home) => readDesktopToken(home),
-  uid: process.getuid?.() ?? -1,
+  owner,
   // A killed or budget-exhausted helper degrades its fields like any other launchctl/plutil failure.
   run: (cmd) => runWithin(cmd, spawnDeadline),
+  readFile: (path) => readFile(path, 'utf8'),
   identityGet: (host, port, path, token) =>
     verifiedGet(
-      (cmd) => runWithin(cmd, spawnDeadline),
-      process.getuid?.() ?? -1,
+      process.platform,
+      { run: (cmd) => runWithin(cmd, spawnDeadline), readFile: (path) => readFile(path, 'utf8') },
+      owner,
       host,
       port,
       path,
