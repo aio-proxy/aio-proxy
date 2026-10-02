@@ -1,4 +1,5 @@
-//! Install-location policy, the stable symlink, the no-downgrade rule and the single-instance lock.
+//! Install-location policy, the stable exec (a symlink on macOS, a copy elsewhere), the no-downgrade
+//! rule and the single-instance lock.
 
 use std::cmp::Ordering;
 use std::fs::{self, File, OpenOptions};
@@ -15,14 +16,16 @@ use crate::version;
 pub struct Paths {
     pub home: PathBuf,
     pub support: PathBuf,
-    /// `AIO_PROXY_DESKTOP_EXEC`: the only path a desktop-owned plist ever points at.
-    pub symlink: PathBuf,
+    /// `AIO_PROXY_DESKTOP_EXEC`, the only path a desktop-owned service ever runs: a symlink to the bundle on
+    /// macOS, a versioned copy of the sidecar on Linux and Windows.
+    pub stable: PathBuf,
     pub lock: PathBuf,
     /// The app's own log directory.
     pub logs: PathBuf,
 }
 
 /// `…/X.app/Contents/MacOS/aio-proxy-desktop` → `…/X.app`.
+#[cfg(target_os = "macos")]
 pub fn bundle_of(exe: &Path) -> Option<PathBuf> {
     let macos = exe.parent()?;
     let contents = macos.parent()?;
@@ -33,8 +36,31 @@ pub fn bundle_of(exe: &Path) -> Option<PathBuf> {
     ok.then(|| bundle.to_path_buf())
 }
 
+#[cfg(target_os = "macos")]
 pub fn sidecar_of(bundle: &Path) -> PathBuf {
     bundle.join("Contents/MacOS/aio-proxy")
+}
+
+/// Off macOS the "bundle" is the directory holding the sidecar: the executable's own, or
+/// `$APPDIR/usr/bin` inside an AppImage.
+#[cfg(not(target_os = "macos"))]
+pub fn bundle_of(exe: &Path) -> Option<PathBuf> {
+    let appdir = if cfg!(target_os = "linux") { std::env::var_os("APPDIR") } else { None };
+    sidecar_dir(exe, appdir)
+}
+
+/// `bundle_of` with `$APPDIR` passed in; a relative or empty one is ignored.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn sidecar_dir(exe: &Path, appdir: Option<std::ffi::OsString>) -> Option<PathBuf> {
+    match appdir.map(PathBuf::from).filter(|dir| dir.is_absolute()) {
+        Some(dir) => Some(dir.join("usr/bin")),
+        None => exe.parent().map(Path::to_path_buf),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn sidecar_of(bundle: &Path) -> PathBuf {
+    bundle.join(if cfg!(windows) { "aio-proxy.exe" } else { "aio-proxy" })
 }
 
 /// `…/X.app/Contents/MacOS/aio-proxy` → `…/X.app`, for naming a copy in a notice.
@@ -165,20 +191,20 @@ pub fn prepare(
     let sidecar = sidecar_of(bundle);
     // Anything but "no link there" (a regular file or directory, EACCES, EIO) is something we cannot
     // rank, so it is never renamed over.
-    let current = match fs::read_link(&paths.symlink) {
+    let current = match fs::read_link(&paths.stable) {
         Ok(target) => Some(target),
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) if error.kind() == io::ErrorKind::InvalidInput => {
             return InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(format!(
                 "{} exists and is not a symlink",
-                paths.symlink.display()
+                paths.stable.display()
             )));
         }
         Err(error) => return InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(error.to_string())),
     };
     match plan_symlink(current.as_deref(), &sidecar, own_version, target_version) {
         SymlinkPlan::Keep => InstallState::Persistent,
-        SymlinkPlan::Repoint => match repoint(&paths.symlink, &sidecar) {
+        SymlinkPlan::Repoint => match repoint(&paths.stable, &sidecar) {
             Ok(()) => InstallState::Persistent,
             Err(error) => InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(error.to_string())),
         },
@@ -213,6 +239,8 @@ pub fn acquire_instance_lock(path: &Path) -> io::Result<Option<InstanceLock>> {
         Err(fs::TryLockError::Error(error)) => Err(error),
     }
 }
+
+pub mod copy;
 
 #[cfg(test)]
 mod tests;

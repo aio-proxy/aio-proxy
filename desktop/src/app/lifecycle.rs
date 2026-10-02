@@ -97,8 +97,14 @@ fn prepare_install(paths: &Paths, bundle: Option<&Path>) -> InstallState {
     let Some(bundle) = bundle else {
         return InstallState::ReadOnly(ReadOnlyReason::Location);
     };
-    let location_ok = install::location_allows_persistence(bundle, &paths.home, install::volume_is_read_only(bundle));
-    install::prepare(paths, bundle, location_ok, APP_VERSION, install::probe_version)
+    #[cfg(target_os = "macos")]
+    {
+        let location_ok =
+            install::location_allows_persistence(bundle, &paths.home, install::volume_is_read_only(bundle));
+        install::prepare(paths, bundle, location_ok, APP_VERSION, install::probe_version)
+    }
+    #[cfg(not(target_os = "macos"))]
+    install::copy::prepare(paths, &install::sidecar_of(bundle), APP_VERSION, install::probe_version)
 }
 
 fn host(model: &AppModel) -> Option<SystemHost> {

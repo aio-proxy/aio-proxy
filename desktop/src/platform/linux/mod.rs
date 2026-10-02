@@ -27,7 +27,7 @@ pub fn paths_from(home: &Path, env: impl Fn(&str) -> Option<OsString>) -> Paths 
     let support = base("XDG_DATA_HOME", ".local/share").join("aio-proxy-desktop");
     Paths {
         home: home.to_path_buf(),
-        symlink: support.join("bin/aio-proxy"),
+        stable: support.join("bin/aio-proxy"),
         lock: support.join("instance.lock"),
         logs: base("XDG_STATE_HOME", ".local/state").join("aio-proxy-desktop"),
         support,

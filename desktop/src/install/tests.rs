@@ -31,6 +31,7 @@ fn only_an_applications_folder_on_a_writable_volume_is_persistent() {
     assert!(!location_allows_persistence(Path::new("/Applications/AIO Proxy.app"), Path::new(HOME), true));
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn finds_the_bundle_from_the_executable() {
     assert_eq!(
@@ -38,6 +39,15 @@ fn finds_the_bundle_from_the_executable() {
         Some(PathBuf::from("/Applications/AIO Proxy.app"))
     );
     assert_eq!(bundle_of(Path::new("/Users/me/desktop/target/debug/aio-proxy-desktop")), None);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_appimage_runs_the_sidecar_from_its_mount() {
+    let exe = Path::new("/opt/aio/aio-proxy-desktop");
+    assert_eq!(sidecar_dir(exe, Some("/tmp/.mount_aio".into())), Some(PathBuf::from("/tmp/.mount_aio/usr/bin")));
+    assert_eq!(sidecar_dir(exe, Some("relative".into())), Some(PathBuf::from("/opt/aio")));
+    assert_eq!(sidecar_dir(exe, None), Some(PathBuf::from("/opt/aio")));
 }
 
 struct Fixture {
@@ -67,49 +77,53 @@ fn outside_an_applications_folder_nothing_persistent_happens() {
     let f = fixture();
     let state = prepare(&f.paths, &f.bundle, false, "0.37.0", |_| panic!("must not probe"));
     assert_eq!(state, InstallState::ReadOnly(ReadOnlyReason::Location));
-    assert!(fs::symlink_metadata(&f.paths.symlink).is_err(), "no symlink may be created");
+    assert!(fs::symlink_metadata(&f.paths.stable).is_err(), "no symlink may be created");
 }
 
 #[test]
 fn a_missing_or_dangling_symlink_is_pointed_at_this_copy() {
     let f = fixture();
     assert_eq!(prepare(&f.paths, &f.bundle, true, "0.37.0", |_| None), InstallState::Persistent);
-    assert_eq!(fs::read_link(&f.paths.symlink).unwrap(), sidecar_of(&f.bundle));
+    assert_eq!(fs::read_link(&f.paths.stable).unwrap(), sidecar_of(&f.bundle));
 
-    repoint(&f.paths.symlink, Path::new("/nonexistent/AIO Proxy.app/Contents/MacOS/aio-proxy")).unwrap();
+    repoint(&f.paths.stable, Path::new("/nonexistent/AIO Proxy.app/Contents/MacOS/aio-proxy")).unwrap();
     assert_eq!(prepare(&f.paths, &f.bundle, true, "0.37.0", |_| None), InstallState::Persistent);
-    assert_eq!(fs::read_link(&f.paths.symlink).unwrap(), sidecar_of(&f.bundle));
+    assert_eq!(fs::read_link(&f.paths.stable).unwrap(), sidecar_of(&f.bundle));
 }
 
+/// Names the `.app` bundle, a macOS-only layout.
+#[cfg(target_os = "macos")]
 #[test]
 fn a_newer_installed_copy_is_never_repointed_to_an_older_one() {
     let f = fixture();
-    repoint(&f.paths.symlink, &sidecar_of(&f.other)).unwrap();
+    repoint(&f.paths.stable, &sidecar_of(&f.other)).unwrap();
     let state = prepare(&f.paths, &f.bundle, true, "0.37.0", |_| Some("0.38.0".into()));
     assert_eq!(
         state,
         InstallState::ReadOnly(ReadOnlyReason::NewerCopy { app: f.other.clone(), version: "0.38.0".into() })
     );
-    assert_eq!(fs::read_link(&f.paths.symlink).unwrap(), sidecar_of(&f.other));
+    assert_eq!(fs::read_link(&f.paths.stable).unwrap(), sidecar_of(&f.other));
 }
 
 #[test]
 fn an_older_or_equal_copy_is_repointed_to_this_one() {
     for found in ["0.36.9", "0.37.0"] {
         let f = fixture();
-        repoint(&f.paths.symlink, &sidecar_of(&f.other)).unwrap();
+        repoint(&f.paths.stable, &sidecar_of(&f.other)).unwrap();
         assert_eq!(prepare(&f.paths, &f.bundle, true, "0.37.0", |_| Some(found.into())), InstallState::Persistent);
-        assert_eq!(fs::read_link(&f.paths.symlink).unwrap(), sidecar_of(&f.bundle));
+        assert_eq!(fs::read_link(&f.paths.stable).unwrap(), sidecar_of(&f.bundle));
     }
 }
 
+/// Names the `.app` bundle, a macOS-only layout.
+#[cfg(target_os = "macos")]
 #[test]
 fn an_unreadable_installed_copy_is_left_alone() {
     let f = fixture();
-    repoint(&f.paths.symlink, &sidecar_of(&f.other)).unwrap();
+    repoint(&f.paths.stable, &sidecar_of(&f.other)).unwrap();
     let state = prepare(&f.paths, &f.bundle, true, "0.37.0", |_| None);
     assert_eq!(state, InstallState::ReadOnly(ReadOnlyReason::UnreadableCopy { app: f.other.clone() }));
-    assert_eq!(fs::read_link(&f.paths.symlink).unwrap(), sidecar_of(&f.other));
+    assert_eq!(fs::read_link(&f.paths.stable).unwrap(), sidecar_of(&f.other));
 }
 
 #[test]
@@ -136,12 +150,12 @@ fn probes_a_copy_version_with_its_cli() {
 #[test]
 fn something_that_is_not_a_symlink_is_never_renamed_over() {
     let f = fixture();
-    fs::create_dir_all(f.paths.symlink.parent().unwrap()).unwrap();
-    fs::write(&f.paths.symlink, b"user data").unwrap();
+    fs::create_dir_all(f.paths.stable.parent().unwrap()).unwrap();
+    fs::write(&f.paths.stable, b"user data").unwrap();
     let state = prepare(&f.paths, &f.bundle, true, "0.37.0", |_| panic!("must not probe"));
     assert!(matches!(state, InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(_))), "{state:?}");
-    assert_eq!(fs::read(&f.paths.symlink).unwrap(), b"user data");
-    assert!(!fs::symlink_metadata(&f.paths.symlink).unwrap().is_symlink());
+    assert_eq!(fs::read(&f.paths.stable).unwrap(), b"user data");
+    assert!(!fs::symlink_metadata(&f.paths.stable).unwrap().is_symlink());
 }
 
 #[test]
@@ -150,20 +164,20 @@ fn a_target_that_cannot_be_stat_ed_is_not_treated_as_missing() {
     let (a, b) = (f.paths.home.join("loop-a"), f.paths.home.join("loop-b"));
     repoint(&a, &b).unwrap();
     repoint(&b, &a).unwrap();
-    repoint(&f.paths.symlink, &a).unwrap();
+    repoint(&f.paths.stable, &a).unwrap();
     let state = prepare(&f.paths, &f.bundle, true, "0.37.0", |_| panic!("must not probe"));
     assert_eq!(state, InstallState::ReadOnly(ReadOnlyReason::UnreadableCopy { app: a.clone() }));
-    assert_eq!(fs::read_link(&f.paths.symlink).unwrap(), a);
+    assert_eq!(fs::read_link(&f.paths.stable).unwrap(), a);
 }
 
 #[test]
 fn a_failed_repoint_leaves_the_original_and_no_temp_file() {
     let f = fixture();
     // A non-empty directory at the link path makes the final rename fail.
-    fs::create_dir_all(f.paths.symlink.join("keep")).unwrap();
-    assert!(repoint(&f.paths.symlink, &sidecar_of(&f.bundle)).is_err());
-    assert!(f.paths.symlink.join("keep").is_dir());
+    fs::create_dir_all(f.paths.stable.join("keep")).unwrap();
+    assert!(repoint(&f.paths.stable, &sidecar_of(&f.bundle)).is_err());
+    assert!(f.paths.stable.join("keep").is_dir());
     let leftovers: Vec<_> =
-        fs::read_dir(f.paths.symlink.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        fs::read_dir(f.paths.stable.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name()).collect();
     assert_eq!(leftovers, ["aio-proxy"], "temp symlink must be removed");
 }

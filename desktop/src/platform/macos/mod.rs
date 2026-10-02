@@ -30,7 +30,7 @@ pub fn paths_from(home: &Path, _env: impl Fn(&str) -> Option<OsString>) -> Paths
     let support = home.join("Library/Application Support/aio-proxy-desktop");
     Paths {
         home: home.to_path_buf(),
-        symlink: support.join("bin/aio-proxy"),
+        stable: support.join("bin/aio-proxy"),
         lock: support.join("instance.lock"),
         logs: home.join("Library/Logs/aio-proxy-desktop"),
         support,

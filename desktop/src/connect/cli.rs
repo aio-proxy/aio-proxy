@@ -1,5 +1,5 @@
-//! The real `Host`: the bundled CLI (through the symlink when it exists), the OS service manager,
-//! and the local transport. Every CLI child gets `AIO_PROXY_DESKTOP_EXEC=<symlink>`, the only input that makes a
+//! The real `Host`: the bundled CLI (through the stable exec when it exists), the OS service manager,
+//! and the local transport. Every CLI child gets `AIO_PROXY_DESKTOP_EXEC=<stable exec>`, the only input that makes a
 //! plist desktop-owned.
 
 use std::path::{Path, PathBuf};
@@ -21,7 +21,7 @@ pub const SERVICE_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub struct SystemHost {
-    /// The symlink when it resolves, else this bundle's sidecar.
+    /// The stable exec when it resolves, else this bundle's sidecar.
     pub exec: PathBuf,
     pub desktop_exec: PathBuf,
     /// The OS account, as `platform::kickstart` names it.
@@ -30,8 +30,8 @@ pub struct SystemHost {
 
 impl SystemHost {
     pub fn new(paths: &Paths, bundle: Option<&Path>) -> Option<Self> {
-        let exec = if paths.symlink.exists() { paths.symlink.clone() } else { sidecar_of(bundle?) };
-        exec.exists().then(|| Self { exec, desktop_exec: paths.symlink.clone(), user: crate::platform::current_user() })
+        let exec = if paths.stable.exists() { paths.stable.clone() } else { sidecar_of(bundle?) };
+        exec.exists().then(|| Self { exec, desktop_exec: paths.stable.clone(), user: crate::platform::current_user() })
     }
 
     /// The child environment contract. The app never passes its own `AIO_PROXY_HOME` (discovery
