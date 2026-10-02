@@ -44,7 +44,8 @@ export async function loginToGitHubCopilot(
 
   const githubToken = await pollGitHubToken(authBase, device, context, presentationText.waitingForAuthorization);
   return await completeGitHubCopilotLogin(githubToken, options, {
-    ...context,
+    signal: context.signal,
+    fetch: context.fetch,
     progress: () => context.progress(presentationText.refreshingToken),
   });
 }
