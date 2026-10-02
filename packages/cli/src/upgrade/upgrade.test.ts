@@ -636,7 +636,7 @@ test('resolveUpgradeTargetFrom maps a prefix/node_modules package shim to npm', 
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'npm',
     command: join(prefix, 'bin', 'npm'),
     bin,
@@ -651,7 +651,7 @@ test('resolveUpgradeTargetFrom maps npm when package.json bin is the prefix laun
   writeExecutable(bin, '#!/bin/sh\n');
   mkdirSync(pkg, { recursive: true });
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"../../../bin/aio-proxy"}}\n');
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'npm',
     command: join(prefix, 'bin', 'npm'),
     bin,
@@ -669,7 +669,7 @@ test('resolveUpgradeTargetFrom maps an npm prefix shim that resolves into the pa
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'npm',
     command: join(prefix, 'bin', 'npm'),
     bin,
@@ -711,7 +711,7 @@ test('resolveUpgradeTargetFrom maps a node_modules/@aio-proxy/cli-* binary to np
   const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-cli-pkg-'));
   const native = writePlatformCliBinary(prefix, 'npm');
   await withEmptyManagerPath(async () => {
-    expect(await resolveUpgradeTargetFrom(native, {})).toEqual({
+    expect(await resolveUpgradeTargetFrom(native, {}, {}, 'linux')).toEqual({
       method: 'npm',
       command: join(prefix, 'bin', 'npm'),
       bin: join(prefix, 'bin', 'aio-proxy'),
@@ -745,7 +745,7 @@ test('resolveUpgradeTargetFrom maps a .bun/bin shim that resolves into the packa
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'bun',
     command: join(bunHome, 'bin', 'bun'),
     bin,
@@ -774,7 +774,7 @@ test('resolveUpgradeTargetFrom maps a pnpm global/<n> shim that resolves into th
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'pnpm',
     command: join(pnpmHome, 'pnpm'),
     bin,
@@ -791,7 +791,7 @@ test('resolveUpgradeTargetFrom maps a pnpm v11 isolated shim that resolves into 
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'pnpm',
     command: join(pnpmHome, 'pnpm'),
     bin,
@@ -808,7 +808,7 @@ test('resolveUpgradeTargetFrom maps a pnpm home shim that resolves into the pack
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'pnpm',
     command: join(pnpmHome, 'pnpm'),
     bin,
@@ -873,7 +873,7 @@ test('resolveUpgradeTargetFrom maps a bun global cli-* binary to bun, not binary
   writeExecutable(join(bunHome, 'bin', 'aio-proxy'), '#!/bin/sh\n');
   writeExecutable(native, '#!/bin/sh\n');
   await withEmptyManagerPath(async () => {
-    expect(await resolveUpgradeTargetFrom(native, {})).toEqual({
+    expect(await resolveUpgradeTargetFrom(native, {}, {}, 'linux')).toEqual({
       method: 'bun',
       command: join(bunHome, 'bin', 'bun'),
       bin: join(bunHome, 'bin', 'aio-proxy'),
@@ -888,7 +888,7 @@ test('resolveUpgradeTargetFrom maps a pnpm global cli-* binary to pnpm, not bina
   writeExecutable(join(prefix, 'bin', 'aio-proxy'), '#!/bin/sh\n');
   writeExecutable(native, '#!/bin/sh\n');
   await withEmptyManagerPath(async () => {
-    expect(await resolveUpgradeTargetFrom(native, {})).toEqual({
+    expect(await resolveUpgradeTargetFrom(native, {}, {}, 'linux')).toEqual({
       method: 'pnpm',
       command: join(prefix, 'bin', 'pnpm'),
       bin: join(prefix, 'bin', 'aio-proxy'),
@@ -1197,7 +1197,7 @@ test('AIO_PROXY_UPGRADE_METHOD=npm reconstructs an absolute command from the cli
   const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-env-'));
   const native = writePlatformCliBinary(prefix, 'npm');
   await withEmptyManagerPath(async () => {
-    const target = await resolveUpgradeTargetFrom(native, { AIO_PROXY_UPGRADE_METHOD: 'npm' });
+    const target = await resolveUpgradeTargetFrom(native, { AIO_PROXY_UPGRADE_METHOD: 'npm' }, {}, 'linux');
     expect(target).toEqual({
       method: 'npm',
       command: join(prefix, 'bin', 'npm'),

@@ -115,7 +115,7 @@ export async function resolveUnitOptions(
     upgradeMethod = 'desktop';
   } else {
     try {
-      const detected = await resolveUpgradeTargetFrom(exec);
+      const detected = await resolveUpgradeTargetFrom(exec, process.env, {}, os);
       if (detected.method !== 'binary') upgradeMethod = detected.method;
     } catch {}
     if (upgradeMethod === undefined && isPlatformCliBinary(exec)) {
@@ -128,7 +128,7 @@ export async function resolveUnitOptions(
             if (dir === '') continue;
             const onPath = launcherBeside(join(dir, 'aio-proxy'), os);
             if (onPath === undefined || onPath === exec) continue;
-            const fromPath = await resolveUpgradeTargetFrom(onPath);
+            const fromPath = await resolveUpgradeTargetFrom(onPath, process.env, {}, os);
             if (fromPath.method !== 'binary') {
               upgradeMethod = fromPath.method;
               break;
