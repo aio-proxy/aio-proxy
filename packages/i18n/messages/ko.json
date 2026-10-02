@@ -74,6 +74,16 @@
       "description": "AIO Proxy 대시보드 열기",
       "opened": "기본 브라우저에서 대시보드를 열었습니다"
     },
+    "provider_login": {
+      "method_prompt": "어떤 방법으로 로그인하시겠어요?",
+      "method_local": "이 컴퓨터의 {source} 로그인 사용",
+      "method_browser": "브라우저로 로그인",
+      "option_local_sign_in_description": "이 컴퓨터의 도구에 저장된 기존 로그인 사용",
+      "error_local_sign_in_unavailable": "이 컴퓨터에서 {source} 로그인 정보를 찾지 못했습니다.",
+      "error_local_sign_in_unavailable_generic": "이 컴퓨터에서 로그인 정보를 찾지 못했습니다.",
+      "error_local_sign_in_invalid": "이 컴퓨터의 로그인 정보가 유효하지 않거나 불완전합니다. 도구에서 다시 로그인한 후 재시도하세요.",
+      "error_local_sign_in_stale": "aio-proxy에 이미 이 Provider의 더 최신 로그인 정보가 있습니다. 다음 갱신 시 도구의 로그인 정보를 업데이트합니다."
+    },
     "provider": {
       "description": "프로바이더 패키지 관리",
       "login": {

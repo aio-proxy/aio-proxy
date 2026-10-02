@@ -74,6 +74,16 @@
       "description": "開啟 AIO Proxy 控制台",
       "opened": "已在預設瀏覽器中開啟控制台"
     },
+    "provider_login": {
+      "method_prompt": "你想如何登入？",
+      "method_local": "使用本機上的 {source} 登入",
+      "method_browser": "透過瀏覽器登入",
+      "option_local_sign_in_description": "使用廠商工具在本機上已有的登入",
+      "error_local_sign_in_unavailable": "未在本機上找到 {source} 登入。",
+      "error_local_sign_in_unavailable_generic": "未在本機上找到已有登入。",
+      "error_local_sign_in_invalid": "本機上的登入無效或不完整。請在廠商工具中重新登入，然後重試。",
+      "error_local_sign_in_stale": "aio-proxy 已持有此 Provider 的更新登入；下次重新整理時將更新廠商工具中的登入。"
+    },
     "provider": {
       "description": "管理提供商套件",
       "login": {

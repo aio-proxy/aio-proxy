@@ -74,6 +74,16 @@
       "description": "Open the AIO Proxy dashboard",
       "opened": "Opened the dashboard in your default browser"
     },
+    "provider_login": {
+      "method_prompt": "How do you want to sign in?",
+      "method_local": "Use the {source} sign-in on this machine",
+      "method_browser": "Sign in with the browser",
+      "option_local_sign_in_description": "Use an existing local sign-in from the vendor tool",
+      "error_local_sign_in_unavailable": "No {source} sign-in was found on this machine.",
+      "error_local_sign_in_unavailable_generic": "No local sign-in was found on this machine.",
+      "error_local_sign_in_invalid": "The sign-in on this machine is invalid or incomplete. Sign in again in the vendor tool, then retry.",
+      "error_local_sign_in_stale": "aio-proxy already holds a newer sign-in for this Provider; it will update the vendor tool on its next refresh."
+    },
     "provider": {
       "description": "Manage provider packages",
       "login": {
