@@ -20,6 +20,7 @@ import { hasInvalidOrOversizedContentLength, resolveSupportedEffortsForDimension
 import { prioritizeAffinity } from '../pipeline/affinity';
 import { candidateSelectionSource } from '../pipeline/attempt-base';
 import { failureTerminal } from '../pipeline/failure';
+import { applySelectionPolicy } from '../pipeline/quota-order';
 import { cancelRetainedRequestBody } from '../pipeline/request';
 import { estimateInputTokens } from './estimate';
 import { attemptRawCount } from './raw';
@@ -133,9 +134,15 @@ async function handleTokenCountInContext<TRequest, TContext>(
     }
     const lease = source.acquireProviderSnapshot();
     try {
-      const candidates = lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context), {
-        session: resolution.context.session,
-      });
+      // The same policy generation applies, so a stable session counts against the order it will use.
+      const candidates = applySelectionPolicy(
+        lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context), {
+          session: resolution.context.session,
+        }),
+        lease.snapshot.config?.router.selection,
+        source,
+        Date.now(),
+      );
       const affinityOrdered =
         resolution.affinity?.active === true
           ? prioritizeAffinity(candidates, resolution.affinity.providerId)
