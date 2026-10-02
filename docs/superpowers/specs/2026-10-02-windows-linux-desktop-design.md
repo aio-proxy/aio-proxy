@@ -1,7 +1,7 @@
 # Windows and Linux desktop clients
 
 Date: 2026-10-02
-Status: draft (rev 3, after two Codex `gpt-6-astra` review rounds)
+Status: draft (rev 4, after three Codex `gpt-6-astra` review rounds)
 Builds on: `2026-09-29-desktop-client-design.md` (the macOS client), `2026-10-01-desktop-panel-design.md`
 
 ## Goal
@@ -82,9 +82,15 @@ Shared across all three, replacing libc and objc2:
 - Audit POSIX assumptions in `packages/cli/src` and `packages/core/src` (`':'` PATH joins in
   `managedServicePath`, `/usr/sbin/lsof`, `/bin/sh`, `O_NOFOLLOW`, uid and mode checks) and use
   `path.delimiter` or a platform branch.
-- `upgrade` and `update-notify` accept win32. Binary self-upgrade keeps `upgrade/binary.ts`'s
+- `upgrade` accepts win32 end to end: the tarball entry is `package/bin/aio-proxy.exe`, package-manager
+  detection (`upgrade/detect.ts`) recognizes `.exe` launchers and splits `PATH` on `path.delimiter`, and the
+  native binary next to the JS shim is `aio-proxy.exe`. Binary self-upgrade keeps `upgrade/binary.ts`'s
   stage-verify-commit-rollback flow; on Windows the commit renames the running `.exe` to `.old` (allowed
   for a running image), renames the staged file in, and deletes `.old` on the next start.
+- `update-notify` (the OS desktop notification for a new CLI version) stays macOS and Linux only; Windows CLI
+  users see the update in the Dashboard and in `aio-proxy upgrade`, and desktop users get the app's own
+  update prompt.
+- `@aio-proxy/cli-win32-x64` joins the lockstep `fixed` group in `.changeset/config.json`.
 - `isDesktopManagedInstall` also matches an executable under the desktop's stable-copy directory
   (`aio-proxy-desktop/bin/`, section 4), so `upgrade`, Dashboard apply and auto-update refuse a desktop
   copy reached through `aiop` without any environment marker, as they refuse `.app/Contents/MacOS/` today.
@@ -131,8 +137,11 @@ owner. Windows instead keeps the token where only this user can create files:
 - Restart from inside the service: Dashboard apply and auto-update call `restartService` from the running
   proxy (`upgrade.ts` `runUpgradeCommand`). On Windows `/End` would kill the supervisor and, through its
   Job Object, the caller before `/Run`. When `AIO_PROXY_MANAGED=1` on win32, `restartService` therefore
-  rewrites `service.json` and exits 75; the supervisor relaunches. An `<exec>` change in that case also
-  rewrites the task XML first (`/Create /F` on a running task replaces its definition for the next launch).
+  rewrites `service.json` (and the task XML first when `<exec>` changed; `/Create /F` on a running task
+  replaces its definition for the next launch), returns normally so the caller records the upgrade as
+  installed, and schedules `process.exit(75)` one second later — the same "let the caller finish, then go"
+  shape as the macOS detached `launchctl` helper. Throwing instead would be swallowed by the server's
+  auto-update task (`packages/server/src/auto-update/auto-update.ts`), leaving the old proxy running.
 - Lifecycle, so that a user's stop survives restarts (the policy reads `job.disabled` as the user's intent):
 
 | Command | Linux | Windows |
@@ -145,9 +154,16 @@ owner. Windows instead keeps the token where only this user can create files:
 
   `/End` terminates the supervisor; the supervisor runs its child in a Job Object with
   `KILL_ON_JOB_CLOSE`, so the proxy ends with it. `schtasks /Delete` alone would leave both running.
-- Uninstall marker: `service-uninstalled` in `AIO_PROXY_HOME`. It plays the role of the disabled override
-  that `launchctl unload -w` leaves on macOS: with no unit present, discovery reports `disabled: true`
-  while the marker exists, so the app does not reinstall a service the user removed.
+- Uninstall marker: a per-user file at a fixed path beside where the unit lives, so it is found whatever
+  `AIO_PROXY_HOME` the removed service used — Linux `<systemd user unit dir>/aio-proxy.service.uninstalled`,
+  Windows `%LOCALAPPDATA%\aio-proxy\service.uninstalled`. Each user has at most one service, so one marker
+  suffices. It plays the role of the disabled override that `launchctl unload -w` leaves on macOS: with no
+  unit present, discovery reports `disabled: true` while the marker exists, so the app does not reinstall a
+  service the user removed.
+- Task Scheduler queries capture stdout and stderr and pass `/HRESULT`, so "the task does not exist"
+  (`0x80070002`) is told apart from every other failure. Process identity checks (the state file's PID
+  running `exec`) read the full image path with `QueryFullProcessImageNameW` through `bun:ffi`, beside the
+  Job Object calls; `tasklist` reports only the image name.
 - Every child process the CLI spawns on win32 (`schtasks`, `netstat`, `tasklist`, the proxy itself) uses
   `Bun.spawn`'s `windowsHide`.
 - **Spike (phase 0):** a console program started by Task Scheduler opens a console window. Candidates
@@ -213,7 +229,7 @@ meanings, so the Rust `Discovery` parser and the `policy` state machine are unch
   Color: Windows reads `SystemUsesLightTheme` (the taskbar's setting, distinct from the apps' one); Linux
   follows `cx.window_appearance()`.
 - Linux's tray menu gains "Open Panel": some hosts (Ubuntu's AppIndicator extension) open the menu on left
-  click and never send `activate`.
+  click and never send `activate`. It shows and focuses the panel (idempotent); only a tray click toggles.
 
 ### Panel window
 
@@ -226,7 +242,10 @@ meanings, so the Rust `Discovery` parser and the `policy` state machine are unch
 | Background | `NSVisualEffectView` | `WindowBackgroundAppearance::Blurred` | opaque theme background |
 
 GPUI's Wayland backend ignores `is_resizable` (it sets only a minimum size), so Linux does not promise a
-fixed size. `placement::panel_origin` stays a pure function and gains the four taskbar edges.
+fixed size. `placement::panel_origin` stays a pure function and gains the four taskbar edges. It works in
+logical pixels: the icon rect and the work area come from Win32 in physical pixels and are divided by the
+scale factor of the monitor that holds the icon before placement. An icon inside the work area (the
+overflow flyout) opens the panel above it when it sits in the lower half of the work area, else below it.
 
 ### No tray (Linux)
 
@@ -372,31 +391,37 @@ Permissions move from the workflow to each job. The macOS job keeps `contents: w
 unchanged, and publishes its DMG and `appcast.xml` on its own, so a Linux or Windows failure never holds a
 macOS release. Added beside it:
 
-1. `build-linux` (`x86_64`, `aarch64` runners) and `build-windows`: `contents: read`, checkout with
-   `persist-credentials: false`, no environment, no secrets. The same tag checks as the macOS job (a
-   published, non-prerelease Release whose commit is on `main`; checkout pins that commit); build the
-   sidecar and the app, package, upload as workflow artifacts.
+0. `verify` (ubuntu, `contents: read`, no checkout): the same tag checks as the macOS job (a published,
+   non-prerelease Release whose commit is on `main`), inline as there; outputs `version` and `sha`. A local
+   composite action cannot run before the checkout it would come from, so the checks stay inline.
+1. `build-linux` (`x86_64`, `aarch64` runners) and `build-windows`: `needs: verify`, `contents: read`,
+   checkout of `verify.outputs.sha` with `persist-credentials: false`, no environment, no secrets; build the
+   workspace packages the sidecar embeds, the sidecar and the app, package, upload as workflow artifacts.
 2. `publish-assets` (ubuntu, `desktop-release` environment, `contents: write`, no concurrency group, needs
-   every build job). Per platform, with uploads always in the order asset, then `.minisig`:
-   - neither on `v<version>` → sign the built asset, upload the asset, then its `.minisig`;
-   - asset present, `.minisig` missing (an interrupted run) → download the **published** asset and sign
-     those bytes. Ed25519 and the trusted comment are deterministic, so this yields the one signature that
-     asset can have; it never endorses a different build;
+   every build job). Per platform, with uploads always in the order `.minisig`, then asset:
+   - neither on `v<version>` → sign this run's asset, upload the `.minisig`, then the asset;
+   - `.minisig` present, asset missing (an interrupted run) → upload this run's asset only if it verifies
+     against the published `.minisig` and its trusted comment; otherwise fail and name the orphan
+     `.minisig` to delete before re-dispatching. Builds are not reproducible, so this usually fails, which
+     is the safe outcome: nothing ever signs bytes this run did not build;
    - both present → verify the pair against the public key and the trusted comment; a mismatch fails the
-     job. A published asset is never rebuilt, re-signed or replaced.
+     job. A published asset is never rebuilt, re-signed or replaced;
+   - asset present, `.minisig` missing cannot arise from this order; it fails the job.
 3. `feed` (ubuntu, `desktop-release` environment, `contents: write`, `concurrency: desktop-feed-latest` with
    `cancel-in-progress: false`, needs `publish-assets`):
    1. Read `latest.json` from `desktop-feed`. The job never creates `desktop-feed`; a missing Release fails
       the job (the macOS job owns its creation, and `publish.ts` refuses a feed Release without
       `appcast.xml`).
-   2. Apply `feedAction`'s rule: same version → re-verify and stop; older than the feed → stop
-      (superseded); newer → write `latest.json` from the Release's verified `.minisig` files and replace it.
+   2. Choose the target version independently of the dispatch: the highest stable Release among the
+      newest 20 whose three assets and `.minisig` files are all present and verify. Same as the feed →
+      stop; lower → stop (never downgrade); higher → write `latest.json` from that Release and replace it.
 
-Only the feed write is serialized. A newer dispatch may replace an older one's pending `feed` run, which is
-harmless because the newer version supersedes it in the feed, while every version's assets still reach its
-own Release through `publish-assets`. The macOS job keeps the `desktop-feed` group; the jobs write different
-files, so separate groups let neither cancel the other's pending run. Any platform failing leaves
-`latest.json` untouched; resume with `gh workflow run desktop-release.yml -f tag=v<version>`.
+Only the feed write is serialized. Because each `feed` run picks the highest complete version on its own,
+GitHub replacing a pending run (a slow older build queuing after a newer one) cannot leave the feed behind:
+the run that does execute after the last `publish-assets` publishes the newest complete version. The macOS
+job keeps the `desktop-feed` group; the jobs write different files, so separate groups let neither cancel
+the other's pending run. Any platform failing leaves that version out of `latest.json`; resume with
+`gh workflow run desktop-release.yml -f tag=v<version>`.
 
 ### Windows signing hook
 
@@ -437,13 +462,13 @@ task XML).
 | TS `disabled` mapping | no unit and no marker → `false`; no unit with the uninstall marker → `true`; disabled unit → `true`; failed query → `true` | first run installs; a user's uninstall or stop is not undone |
 | TS lifecycle | stop then discover reports `disabled: true` on Linux and Windows; uninstall waits for the supervisor; Windows `restart` after `stop` re-enables and runs; a failed `restart` restores the previous XML and spec | the user's intent survives, and a broken restart leaves the old service |
 | TS `__service-run` | exit-code decision: 0/1 stop, 75 re-read spec and relaunch at once, other restart after 5 s, missing exec stop | the systemd semantics it reproduces, and in-service upgrades |
-| TS `restartService` (win32, managed) | inside the service it rewrites the spec and exits 75 instead of calling `schtasks` | an in-service upgrade does not kill itself before restarting |
+| TS `restartService` (win32, managed) | inside the service it rewrites the spec, returns normally, and exits 75 a second later; no `schtasks /End` or `/Run` | an in-service upgrade does not kill itself before restarting, and the caller records success |
 | TS `service` win32 | write and read back `service.json`, desktop-owned marker, paths with spaces | the unit-file contract |
 | TS `upgrade` | an executable under `aio-proxy-desktop/bin/` without env markers is desktop-managed | a terminal `aiop upgrade` cannot fork the desktop's copy |
 | Windows `PATH` edit | append/remove `shims` with duplicates, trailing `;`, case differences | breaking a user's PATH is costly |
 | Signature | a Bun-signed fixture passes through `cargo-packager-updater`'s own verification entry point; a trusted comment with another version or target is refused | encoding contract; a mismatch fails every update or admits a downgrade |
-| `latest.json` | target keys and `format` match the updater; missing platform refused; older version does not replace a newer feed | the feed's all-or-nothing and monotonic rules |
-| `publish-assets` plan | neither / asset only / both present → sign-and-upload / sign the published bytes / verify | an interrupted upload resumes instead of sticking |
+| `latest.json` | target keys and `format` match the updater; missing platform refused; the highest complete version is chosen whatever the dispatched tag; older never replaces newer | the feed's all-or-nothing and monotonic rules |
+| `publish-assets` plan | neither / signature only / both present → sign-and-upload / upload only a verifying asset, else fail / verify; asset without signature fails | an interrupted upload resumes, and nothing unbuilt is ever signed |
 
 Manual checklist before each release:
 

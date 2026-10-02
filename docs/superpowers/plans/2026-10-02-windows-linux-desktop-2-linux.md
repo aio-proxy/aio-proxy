@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 1.98, GPUI via `gpui-kit` 0.7.0, `tray-icon` 0.25.1 (`ksni` on Linux), `gpui-pre-reqwest-client` 0.3.7, `chrono`, `zbus` (already in `Cargo.lock`), `cargo test`.
 
-**Spec:** `docs/superpowers/specs/2026-10-02-windows-linux-desktop-design.md` (rev 3), sections 1, 3, 4. Requires phase 1 (Linux discovery and lifecycle) merged.
+**Spec:** `docs/superpowers/specs/2026-10-02-windows-linux-desktop-design.md` (rev 4), sections 1, 3, 4. Requires phase 1 (Linux discovery and lifecycle) merged.
 
 ## Global Constraints
 
@@ -53,7 +53,8 @@ Pure move. No behavior change on macOS.
   - `platform::peer_owned_by_this_user(stream: &TcpStream, deadline: Instant) -> bool`
   - `platform::panel::{window_options(cx: &App, tray: &Tray) -> Option<WindowOptions>, after_open(window: &mut Window), closes_on_deactivate() -> bool}`
 
-- [ ] **Step 1:** Move code into the files above; `panel/window.rs` keeps the open/close/toggle state machine and calls `platform::panel::*`; `connect/cli.rs` `SystemHost` stores `user: String` and calls `platform::kickstart(&self.user)` and `platform::pid_alive`.
+- [ ] **Step 1:** Move code into the files above; `panel/window.rs` keeps the open/close/toggle state machine and calls `platform::panel::*`; `connect/cli.rs` `SystemHost` stores `user: String` and runs every `Command` from `platform::kickstart(&self.user)` in order, and calls `platform::pid_alive`.
+- [ ] **Step 1b:** Add compilable `platform/linux/mod.rs` and `platform/windows/mod.rs` skeletons implementing the whole interface with safe defaults (login item `Unavailable`, updater no-op with a log line, `pid_alive`/`peer_owned_by_this_user` → `false`, `panel::window_options` → a `Normal` 360×560 window, `closes_on_deactivate` → `false`), and move `tray-icon` to `default-features = false, features = ["ksni"]` under `[target.'cfg(target_os = "linux")'.dependencies]`. Later tasks replace the stubs; from here on the crate builds on all three platforms.
 - [ ] **Step 2: Run** `cd desktop && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked` on macOS — Expected: PASS with no test changes beyond `use` paths.
 - [ ] **Step 3: Commit**
 
@@ -91,7 +92,7 @@ fn a_second_instance_lock_on_the_same_file_is_refused() {
 
 - [ ] **Step 2: Run** `cd desktop && cargo test --locked install::tests` — Expected: PASS before, and must still PASS after Step 3.
 - [ ] **Step 3: Implement** the replacements. `run_with_timeout` keeps the waiter thread but holds the `Child` behind `Arc<Mutex<Option<Child>>>` so the timeout path can `kill()`; stdout/stderr are taken and read on their own threads so a grandchild holding the pipes cannot block.
-- [ ] **Step 4: Run** `cargo clippy --locked --all-targets -- -D warnings && cargo test --locked` — Expected: PASS. Manually: launch the app on macOS, open a panel with a remote plugin icon — the icon loads.
+- [ ] **Step 4:** Gate the `/bin/sh`-based tests in `process/tests.rs` and the `std::os::unix` uses in `install/tests.rs` with `#[cfg(unix)]`; add one `#[cfg(windows)]` timeout test using `powershell -NoProfile -Command Start-Sleep 5`. **Run** `cargo clippy --locked --all-targets -- -D warnings && cargo test --locked` — Expected: PASS. Manually: launch the app on macOS, open a panel with a remote plugin icon — the icon loads.
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -206,7 +207,7 @@ git commit -m "feat(desktop): launch at login on Linux"
 **Interfaces:**
 - Produces: `parse_proc_net(text: &str, v6: bool) -> Vec<ProcRow>` with `ProcRow { local: SocketAddr, remote: SocketAddr, listening: bool, uid: u32 }`; `serving_uid(rows: &[ProcRow], server: SocketAddr, client: SocketAddr) -> Option<u32>`; `platform::peer_owned_by_this_user` reads `/proc/net/tcp` or `/proc/net/tcp6` by the stream's family, retries every 25 ms until `deadline`, compares with `getuid()`.
 
-- [ ] **Step 1: Write the failing tests** (same fixtures as phase 1 Task 5)
+- [ ] **Step 1: Write the failing tests** (same fixtures as phase 1 Task 5; the IPv6 fixture has both the `LISTEN` row and the established `[::1]:4137 → [::1]:50001` row, and the listening row must never match a connection)
 
 ```rust
 #[test]
@@ -234,9 +235,9 @@ git commit -m "feat(desktop): verify connection owners and restart services on L
 ### Task 6: Linux build and CI
 
 **Files:**
-- Modify: `desktop/Cargo.toml` (`tray-icon = { version = "0.25.1", default-features = false, features = ["ksni"] }` for Linux via `[target.'cfg(target_os = "linux")'.dependencies]`; default features elsewhere), `.github/workflows/ci.yml` (desktop Rust job becomes a matrix `macos-15`, `ubuntu-24.04`; Linux installs `libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev libdbus-1-dev pkg-config`)
+- Modify: `.github/workflows/ci.yml` (desktop Rust job becomes a matrix `macos-15`, `ubuntu-24.04`; Linux installs `libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev libdbus-1-dev pkg-config`)
 
-- [ ] **Step 1:** Make `cargo build --locked` succeed on Linux (stub `platform::updater` with `start`/`check_now` that only log; phase 4 fills them).
+- [ ] **Step 1:** Confirm `cargo build --locked` succeeds on Linux with Task 1's skeleton (phase 4 fills `platform::updater`).
 - [ ] **Step 2: Run** on Ubuntu: `cd desktop && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked` — Expected: PASS.
 - [ ] **Step 3: Commit**
 
@@ -249,7 +250,7 @@ git commit -m "ci(desktop): build and test the desktop app on Linux"
 
 **Files:**
 - Create: `desktop/assets/tray-mark-square.png` (32×32, from the brand mark; regenerate note as for `tray-mark.png`)
-- Modify: `desktop/src/tray.rs` (`icon_rgba(state, color: [u8; 3])`; square asset off macOS; `with_icon_as_template` only on macOS), `tray/menu.rs` (`MenuCommand::OpenPanel`, id `open-panel`, listed first on Linux), `main.rs` / `tray::run` (OpenPanel → `panel::toggle`), `platform/linux/mod.rs` (`tray_color(cx) -> [u8; 3]` from `cx.window_appearance()`)
+- Modify: `desktop/src/tray.rs` (`icon_rgba(state, color: [u8; 3])`; square asset off macOS; `with_icon_as_template` only on macOS), `tray/menu.rs` (`MenuCommand::OpenPanel`, id `open-panel`, listed first on Linux), `panel/window.rs` (new idempotent `panel::show(cx)`: opens, or focuses the open window), `main.rs` / `tray::run` (OpenPanel → `panel::show`; tray clicks keep `panel::toggle`), `platform/linux/mod.rs` (`tray_color(cx) -> [u8; 3]` from `cx.window_appearance()`)
 - Test: `desktop/src/tray/tests.rs`, `tray/menu/tests.rs`
 
 **Interfaces:**
@@ -321,10 +322,10 @@ git commit -m "feat(desktop): show the panel as a window on Linux, with a no-tra
 ### Task 9: `aiop` on Linux
 
 **Files:**
-- Modify: `desktop/src/cli_command.rs` (link dir per platform: `/usr/local/bin` on macOS, `~/.local/bin` on Linux; Linux installs without the admin prompt), `cli_command/tests.rs`, `app/lifecycle.rs` (`install_cli` targets `paths.stable` off macOS)
+- Modify: `desktop/src/cli_command.rs` (link dir per platform: `/usr/local/bin` on macOS, `~/.local/bin` on Linux; Linux installs without the admin prompt), `cli_command/tests.rs`, `app/lifecycle.rs` (`install_cli` targets `paths.stable` off macOS), `app.rs` (`can_link_cli`: macOS keeps the `/Applications` rule; Linux and Windows need only `persistent()`), `app/tests.rs`
 
 **Interfaces:**
-- Produces: `link_dir(home: &Path) -> PathBuf`; `install_links(dir: &Path, target: &Path, probe: Probe) -> io::Result<Vec<PathBuf>>` (creates `aiop`; `aio-proxy` only when `!probe.aio_proxy`; never replaces an existing file).
+- Produces: `AppModel::can_link_cli()` per platform; `link_dir(home: &Path) -> PathBuf`; `install_links(dir: &Path, target: &Path, probe: Probe) -> io::Result<Vec<PathBuf>>` (creates `aiop`; `aio-proxy` only when `!probe.aio_proxy`; never replaces an existing file).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -337,6 +338,11 @@ fn linux_links_aiop_and_only_a_free_aio_proxy_name() {
     assert_eq!(made, vec![dir.path().join("aiop")]);
     assert_eq!(fs::read_link(dir.path().join("aiop")).unwrap(), target);
     assert!(!dir.path().join("aio-proxy").exists());
+}
+
+#[test]
+fn a_persistent_linux_install_offers_aiop_without_an_applications_bundle() {
+    // AppModel with install = Persistent and bundle = /home/u/Apps/AIO Proxy.AppImage → can_link_cli() on Linux
 }
 
 #[test]

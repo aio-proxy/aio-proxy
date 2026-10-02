@@ -8,7 +8,7 @@
 
 **Tech Stack:** Rust 1.98, GPUI `gpui-pre-windows` backend, `tray-icon` 0.25.1 Win32 backend, `windows-sys`, `windows-registry`, `cargo test` on `windows-2025`.
 
-**Spec:** `docs/superpowers/specs/2026-10-02-windows-linux-desktop-design.md` (rev 3), sections 1, 3, 4. Requires phase 1 (Windows CLI and service) and phase 2 merged.
+**Spec:** `docs/superpowers/specs/2026-10-02-windows-linux-desktop-design.md` (rev 4), sections 1, 3, 4. Requires phase 1 (Windows CLI and service) and phase 2 merged.
 
 ## Global Constraints
 
@@ -16,7 +16,7 @@
 - Login item: HKCU `Software\Microsoft\Windows\CurrentVersion\Run`, value name `AIO Proxy`, data = quoted path of the running `aio-proxy-desktop.exe`.
 - Task path `\AIO Proxy\aio-proxy-<current user SID>`; kickstart = `schtasks /End /TN <path>` then `schtasks /Run /TN <path>`.
 - Tray: `with_guid(<fixed u128>)`; color from HKCU `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize` `SystemUsesLightTheme` (1 → black mark, 0/missing → white mark).
-- Panel: `WindowKind::PopUp`, no titlebar, no taskbar button, `WindowBackgroundAppearance::Blurred`, closes on deactivation, 360×560, placed beside the tray icon rect on the side facing the screen center, clamped to the work area.
+- Panel: `WindowKind::PopUp`, no titlebar, no taskbar button, `WindowBackgroundAppearance::Blurred`, closes on deactivation, 360×560 logical pixels, placed beside the tray icon rect on the side facing the screen center, clamped to the work area. Win32 rects are physical pixels: divide by the icon monitor's scale factor (`GetDpiForMonitor` / 96) before placement.
 - `main.rs`: `#![cfg_attr(windows, windows_subsystem = "windows")]`; every helper child `CREATE_NO_WINDOW` (phase 2 Task 2).
 - `aiop.cmd` content: `@"<stable exe>" %*`; `shims` appended to the end of HKCU `Environment\Path`, then `SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment")`.
 - `aiop` probe PATH = expanded HKLM `SYSTEM\CurrentControlSet\Control\Session Manager\Environment\Path` + `;` + expanded HKCU `Environment\Path`.
@@ -156,7 +156,7 @@ git commit -m "feat(desktop): replace the CLI copy safely and restart services o
 - Modify: `desktop/src/panel/placement.rs` (+ `placement/tests.rs`), `desktop/src/tray.rs` (keep the last click rect from `TrayIconEvent::Click { rect, .. }`; `with_guid` on Windows; color from `platform::tray_color`), `platform/windows/mod.rs` (`tray_color` via registry)
 
 **Interfaces:**
-- Produces: `struct Rect { x: f64, y: f64, width: f64, height: f64 }` (top-down, physical pixels); `popup_origin(icon: Rect, work_area: Rect, panel: (f64, f64)) -> (f64, f64)`; Windows `window_options` uses the work area of the monitor containing the icon (`MonitorFromRect` + `GetMonitorInfoW`), `WindowKind::PopUp`, `WindowBackgroundAppearance::Blurred`; `closes_on_deactivate() == true`.
+- Produces: `struct Rect { x: f64, y: f64, width: f64, height: f64 }` (top-down, logical pixels); `to_logical(r: Rect, scale: f64) -> Rect`; `popup_origin(icon: Rect, work_area: Rect, panel: (f64, f64)) -> (f64, f64)`; Windows `window_options` uses the work area of the monitor containing the icon (`MonitorFromRect` + `GetMonitorInfoW`), `WindowKind::PopUp`, `WindowBackgroundAppearance::Blurred`; `closes_on_deactivate() == true`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -186,7 +186,30 @@ fn left_and_right_taskbars_open_beside_the_icon() {
 }
 ```
 
-  Rule the tests pin: the taskbar edge is the side of `icon` outside `work_area`; the panel sits flush against that edge of the work area, centered on the icon along the edge, clamped inside the work area.
+  Also:
+
+```rust
+#[test]
+fn an_overflow_icon_inside_the_work_area_opens_toward_the_screen_center() {
+    let icon = Rect { x: 1700.0, y: 900.0, width: 24.0, height: 24.0 }; // in the overflow flyout
+    assert_eq!(popup_origin(icon, WORK, PANEL), (1712.0 - 180.0, 900.0 - 560.0));
+}
+
+#[test]
+fn physical_rects_are_scaled_to_logical_before_placement() {
+    let phys = Rect { x: 2820.0, y: 1560.0, width: 36.0, height: 48.0 };
+    assert_eq!(to_logical(phys, 1.5), Rect { x: 1880.0, y: 1040.0, width: 24.0, height: 32.0 });
+}
+
+#[test]
+fn a_monitor_left_of_the_primary_has_negative_coordinates() {
+    let work = Rect { x: -1920.0, y: 0.0, width: 1920.0, height: 1032.0 };
+    let icon = Rect { x: -40.0, y: 1040.0, width: 24.0, height: 32.0 };
+    assert_eq!(popup_origin(icon, work, PANEL), (-360.0, 472.0));
+}
+```
+
+  Rule the tests pin: the taskbar edge is the side of `icon` outside `work_area`; the panel sits flush against that edge of the work area, centered on the icon along the edge, clamped inside the work area. An icon fully inside the work area opens above itself when its center is in the lower half of the work area, else below, centered horizontally and clamped.
 
 - [ ] **Step 2: Run** — Expected: FAIL.
 - [ ] **Step 3: Implement**; macOS keeps `panel_origin` unchanged.
@@ -202,7 +225,7 @@ git commit -m "feat(desktop): open the panel beside the Windows tray icon"
 
 **Files:**
 - Create: `desktop/src/platform/windows/shell_path.rs`, `platform/windows/shell_path/tests.rs`
-- Modify: `desktop/src/cli_command.rs` (Windows branch: probe and install via `shell_path`)
+- Modify: `desktop/src/cli_command.rs` (Windows branch: probe and install via `shell_path`), `app/lifecycle.rs` (`install_cli`: on Windows the `link_dir_on_path` precondition does not apply — install adds the shims dir to PATH itself)
 
 **Interfaces:**
 - Produces: `path_with(value: &str, dir: &str) -> String` (appends `dir` unless an entry equals it case-insensitively, ignoring a trailing `\`; keeps every other entry byte-for-byte); `path_without(value: &str, dir: &str) -> String`; `shim_text(target: &Path) -> String` = `@"<target>" %*\r\n`; `effective_path() -> String` (registry HKLM + HKCU, expanded); Windows `install(target, probe)` writes `aiop.cmd` (and `aio-proxy.cmd` only when free), updates HKCU `Path` keeping its value type, broadcasts `WM_SETTINGCHANGE`.

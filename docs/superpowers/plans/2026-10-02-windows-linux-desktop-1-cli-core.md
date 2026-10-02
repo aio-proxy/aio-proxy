@@ -8,7 +8,7 @@
 
 **Tech Stack:** Bun (`bun test`, `Bun.spawn`, `bun:ffi` for the Job Object), TypeScript, `es-toolkit`, `schtasks`, `systemctl --user`, `netstat`/`tasklist`, `/proc/net/tcp{,6}`.
 
-**Spec:** `docs/superpowers/specs/2026-10-02-windows-linux-desktop-design.md` (rev 3), sections 2a–2d. Read phase 0's `2026-10-02-windows-linux-desktop-spike-findings.md` first: its chosen task action and logon type override the defaults below.
+**Spec:** `docs/superpowers/specs/2026-10-02-windows-linux-desktop-design.md` (rev 4), sections 2a–2d. Read phase 0's `2026-10-02-windows-linux-desktop-spike-findings.md` first: its chosen task action and logon type override the defaults below.
 
 ## Global Constraints
 
@@ -17,7 +17,11 @@
 - Spec file `%LOCALAPPDATA%\aio-proxy\service.json` = `{ exec, env }`; state file `%LOCALAPPDATA%\aio-proxy\service.state.json` = `{ pid }`.
 - `__service-run` exit decisions: 0 or 1 → stop; 75 → re-read spec, relaunch at once; other → relaunch after 5 s; `exec` missing → exit 0.
 - `RestartOnFailure`: interval `PT1M`, count `3`.
-- Uninstall marker: file `service-uninstalled` in `AIO_PROXY_HOME` (the directory of `configPath()`).
+- Uninstall marker (per user, fixed path): Linux `<systemd user unit dir>/aio-proxy.service.uninstalled`; Windows `%LOCALAPPDATA%\aio-proxy\service.uninstalled`.
+- In-service restart on win32: rewrite spec (and XML if `exec` changed), return normally, `process.exit(75)` after 1 s.
+- Task Scheduler queries capture output and pass `/HRESULT`; not-found = `0x80070002`.
+- New modules follow CLAUDE.md layout: `foo/index.ts` (exports only), `foo/foo.ts`, `foo/foo.test.ts`.
+- Clean runners run `bun install --frozen-lockfile` then `bun run build` before tests or `build-binary.ts`.
 - Windows token path: `%LOCALAPPDATA%\aio-proxy\desktop-tokens\<sha256 hex of the resolved home>`.
 - Stable-copy directory segment recognized as desktop-managed: `aio-proxy-desktop/bin/` (any separator; case-insensitive on win32).
 - `__desktop-connect` output stays `protocolVersion: 1`; field meanings unchanged.
@@ -62,7 +66,7 @@ git commit -m "refactor(cli): split service backends by manager"
 - Create: `npm/cli-win32-x64/package.json` (copy of `npm/cli-linux-x64/package.json` with `os: ["win32"]`)
 - Modify: `npm/aio-proxy/package.json` (`optionalDependencies` adds `"@aio-proxy/cli-win32-x64": "workspace:*"`), `npm/aio-proxy/bin/aio-proxy.js` (resolve `bin/aio-proxy.exe` on win32)
 - Modify: `packages/cli/src/service/service.ts` (`managedServicePath(home, inherited, delimiter = path.delimiter)`), `packages/cli/src/desktop-connect/desktop-connect.ts` (`runWithin` adds `windowsHide: true`), `service.ts` `runManager` (same)
-- Modify: `packages/cli/src/upgrade/constants.ts`, `binary.ts` comments/keys that assume `darwin|linux`
+- Modify: `.changeset/config.json` (add `@aio-proxy/cli-win32-x64` to the `fixed` group), `bun.lock` (`bun install`)
 - Test: `packages/cli/src/service/service.test.ts`
 
 **Interfaces:**
@@ -80,7 +84,7 @@ test('managed service PATH uses the platform delimiter and keeps Windows paths',
 
 - [ ] **Step 2: Run** `cd packages/cli && bun run test:unit src/service/service.test.ts` — Expected: FAIL (`managedServicePath` not exported / joins with `:`).
 - [ ] **Step 3: Implement.** Export `managedServicePath`; split and join `inherited` on `delimiter`; on `;` skip the POSIX fallbacks (`/opt/homebrew/bin` …) and use `path.win32.isAbsolute`. Add the build target, npm package, launcher branch and `windowsHide`.
-- [ ] **Step 4: Run** the test file — Expected: PASS. Then `bun packages/cli/scripts/build-binary.ts win32-x64` — Expected: `npm/cli-win32-x64/bin/aio-proxy.exe` exists.
+- [ ] **Step 4: Run** the test file — Expected: PASS. Then `bun run build && bun packages/cli/scripts/build-binary.ts win32-x64` — Expected: `npm/cli-win32-x64/bin/aio-proxy.exe` exists. `bunx changeset status --verbose` with a scratch changeset — Expected: `@aio-proxy/cli-win32-x64` bumps with the others.
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -88,11 +92,12 @@ git add packages/cli npm
 git commit -m "feat(cli): build and publish a Windows x64 binary"
 ```
 
-### Task 3: Windows self-upgrade and desktop-copy upgrade protection
+### Task 3: Windows upgrade chain and desktop-copy upgrade protection
 
 **Files:**
-- Modify: `packages/cli/src/upgrade/binary.ts` (`replaceBinaryForUpdate` win32 commit), `packages/cli/src/upgrade/upgrade.ts` (`isDesktopManagedInstall`)
-- Test: `packages/cli/src/upgrade/upgrade.test.ts`, `packages/cli/src/upgrade/binary.test.ts` (create, colocated)
+- Move: `packages/cli/src/upgrade/binary.ts` → `packages/cli/src/upgrade/binary/{index.ts,binary.ts}`; create `upgrade/binary/binary.test.ts`
+- Modify: `upgrade/binary/binary.ts` (`extractBinaryFromTarball(bytes, platform)` reads `package/bin/aio-proxy.exe` on win32; `replaceBinaryForUpdate` win32 commit), `upgrade/detect.ts` (`PLATFORM_CLI_BIN` and the native-next-to-shim lookup accept `aio-proxy.exe`; PATH split on `path.delimiter`), `upgrade/upgrade.ts` (`isDesktopManagedInstall`)
+- Test: `packages/cli/src/upgrade/upgrade.test.ts`, `upgrade/binary/binary.test.ts`
 
 **Interfaces:**
 - Consumes: existing `ReplaceOptions`, `sweepStaleBackups(targetPath)`.
@@ -113,6 +118,20 @@ test('win32 commit renames the running binary aside before moving the staged one
   await commitStagedBinary({ target: 'C:\\b\\aio-proxy.exe', staged: 'C:\\b\\.aio-proxy.new', platform: 'win32',
     rename: async (from, to) => void ops.push(`${from} -> ${to}`) });
   expect(ops).toEqual(['C:\\b\\aio-proxy.exe -> C:\\b\\aio-proxy.exe.old', 'C:\\b\\.aio-proxy.new -> C:\\b\\aio-proxy.exe']);
+});
+```
+
+  Also:
+
+```ts
+test('a Windows package tarball yields aio-proxy.exe', async () => {
+  const tgz = await tarball({ 'package/bin/aio-proxy.exe': new Uint8Array([7]) });
+  expect(await extractBinaryFromTarball(tgz, 'win32')).toEqual(new Uint8Array([7]));
+});
+
+test('the native win32 binary under an npm prefix is recognized as a package install', async () => {
+  const exe = 'C:\\Users\\U\\AppData\\Roaming\\npm\\node_modules\\@aio-proxy\\cli-win32-x64\\bin\\aio-proxy.exe';
+  expect(isPlatformCliBinary(exe)).toBe(true);
 });
 ```
 
@@ -153,13 +172,14 @@ test('win32 creates and reads the token without POSIX mode checks, and rejects a
   const path = desktopTokenPath('C:\\h2', opts);
   mkdirSync(dirname(path), { recursive: true });
   symlinkSync(join(home, 'elsewhere'), path);
-  expect(rejectionOf(() => readDesktopToken('C:\\h2', opts))).toBe('not_regular_file');
+  expect(readDesktopToken('C:\\h2', opts)).toBeUndefined();
+  expect(rejectionOf(() => ensureDesktopToken('C:\\h2', opts))).toBe('not_regular_file');
 });
 ```
 
 - [ ] **Step 2: Run** `cd packages/core && bun test src/desktop-token` — Expected: FAIL.
 - [ ] **Step 3: Implement.** win32: normalize with `path.win32.resolve`, strip a trailing separator, lowercase, then `sha256` hex; directory created with `mkdirSync(..., { recursive: true })` (inherits the profile ACL). `inspect` on win32: `lstatSync` first → symlink/junction → `not_regular_file`; skip `O_NOFOLLOW`, uid and mode checks. `localAppData` defaults to `process.env.LOCALAPPDATA`; a missing value throws `DesktopTokenRejectedError('unreadable')`.
-- [ ] **Step 4: Run** — Expected: PASS (POSIX tests unchanged).
+- [ ] **Step 4:** Mark the existing POSIX-only tests (mode `0o600`, uid, `mkfifo`) `test.skipIf(process.platform === 'win32')`; every win32 test passes `localAppData` under the temp dir so no test touches the real profile. **Run** — Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -188,8 +208,12 @@ test('proc/net/tcp rows decode little-endian addresses into lsof spellings', () 
     { owner: '1000', family: 'IPv4', address: '127.0.0.1:4137->127.0.0.1:50000' },
   ]);
   const v6 = `  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid
-   0: 00000000000000000000000001000000:1029 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000`;
-  expect(parseProcNetTcp(v6, 'IPv6')).toEqual([{ owner: '1000', family: 'IPv6', address: '[::1]:4137' }]);
+   0: 00000000000000000000000001000000:1029 00000000000000000000000000000000:0000 0A 00000000:00000000 00:00000000 00000000  1000
+   1: 00000000000000000000000001000000:1029 00000000000000000000000001000000:C351 01 00000000:00000000 00:00000000 00000000  1000`;
+  expect(parseProcNetTcp(v6, 'IPv6')).toEqual([
+    { owner: '1000', family: 'IPv6', address: '[::1]:4137' },
+    { owner: '1000', family: 'IPv6', address: '[::1]:4137->[::1]:50001' },
+  ]);
 });
 
 test('another account serving the connection is not ours', () => {
@@ -255,7 +279,7 @@ git commit -m "feat(cli): verify connection owners on Windows"
 ### Task 7: Windows unit files — task XML and `service.json`
 
 **Files:**
-- Create: `packages/cli/src/service/schtasks-unit.ts`, `packages/cli/src/service/schtasks-unit.test.ts` (move into `service/schtasks/` if Task 9 adds a second file there)
+- Create: `packages/cli/src/service/schtasks-unit/{index.ts,schtasks-unit.ts,schtasks-unit.test.ts}`
 - Modify: `packages/cli/src/service/unit-templates.ts` (export `UnitOptions` env builder shared by all three renderers)
 
 **Interfaces:**
@@ -308,12 +332,12 @@ git commit -m "feat(cli): render the Windows task and service spec"
 ### Task 8: `__service-run` supervisor
 
 **Files:**
-- Create: `packages/cli/src/service-run/index.ts`, `service-run/service-run.ts`, `service-run/job-object.ts`, `service-run/service-run.test.ts`
+- Create: `packages/cli/src/service-run/{index.ts,service-run.ts,service-run.test.ts}`, `packages/cli/src/win32-ffi/{index.ts,win32-ffi.ts,win32-ffi.test.ts}` (Job Object and `QueryFullProcessImageNameW`)
 - Modify: `packages/cli/src/main.ts` (hidden command `__service-run <spec>` beside `__desktop-connect`), `packages/cli/src/exit/exit.ts` (`EXIT.restartRequested = 75`)
 
 **Interfaces:**
 - Consumes: Task 7's `parseServiceSpec`, `serviceStatePath`.
-- Produces: `type Decision = 'stop' | 'relaunch-now' | 'relaunch-later'`; `decide(exitCode: number): Decision`; `runSupervisor(specPath: string, deps: SupervisorDeps): Promise<number>` where `SupervisorDeps = { readSpec, exists, spawnChild(exec, env): Promise<number>, writeState(pid), sleep(ms), pid }`; `createKillOnCloseJob(): JobHandle` / `assignToJob(job, pid)` (bun:ffi, win32 only).
+- Produces: `type Decision = 'stop' | 'relaunch-now' | 'relaunch-later'`; `decide(exitCode: number): Decision`; `runSupervisor(specPath: string, deps: SupervisorDeps): Promise<number>` where `SupervisorDeps = { readSpec, exists, spawnChild(exec, env): Promise<number>, writeState(pid), sleep(ms), pid }`; `createKillOnCloseJob(): JobHandle`, `assignToJob(job, pid)`, `processImagePath(pid: number): string | undefined` in `win32-ffi` (bun:ffi, win32 only).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -327,16 +351,25 @@ test('exit codes map to systemd-like decisions', () => {
 });
 
 test('supervisor re-reads the spec on 75, backs off 5 s on a crash, and stops cleanly when exec vanishes', async () => {
-  const specs = [{ exec: 'A', env: {} }, { exec: 'B', env: {} }, { exec: 'B', env: {} }];
+  let spec = { exec: 'A', env: {} };
   const runs: string[] = []; const sleeps: number[] = []; let exists = true;
   const code = await runSupervisor('spec.json', {
-    readSpec: () => specs.shift(), exists: () => exists, pid: 4242, writeState: () => {},
+    readSpec: () => spec, exists: () => exists, pid: 4242, writeState: () => {},
     sleep: async (ms) => void sleeps.push(ms),
-    spawnChild: async (e) => { runs.push(e); if (runs.length === 1) return 75; if (runs.length === 2) return 2; exists = false; return 2; },
+    spawnChild: async (e) => {
+      runs.push(e);
+      if (runs.length === 1) { spec = { exec: 'B', env: {} }; return 75; }
+      if (runs.length === 3) exists = false;
+      return 2;
+    },
   });
   expect(runs).toEqual(['A', 'B', 'B']);
   expect(sleeps).toEqual([5000, 5000]);
   expect(code).toBe(0);
+});
+
+test('an unreadable spec stops the supervisor with 1', async () => {
+  expect(await runSupervisor('spec.json', { ...fakes, readSpec: () => undefined })).toBe(1);
 });
 ```
 
@@ -353,12 +386,12 @@ git commit -m "feat(cli): supervise the Windows service with __service-run"
 ### Task 9: Windows lifecycle (`schtasks` backend)
 
 **Files:**
-- Create: `packages/cli/src/service/schtasks.ts`, `packages/cli/src/service/schtasks.test.ts`
+- Create: `packages/cli/src/service/schtasks/{index.ts,schtasks.ts,schtasks.test.ts}`, `packages/cli/src/service/uninstall-marker/{index.ts,uninstall-marker.ts,uninstall-marker.test.ts}`, `packages/cli/src/service/run-capture/{index.ts,run-capture.ts}`
 - Modify: `packages/cli/src/service/service.ts` (`SupportedPlatform` adds `'win32'`; dispatch install/start/stop/restart/uninstall/status), `managedUnitPath('win32')` returns the spec path
 
 **Interfaces:**
-- Consumes: Tasks 7–8; `runManager(cmd, allowFailure)`.
-- Produces: `currentUserSid(run): Promise<string>` (`whoami /user /fo csv /nh`); `schtasksInstall`, `schtasksStart`, `schtasksStop`, `schtasksRestart`, `schtasksUninstall` — each `(io: SchtasksIo) => Promise<void>` with `SchtasksIo = { run, sid, localAppData, exec, configPath, env, writeFile, rename, remove, readState, pidAlive, sleep, now }`. Uninstall marker helpers shared with Task 10: `uninstallMarkerPath(configPath)`, `writeUninstallMarker`, `clearUninstallMarker` in `service/uninstall-marker.ts`.
+- Consumes: Tasks 7–8; `runManager(cmd, allowFailure)` for mutating commands (output streamed to the user).
+- Produces: `currentUserSid(run): Promise<string>` (`whoami /user /fo csv /nh`); `schtasksInstall`, `schtasksStart`, `schtasksStop`, `schtasksRestart`, `schtasksUninstall` — each `(io: SchtasksIo) => Promise<void>` with `SchtasksIo = { run, capture, sid, localAppData, exec, configPath, env, writeFile, rename, remove, readState, pidAlive, sleep, now }`; `runCapture(cmd): Promise<{ code: number; stdout: string; stderr: string }>` (windowsHide, captured) for every query; `queryTaskXml(capture, path): Promise<{ kind: 'found'; xml: string } | { kind: 'missing' } | { kind: 'failed' }>` (`schtasks /Query /XML /TN <path> /HRESULT`, `0x80070002` → missing). Uninstall marker helpers shared with Tasks 10 and 12: `uninstallMarkerPath(platform, env): string` (fixed per-user path from Global Constraints), `writeUninstallMarker`, `clearUninstallMarker`, `uninstallMarkerExists`.
 
 - [ ] **Step 1: Write the failing tests** (fake `run` records argv; fake fs)
 
@@ -386,7 +419,7 @@ test('uninstall waits for the supervisor to exit before deleting, then leaves th
   const { calls, fs } = await recordRun((io) => schtasksUninstall({ ...io, pidAlive: () => alive.shift() ?? false }));
   expect(calls.map((c) => c[1])).toEqual(['/End', '/Delete']);
   expect(fs.exists(specPath)).toBe(false);
-  expect(fs.exists(uninstallMarkerPath(configPath))).toBe(true);
+  expect(fs.exists(uninstallMarkerPath('win32', env))).toBe(true);
 });
 
 test('uninstall fails without deleting when the supervisor outlives 10 s', async () => {
@@ -396,7 +429,7 @@ test('uninstall fails without deleting when the supervisor outlives 10 s', async
 ```
 
 - [ ] **Step 2: Run** — Expected: FAIL.
-- [ ] **Step 3: Implement.** Install: clear marker, write spec + XML (UTF-16LE file in a temp dir), `/Create /XML <file> /TN <path> /F` only after `/Query /XML` shows no task or one whose principal is `sid`. Start: `/Change /ENABLE`, `/Run`. Restart: stage both files, `/End`, `/Create /F`, move spec into place, `/Run`; on any failure re-create from the previous XML and restore the spec. Uninstall: `/End`, poll `pidAlive(readState().pid)` every 100 ms up to 10 s, `/Delete /F`, remove spec and state, write marker. Status: `/Query /TN <path> /V /FO LIST` passthrough.
+- [ ] **Step 3: Implement.** Install: clear marker, write spec + XML (UTF-16LE file in a temp dir), `/Create /XML <file> /TN <path> /F` only after `queryTaskXml` returns `missing` or a task whose principal is `sid` (`failed` aborts). Restart keeps the `queryTaskXml` result as the rollback XML. Start: `/Change /ENABLE`, `/Run`. Restart: stage both files, `/End`, `/Create /F`, move spec into place, `/Run`; on any failure re-create from the previous XML and restore the spec. Uninstall: `/End`, poll `pidAlive(readState().pid)` every 100 ms up to 10 s, `/Delete /F`, remove spec and state, write marker. Status: `/Query /TN <path> /V /FO LIST` passthrough.
 - [ ] **Step 4: Run** — Expected: PASS.
 - [ ] **Step 5: Commit**
 
@@ -425,8 +458,8 @@ test('linux stop disables and start enables, so a stop survives a reboot', async
 });
 
 test('linux uninstall leaves the marker and install clears it', async () => {
-  await linuxUninstall(); expect(existsSync(uninstallMarkerPath(configPath))).toBe(true);
-  await linuxInstall();   expect(existsSync(uninstallMarkerPath(configPath))).toBe(false);
+  await linuxUninstall(); expect(existsSync(uninstallMarkerPath('linux', env))).toBe(true);
+  await linuxInstall();   expect(existsSync(uninstallMarkerPath('linux', env))).toBe(false);
 });
 
 test('a desktop-owned systemd unit carries its own marker and is recognized', () => {
@@ -455,17 +488,24 @@ git commit -m "fix(cli): keep a stopped or uninstalled Linux service stopped"
 
 **Interfaces:**
 - Consumes: `EXIT.restartRequested` (Task 8), `schtasksRestart` (Task 9).
-- Produces: `serviceRestart` on win32 with `env.AIO_PROXY_MANAGED === '1'` and no TTY: rewrites the spec (and the XML via `/Create /F` when `exec` changed), then `throw new CliExit(EXIT.restartRequested, '')`.
+- Produces: `serviceRestart` on win32 with `env.AIO_PROXY_MANAGED === '1'` and no TTY: rewrites the spec (and the XML via `/Create /F` when `exec` changed), returns normally, and calls `io.scheduleExit(75, 1000)`; the default is a ref'd `setTimeout(() => process.exit(75), 1000)` (not `unref`, so the exit happens even when the event loop is otherwise idle).
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 test('a managed proxy restarting itself on Windows rewrites the spec and asks its supervisor to relaunch', async () => {
-  const { calls, error } = await runRestart({ platform: 'win32', env: { AIO_PROXY_MANAGED: '1' }, isTTY: false, exec: newExec });
+  const exits: [number, number][] = [];
+  const { calls } = await runRestart({ platform: 'win32', env: { AIO_PROXY_MANAGED: '1' }, isTTY: false, exec: newExec,
+    scheduleExit: (code, ms) => void exits.push([code, ms]) });
   expect(calls.some((c) => c[1] === '/End' || c[1] === '/Run')).toBe(false);
   expect(calls.map((c) => c[1])).toEqual(['/Create']);
-  expect((error as CliExit).code).toBe(75);
+  expect(exits).toEqual([[75, 1000]]);
   expect(readSpec().exec).toBe(newExec);
+});
+
+test('the scheduled exit really ends the process with 75 after the caller returned', async () => {
+  // spawn `bun -e` running serviceRestart with a real scheduleExit and fakes for schtasks;
+  // assert the child printed "returned" and exited with code 75
 });
 ```
 
@@ -482,7 +522,7 @@ git commit -m "fix(cli): restart a Windows service from inside without killing i
 ### Task 12: `__desktop-connect` on Linux and Windows
 
 **Files:**
-- Create: `packages/cli/src/desktop-connect/systemd-inspect.ts`, `schtasks-inspect.ts` (+ colocated tests)
+- Create: `packages/cli/src/desktop-connect/systemd-inspect/{index.ts,systemd-inspect.ts,systemd-inspect.test.ts}`, `desktop-connect/schtasks-inspect/{index.ts,schtasks-inspect.ts,schtasks-inspect.test.ts}`
 - Modify: `packages/cli/src/desktop-connect/desktop-connect.ts` (`DesktopConnectDeps.plistPath` → `unitPath`; `readUnit`/`readJob` dispatch on `deps.platform`; owner via `deps.owner: string`), `desktop-connect.test.ts`
 
 **Interfaces:**
@@ -517,12 +557,17 @@ test('Windows job pid comes from the state file only while that process runs exe
   expect(parseSchtasksCsv(runningCsv, 0, false, { pid: 77 }, () => true, link).pid).toBe(77);
   expect(parseSchtasksCsv(runningCsv, 0, false, { pid: 77 }, () => false, link).pid).toBeNull();
 });
+
+test('a process with the same image name in another directory is not the job', () => {
+  const imagePath = (pid: number) => (pid === 77 ? 'C:\\Other\\aio-proxy.exe' : undefined);
+  expect(pidAliveAs(77, link, imagePath)).toBe(false);
+});
 ```
 
   Plus one end-to-end `desktopConnect` test per platform with fake deps: linux desktop-owned running instance → `owner: 'desktop'`, `matchesJob: true`, token present; win32 same with the state-file pid as the instance's `ppid`.
 
 - [ ] **Step 2: Run** `cd packages/cli && bun run test:unit src/desktop-connect` — Expected: FAIL.
-- [ ] **Step 3: Implement.** linux: `readUnit` reads the unit file; `readJob` runs `systemctl --user show aio-proxy.service -p LoadState,ActiveState,UnitFileState,MainPID`. win32: `schtasks /Query /XML /TN <path>` + spec file; `schtasks /Query /TN <path> /V /FO CSV /NH` (task-not-found exit → "no unit"); `pidAliveAs` via `tasklist /FI "PID eq <pid>" /FO CSV /NH` image path check. Marker read from the default home's `service-uninstalled`. Identity probes and listener checks call `listSockets(deps.platform, …)`.
+- [ ] **Step 3: Implement.** linux: `readUnit` reads the unit file; `readJob` runs `systemctl --user show aio-proxy.service -p LoadState,ActiveState,UnitFileState,MainPID`. win32: `queryTaskXml` (Task 9) + spec file; `schtasks /Query /TN <path> /V /FO CSV /NH /HRESULT` (`missing` → "no unit", other failure → `disabled: true`); `pidAliveAs(pid, exec)` = `processImagePath(pid)` (Task 8 `win32-ffi`) equals `exec` case-insensitively. Marker via `uninstallMarkerExists(platform, env)`. Identity probes and listener checks call `listSockets(deps.platform, …)`.
 - [ ] **Step 4: Run** — Expected: PASS, darwin tests unchanged.
 - [ ] **Step 5: Commit**
 
@@ -534,7 +579,7 @@ git commit -m "feat(cli): discover the managed service on Linux and Windows"
 ### Task 13: CI on Windows and the release note
 
 **Files:**
-- Modify: `.github/workflows/ci.yml` (job `cli-windows`: `windows-2025`, `bun install --frozen-lockfile`, `cd packages/cli && bun run test:unit src/service src/service-run src/desktop-connect src/upgrade`, `cd packages/core && bun test src/desktop-token`)
+- Modify: `.github/workflows/ci.yml` (job `cli-windows`: `windows-2025`, `bun install --frozen-lockfile`, `bun run build`, `cd packages/cli && bun run test:unit src/service src/service-run src/win32-ffi src/desktop-connect src/upgrade`, `cd packages/core && bun test src/desktop-token`)
 - Modify: `packages/i18n/messages/*.json` (any new `cli.service.*` messages added in Tasks 9–11, all five locales)
 - Create: `.changeset/windows-cli-service.md`
 

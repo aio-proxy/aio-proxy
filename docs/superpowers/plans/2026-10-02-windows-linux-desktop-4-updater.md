@@ -8,11 +8,11 @@
 
 **Tech Stack:** Bun + WebCrypto Ed25519 + `node:crypto` `blake2b512`; Rust `cargo-packager-updater` 0.2.3, `minisign-verify` (its dependency) for trusted-comment parsing, `base64`.
 
-**Spec:** `docs/superpowers/specs/2026-10-02-windows-linux-desktop-design.md` (rev 3), section 5. Requires phases 2–3.
+**Spec:** `docs/superpowers/specs/2026-10-02-windows-linux-desktop-design.md` (rev 4), section 5. Requires phases 2–3.
 
 ## Global Constraints
 
-- Feed URL: `https://github.com/aio-proxy/aio-proxy/releases/download/desktop-feed/latest.json`; compile-time overrides `option_env!("AIO_PROXY_DESKTOP_FEED_URL")` and `option_env!("AIO_PROXY_DESKTOP_UPDATE_KEY")` for rehearsals only; phase 5's packaging script refuses to produce a release artifact when either is set.
+- Feed URL: `https://github.com/aio-proxy/aio-proxy/releases/download/desktop-feed/latest.json`; compile-time overrides `option_env!("AIO_PROXY_DESKTOP_FEED_URL")` and `option_env!("AIO_PROXY_DESKTOP_UPDATE_KEY")` for rehearsals only; phase 5's packaging script accepts them only with `--rehearsal`, which names its outputs `*-rehearsal.*`, and the publish scripts reject anything not signed by the release key.
 - Targets: `linux-x86_64`, `linux-aarch64` (format `appimage`), `windows-x86_64` (format `nsis`).
 - Public key string given to the updater = `base64("untrusted comment: aio-proxy-desktop update key\n" + base64("Ed" ‖ KEY_ID ‖ pk32) + "\n")`.
 - `signature` field = `base64(` four-line `.minisig` text `)`; signature algorithm `ED` (prehashed: Ed25519 over BLAKE2b-512 of the file).
@@ -130,7 +130,8 @@ git commit -m "feat(desktop): verify update signatures and their signed version"
 
 **Interfaces:**
 - Consumes: Task 2 `updater_pubkey`, `check_trusted`; `AppEvent::{UpdateAvailable, UpdateAttended}`.
-- Produces: `start(events)`; `check_now()` (manual check: emits `UpdateAvailable(v)` or `UpToDate`); `install_now()`; pure `decide_check(current: &str, offered: Option<(&str, &str)>, interactive: bool) -> CheckOutcome { Available(String), UpToDate, Silent }` (offered = version, target; a missing target entry is `None`); `install_mode(appimage_dir_writable: bool) -> InstallMode { InPlace, DownloadPage }`; `asset_name(url: &str) -> &str` (last path segment).
+- Produces: `start(events)`; `check_now()` (manual check: emits `UpdateAvailable(v)` or `UpToDate`); `install_now(events: UnboundedSender<AppEvent>)` (runs on a background thread); new `AppEvent::RelaunchInto(PathBuf)` (Linux) and `AppEvent::OpenUrl(String)`; pure `decide_check(current: &str, offered: Option<(&str, &str)>, interactive: bool) -> CheckOutcome { Available(String), UpToDate, Silent }` (offered = version, target; a missing target entry is `None`); `install_action(appimage: Option<&Path>, dir_writable: impl Fn(&Path) -> bool, version: &str) -> InstallAction { InPlace, OpenUrl(String) }`; `asset_name(url: &str) -> &str` (last path segment).
+- Exit contract: on Windows `cargo-packager-updater`'s `install` launches the installer and calls `process::exit(0)` itself, so nothing after it runs; on Linux `install_now` sends `RelaunchInto($APPIMAGE)` and the main thread replaces the process with `std::os::unix::process::CommandExt::exec` (the instance-lock file descriptor is close-on-exec, so the new image takes the lock without a race).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -145,16 +146,19 @@ fn background_checks_stay_silent_unless_newer_and_manual_checks_report_up_to_dat
 }
 
 #[test]
-fn a_read_only_appimage_location_falls_back_to_the_download_page() {
-    assert_eq!(install_mode(false), InstallMode::DownloadPage);
-    assert_eq!(install_mode(true), InstallMode::InPlace);
+fn an_appimage_that_cannot_be_replaced_opens_that_version_release_page() {
+    let a = Path::new("/opt/AIO Proxy.AppImage");
+    assert_eq!(install_action(Some(a), |_| false, "0.41.0"),
+        InstallAction::OpenUrl("https://github.com/aio-proxy/aio-proxy/releases/tag/v0.41.0".into()));
+    assert_eq!(install_action(Some(a), |d| d == Path::new("/opt"), "0.41.0"), InstallAction::InPlace);
+    assert!(matches!(install_action(None, |_| true, "0.41.0"), InstallAction::OpenUrl(_)));
 }
 ```
 
   Plus one `app` test: handling `AppEvent::UpToDate` sets the action line and clears nothing else.
 
 - [ ] **Step 2: Run** — Expected: FAIL.
-- [ ] **Step 3: Implement.** `start`: a background thread checks at launch and every 6 h (`std::thread::sleep`), network errors only logged. `install_now`: `download()` → `check_trusted` with `Offer { version, target, asset_name(download_url) }` → Windows: `install(bytes)` (Passive) then `cx.quit()`; Linux `InPlace`: `install(bytes)` then re-exec `$APPIMAGE` and quit; `DownloadPage`: open `https://github.com/aio-proxy/aio-proxy/releases/tag/v<version>`.
+- [ ] **Step 3: Implement.** `start`: a background thread checks at launch and every 6 h (`std::thread::sleep`), network errors only logged. `install_now`: `install_action` first (`OpenUrl` → send `AppEvent::OpenUrl`); else `download()` → `check_trusted` with `Offer { version, target, asset_name(download_url) }` (mismatch → log + `ActionState::Failed`) → Windows: `install(bytes)` (Passive; the library exits the process); Linux: `install(bytes)` then send `RelaunchInto($APPIMAGE)`.
 - [ ] **Step 4: Run** — Expected: PASS.
 - [ ] **Step 5: Commit**
 
@@ -163,8 +167,5 @@ git add desktop/src
 git commit -m "feat(desktop): check for and install updates on Linux and Windows"
 ```
 
-### Task 4: Local rehearsal
 
-- [ ] **Step 1:** Build two versions locally with `AIO_PROXY_DESKTOP_FEED_URL=http://127.0.0.1:8765/latest.json` (phase 5 Task 1's packager produces the AppImage/installer; until then, a hand-made AppImage works on Linux). Serve a `latest.json` signed by Task 1 with a throwaway key whose public half is compiled in through `AIO_PROXY_DESKTOP_UPDATE_KEY`.
-- [ ] **Step 2:** Check: same version → "up to date"; newer → attention dot, Install → relaunch on the new version, proxy restarted on the new stable copy; tampered `version` field (trusted comment older) → refused with a log line, no install; bad signature → refused.
-- [ ] **Step 3:** Record the results in the PR description. Nothing to commit.
+The end-to-end rehearsal against a local feed runs in phase 5 Task 6, once packaging exists.

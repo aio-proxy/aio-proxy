@@ -8,7 +8,7 @@
 
 **Tech Stack:** Bun (`bun build --compile --target=bun-windows-x64`), `schtasks`, Windows 11 23H2+ desktop session (not a headless runner: console windows must be observed), `cargo-packager` NSIS output, `tray-icon` 0.25.1 with the `ksni` feature, GNOME and KDE sessions.
 
-**Spec:** `docs/superpowers/specs/2026-10-02-windows-linux-desktop-design.md` (rev 3)
+**Spec:** `docs/superpowers/specs/2026-10-02-windows-linux-desktop-design.md` (rev 4)
 
 ## Global Constraints
 
@@ -44,6 +44,7 @@
 - [ ] **Step 5: `RestartOnFailure` on a missing executable.** Rename `probe.exe` away, `schtasks /Run`, restore it after 20 s. Record whether Task Scheduler relaunches within ~1 minute and the task's Last Result codes.
 - [ ] **Step 6: `/Create /F` on a running task.** While running, re-create with a different action. Record: running instance untouched (yes/no), next `/Run` uses the new action (yes/no), task enabled afterwards.
 - [ ] **Step 7: Second user.** As another standard user, register `\AIO Proxy\aio-proxy-<their SID>`. Record: both tasks coexist; each user's `schtasks /Query /TN` sees its own.
+- [ ] **Step 7b: `/HRESULT`.** `schtasks /Query /XML /TN "\AIO Proxy\does-not-exist" /HRESULT` — record the exit code (expected `0x80070002`) and that a valid query exits 0.
 - [ ] **Step 8: Record the findings** in the findings doc: one table row per question with the observed result, the chosen variant, and the exact action string.
 - [ ] **Step 9: Commit the findings doc only**
 
