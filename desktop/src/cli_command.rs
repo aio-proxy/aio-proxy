@@ -203,50 +203,60 @@ pub fn aiop_path() -> PathBuf {
     link_dir_on_path_target().unwrap_or_default().join("aiop")
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
 pub fn aiop_path() -> PathBuf {
     PathBuf::from(LINK)
 }
 
-/// Shims go in their own directory so only they, not the whole `bin`, join the user's PATH.
 #[cfg(windows)]
-fn shims_dir() -> Option<PathBuf> {
-    crate::platform::paths(Path::new(&std::env::var_os("USERPROFILE")?)).stable.parent().map(|bin| bin.join("shims"))
+pub fn aiop_path() -> PathBuf {
+    let home = std::env::var_os("USERPROFILE").unwrap_or_default();
+    shims_dir(&crate::platform::paths(Path::new(&home)).stable).join("aiop.cmd")
+}
+
+/// Shims go in their own directory beside the stable copy, so only they, not the whole `bin`, join
+/// the user's PATH.
+#[cfg(windows)]
+fn shims_dir(target: &Path) -> PathBuf {
+    target.parent().unwrap_or(Path::new("")).join("shims")
 }
 
 /// What a new terminal would resolve: `where.exe` over the registry-built PATH, since the app's own
-/// PATH predates any install.
+/// PATH predates any install. `link_dir_on_path` is always true: the install adds the shims dir to
+/// PATH itself, so it is never a precondition.
 #[cfg(windows)]
 pub fn probe() -> Option<Probe> {
-    use crate::platform::shell_path::path_has;
-    use crate::platform::user_path::effective_path;
-    let path = effective_path();
+    let path = crate::platform::user_path::effective_path();
+    // `$PATH:` limits the search to PATH, so a file in the current directory does not count.
     let found = |name: &str| {
         let mut command = std::process::Command::new("where.exe");
-        command.arg(name).env("PATH", &path);
+        command.arg(format!("$PATH:{name}")).env("PATH", &path);
         crate::process::run_with_timeout(command, std::time::Duration::from_secs(5)).map(|out| out.status.success())
     };
-    Some(Probe {
-        aiop: found("aiop").ok()?,
-        aio_proxy: found("aio-proxy").ok()?,
-        link_dir_on_path: shims_dir().is_some_and(|dir| path_has(&path, &dir.to_string_lossy())),
-    })
+    Some(Probe { aiop: found("aiop").ok()?, aio_proxy: found("aio-proxy").ok()?, link_dir_on_path: true })
 }
 
-/// Writes `aiop.cmd`, and `aio-proxy.cmd` when `alias`, into the shims dir, never over an existing
-/// file, then adds that dir to the user's PATH. Never `Ok(false)`: there is no prompt to cancel.
+/// Writes `aiop.cmd`, and `aio-proxy.cmd` when `alias`, into the shims dir, then adds that dir to
+/// the user's PATH. A file that already holds the same shim is kept, so a retry after a failed PATH
+/// step goes on; a different file is never replaced. Never `Ok(false)`: there is no prompt to cancel.
 #[cfg(windows)]
 pub fn install(target: &Path, alias: bool) -> Result<bool, String> {
-    let dir = shims_dir().ok_or("USERPROFILE is not set")?;
+    let dir = shims_dir(target);
+    let text = crate::platform::shell_path::shim_text(target);
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     for name in ["aiop"].into_iter().chain(alias.then_some("aio-proxy")) {
         let shim = dir.join(format!("{name}.cmd"));
         match std::fs::OpenOptions::new().write(true).create_new(true).open(&shim) {
-            Ok(mut file) => {
-                std::io::Write::write_all(&mut file, crate::platform::shell_path::shim_text(target).as_bytes())
-                    .map_err(|error| error.to_string())?
+            Ok(mut file) => std::io::Write::write_all(&mut file, text.as_bytes()).map_err(|error| error.to_string())?,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if std::fs::read_to_string(&shim).is_ok_and(|existing| existing == text) {
+                    continue;
+                }
+                // A foreign aio-proxy.cmd keeps its name; a foreign aiop.cmd blocks the install.
+                if name == "aiop" {
+                    return Err(format!("{} already exists", shim.display()));
+                }
             }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && name != "aiop" => {}
             Err(error) => return Err(format!("{}: {error}", shim.display())),
         }
     }

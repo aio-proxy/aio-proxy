@@ -75,8 +75,7 @@ pub fn install_cli(cx: &mut App) {
         // The cached probe may date from launch: ask the shell again right before the privileged
         // change, and do nothing (the re-probe below hides the item) unless it still applies.
         match crate::cli_command::probe() {
-            // On Windows the install adds the shims dir to PATH itself.
-            Some(probe) if !probe.aiop && (cfg!(windows) || probe.link_dir_on_path) => {
+            Some(probe) if !probe.aiop && probe.link_dir_on_path => {
                 crate::cli_command::install(&target, !probe.aio_proxy)
             }
             _ => Ok(false),

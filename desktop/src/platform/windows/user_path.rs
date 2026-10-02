@@ -42,13 +42,16 @@ pub fn effective_path() -> String {
 /// Appends `dir` to the user's `Path`, keeping its registry type, then tells running programs.
 pub fn add_to_user_path(dir: &str) -> Result<(), String> {
     let key = CURRENT_USER.create(USER_ENV).map_err(|error| error.to_string())?;
-    // A missing value starts a new one; an existing non-string value is left alone.
+    // An existing non-string value is left alone.
     let (current, ty) = match key.get_type("Path") {
         Ok(ty @ (Type::String | Type::ExpandString)) => {
             (key.get_string("Path").map_err(|error| error.to_string())?, ty)
         }
         Ok(_) => return Err("the user Path is not a string value".into()),
-        Err(_) => (String::new(), Type::ExpandString),
+        // Only a missing value starts a new one; any other failure must not turn into a Path that
+        // holds just our directory. 0x80070002 is ERROR_FILE_NOT_FOUND.
+        Err(error) if error.code().0 == 0x8007_0002_u32 as i32 => (String::new(), Type::ExpandString),
+        Err(error) => return Err(error.to_string()),
     };
     let updated = crate::platform::shell_path::path_with(&current, dir);
     if updated != current {

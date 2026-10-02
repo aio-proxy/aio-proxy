@@ -23,14 +23,9 @@ pub fn path_with(value: &str, dir: &str) -> String {
 }
 
 /// `value` without any entry equal to `dir`.
-#[allow(dead_code)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn path_without(value: &str, dir: &str) -> String {
     value.split(';').filter(|entry| !entry.is_empty() && !same_dir(entry, dir)).collect::<Vec<_>>().join(";")
-}
-
-/// Whether `value` (already expanded) lists `dir`.
-pub fn path_has(value: &str, dir: &str) -> bool {
-    value.split(';').any(|entry| same_dir(entry, dir))
 }
 
 /// A `.cmd` shim forwarding every argument to `target`.

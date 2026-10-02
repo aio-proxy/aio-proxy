@@ -10,7 +10,6 @@ fn appending_the_shims_dir_is_idempotent_and_preserves_other_entries() {
     assert_eq!(path_with(&format!("{once}\\"), dir), format!("{once}\\"));
     assert_eq!(path_without(&once, dir), r"%USERPROFILE%\bin;C:\Tools");
     assert_eq!(path_with("", dir), dir);
-    assert!(path_has(&once, dir));
 }
 
 #[test]
