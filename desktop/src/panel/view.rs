@@ -145,9 +145,13 @@ impl Render for PanelView {
             }
             None => states::body(model, cx).into_any_element(),
         };
+        // Linux panels are ordinary windows; the app draws their title bar and its close button.
+        let title_bar = cfg!(target_os = "linux")
+            .then(|| TitleBar::new().on_close_window(|_, window, cx| super::window::close_by_user(window, cx)));
         v_flex()
             .size_full()
             .text_color(crate::theme::colors(cx).foreground)
+            .children(title_bar)
             .child(header)
             .child(content)
             .child(footer::footer(model))

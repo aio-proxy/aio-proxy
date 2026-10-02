@@ -16,8 +16,8 @@ use crate::panel::{PANEL_HEIGHT, PANEL_WIDTH};
 use crate::tray::Tray;
 
 /// The status item's frame is zero until AppKit lays out the menu bar, so anchor only from a click.
-pub fn window_options(_cx: &App, tray: &Tray) -> Option<WindowOptions> {
-    let Some((x, y, display)) = anchor(&tray.icon) else {
+pub fn window_options(_cx: &App, tray: Option<&Tray>) -> Option<WindowOptions> {
+    let Some((x, y, display)) = tray.and_then(|tray| anchor(&tray.icon)) else {
         log::info("panel: could not compute the anchor");
         return None;
     };

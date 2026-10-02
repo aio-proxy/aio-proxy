@@ -93,7 +93,7 @@ pub mod panel {
     use crate::panel::{PANEL_HEIGHT, PANEL_WIDTH};
     use crate::tray::Tray;
 
-    pub fn window_options(cx: &App, _tray: &Tray) -> Option<WindowOptions> {
+    pub fn window_options(cx: &App, _tray: Option<&Tray>) -> Option<WindowOptions> {
         let size = size(px(PANEL_WIDTH as f32), px(PANEL_HEIGHT as f32));
         Some(WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size, cx))),

@@ -8,7 +8,7 @@ use gpui_kit::*;
 use super::view::PanelView;
 use crate::log;
 use crate::platform;
-use crate::tray::Tray;
+use crate::tray::{CloseAction, Tray, TrayMode, close_action, next_mode};
 
 pub const PANEL_WIDTH: f64 = 360.0;
 pub const PANEL_HEIGHT: f64 = 560.0;
@@ -19,6 +19,7 @@ const REOPEN_GUARD: Duration = Duration::from_millis(300);
 pub struct PanelWindow {
     handle: Option<AnyWindowHandle>,
     closed_at: Option<Instant>,
+    tray_mode: TrayMode,
 }
 
 impl Global for PanelWindow {}
@@ -49,7 +50,7 @@ pub fn toggle(cx: &mut App) {
     if closed_at.is_some_and(|at| at.elapsed() < REOPEN_GUARD) {
         return;
     }
-    let Some(options) = platform::panel::window_options(cx, cx.global::<Tray>()) else {
+    let Some(options) = platform::panel::window_options(cx, cx.try_global::<Tray>()) else {
         return;
     };
     cx.activate(true);
@@ -63,6 +64,15 @@ pub fn toggle(cx: &mut App) {
                     root.update(cx, |root, _| root.style().background = Some(transparent_black().into()));
                 }
                 platform::panel::after_open(window);
+                // The window manager's close (its button, Alt+F4): forget the window, or quit.
+                #[cfg(target_os = "linux")]
+                window.on_window_should_close(cx, |_, cx| {
+                    match close_action(cx.global::<PanelWindow>().tray_mode) {
+                        CloseAction::Hide => forget(cx),
+                        CloseAction::Quit => cx.quit(),
+                    }
+                    true
+                });
             });
             cx.global_mut::<PanelWindow>().handle = Some(handle);
             crate::app::panel_opened(cx);
@@ -83,9 +93,32 @@ pub fn close_open(cx: &mut App) {
 
 /// Shared by the toggle and the deactivation observer.
 pub fn close(window: &mut Window, cx: &mut App) {
+    window.remove_window();
+    forget(cx);
+}
+
+/// The title bar's close button: hide the window, or quit when no tray could show it again.
+pub fn close_by_user(window: &mut Window, cx: &mut App) {
+    match close_action(cx.global::<PanelWindow>().tray_mode) {
+        CloseAction::Hide => close(window, cx),
+        CloseAction::Quit => cx.quit(),
+    }
+}
+
+/// A tray host appeared or went away (Linux); losing it opens the window, since nothing else could.
+pub fn tray_host_changed(cx: &mut App, owned: bool) {
+    let state = cx.global_mut::<PanelWindow>();
+    let (mode, open) = next_mode(state.tray_mode, owned);
+    state.tray_mode = mode;
+    if open {
+        show(cx);
+    }
+}
+
+/// Bookkeeping for a window that is closing.
+fn forget(cx: &mut App) {
     let state = cx.global_mut::<PanelWindow>();
     state.handle = None;
     state.closed_at = Some(Instant::now());
-    window.remove_window();
     crate::app::panel_closed(cx);
 }

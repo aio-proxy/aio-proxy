@@ -20,4 +20,4 @@ mod view;
 mod window;
 
 pub(crate) use window::{PANEL_HEIGHT, PANEL_WIDTH};
-pub use window::{PanelWindow, close_open, show, toggle};
+pub use window::{PanelWindow, close_open, show, toggle, tray_host_changed};

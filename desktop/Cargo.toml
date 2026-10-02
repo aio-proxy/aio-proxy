@@ -28,6 +28,8 @@ tray-icon = "0.25.1"
 # The StatusNotifierItem (D-Bus) backend, without GTK.
 [target.'cfg(target_os = "linux")'.dependencies]
 tray-icon = { version = "0.25.1", default-features = false, features = ["ksni"] }
+# Already in the tree through ksni; watches for the tray host (StatusNotifierWatcher).
+zbus = { version = "=5.19.0", default-features = false, features = ["async-io", "blocking-api"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"

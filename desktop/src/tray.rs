@@ -10,8 +10,10 @@ use crate::app::{AppEvent, AppModel};
 use crate::client::health::HealthState;
 
 mod menu;
+mod mode;
 
 pub use menu::{CliOffer, MenuCommand, MenuEntry, menu_entries};
+pub use mode::{CloseAction, TrayMode, close_action, next_mode};
 
 /// macOS: 18 pt tall at 2x. Elsewhere the icon is square, as the status-notifier hosts and the
 /// Windows notification area expect.
@@ -105,8 +107,24 @@ pub fn click_event(button: MouseButton, state: MouseButtonState) -> Option<AppEv
     }
 }
 
+/// Creates the icon unless it exists. Linux may have no tray host (yet): that is no-tray mode, and
+/// the icon comes when a host appears (`AppEvent::TrayHost`).
+pub fn install(cx: &mut App, events: UnboundedSender<AppEvent>) {
+    if cx.has_global::<Tray>() {
+        return;
+    }
+    match build(cx, events) {
+        Ok(tray) => {
+            cx.set_global(tray);
+            sync(cx);
+        }
+        Err(error) if cfg!(target_os = "linux") => crate::log::info(format!("tray: no icon: {error}")),
+        Err(error) => panic!("create the menu-bar icon: {error}"),
+    }
+}
+
 /// Must run on the main thread inside the GPUI `run` callback.
-pub fn build(cx: &App, events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
+fn build(cx: &App, events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
     let color = crate::platform::tray_color(cx);
     let builder = TrayIconBuilder::new().with_icon(icon(TrayState::Down, color));
     #[cfg(target_os = "macos")]

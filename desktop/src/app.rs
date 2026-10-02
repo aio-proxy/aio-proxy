@@ -39,6 +39,8 @@ pub enum AppEvent {
     Wake,
     UpdateAvailable(String),
     UpdateAttended,
+    /// Linux: whether a StatusNotifierWatcher owns its D-Bus name, so a tray icon can show.
+    TrayHost(bool),
 }
 
 pub enum SummaryState {

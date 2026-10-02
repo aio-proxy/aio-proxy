@@ -45,20 +45,20 @@ fn main() {
 
         cx.set_global(AppModel::new(paths, bundle));
         cx.set_global(PanelWindow::default());
-        cx.set_global(tray::build(cx, events.clone()).expect("create the menu-bar icon"));
-        platform::updater::start(events);
+        tray::install(cx, events.clone());
+        platform::updater::start(events.clone());
         app::start(cx);
         app::start_health_timer(cx);
         cx.spawn(async move |cx| {
             while let Some(event) = inbox.next().await {
-                cx.update(|cx| handle(cx, event));
+                cx.update(|cx| handle(cx, event, &events));
             }
         })
         .detach();
     });
 }
 
-fn handle(cx: &mut App, event: AppEvent) {
+fn handle(cx: &mut App, event: AppEvent, events: &mpsc::UnboundedSender<AppEvent>) {
     match event {
         AppEvent::TogglePanel => panel::toggle(cx),
         AppEvent::ClosePanel => panel::close_open(cx),
@@ -71,6 +71,12 @@ fn handle(cx: &mut App, event: AppEvent) {
         AppEvent::UpdateAttended => {
             cx.global_mut::<AppModel>().update_pending = None;
             changed(cx);
+        }
+        AppEvent::TrayHost(owned) => {
+            if owned {
+                tray::install(cx, events.clone());
+            }
+            panel::tray_host_changed(cx, owned);
         }
     }
 }

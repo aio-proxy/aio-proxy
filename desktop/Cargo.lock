@@ -152,6 +152,7 @@ dependencies = [
  "tempfile",
  "tray-icon",
  "url",
+ "zbus",
 ]
 
 [[package]]

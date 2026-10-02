@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use futures::channel::mpsc::UnboundedSender;
-use gpui_kit::{App, WindowAppearance};
+use gpui_kit::{App, QuitMode, WindowAppearance};
 
 use crate::app::AppEvent;
 use crate::install::Paths;
@@ -39,7 +39,12 @@ pub fn tray_color(cx: &App) -> [u8; 3] {
     }
 }
 
-pub fn on_launch(_cx: &mut App, _events: UnboundedSender<AppEvent>) {}
+/// Linux closes the last window without quitting: in tray mode the icon reopens it, and no-tray
+/// mode quits by hand (`close_action`).
+pub fn on_launch(cx: &mut App, events: UnboundedSender<AppEvent>) {
+    cx.set_quit_mode(QuitMode::Explicit);
+    tray_host::watch_tray_host(events);
+}
 
 pub fn kickstart(_user: &str) -> Vec<Command> {
     let mut command = Command::new("systemctl");
@@ -66,24 +71,5 @@ pub mod updater {
     pub fn check_now() {}
 }
 
-pub mod panel {
-    use gpui_kit::*;
-
-    use crate::panel::{PANEL_HEIGHT, PANEL_WIDTH};
-    use crate::tray::Tray;
-
-    pub fn window_options(cx: &App, _tray: &Tray) -> Option<WindowOptions> {
-        let size = size(px(PANEL_WIDTH as f32), px(PANEL_HEIGHT as f32));
-        Some(WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size, cx))),
-            kind: WindowKind::Normal,
-            ..Default::default()
-        })
-    }
-
-    pub fn after_open(_window: &mut Window) {}
-
-    pub fn closes_on_deactivate() -> bool {
-        false
-    }
-}
+pub mod panel;
+mod tray_host;
