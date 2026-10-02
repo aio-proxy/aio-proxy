@@ -135,10 +135,12 @@ export async function configureClaudeCode(
   // proxy address (a port-only change passes key validation) and the key list.
   const { status, credential } = await withSettingsLock(deps.location, async () => {
     const resolved = await keys.resolve(selection);
-    if ((await deps.resolveEndpoint()) !== endpoint) throw new Error('CLAUDE_CODE_ENDPOINT_CHANGED');
     // Choice IDs are derived from the whole key list, so any change to it changes them.
     const current = await deps.inspectKeys(endpoint);
     if (!isEqual(current.choices, keys.choices)) throw new CredentialError('CREDENTIAL_SELECTION_STALE');
+    // Last, because a port-only change leaves the key list as it was. A config edit after this read
+    // is no different from one made after configure returns; `agent list` reports it as a mismatch.
+    if ((await deps.resolveEndpoint()) !== endpoint) throw new Error('CLAUDE_CODE_ENDPOINT_CHANGED');
     return {
       credential: resolved,
       status: await configureClaudeCodeSettings(deps.location, {

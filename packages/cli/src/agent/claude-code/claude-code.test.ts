@@ -284,6 +284,20 @@ test('a key list or address that changes during the key probe is caught before t
   const deps = { ...relocated.deps, resolveEndpoint: async () => (moved ? 'http://127.0.0.1:9400' : ENDPOINT) };
   await expect(configureClaudeCode(firstKey, deps)).rejects.toThrow('CLAUDE_CODE_ENDPOINT_CHANGED');
   expect(await relocated.exists()).toBe(false);
+
+  // A port change while the key list is reread is caught by the endpoint check that follows it.
+  const reads = { keys: 0 };
+  const late = await fixture({ apiKeys: [{ key: 'sk-live' }] });
+  const lateDeps = {
+    ...late.deps,
+    inspectKeys: async (endpoint: string) => {
+      reads.keys += 1;
+      return late.deps.inspectKeys(endpoint);
+    },
+    resolveEndpoint: async () => (reads.keys >= 2 ? 'http://127.0.0.1:9400' : ENDPOINT),
+  };
+  await expect(configureClaudeCode(firstKey, lateDeps)).rejects.toThrow('CLAUDE_CODE_ENDPOINT_CHANGED');
+  expect(await late.exists()).toBe(false);
 });
 
 test('with proxy keys and no way to choose one, configure fails instead of writing a bare endpoint', async () => {
