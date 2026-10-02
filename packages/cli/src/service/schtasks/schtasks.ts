@@ -146,6 +146,8 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
 // Disabling makes the stop survive the next logon, which would otherwise start the task again.
 export async function schtasksStop(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
+  // Stopping a task that does not exist is already done.
+  if (!(await ownTaskExists(io, path))) return;
   await endTask(io, path);
   await io.run(['schtasks', '/Change', '/TN', path, '/DISABLE']);
 }

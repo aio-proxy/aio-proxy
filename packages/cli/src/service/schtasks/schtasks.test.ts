@@ -147,6 +147,15 @@ test('stop ends the task and disables it so the stop survives a logon', async ()
   ]);
 });
 
+test('stop does nothing for a missing task and refuses a foreign one or a failed query without mutating', async () => {
+  expect(await recordCalls((io) => schtasksStop(io), { task: 'missing' })).toEqual([]);
+  const foreign = previousXml.replaceAll(sid, 'S-1-5-21-9-9-9-500');
+  for (const task of [foreign, 1]) {
+    await expect(schtasksStop(io({ task }))).rejects.toBeInstanceOf(CliExit);
+    expect(recorded()).toEqual([]);
+  }
+});
+
 test('start re-enables a stopped task before running it', async () => {
   const calls = await recordCalls((io) => schtasksStart(io));
   expect(calls).toEqual([
