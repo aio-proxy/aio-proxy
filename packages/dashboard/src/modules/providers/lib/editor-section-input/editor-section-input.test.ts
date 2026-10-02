@@ -34,17 +34,22 @@ test('sync section status counts exposed models and accepts aliases to hidden di
   });
 });
 
-test('hiding all synced models blocks an empty Provider but an undiscovered catalog stays saveable', () => {
-  const values = { kind: ProviderKind.Api, id: 'p', syncModels: true, models: [], excludedModels: ['a', 'b'] };
-  expect(sectionStatuses(editorSectionInput(values, values.kind, ProviderFormMode.Edit, extras)).models.status).toBe(
-    'todo',
-  );
-  expect(
-    sectionStatuses(
-      editorSectionInput(values, values.kind, ProviderFormMode.Edit, { ...extras, discoveredModels: undefined }),
-    ).models.status,
-  ).toBe('ok');
-});
+test.each([ProviderKind.Api, ProviderKind.AiSdk])(
+  'hiding all synced %s models blocks an empty Provider but an undiscovered catalog stays saveable',
+  (kind) => {
+    const values = { kind, id: 'p', syncModels: true, models: [], excludedModels: ['a', 'b'] };
+    expect(sectionStatuses(editorSectionInput(values, values.kind, ProviderFormMode.Edit, extras)).models.status).toBe(
+      'todo',
+    );
+    const sync = { models: [] };
+    const input = editorSectionInput(values, values.kind, ProviderFormMode.Edit, {
+      ...extras,
+      discoveredModels: sync.models,
+    });
+    expect(input.discoveredModels).toBeUndefined();
+    expect(sectionStatuses(input).models.status).toBe('ok');
+  },
+);
 
 test('manual section inputs continue validating alias targets against authored models', () => {
   const values = {

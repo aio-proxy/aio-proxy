@@ -82,6 +82,9 @@ test('a draft sync catalog updates preview, save status and test models together
   fireEvent.click(within(screen.getByTestId('model-row-a')).getByRole('checkbox'));
   await waitFor(() => expect(picker).toHaveTextContent('b'));
   expect(screen.queryByTestId('exposure-route-a')).toBeNull();
+  fireEvent.click(picker);
+  expect((await screen.findAllByRole('option')).map((option) => option.textContent)).toEqual(['b']);
+  fireEvent.click(screen.getByRole('option', { name: 'b' }));
 
   fireEvent.click(screen.getByRole('button', { name: m['dashboard.providers.editor.validate_action']() }));
   await waitFor(() =>
@@ -101,6 +104,45 @@ test('a draft sync catalog updates preview, save status and test models together
   const input = mocks.update.mock.calls[0]?.[0] as { body: unknown };
   expect(input.body).toMatchObject({ syncModels: true, models: [], excludedModels: ['a'] });
   expect(ProviderMutationBodySchema.safeParse(input.body).success).toBe(true);
+  expect(mocks.editView).not.toHaveBeenCalled();
+  queryClient.clear();
+});
+
+test('a saved synced Provider without a first discovery remains saveable', async () => {
+  const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ProviderEditorPage
+        mode={ProviderFormMode.Edit}
+        kind={ProviderKind.Api}
+        providerId="provider"
+        initial={{
+          id: 'provider',
+          protocol: ProviderProtocol.OpenAICompatible,
+          baseURL: 'https://api.example/v1',
+          syncModels: true,
+        }}
+        sync={{ models: [] }}
+        onSessionIdChange={rs.fn()}
+      />
+    </QueryClientProvider>,
+  );
+
+  const save = within(screen.getByTestId('editor-footer')).getByRole('button', {
+    name: m['dashboard.providers.editor.footer_save'](),
+  });
+  expect(save).toBeEnabled();
+  expect(screen.getByTestId('models-sync-switch')).toBeChecked();
+  expect(screen.getByTestId('models-sync-refreshed')).toHaveTextContent(
+    m['dashboard.providers.form.models_sync_never'](),
+  );
+  expect(screen.getByTestId('models-catalog-load')).toBeEnabled();
+  fireEvent.click(save);
+  await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+  const input = mocks.update.mock.calls[0]?.[0] as { body: unknown };
+  expect(input.body).toMatchObject({ syncModels: true, models: [], excludedModels: [] });
+  expect(ProviderMutationBodySchema.safeParse(input.body).success).toBe(true);
+  expect(mocks.catalog).not.toHaveBeenCalled();
   expect(mocks.editView).not.toHaveBeenCalled();
   queryClient.clear();
 });

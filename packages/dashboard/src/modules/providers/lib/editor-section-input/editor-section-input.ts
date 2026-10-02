@@ -22,8 +22,13 @@ export const editorSectionInput = (
 ): SectionStatusInput => {
   const models = values.kind === 'oauth' ? [] : (values.models ?? []);
   const discoveryMode = values.kind === 'oauth' || values.syncModels === true;
-  const exposed = discoveryMode ? oauthEditorExposedModels(extras.discoveredModels, values.excludedModels) : models;
-  const aliasTargets = values.kind !== 'oauth' && values.syncModels === true ? extras.discoveredModels : exposed;
+  // Empty sync lists mean discovery has not succeeded; failures never replace a good catalog.
+  const discoveredModels =
+    values.kind !== 'oauth' && values.syncModels === true && extras.discoveredModels?.length === 0
+      ? undefined
+      : extras.discoveredModels;
+  const exposed = discoveryMode ? oauthEditorExposedModels(discoveredModels, values.excludedModels) : models;
+  const aliasTargets = values.kind !== 'oauth' && values.syncModels === true ? discoveredModels : exposed;
   return {
     kind: values.kind ?? kind,
     mode,
@@ -43,7 +48,7 @@ export const editorSectionInput = (
     models,
     syncModels: values.kind === 'oauth' ? undefined : values.syncModels,
     excludedModels: discoveryMode ? values.excludedModels : undefined,
-    discoveredModels: discoveryMode ? extras.discoveredModels : undefined,
+    discoveredModels: discoveryMode ? discoveredModels : undefined,
     aliasCount: (values.alias ?? []).length,
     aliasIssues: aliasEditorIssues(values.alias ?? [], aliasTargets),
     transformsValid: extras.transformsValid,
