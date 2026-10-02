@@ -221,7 +221,8 @@ async function refreshesStaleTask(io: SchtasksIo, task: ParsedTask): Promise<boo
     current !== undefined;
   if (sound) return false;
   const { spec } = await renderUnit(io);
-  return desktopOwned(current) === desktopOwned(parseServiceSpec(spec));
+  // Without a readable spec there is no ownership left to protect, and the task cannot run as it is.
+  return current === undefined || desktopOwned(current) === desktopOwned(parseServiceSpec(spec));
 }
 
 // Disabling makes the stop survive the next logon, which would otherwise start the task again.

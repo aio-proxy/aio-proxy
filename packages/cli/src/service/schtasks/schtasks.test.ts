@@ -229,6 +229,16 @@ test('start re-creates a task whose spec path moved or whose spec is gone or mal
   ]);
 });
 
+test('start repairs a missing or malformed spec when the desktop app starts the service', async () => {
+  const desktopUnit = async () => ({ exec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc', desktopExec: exec });
+  for (const files of [{ [oldExec]: '' }, { [specPath]: '{"exec":', [oldExec]: '' }]) {
+    const fs = fakeFs(files);
+    await schtasksStart({ ...io({ fs, task: oldTaskXml }), unit: desktopUnit });
+    expect(recorded().map((c) => c[1])).toEqual(['/Create', '/Run']);
+    expect(parseServiceSpec(fs.read(specPath) ?? '')?.exec).toBe(exec);
+  }
+});
+
 test('start leaves a package-manager-owned service alone when the desktop app resolves a different unit', async () => {
   const external = JSON.stringify(
     renderServiceSpec({ exec: oldExec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc' }),
