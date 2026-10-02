@@ -94,6 +94,10 @@ pub fn notice(model: &AppModel) -> Option<String> {
         Some(InstallState::ReadOnly(ReadOnlyReason::Location)) => {
             return Some(if cfg!(target_os = "macos") {
                 "Move AIO Proxy to Applications to let it manage the proxy.".into()
+            } else if cfg!(target_os = "linux") {
+                "AIO Proxy can't manage the proxy: its bundled command-line tool is missing, or \
+                 ~/.local/share/aio-proxy-desktop isn't writable."
+                    .into()
             } else {
                 "AIO Proxy can't keep its command-line copy here; run it from a writable location.".into()
             });
