@@ -42,7 +42,12 @@ export type RouterResolution<TProvider extends RoutableProvider = ProviderInstan
 };
 
 export type RoutingValueSource = 'provider' | 'model';
-export type RouterSelectionSource = 'provider_qualified' | 'deterministic_session' | 'weighted_random';
+export type RouterSelectionSource =
+  | 'provider_qualified'
+  | 'deterministic_session'
+  | 'weighted_random'
+  // Set by the server's opt-in `router.selection: quota-reset` policy, never by the router itself.
+  | 'quota_reset';
 export type EffectiveCandidateRouting = {
   readonly priority: number;
   readonly weight: number;
