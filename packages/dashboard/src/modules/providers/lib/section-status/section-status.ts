@@ -25,6 +25,7 @@ export interface SectionStatusInput {
   readonly authorized?: boolean | undefined;
   readonly packageName?: string | undefined;
   readonly models: readonly string[];
+  readonly syncModels?: boolean | undefined;
   readonly excludedModels?: readonly string[] | undefined;
   readonly discoveredModels?: readonly string[] | undefined;
   readonly aliasCount?: number | undefined;
@@ -81,21 +82,20 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
   if (connection === 'ok' && input.kind === 'oauth' && input.authorized !== true) connection = 'attention';
 
   // Nothing exposed and no aliases means the provider would route nothing at all, so the save is
-  // pointless: `modelRoutes` derives its routes from the whitelist plus the alias map. oauth is
-  // exempt — its empty whitelist means "expose the whole upstream catalog", which stays true even
+  // pointless: `modelRoutes` derives its routes from the whitelist plus the alias map. Discovered
+  // Providers are exempt — they expose the upstream catalog minus exclusions, which stays true even
   // when the dashboard could not fetch that catalog (`catalog_unavailable`).
-  const exposed =
-    input.kind === 'oauth'
-      ? oauthEditorExposedModels(input.discoveredModels, input.excludedModels)
-      : exposedModels(input.models, input.discoveredModels);
-  let models: SectionStatus =
-    input.kind === 'oauth'
-      ? input.discoveredModels !== undefined && exposed.length === 0 && (input.aliasCount ?? 0) === 0
-        ? 'todo'
-        : 'ok'
-      : exposed.length === 0 && (input.aliasCount ?? 0) === 0
-        ? 'todo'
-        : 'ok';
+  const discoveryMode = input.kind === 'oauth' || input.syncModels === true;
+  const exposed = discoveryMode
+    ? oauthEditorExposedModels(input.discoveredModels, input.excludedModels)
+    : exposedModels(input.models, input.discoveredModels);
+  let models: SectionStatus = discoveryMode
+    ? input.discoveredModels !== undefined && exposed.length === 0 && (input.aliasCount ?? 0) === 0
+      ? 'todo'
+      : 'ok'
+    : exposed.length === 0 && (input.aliasCount ?? 0) === 0
+      ? 'todo'
+      : 'ok';
   // A stale whitelist entry stays `ok` (X9): the upstream catalog is not the user's to fix, so gating
   // the save on it would strand them. `modelsHint` still names it — off the same inputs, not off this
   // status — so the reason survives on screen.

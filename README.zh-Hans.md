@@ -119,6 +119,29 @@ aio-proxy reload
 
 支持 `$schema` 的编辑器可以为配置提供补全和校验。`{{env.NAME}}` 用于读取环境变量。
 
+### 与上游同步模型
+
+API 和 AI SDK Provider 可设置 `syncModels: true`，代替手动维护 `models`。同步默认关闭；启用后不能同时配置非空的 `models`，否则校验失败。`excludedModels` 仅在 `syncModels: true` 时有效，按精确模型 ID 隐藏模型，不支持 glob 匹配。别名仍可指向被隐藏的模型。手动 `models` 列表保持原有行为。
+
+```jsonc
+{
+  "providers": {
+    "relay": {
+      "kind": "api",
+      "protocol": "openai-compatible",
+      "baseURL": "https://relay.example.com",
+      "apiKey": "{{env.RELAY_API_KEY}}",
+      "syncModels": true,
+      "excludedModels": ["gpt-3.5-turbo"],
+    },
+  },
+}
+```
+
+启动和配置变更后会立即发现模型，之后每小时刷新。刷新失败后，在列表过期时每隔 5 分钟重试；上游故障或返回空列表时保留上次成功的列表。首次发现成功前，仅别名可路由。更改 API 主端点的 `baseURL`、`protocol` 或端点配置形式，或 AI SDK 的 `packageName`、`options.baseURL`，会丢弃旧列表。API 仅查询主端点，模型发现不会改写配置文件。
+
+AI SDK 同步需要包实例提供 `listModels` 方法，或通过 `options.baseURL` 提供 OpenAI 兼容的 `/models` 接口；否则 Provider 会报告 `CATALOG_UNSUPPORTED`。Dashboard 的模型区域提供**手动 / 与上游同步（Manual / Sync with upstream）**切换、逐个隐藏模型、上次刷新时间和刷新按钮。
+
 ### 多协议端点
 
 部分上游原生支持多种协议。可以用 `endpoints` 声明这些额外的端点；当请求的入站协议命中任意一个已声明的端点时，请求会被原样转发（原始透传），而不会经过协议转换：
@@ -157,7 +180,7 @@ aio-proxy reload
 
 ### 模型元数据与计费
 
-客户端可见的模型元数据统一配置在 `router.models.<slug>.metadata`，键是客户端请求的公开 slug，而不是上游模型 id。该 slug 必须已由某个 Provider 的 `models` 或 `alias` 配置公开；`router.models` 只会定制已有路由，不会创建路由。已删除的 `providers.<id>.metadata` 字段会被静默忽略。
+客户端可见的模型元数据统一配置在 `router.models.<slug>.metadata`，键是客户端请求的公开 slug，而不是上游模型 id。该 slug 必须已由某个 Provider 的 `models`、同步目录或 `alias` 配置公开；`router.models` 只会定制已有路由，不会创建路由。已删除的 `providers.<id>.metadata` 字段会被静默忽略。
 
 每个字段按以下优先级解析：所选 Provider 的路由覆盖（仅 `cost` 或 `limit`）> slug 元数据（含 `extend`）> 插件上报的上游元数据 > [models.dev](https://models.dev) 回退 > 协议默认值。Provider 覆盖会整体替换 slug 的 `cost` 或 `limit` 对象，而不是深度合并；其他元数据由服务该 slug 的所有 Provider 共用。未知元数据字段会被保留并产生警告，负价格、非正数上下文限制等无效值则会导致清晰的校验错误。
 

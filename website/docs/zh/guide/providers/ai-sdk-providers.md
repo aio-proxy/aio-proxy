@@ -84,6 +84,36 @@ description: 使用任何符合 Vercel AI SDK 规范的驱动包直接接入更�
 
 ---
 
+## 与上游同步模型
+
+设置 `syncModels: true` 可代替手动维护 `models`。模型发现优先使用包实例的 `listModels` 方法，否则通过 `options.baseURL` 查询 OpenAI 兼容的 `/models` 接口。两者都不具备时，Provider 会报告 `CATALOG_UNSUPPORTED`。
+
+```jsonc title="config.jsonc"
+{
+  "providers": {
+    "relay": {
+      "kind": "ai-sdk",
+      "packageName": "@ai-sdk/openai-compatible",
+      "options": {
+        "name": "relay",
+        "baseURL": "https://relay.example.com/v1",
+        "apiKey": "{{env.RELAY_API_KEY}}",
+      },
+      "syncModels": true,
+      "excludedModels": ["gpt-3.5-turbo"],
+    },
+  },
+}
+```
+
+同步默认关闭，与非空的 `models` 互斥。`excludedModels` 仅在 `syncModels: true` 时有效，按精确模型 ID 隐藏模型，不支持 glob 匹配。别名可指向被隐藏的模型，手动 `models` 列表保持原有行为。
+
+启动和配置变更后立即发现模型，之后每小时刷新。刷新失败后，在列表过期时每隔 5 分钟重试；上游故障或返回空列表时保留上次成功的列表。首次发现成功前，仅别名可路由。更改 `packageName` 或 `options.baseURL` 会丢弃旧列表。模型发现不会改写配置文件。
+
+Dashboard 的模型区域提供**手动 / 与上游同步（Manual / Sync with upstream）**切换、逐个隐藏模型、上次刷新时间和刷新按钮。[API 提供商](./api/index.md) 也支持模型同步。
+
+---
+
 ## 核心字段详解
 
 | 字段名                  | 类型                      | 说明                                                                                                                                                      |
@@ -92,6 +122,8 @@ description: 使用任何符合 Vercel AI SDK 规范的驱动包直接接入更�
 | `packageName`           | `string`                  | **必填**。实现了 AI SDK 规范的 npm 包名（默认值为 `@ai-sdk/openai-compatible`）。支持系统内置驱动包或项目中已安装的驱动包。                               |
 | `options`               | `Record<string, unknown>` | 可选。原样传递给驱动包工厂函数（如 `createThing(options)`）的初始化参数对象，通常包含 `baseURL`、`apiKey`、`headers` 等。                                 |
 | `parseReasoningContent` | `boolean`                 | 可选。针对具备深度推理能力的思考模型（如 DeepSeek-R1），开启后 AIO Proxy 会自动解析流式数据块中的 `reasoning_content`，保证思考过程与最终输出规范化分离。 |
-| `models`                | `string[]`                | 该提供商声明支持的模型 ID 列表。                                                                                                                          |
+| `models`                | `string[]`                | 手动声明支持的模型 ID 列表；非空时不能启用 `syncModels`。                                                                                                 |
+| `syncModels`            | `boolean`                 | 可选，默认关闭。设为 `true` 时自动同步上游模型列表。                                                                                                      |
+| `excludedModels`        | `string[]`                | 仅在 `syncModels: true` 时有效，按精确模型 ID 隐藏模型。                                                                                                  |
 | `alias`                 | `Record<string, string>`  | 模型别名映射。                                                                                                                                            |
 | `priority` / `weight`   | `number`                  | 参与多提供商调度决策的优先级层级与流量分配权重。                                                                                                          |

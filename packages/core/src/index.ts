@@ -316,6 +316,12 @@ export {
   type ProviderFetch,
 } from './provider/proxy-fetch';
 export {
+  createProviderModelCatalogRepository,
+  type ProviderModelCatalogFailureCode,
+  type ProviderModelCatalogRepository,
+  type StoredProviderModels,
+} from './provider-model-catalog';
+export {
   type EffectiveCandidateRouting,
   type ModelRoute,
   modelRoutes,

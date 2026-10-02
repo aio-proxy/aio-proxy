@@ -102,12 +102,15 @@ export type ServerState = ProviderRouteSource & {
   readonly modelRouting: ModelRoutingControlPlane;
   readonly oauthQuota: OAuthQuotaOperations;
   readonly oauthCredentialRefresh: OAuthCredentialRefreshOperations;
-  /** Rediscovers one OAuth Provider's model catalog now, ignoring the catalog policy's TTL. */
+  /** Rediscovers one OAuth or synced API / AI SDK Provider's model catalog now, ignoring its TTL. */
   readonly refreshProviderCatalog: (providerId: string) => Promise<CatalogRefreshOutcome>;
   readonly quotaCache: OAuthQuotaCache;
   readonly pluginControlPlane: PluginControlPlane;
   readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];
   readonly oauthProviderEditView: (providerId: string) => DashboardOAuthProviderEdit | undefined;
+  readonly syncedProviderEditView: (
+    providerId: string,
+  ) => { readonly models: readonly string[]; readonly refreshedAt?: string } | undefined;
   readonly oauthLoginSessions: OAuthLoginSessionManager;
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;

@@ -23,6 +23,7 @@ import {
   validateAliasTargets,
   validateApiEndpoints,
 } from '../provider';
+import { validateSyncModels } from '../provider-sync-models/index';
 import { ServerOtelAuthoringSchema, ServerOtelSchema, type OtelDestination } from './otel';
 
 export { ServerOtelAuthoringSchema, ServerOtelSchema, type OtelDestination };
@@ -100,7 +101,8 @@ const ProviderInputValueSchema = z
   ])
   .superRefine(validateProxyFallback)
   .superRefine(validateAliasTargets)
-  .superRefine(validateApiEndpoints);
+  .superRefine(validateApiEndpoints)
+  .superRefine(validateSyncModels);
 
 const ProviderAuthoringInputValueSchema = z
   .discriminatedUnion('kind', [
@@ -110,7 +112,8 @@ const ProviderAuthoringInputValueSchema = z
   ])
   .superRefine(validateProxyFallback)
   .superRefine(validateAliasTargets)
-  .superRefine(validateApiEndpoints);
+  .superRefine(validateApiEndpoints)
+  .superRefine(validateSyncModels);
 
 const PluginPackageNameAuthoringSchema = z.union([PluginPackageNameSchema, ConfigTemplateStringSchema]);
 

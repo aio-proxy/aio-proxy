@@ -26,6 +26,7 @@ import { AliasConfigSchema, ModelIdSchema } from './common';
 import { CapabilityIdSchema, PluginPackageNameSchema } from './plugin';
 import { normalizeProviderAlias, normalizeProviderAliasKeys, validateAliasTargets } from './provider-alias';
 import { AuthoredOAuthAliasSchema } from './provider-alias/oauth-alias';
+import { syncModelsFields, syncModelsMutationFields, validateSyncModels } from './provider-sync-models/index';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
 export {
@@ -120,6 +121,7 @@ const ApiProviderSharedFields = {
   ...SharedProviderSchemaBase,
   ...configuredAliasField,
   ...modelsField,
+  ...syncModelsFields,
   protocol: ProviderProtocolSchema.optional(),
   apiKey: z.string().optional().describe('Bearer token or API key for the provider.'),
   headers: ApiHeadersSchema.optional().describe('Headers applied to upstream requests; configured values win.'),
@@ -199,6 +201,7 @@ const AiSdkProviderSharedFields = {
   ...SharedProviderSchemaBase,
   ...configuredAliasField,
   ...modelsField,
+  ...syncModelsFields,
   packageName: AiSdkPackageNameSchema.default('@ai-sdk/openai-compatible').describe(
     'npm package name that exports the AI SDK provider factory.',
   ),
@@ -241,6 +244,7 @@ const ApiProviderMutationSharedFields = {
   apiKey: z.string().optional(),
   headers: ApiHeadersSchema.optional(),
   models: z.array(z.string()).optional(),
+  ...syncModelsMutationFields,
   endpoints: ApiEndpointsInputSchema.optional(),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
@@ -282,6 +286,7 @@ const AiSdkProviderMutationSharedFields = {
   options: z.record(z.string(), z.unknown()).optional(),
   parseReasoningContent: z.boolean().optional(),
   models: z.array(z.string()).optional(),
+  ...syncModelsMutationFields,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
@@ -325,6 +330,7 @@ export const ProviderMutationBodySchema = z
   ])
   .superRefine(validateProxyFallback)
   .superRefine(validateAliasTargets)
+  .superRefine(validateSyncModels)
   .transform(normalizeProviderAliasKeys);
 
 export const ProviderMutationAuthoringBodySchema = z
@@ -335,6 +341,7 @@ export const ProviderMutationAuthoringBodySchema = z
   ])
   .superRefine(validateProxyFallback)
   .superRefine(validateAliasTargets)
+  .superRefine(validateSyncModels)
   .transform(normalizeProviderAliasKeys);
 
 export const ProviderSchema = z
@@ -342,6 +349,7 @@ export const ProviderSchema = z
   .superRefine(validateProxyFallback)
   .superRefine(validateAliasTargets)
   .superRefine(validateApiEndpoints)
+  .superRefine(validateSyncModels)
   .transform(normalizeProviderAlias);
 
 export type ApiProviderInput = z.input<typeof ApiProviderSchema>;

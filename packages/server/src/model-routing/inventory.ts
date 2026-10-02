@@ -2,6 +2,7 @@ import {
   digestProviderEntry,
   hasCachedModelsCatalog,
   type PluginRepository,
+  type ProviderModelCatalogRepository,
   modelRoutes,
   type RoutableProvider,
   validateModelCatalog,
@@ -30,6 +31,7 @@ import {
 } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import { isSyncedProvider, syncedModels } from '../provider-model-sync';
 import { routingCatalogFacts } from './catalog-facts';
 import { rawModelPolicySlugs, readRawModelPolicy, rawPolicyProviders } from './mutation';
 import { authoredNumber, routingNumberView } from './number-view';
@@ -39,6 +41,7 @@ export type RoutingInventoryInput = {
   readonly config: Config;
   readonly summaries: readonly DashboardProviderSummary[];
   readonly repository: Pick<PluginRepository, 'readCatalog' | 'readAccount'>;
+  readonly providerModels?: Pick<ProviderModelCatalogRepository, 'read'>;
   readonly writable: boolean;
   readonly pluginDefaults?: (
     provider: Extract<Provider, { kind: typeof ProviderKind.OAuth }>,
@@ -52,7 +55,7 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
   const models = new Map<string, WritableModel>();
 
   for (const provider of providers) {
-    const source = await syntheticSource(provider, input.repository, input.pluginDefaults);
+    const source = await syntheticSource(provider, input.repository, input.providerModels, input.pluginDefaults);
     const name = routingProviderName(provider, summaries.get(provider.id), input.repository);
     for (const route of modelRoutes(source)) {
       let model = models.get(route.alias);
@@ -224,6 +227,7 @@ function parsedNumberView(
 async function syntheticSource(
   provider: Provider,
   repository: Pick<PluginRepository, 'readCatalog'>,
+  providerModels: RoutingInventoryInput['providerModels'],
   pluginDefaults?: RoutingInventoryInput['pluginDefaults'],
 ): Promise<RoutableProvider> {
   if (provider.kind === ProviderKind.OAuth) {
@@ -240,7 +244,14 @@ async function syntheticSource(
       ...(Object.keys(alias).length === 0 ? {} : { alias }),
     };
   }
-  const models = provider.models ?? [];
+  let models = provider.models ?? [];
+  if (isSyncedProvider(provider)) {
+    try {
+      models = [...(syncedModels(provider, providerModels?.read(provider.id) ?? null) ?? [])];
+    } catch {
+      models = [];
+    }
+  }
   return {
     id: provider.id,
     enabled: provider.enabled,
