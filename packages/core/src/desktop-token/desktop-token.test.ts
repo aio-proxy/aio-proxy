@@ -113,7 +113,14 @@ test('concurrent creators in separate processes agree on one token', async () =>
   for (let round = 0; round < 10; round += 1) {
     const roundHome = join(home, `round-${round}`);
     const script = `import { ensureDesktopToken } from ${JSON.stringify(modulePath)}; console.log(ensureDesktopToken(${JSON.stringify(roundHome)}));`;
-    const runs = [0, 1].map(() => Bun.spawn([process.execPath, '-e', script], { stdout: 'pipe', stderr: 'pipe' }));
+    const runs = [0, 1].map(() =>
+      Bun.spawn([process.execPath, '-e', script], {
+        stdout: 'pipe',
+        stderr: 'pipe',
+        // Keeps the win32 branch's token files out of the real profile.
+        env: { ...process.env, LOCALAPPDATA: join(home, 'LocalAppData') },
+      }),
+    );
     const outputs = await Promise.all(runs.map(async (proc) => (await new Response(proc.stdout).text()).trim()));
     expect(outputs[0]).toMatch(/^[A-Za-z0-9_-]{43}$/u);
     expect(outputs[1]).toBe(outputs[0]);
@@ -128,10 +135,27 @@ test('win32 keeps one token per resolved home under LOCALAPPDATA', () => {
   expect(desktopTokenPath('D:\\other-home', opts)).not.toBe(a);
 });
 
-test('win32 creates and reads the token without POSIX mode checks, and rejects a symlink', () => {
+// Creating a symlink on Windows needs Developer Mode or elevation; without it the case cannot be arranged.
+const canSymlink = (() => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-desktop-token-probe-'));
+  try {
+    symlinkSync(join(dir, 'target'), join(dir, 'link'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+})();
+
+test('win32 creates and reads the token without POSIX mode checks', () => {
   const opts = { platform: 'win32' as const, localAppData: join(home, 'LocalAppData') };
   const token = ensureDesktopToken('C:\\h', opts);
   expect(readDesktopToken('C:\\h', opts)).toBe(token);
+});
+
+test.skipIf(!canSymlink)('win32 rejects a symlink token file', () => {
+  const opts = { platform: 'win32' as const, localAppData: join(home, 'LocalAppData') };
   const path = desktopTokenPath('C:\\h2', opts);
   mkdirSync(dirname(path), { recursive: true });
   symlinkSync(join(home, 'elsewhere'), path);
