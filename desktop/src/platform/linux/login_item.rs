@@ -68,10 +68,19 @@ fn entry(appimage: &Path) -> String {
     )
 }
 
+/// Desktop environments disable an autostart entry in place rather than deleting it.
+fn disabled_in_place(text: &str) -> bool {
+    text.lines().filter_map(|line| line.split_once('=')).any(|(key, value)| {
+        matches!((key.trim(), value.trim()), ("Hidden", "true") | ("X-GNOME-Autostart-enabled", "false"))
+    })
+}
+
 pub fn status_at(config_home: &Path, appimage: Option<&Path>) -> LoginItemStatus {
     let Some(appimage) = appimage else { return LoginItemStatus::Unavailable };
     match fs::read_to_string(config_home.join(FILE)) {
-        Ok(text) if text.lines().any(|line| line == exec_line(appimage)) => LoginItemStatus::Enabled,
+        Ok(text) if text.lines().any(|line| line == exec_line(appimage)) && !disabled_in_place(&text) => {
+            LoginItemStatus::Enabled
+        }
         _ => LoginItemStatus::NotRegistered,
     }
 }
@@ -85,7 +94,7 @@ pub fn set_enabled_at(config_home: &Path, appimage: Option<&Path>, enabled: bool
             _ => Ok(()),
         };
     }
-    write_entry(&path, appimage)
+    write_entry(&path, &entry(appimage))
 }
 
 /// No-op unless an entry already exists and names a different path.
@@ -93,17 +102,32 @@ pub fn refresh_exec(config_home: &Path, appimage: Option<&Path>) -> Result<(), S
     let Some(appimage) = appimage else { return Ok(()) };
     match fs::read_to_string(config_home.join(FILE)) {
         Ok(text) if !text.lines().any(|line| line == exec_line(appimage)) => {
-            write_entry(&config_home.join(FILE), appimage)
+            // Only the Exec line changes, so an entry the user disabled in place stays disabled.
+            let mut found = false;
+            let mut contents = String::new();
+            for line in text.lines() {
+                if line.starts_with("Exec=") {
+                    found = true;
+                    contents.push_str(&exec_line(appimage));
+                } else {
+                    contents.push_str(line);
+                }
+                contents.push('\n');
+            }
+            if !found {
+                contents = entry(appimage);
+            }
+            write_entry(&config_home.join(FILE), &contents)
         }
         _ => Ok(()),
     }
 }
 
-fn write_entry(path: &Path, appimage: &Path) -> Result<(), String> {
+fn write_entry(path: &Path, contents: &str) -> Result<(), String> {
     let dir = path.parent().ok_or("invalid autostart path")?;
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("desktop.tmp");
-    fs::write(&tmp, entry(appimage)).map_err(|e| e.to_string())?;
+    fs::write(&tmp, contents).map_err(|e| e.to_string())?;
     fs::rename(&tmp, path).map_err(|e| {
         let _ = fs::remove_file(&tmp);
         e.to_string()

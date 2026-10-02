@@ -35,3 +35,21 @@ fn without_an_appimage_the_login_item_is_unavailable() {
 fn exec_quoting_escapes_shell_and_field_code_characters() {
     assert_eq!(exec_line(Path::new("/a \"b\"/$c`d\\e%f")), "Exec=\"/a \\\"b\\\"/\\$c\\`d\\\\e%%f\"");
 }
+
+#[test]
+fn an_entry_disabled_in_place_is_not_registered_and_refresh_keeps_it_disabled() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join(FILE_PATH);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let (a, b) = (Path::new("/a.AppImage"), Path::new("/b.AppImage"));
+    for disabled in ["X-GNOME-Autostart-enabled=false", "Hidden=true"] {
+        fs::write(&path, format!("[Desktop Entry]\nType=Application\n{}\n{disabled}\n", exec_line(a))).unwrap();
+        assert_eq!(status_at(dir.path(), Some(a)), LoginItemStatus::NotRegistered, "{disabled}");
+
+        refresh_exec(dir.path(), Some(b)).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.lines().any(|line| line == exec_line(b)), "{text}");
+        assert!(text.lines().any(|line| line == disabled), "{text}");
+        assert_eq!(status_at(dir.path(), Some(b)), LoginItemStatus::NotRegistered, "{disabled}");
+    }
+}
