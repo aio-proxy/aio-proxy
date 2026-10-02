@@ -1,4 +1,4 @@
-//! Windows. Stubs until phase 3: no login item, no updater, no connection is vouched for (the
+//! Windows. Stubs until later phase 3 tasks: no updater, no connection is vouched for (the
 //! token is never sent), no kickstart, and `pid_alive` is always false, so restart verification
 //! rests on the health check alone.
 
@@ -9,7 +9,7 @@ use std::process::Command;
 use std::time::Instant;
 
 use futures::channel::mpsc::UnboundedSender;
-use gpui_kit::App;
+use gpui_kit::{App, QuitMode};
 
 use crate::app::AppEvent;
 use crate::install::Paths;
@@ -40,7 +40,11 @@ pub fn tray_color(_cx: &App) -> [u8; 3] {
     [255, 255, 255]
 }
 
-pub fn on_launch(_cx: &mut App, _events: UnboundedSender<AppEvent>) {}
+/// gpui quits when the last window closes outside macOS; closing the panel must leave the tray
+/// icon running.
+pub fn on_launch(cx: &mut App, _events: UnboundedSender<AppEvent>) {
+    cx.set_quit_mode(QuitMode::Explicit);
+}
 
 /// The account's SID string arrives in phase 3; nothing reads it before then.
 pub fn current_user() -> String {
@@ -60,19 +64,7 @@ pub fn peer_owned_by_this_user(_stream: &TcpStream, _deadline: Instant) -> bool 
     false
 }
 
-pub mod login_item {
-    use crate::platform::LoginItemStatus;
-
-    pub fn status() -> LoginItemStatus {
-        LoginItemStatus::Unavailable
-    }
-
-    pub fn set_enabled(_enabled: bool) -> Result<(), String> {
-        Err("launch at login is not available yet".into())
-    }
-
-    pub fn open_settings() {}
-}
+pub mod login_item;
 
 pub mod updater {
     use futures::channel::mpsc::UnboundedSender;

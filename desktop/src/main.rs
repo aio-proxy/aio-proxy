@@ -1,3 +1,4 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
 //! The menu-bar app: GPUI application, single-instance lock, tray, `--version`.
 
 use aio_proxy_desktop::app::{self, AppEvent, AppModel, changed};

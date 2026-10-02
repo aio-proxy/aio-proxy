@@ -152,6 +152,8 @@ dependencies = [
  "tempfile",
  "tray-icon",
  "url",
+ "windows-registry 0.6.1",
+ "windows-sys 0.61.2",
  "zbus",
 ]
 
