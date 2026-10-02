@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
 
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { openAIResponsesAdapter } from '@aio-proxy/core';
-import { ProviderProtocol } from '@aio-proxy/types';
+import { createApiProvider, openAIResponsesAdapter } from '@aio-proxy/core';
+import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { streamText } from 'ai';
 import { z } from 'zod';
@@ -19,9 +19,14 @@ import { attributeName } from '../../request-tracing';
 import { createUsageCapture } from '../../usage-capture';
 import { pipeline } from './test-support';
 
-test.each(['json', 'sse'] as const)(
-  'raw %s protocol rewrite records both sends and the selected response',
-  async (mode) => {
+test.each([
+  ['JSON', 'json', false],
+  ['SSE', 'sse', false],
+  ['traced JSON', 'json', true],
+  ['traced SSE', 'sse', true],
+] as const)(
+  'configured API raw %s protocol rewrite records both sends and the selected response',
+  async (_label, mode, trace) => {
     let calls = 0;
     const event = (type: string, data: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
     const success =
@@ -38,13 +43,26 @@ test.each(['json', 'sse'] as const)(
         ? Response.json({ id: 'resp_ok', status: 'completed', output: [] })
         : new Response(success, { headers: { 'content-type': 'text/event-stream' } });
     });
+    const api = createApiProvider(
+      {
+        kind: ProviderKind.Api,
+        id: 'raw',
+        enabled: true,
+        priority: 0,
+        weight: 1,
+        protocol: ProviderProtocol.OpenAIResponse,
+        baseURL: 'https://upstream.test',
+        models: [REQUESTED_MODEL],
+      },
+      { fetch: fetcher, ...(trace ? { trace: [] } : {}) },
+    );
     const harness = pipeline(
       [
         rawProvider({
           id: 'raw',
           modelId: REQUESTED_MODEL,
           protocol: ProviderProtocol.OpenAIResponse,
-          invoke: (request) => fetcher(new Request('https://upstream.test/responses', request), { decompress: false }),
+          invoke: (request, _context, options) => api.passthrough(request, options),
         }),
       ],
       { adapter: openAIResponsesAdapter },
@@ -83,7 +101,7 @@ test.each(['json', 'sse'] as const)(
       expect(send.kind).toBe(SpanKind.CLIENT);
       expect(send.parentSpanId).toBe(attempt?.spanId);
       expect(send.attributes['aio_proxy.upstream.headers_ms']).toEqual(expect.any(Number));
-      expect(send.attributes['aio_proxy.upstream.first_byte_ms']).toEqual(expect.any(Number));
+      if (mode === 'sse') expect(send.attributes['aio_proxy.upstream.first_byte_ms']).toEqual(expect.any(Number));
     }
     expect(sends[0]?.statusCode).toBe(SpanStatusCode.ERROR);
     expect(sends[0]?.attributes).toMatchObject({ 'aio_proxy.upstream.retry_reason': 'protocol_rewrite' });

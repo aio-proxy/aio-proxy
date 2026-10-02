@@ -1,3 +1,5 @@
+import { inheritUpstreamResponseIdentity, upstreamResponseIdentity } from '@aio-proxy/shared';
+
 import { normalizeContentEncoding } from './content-encoding';
 import type { AttemptResponseSnapshot, ResponseBodyObservation } from './response-observation';
 
@@ -26,20 +28,19 @@ export type SendResponseObservation = {
   readonly finish: () => void;
 };
 
-const responses = new WeakMap<Response, SendResponseObservation>();
+const responses = new WeakMap<object, SendResponseObservation>();
 
 // Wrappers must transfer identity instead of guessing from the last fetch.
 export function inheritObservedResponse(original: Response, wrapped: Response): void {
-  const send = responses.get(original);
-  if (send !== undefined) responses.set(wrapped, send);
+  inheritUpstreamResponseIdentity(original, wrapped);
 }
 
 export function rejectObservedResponse(response: Response): void {
-  responses.get(response)?.reject();
+  observedResponseSend(response)?.reject();
 }
 
 export function observedResponseSend(response: Response): SendResponseObservation | undefined {
-  return responses.get(response);
+  return responses.get(upstreamResponseIdentity(response));
 }
 
 export function createSendResponseObservation(index: number): SendResponseObservation {
@@ -68,7 +69,7 @@ export function createSendResponseObservation(index: number): SendResponseObserv
     index,
     startedAt,
     observeResponse(response, controlledStream) {
-      responses.set(response, send);
+      responses.set(upstreamResponseIdentity(response), send);
       httpStatus = response.status;
       transportObservation =
         response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() === 'text/event-stream'
