@@ -112,6 +112,16 @@ describe('orderByQuotaReset', () => {
     expect(ordered[1]?.selectionSource).toBe('weighted_random');
   });
 
+  test('mixed known and unknown window lengths are unknown', () => {
+    const ordered = orderByQuotaReset(
+      [candidate('a'), candidate('b')],
+      statuses({ a: ready([window(HOUR, WEEK), window(30 * 60_000)]), b: ready([window(DAY, WEEK)]) }),
+      now,
+    );
+    expect(ids(ordered)).toEqual(['b', 'a']);
+    expect(ordered[1]?.selectionSource).toBe('weighted_random');
+  });
+
   test('never reorders across priority tiers', () => {
     const ordered = orderByQuotaReset(
       [candidate('a', { priority: 10 }), candidate('b')],

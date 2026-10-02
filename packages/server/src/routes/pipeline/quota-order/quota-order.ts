@@ -11,8 +11,9 @@ type Candidate = RouterCandidate<RuntimeProviderInstance>;
  * When this candidate's quota allowance for `modelId` expires, or `undefined` when that is unknown.
  * The allowance at stake is the longest window covering the model — a weekly window, not the 5-hour
  * one — so its reset is the key, not simply the latest reset: a weekly window can reset before a
- * 5-hour window that started after it. Several covering windows that report no length leave the
- * allowance ambiguous, which is unknown.
+ * 5-hour window that started after it. A single covering window decides even without a length;
+ * with multiple covering windows, any missing length makes the allowance unknown. Otherwise,
+ * use the longest window's reset.
  */
 function allowanceResetsAt(candidate: Candidate, status: OAuthQuotaCacheStatus, now: number): number | undefined {
   if (candidate.provider.kind !== ProviderKind.OAuth) return undefined;
@@ -28,7 +29,8 @@ function allowanceResetsAt(candidate: Candidate, status: OAuthQuotaCacheStatus, 
   if (covering.length === 1) return covering[0]?.resetsAt;
   let longest: (typeof covering)[number] | undefined;
   for (const item of covering) {
-    if (item.windowMinutes !== undefined && item.windowMinutes > (longest?.windowMinutes ?? 0)) longest = item;
+    if (item.windowMinutes === undefined) return undefined;
+    if (item.windowMinutes > (longest?.windowMinutes ?? 0)) longest = item;
   }
   return longest?.resetsAt;
 }
