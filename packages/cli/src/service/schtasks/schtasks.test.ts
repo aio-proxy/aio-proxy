@@ -73,6 +73,7 @@ type Options = {
   /** What the task query finds: the task XML (default `previousXml`), nothing, or a failure exit code. */
   readonly task?: string | 'missing' | number;
   readonly imagePath?: (pid: number) => string | undefined;
+  readonly kill?: (pid: number) => void;
 };
 
 function io({
@@ -81,6 +82,7 @@ function io({
   failAlways = false,
   task = previousXml,
   imagePath = () => undefined,
+  kill = () => {},
 }: Options = {}): SchtasksIo {
   const calls: string[][] = [];
   const warnings: string[] = [];
@@ -125,6 +127,7 @@ function io({
     },
     remove: (p) => void fs.files.delete(p),
     imagePath,
+    kill,
     sleep: async (ms) => void (clock += ms),
     now: () => clock,
     warn: (line) => void warnings.push(line),
@@ -160,11 +163,18 @@ test('stop does nothing for a missing task and refuses a foreign one or a failed
 });
 
 test('start re-enables a stopped task before running it', async () => {
-  const calls = await recordCalls((io) => schtasksStart(io));
+  const calls = await recordCalls((io) => schtasksStart(io), { task: renderTaskXml({ sid, exec, specPath }) });
   expect(calls).toEqual([
     ['schtasks', '/Change', '/TN', path, '/ENABLE'],
     ['schtasks', '/Run', '/TN', path],
   ]);
+});
+
+test('start re-creates a task whose recorded exec went stale before running it, and leaves a current one alone', async () => {
+  const stale = renderTaskXml({ sid, exec: 'C:\\gone\\cli-1.0.0.exe', specPath });
+  expect((await recordCalls((io) => schtasksStart(io), { task: stale })).map((c) => c[1])).toEqual(['/Create', '/Run']);
+  const same = renderTaskXml({ sid, exec, specPath });
+  expect((await recordCalls((io) => schtasksStart(io), { task: same })).map((c) => c[1])).toEqual(['/Change', '/Run']);
 });
 
 test('start re-creates a task that is missing while the spec is still there, then runs it', async () => {
@@ -384,6 +394,35 @@ test('uninstall does not wait on a supervisor PID that another program now holds
   );
   expect(asked).toEqual([4242]);
   expect(calls.map((c) => c[1])).toEqual(['/End', '/Delete']);
+});
+
+test('uninstall of a deleted task still kills a live supervisor, waits for it, then removes the files', async () => {
+  let running = true;
+  const killed: number[] = [];
+  const { calls, fs } = await recordRun(
+    (io) =>
+      schtasksUninstall({
+        ...io,
+        imagePath: () => (running ? oldExec : undefined),
+        kill: (pid) => {
+          killed.push(pid);
+          running = false;
+        },
+      }),
+    { task: 'missing' },
+  );
+  expect(killed).toEqual([4242]);
+  expect(calls).toEqual([]);
+  expect(fs.exists(specPath)).toBe(false);
+  expect(fs.exists(uninstallMarkerPath('win32', env)!)).toBe(true);
+});
+
+test('uninstall of a deleted task fails and keeps the spec when the orphaned supervisor never dies', async () => {
+  const fs = fakeFs({ [specPath]: oldSpec, [statePath]: supervisorState });
+  await expect(schtasksUninstall(io({ fs, task: 'missing', imagePath: () => oldExec }))).rejects.toBeInstanceOf(
+    CliExit,
+  );
+  expect(fs.exists(specPath)).toBe(true);
 });
 
 test('uninstall of a task that no longer exists still removes the files and leaves the marker', async () => {

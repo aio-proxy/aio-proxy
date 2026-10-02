@@ -46,6 +46,8 @@ export type SchtasksIo = {
   readonly remove: (path: string) => void;
   /** A process's full image path, to tell the supervisor from a later process given its PID. */
   readonly imagePath: (pid: number) => string | undefined;
+  /** Terminates a process; on Windows that closes the supervisor's kill-on-close Job Object and ends the proxy too. */
+  readonly kill: (pid: number) => void;
   readonly sleep: (ms: number) => Promise<void>;
   readonly now: () => number;
   /** One line for the user on stderr. */
@@ -156,6 +158,13 @@ async function renderUnit(io: SchtasksIo): Promise<{ spec: string; xml: string }
   };
 }
 
+/** Whether the task already runs the unit's exec from the spec path (the supervisor re-reads that spec). */
+const taskCurrent = (action: ParsedTask['action'] | undefined, exec: string | undefined, specPath: string): boolean =>
+  action !== undefined &&
+  exec !== undefined &&
+  action.exec.toLowerCase() === exec.toLowerCase() &&
+  action.specPath.toLowerCase() === specPath.toLowerCase();
+
 const endTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/End', '/TN', path], true);
 const runTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/Run', '/TN', path]);
 
@@ -172,8 +181,12 @@ export async function schtasksInstall(io: SchtasksIo): Promise<void> {
 export async function schtasksStart(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   // A spec without its task (a failed `/Create`, or the task deleted by hand) can only be fixed by creating it again.
-  if (!(await ownTaskExists(io, path))) await schtasksInstall(io);
-  else await io.run(['schtasks', '/Change', '/TN', path, '/ENABLE']);
+  const task = await ownTask(io, path);
+  // A task recording an exec that an upgrade since pruned would launch a deleted binary: recreate it from the unit.
+  const { spec } = task ? await renderUnit(io) : { spec: '' };
+  if (!task || !taskCurrent(task.action, parseServiceSpec(spec)?.exec, serviceSpecPath(io.localAppData))) {
+    await schtasksInstall(io);
+  } else await io.run(['schtasks', '/Change', '/TN', path, '/ENABLE']);
   await runTask(io, path);
 }
 
@@ -245,12 +258,7 @@ export async function schtasksRestartInService(
     // The supervisor re-reads the spec the task names, so a stale spec path needs a new task as much as a moved exec.
     const action = (await ownTask(io, path))?.action;
     const exec = parseServiceSpec(spec)?.exec;
-    const current =
-      action !== undefined &&
-      exec !== undefined &&
-      action.exec.toLowerCase() === exec.toLowerCase() &&
-      action.specPath.toLowerCase() === specPath.toLowerCase();
-    if (!current) await createTask(io, path, stageTaskXml(io, xml));
+    if (!taskCurrent(action, exec, specPath)) await createTask(io, path, stageTaskXml(io, xml));
     io.rename(staged, specPath);
   } catch (error) {
     io.remove(staged);
@@ -262,21 +270,22 @@ export async function schtasksRestartInService(
 // `/End` kills the supervisor, whose Job Object takes the proxy with it; `/Delete` alone would leave both running.
 export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
-  if (await ownTaskExists(io, path)) {
-    await endTask(io, path);
-    const state = parseSupervisorState(io.readFile(serviceStatePath(io.localAppData)));
-    const deadline = io.now() + SUPERVISOR_EXIT_TIMEOUT_MS;
-    while (supervisorAlive(state, io.imagePath)) {
-      if (io.now() >= deadline) {
-        throw new CliExit(
-          EXIT.transient,
-          m['cli.service.supervisor_timeout']({ seconds: SUPERVISOR_EXIT_TIMEOUT_MS / 1000 }),
-        );
-      }
-      await io.sleep(SUPERVISOR_POLL_MS);
+  const taskExists = await ownTaskExists(io, path);
+  if (taskExists) await endTask(io, path);
+  const state = parseSupervisorState(io.readFile(serviceStatePath(io.localAppData)));
+  // With the task deleted by hand there is nothing for `/End` to stop, so end an orphaned supervisor ourselves.
+  if (!taskExists && supervisorAlive(state, io.imagePath)) io.kill(state.pid);
+  const deadline = io.now() + SUPERVISOR_EXIT_TIMEOUT_MS;
+  while (supervisorAlive(state, io.imagePath)) {
+    if (io.now() >= deadline) {
+      throw new CliExit(
+        EXIT.transient,
+        m['cli.service.supervisor_timeout']({ seconds: SUPERVISOR_EXIT_TIMEOUT_MS / 1000 }),
+      );
     }
-    await io.run(['schtasks', '/Delete', '/TN', path, '/F']);
+    await io.sleep(SUPERVISOR_POLL_MS);
   }
+  if (taskExists) await io.run(['schtasks', '/Delete', '/TN', path, '/F']);
   io.remove(serviceSpecPath(io.localAppData));
   io.remove(serviceStatePath(io.localAppData));
   io.writeFile(uninstallMarkerPath('win32', { LOCALAPPDATA: io.localAppData })!, '');
@@ -321,6 +330,7 @@ export async function defaultSchtasksIo(
     rename: renameSync,
     remove: (path) => rmSync(path, { force: true }),
     imagePath: processImagePath,
+    kill: (pid) => process.kill(pid),
     sleep: (ms) => Bun.sleep(ms),
     now: Date.now,
     warn: (line) => console.error(line),
