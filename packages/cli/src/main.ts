@@ -17,7 +17,8 @@ import { configEdit, configPathCommand, configShow, configValidate } from './con
 import { dashboardCommand } from './dashboard';
 import { type CliDeps, defaultCliDeps } from './dashboard-assets';
 import { doctorCommand } from './doctor';
-import { CliExit, EXIT, isKnownCliUserError, toExitCode } from './exit';
+import { isKnownCliUserError, toExitCode } from './exit';
+import { registerHiddenCommands } from './hidden-commands';
 import { pluginAdd, pluginConfig, pluginList, pluginPrune, pluginRemove } from './plugin-commands';
 import { providerImport, providerList, providerLogin, providerTest } from './provider-commands';
 import { reloadCommand } from './reload';
@@ -139,46 +140,6 @@ const bindAgentCommands = (program: Command, deps: CliDeps): void => {
       },
     },
     print: console.log,
-  });
-};
-
-const registerHiddenPostUpgrade = (program: Command, deps: CliDeps): void => {
-  program.command('__agent-post-upgrade', { hidden: true }).action(async () => {
-    const [{ createAgentCommandDeps }, { readAgentPostUpgradePayload, runAgentPostUpgrade }] = await Promise.all([
-      import('./agent'),
-      import('./upgrade/post-upgrade-agents'),
-    ]);
-    const payload = await readAgentPostUpgradePayload();
-    const agent = createAgentCommandDeps(deps);
-    const results = await runAgentPostUpgrade(payload, {
-      resolveLocation: agent.resolveLocation,
-      inspect: agent.inspect,
-      install: agent.install,
-      readAssets: agent.readAssets,
-      adapterVersion: VERSION,
-      now: agent.now,
-    });
-    console.log(JSON.stringify(results));
-  });
-};
-
-const registerHiddenDesktopConnect = (program: Command): void => {
-  program.command('__desktop-connect', { hidden: true }).action(async () => {
-    const { defaultDesktopConnectDeps, printDesktopConnect } = await import('./desktop-connect');
-    if (process.platform !== 'darwin' && process.platform !== 'linux' && process.platform !== 'win32') {
-      throw new CliExit(EXIT.unrecoverable, m['cli.service.unsupported_platform']({ platform: process.platform }));
-    }
-    const deps = await defaultDesktopConnectDeps(VERSION);
-    await printDesktopConnect(deps, (text) => process.stdout.write(text));
-  });
-};
-
-// What the Windows Task Scheduler task runs: supervises `<exec> run` per the spec file. Not platform-gated
-// so it can be exercised anywhere; the kill-on-close Job Object exists only on win32.
-const registerHiddenServiceRun = (program: Command): void => {
-  program.command('__service-run <spec>', { hidden: true }).action(async (specPath: string) => {
-    const { defaultSupervisorDeps, runSupervisor } = await import('./service-run');
-    process.exitCode = await runSupervisor(specPath, defaultSupervisorDeps(specPath));
   });
 };
 
@@ -342,9 +303,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
       await runUpgradeCommand(options);
     });
 
-  registerHiddenPostUpgrade(program, deps);
-  registerHiddenDesktopConnect(program);
-  registerHiddenServiceRun(program);
+  registerHiddenCommands(program, deps, VERSION);
   applyHelpStyle(program, createStyle(process.stdout));
 
   return program;
