@@ -59,8 +59,6 @@ fn only_a_literal_loopback_ip_over_plain_http_is_addressable() {
     assert!(matches!(LocalUrl::parse("http://127.0.0.1:9317", "/x\r\nEvil: 1"), Err(HttpError::InvalidPath)));
 }
 
-// Windows peer_owned_by_this_user fails closed until phase 3 Task 2.
-#[cfg(not(windows))]
 #[test]
 fn sends_the_bearer_only_on_the_request_that_carries_it() {
     let (base, server) = serve(|s| {
@@ -79,8 +77,6 @@ fn sends_the_bearer_only_on_the_request_that_carries_it() {
     assert!(!server.join().unwrap().to_ascii_lowercase().contains("authorization"));
 }
 
-// Windows peer_owned_by_this_user fails closed until phase 3 Task 2.
-#[cfg(not(windows))]
 #[test]
 fn a_redirect_is_returned_not_followed() {
     let target = TcpListener::bind("127.0.0.1:0").unwrap();

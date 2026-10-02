@@ -1,12 +1,9 @@
-//! Windows. Stubs until later phase 3 tasks: no updater, no connection is vouched for (the
-//! token is never sent), no kickstart, and `pid_alive` is always false, so restart verification
-//! rests on the health check alone.
+//! Windows. Stubs until later phase 3 tasks: no updater and no kickstart. Connection ownership
+//! comes from the TCP table and the owning process's account SID.
 
 use std::ffi::OsString;
-use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Instant;
 
 use futures::channel::mpsc::UnboundedSender;
 use gpui_kit::{App, QuitMode};
@@ -46,9 +43,9 @@ pub fn on_launch(cx: &mut App, _events: UnboundedSender<AppEvent>) {
     cx.set_quit_mode(QuitMode::Explicit);
 }
 
-/// The account's SID string arrives in phase 3; nothing reads it before then.
+/// The account's SID string (`S-1-5-21-…`); empty when it cannot be read.
 pub fn current_user() -> String {
-    String::new()
+    process::sid_string(&process::current_user_sid())
 }
 
 /// `schtasks /End` then `/Run` arrive in phase 3; an empty list makes the kickstart fail.
@@ -56,15 +53,12 @@ pub fn kickstart(_user: &str) -> Vec<Command> {
     Vec::new()
 }
 
-pub fn pid_alive(_pid: u32) -> bool {
-    false
-}
-
-pub fn peer_owned_by_this_user(_stream: &TcpStream, _deadline: Instant) -> bool {
-    false
-}
+pub use peer::peer_owned_by_this_user;
+pub use process::pid_alive;
 
 pub mod login_item;
+mod peer;
+mod process;
 
 pub mod updater {
     use futures::channel::mpsc::UnboundedSender;

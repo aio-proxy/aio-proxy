@@ -5,6 +5,8 @@
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(any(windows, test))]
+mod tcp_row;
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]
