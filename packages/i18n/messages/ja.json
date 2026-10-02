@@ -1858,7 +1858,9 @@
         "current": "プロバイダー {providerId}、{mode}"
       },
       "claude_code": {
-        "key_help": "Claude Code の settings.json の ANTHROPIC_AUTH_TOKEN に書き込まれます。"
+        "key_help": "Claude Code の settings.json の ANTHROPIC_AUTH_TOKEN に書き込まれます。",
+        "key_placeholder": "API キーを選択",
+        "key_required": "Claude Code が使う API キーを選択してください。"
       },
       "card": {
         "via": {

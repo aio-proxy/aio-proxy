@@ -219,7 +219,13 @@ test('Claude Code configures in one click without proxy keys and asks for a key 
   };
   render(<AgentDetailPage target="claude-code" />);
   fireEvent.click(screen.getByRole('button', configure));
+  // Submitting without a choice never falls back to the first key.
   fireEvent.submit(await screen.findByTestId('claude-code-setup-form'));
+  expect(await screen.findByText(/Choose the API key|请选择/u)).toBeTruthy();
+  expect(mocks.operation.start).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('combobox', { name: /^(API key|API Key)$/u }));
+  fireEvent.click(await screen.findByRole('option', { name: 'Laptop' }));
+  fireEvent.submit(screen.getByTestId('claude-code-setup-form'));
   await waitFor(() =>
     expect(mocks.operation.start).toHaveBeenCalledWith({
       kind: 'configure',

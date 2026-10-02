@@ -16,7 +16,7 @@ import {
   resolveClaudeCodeLocation,
   type ClaudeCodeDeps,
 } from './claude-code';
-import { configureClaudeCodeSettings } from './managed-settings';
+import { configureClaudeCodeSettings, removeClaudeCodeSettings } from './managed-settings';
 
 const ENDPOINT = 'http://127.0.0.1:9317';
 const PLACEHOLDER = 'aio-proxy-local';
@@ -189,6 +189,19 @@ test('an overlapping configure that loses the settings race leaves the winner ow
   expect(await listClaudeCode(false, ENDPOINT, f.deps)).toMatchObject({ status: 'managed', endpointMatches: true });
   expect(await removeClaudeCode(f.deps)).toMatchObject({ status: 'removed' });
   expect(await f.read()).toEqual(original);
+});
+
+test('a configure that lands while remove is finishing keeps its ownership', async () => {
+  const f = await fixture({ settings: { model: 'opus' } });
+  await configureClaudeCode(noKey, f.deps);
+  await removeClaudeCodeSettings(f.location, {
+    afterSettings: async () => {
+      expect((await configureClaudeCode(noKey, f.deps)).status).toBe('configured');
+    },
+  });
+  expect(await listClaudeCode(false, ENDPOINT, f.deps)).toMatchObject({ status: 'managed' });
+  await removeClaudeCode(f.deps);
+  expect(await f.read()).toEqual({ model: 'opus' });
 });
 
 test('with proxy keys and no way to choose one, configure fails instead of writing a bare endpoint', async () => {

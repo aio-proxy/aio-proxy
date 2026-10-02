@@ -1,11 +1,9 @@
-import type { ClaudeCodeConfigureInput, ClaudeCodeSetupPlan } from '@aio-proxy/types';
+import type { ClaudeCodeConfigureInput } from '@aio-proxy/types';
 import { useForm } from '@tanstack/react-form';
 
-export const useClaudeCodeSetupForm = (
-  plan: ClaudeCodeSetupPlan,
-  onSubmit: (input: ClaudeCodeConfigureInput) => void,
-) =>
+export const useClaudeCodeSetupForm = (onSubmit: (input: ClaudeCodeConfigureInput) => void) =>
   useForm({
-    defaultValues: { keyId: plan.keyChoices[0]?.id ?? '' },
+    // Empty on purpose: a proxy key is written only after the user picks it.
+    defaultValues: { keyId: '' },
     onSubmit: ({ value }) => onSubmit({ key: { kind: 'existing', id: value.keyId } }),
   });

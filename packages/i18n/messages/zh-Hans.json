@@ -1858,7 +1858,9 @@
         "current": "Provider {providerId}，{mode}"
       },
       "claude_code": {
-        "key_help": "将写入 Claude Code settings.json 的 ANTHROPIC_AUTH_TOKEN。"
+        "key_help": "将写入 Claude Code settings.json 的 ANTHROPIC_AUTH_TOKEN。",
+        "key_placeholder": "选择 API Key",
+        "key_required": "请选择 Claude Code 要使用的 API Key。"
       },
       "card": {
         "via": {

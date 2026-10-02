@@ -1858,7 +1858,9 @@
         "current": "Provider {providerId}, {mode}"
       },
       "claude_code": {
-        "key_help": "Written to ANTHROPIC_AUTH_TOKEN in Claude Code's settings.json."
+        "key_help": "Written to ANTHROPIC_AUTH_TOKEN in Claude Code's settings.json.",
+        "key_placeholder": "Choose an API key",
+        "key_required": "Choose the API key Claude Code should use."
       },
       "card": {
         "via": {

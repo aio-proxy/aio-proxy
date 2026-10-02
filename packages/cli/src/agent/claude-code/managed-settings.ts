@@ -37,7 +37,11 @@ const MarkerSchema = z.strictObject({
 });
 type Marker = z.output<typeof MarkerSchema>;
 
-type FileSnapshot = { readonly text: string; readonly mode: number };
+/** `ino` tells a rewrite apart from the original even when the text is identical: every write renames a new file in. */
+type FileSnapshot = { readonly text: string; readonly mode: number; readonly ino: number };
+
+const sameFile = (left: FileSnapshot | undefined, right: FileSnapshot | undefined): boolean =>
+  left?.text === right?.text && left?.ino === right?.ino;
 type Settings = Record<string, unknown>;
 
 const digest = (value: string): string => new Bun.CryptoHasher('sha256').update(value).digest('hex');
@@ -52,7 +56,7 @@ async function readRegular(path: string): Promise<FileSnapshot | undefined> {
   try {
     const stat = await handle.stat();
     if (!stat.isFile()) throw new Error(`Expected a regular file: ${path}`);
-    return { text: await handle.readFile('utf8'), mode: stat.mode & 0o777 };
+    return { text: await handle.readFile('utf8'), mode: stat.mode & 0o777, ino: stat.ino };
   } finally {
     await handle.close();
   }
@@ -63,21 +67,24 @@ async function replaceFile(
   text: string,
   expected: FileSnapshot | undefined,
   mode: number = expected?.mode ?? 0o600,
-): Promise<void> {
+): Promise<FileSnapshot> {
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const temporary = join(dirname(path), `.${basename(path)}.${crypto.randomUUID()}.tmp`);
   const handle = await open(temporary, 'wx', mode);
+  let ino: number;
   try {
     await handle.writeFile(text, 'utf8');
     await handle.chmod(mode);
     await handle.sync();
+    ino = (await handle.stat()).ino;
   } finally {
     await handle.close();
   }
   try {
     // Claude Code writes this file too; never rename over a version this run did not read.
-    if ((await readRegular(path))?.text !== expected?.text) throw new Error(`${path} changed during update`);
+    if (!sameFile(await readRegular(path), expected)) throw new Error(`${path} changed during update`);
     await rename(temporary, path);
+    return { text, mode, ino };
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
@@ -225,8 +232,7 @@ export async function configureClaudeCodeSettings(
   };
   // Every later marker change is a compare-and-swap against exactly this text, so an overlapping
   // configure that has since taken ownership never loses its marker to this run's rollback.
-  const ours: FileSnapshot = { text: serialize(journal), mode: 0o600 };
-  await replaceFile(location.markerPath, ours.text, previous?.file);
+  const ours = await replaceFile(location.markerPath, serialize(journal), previous?.file);
   await testDeps?.afterMarker?.();
   try {
     await replaceFile(
@@ -252,8 +258,9 @@ export async function configureClaudeCodeSettings(
   return 'configured';
 }
 
-async function removeMarker(location: ClaudeCodeLocation, expected?: FileSnapshot): Promise<void> {
-  if (expected !== undefined && (await readRegular(location.markerPath))?.text !== expected.text) return;
+/** Deletes the marker only if it is still the one `expected` captured; a newer configure keeps its own. */
+async function removeMarker(location: ClaudeCodeLocation, expected: FileSnapshot): Promise<void> {
+  if (!sameFile(await readRegular(location.markerPath), expected)) return;
   await rm(location.markerPath, { force: true });
   // Only an empty directory goes; anything the user put next to the marker stays.
   await rmdir(dirname(location.markerPath)).catch(() => undefined);
@@ -261,9 +268,12 @@ async function removeMarker(location: ClaudeCodeLocation, expected?: FileSnapsho
 
 export async function removeClaudeCodeSettings(
   location: ClaudeCodeLocation,
+  /** Simulates a pause between restoring settings.json and deleting the marker. */
+  testDeps?: { readonly afterSettings?: () => Promise<void> },
 ): Promise<{ readonly status: 'removed' | 'partial' | 'absent'; readonly preservedPaths: readonly string[] }> {
-  const marker = (await readMarker(location))?.marker;
-  if (marker === undefined) return { status: 'absent', preservedPaths: [] };
+  const read = await readMarker(location);
+  if (read === undefined) return { status: 'absent', preservedPaths: [] };
+  const { marker } = read;
   const original = await readRegular(location.settingsPath);
   const parsed = parseSettings(original?.text);
   const env = { ...parsed.env };
@@ -285,6 +295,7 @@ export async function removeClaudeCodeSettings(
       marker.createdEnv && Object.keys(env).length === 0 ? omit(parsed.settings, ['env']) : { ...parsed.settings, env };
     await replaceFile(location.settingsPath, serialize(next), original);
   }
-  await removeMarker(location);
+  await testDeps?.afterSettings?.();
+  await removeMarker(location, read.file);
   return { status: preserved.length === 0 ? 'removed' : 'partial', preservedPaths: pathsOf(preserved) };
 }

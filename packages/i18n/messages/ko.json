@@ -1858,7 +1858,9 @@
         "current": "프로바이더 {providerId}, {mode}"
       },
       "claude_code": {
-        "key_help": "Claude Code settings.json의 ANTHROPIC_AUTH_TOKEN에 기록됩니다."
+        "key_help": "Claude Code settings.json의 ANTHROPIC_AUTH_TOKEN에 기록됩니다.",
+        "key_placeholder": "API 키 선택",
+        "key_required": "Claude Code가 사용할 API 키를 선택하세요."
       },
       "card": {
         "via": {

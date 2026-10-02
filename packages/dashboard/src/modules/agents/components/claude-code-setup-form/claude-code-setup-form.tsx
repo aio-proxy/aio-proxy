@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { ClaudeCodeConfigureInput, ClaudeCodeSetupPlan } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Field, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 
 import { useClaudeCodeSetupForm } from '../../hooks/use-claude-code-setup-form';
@@ -14,7 +14,7 @@ interface ClaudeCodeSetupFormProps {
 }
 
 export const ClaudeCodeSetupForm: React.FC<ClaudeCodeSetupFormProps> = ({ plan, busy, onSubmit }) => {
-  const form = useClaudeCodeSetupForm(plan, onSubmit);
+  const form = useClaudeCodeSetupForm(onSubmit);
   const items = plan.keyChoices.map((choice) => ({ value: choice.id, label: choice.label }));
   return (
     <form
@@ -25,13 +25,18 @@ export const ClaudeCodeSetupForm: React.FC<ClaudeCodeSetupFormProps> = ({ plan, 
         void form.handleSubmit();
       }}
     >
-      <form.Field name="keyId">
+      <form.Field
+        name="keyId"
+        validators={{
+          onSubmit: ({ value }) => (value === '' ? m['dashboard.agents.claude_code.key_required']() : undefined),
+        }}
+      >
         {(field) => (
-          <Field>
+          <Field data-invalid={field.state.meta.errors.length > 0 || undefined}>
             <FieldLabel>{m['dashboard.agents.codex.key']()}</FieldLabel>
             <Select items={items} value={field.state.value} onValueChange={(value) => field.handleChange(value ?? '')}>
               <SelectTrigger className="w-full" aria-label={m['dashboard.agents.codex.key']()}>
-                <SelectValue />
+                <SelectValue placeholder={m['dashboard.agents.claude_code.key_placeholder']()} />
               </SelectTrigger>
               <SelectContent>
                 {items.map((item) => (
@@ -42,6 +47,7 @@ export const ClaudeCodeSetupForm: React.FC<ClaudeCodeSetupFormProps> = ({ plan, 
               </SelectContent>
             </Select>
             <FieldDescription>{m['dashboard.agents.claude_code.key_help']()}</FieldDescription>
+            <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
           </Field>
         )}
       </form.Field>
