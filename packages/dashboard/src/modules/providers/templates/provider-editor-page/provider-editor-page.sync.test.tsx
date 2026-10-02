@@ -6,11 +6,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { ProviderFormMode } from '../../lib/constants';
+import * as providerOptionsSchemaService from '../../services/provider-options-schema-service' with {
+  rstest: 'importActual',
+};
 import { ProviderEditorPage } from './provider-editor-page';
 
 const mocks = rs.hoisted(() => ({
   catalog: rs.fn(),
   testDraft: rs.fn(),
+  create: rs.fn(),
   update: rs.fn(),
   editView: rs.fn(),
   navigate: rs.fn(),
@@ -24,8 +28,15 @@ rs.mock('../../services/provider-draft', () => ({
 rs.mock('../../services/providers-service', () => ({
   fetchProviderEditView: mocks.editView,
   updateProviderMutationFn: mocks.update,
-  createProviderMutationFn: rs.fn(),
+  createProviderMutationFn: mocks.create,
   deleteProviderMutationFn: rs.fn(),
+}));
+rs.mock('../../services/provider-options-schema-service', () => ({
+  ...providerOptionsSchemaService,
+  providerPackageStatusQueryOptions: (packageName: string) => ({
+    queryKey: ['provider-package-status', packageName],
+    queryFn: async () => ({ trusted: false, state: 'installed' }),
+  }),
 }));
 rs.mock('../../services/oauth-service', () => ({
   oauthCapabilitiesQueryOptions: () => ({
@@ -47,6 +58,8 @@ beforeEach(() => {
   mocks.catalog.mockResolvedValue({ ok: true, models: ['a', 'b'] });
   mocks.testDraft.mockReset();
   mocks.testDraft.mockResolvedValue({ ok: true });
+  mocks.create.mockReset();
+  mocks.create.mockResolvedValue({ provider: { id: 'provider' } });
   mocks.update.mockReset();
   mocks.update.mockResolvedValue({ provider: { id: 'provider' } });
   mocks.editView.mockReset();
@@ -105,6 +118,64 @@ test('a draft sync catalog updates preview, save status and test models together
   expect(input.body).toMatchObject({ syncModels: true, models: [], excludedModels: ['a'] });
   expect(ProviderMutationBodySchema.safeParse(input.body).success).toBe(true);
   expect(mocks.editView).not.toHaveBeenCalled();
+  queryClient.clear();
+});
+
+test('changing a create draft from API to AI SDK clears sync state and the discovered catalog', async () => {
+  const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+  const props = {
+    mode: ProviderFormMode.Create,
+    kind: ProviderKind.Api,
+    initial: {
+      id: 'provider',
+      protocol: ProviderProtocol.OpenAICompatible,
+      baseURL: 'https://api.example/v1',
+      models: ['old'],
+    },
+    onKindChange: rs.fn(),
+    onSessionIdChange: rs.fn(),
+  };
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <ProviderEditorPage {...props} />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByTestId('models-sync-switch'));
+  await screen.findByTestId('model-row-b');
+  expect(screen.getByTestId('models-sync-switch')).toBeChecked();
+  expect(mocks.catalog).toHaveBeenCalledTimes(1);
+  fireEvent.click(within(screen.getByTestId('model-row-a')).getByRole('checkbox'));
+
+  fireEvent.click(screen.getByRole('radio', { name: /AI SDK/u }));
+  expect(props.onKindChange).toHaveBeenCalledWith(ProviderKind.AiSdk);
+  view.rerender(
+    <QueryClientProvider client={queryClient}>
+      <ProviderEditorPage {...props} kind={ProviderKind.AiSdk} />
+    </QueryClientProvider>,
+  );
+
+  expect(screen.getByTestId('models-sync-switch')).not.toBeChecked();
+  expect(screen.queryAllByTestId(/^model-row-/u)).toHaveLength(0);
+  expect(screen.getByTestId('models-empty')).toBeInTheDocument();
+  const modelInput = screen.getByLabelText(m['dashboard.providers.editor.models_manual_add']());
+  fireEvent.change(modelInput, { target: { value: 'sdk-model' } });
+  fireEvent.keyDown(modelInput, { key: 'Enter' });
+  const packageInput = within(screen.getByTestId('provider-form-field-packageName')).getByRole('combobox');
+  fireEvent.change(packageInput, { target: { value: '@example/custom-sdk' } });
+  fireEvent.blur(packageInput);
+
+  const save = within(screen.getByTestId('editor-footer')).getByRole('button', {
+    name: m['dashboard.providers.editor.footer_save'](),
+  });
+  await waitFor(() => expect(save).toBeEnabled());
+  fireEvent.click(save);
+  await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+  const body = mocks.create.mock.calls[0]?.[0];
+  expect(body).toMatchObject({ kind: 'ai-sdk', models: ['sdk-model'] });
+  expect(body).not.toHaveProperty('syncModels');
+  expect(body).not.toHaveProperty('excludedModels');
+  expect(ProviderMutationBodySchema.safeParse(body).success).toBe(true);
+  expect(mocks.catalog).toHaveBeenCalledTimes(1);
   queryClient.clear();
 });
 

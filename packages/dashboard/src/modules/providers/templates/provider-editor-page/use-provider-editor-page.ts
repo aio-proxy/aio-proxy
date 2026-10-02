@@ -14,6 +14,7 @@ import {
 import { toast } from '@aio-proxy/ui/components/toast';
 import { useQuery } from '@tanstack/react-query';
 import { useSelector } from '@tanstack/react-store';
+import { omit } from 'es-toolkit/object';
 import { useCallback, useState } from 'react';
 
 import { useOAuthProviderForm } from '../../hooks/use-oauth-provider-form';
@@ -365,7 +366,11 @@ export const useProviderEditorPage = ({
   const handleKindChange = (next: ProviderKind) => {
     onKindChange?.(next);
     setOptionsValid(next !== 'ai-sdk');
-    const nextValues = { ...form.state.values, kind: next } as ProviderEditorShape;
+    setDraftCatalog(undefined);
+    const nextValues = {
+      ...omit({ ...form.state.values, syncModels: undefined }, ['syncModels', 'excludedModels']),
+      kind: next,
+    } as ProviderEditorShape;
     form.reset(nextValues);
     form.setFieldValue('kind', next);
   };

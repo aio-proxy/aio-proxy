@@ -60,17 +60,24 @@ export function createProviderModelCatalogRepository(sqlite: Database): Provider
   return {
     read(providerId) {
       const row = selectCatalog.get(providerId);
-      return row === null
-        ? null
-        : {
-            sourceDigest: row.source_digest,
-            models: row.models_json === null ? null : (JSON.parse(row.models_json) as string[]),
-            refreshedAt: row.refreshed_at,
-            failure:
-              row.failure_code === null || row.failed_at === null
-                ? null
-                : { code: row.failure_code, at: row.failed_at },
-          };
+      if (row === null) return null;
+      let models: string[] | null = null;
+      if (row.models_json !== null) {
+        const parsed: unknown = JSON.parse(row.models_json);
+        if (!Array.isArray(parsed) || !parsed.every((model: unknown) => typeof model === 'string')) {
+          throw new Error(
+            `Invalid stored model catalog for Provider ID "${providerId}": models_json must be an array of strings`,
+          );
+        }
+        models = parsed;
+      }
+      return {
+        sourceDigest: row.source_digest,
+        models,
+        refreshedAt: row.refreshed_at,
+        failure:
+          row.failure_code === null || row.failed_at === null ? null : { code: row.failure_code, at: row.failed_at },
+      };
     },
     writeSuccess(providerId, sourceDigest, models, refreshedAt) {
       upsertSuccess.run(providerId, sourceDigest, JSON.stringify(models), refreshedAt);

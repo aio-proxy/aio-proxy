@@ -19,18 +19,18 @@ function fixture() {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-provider-model-catalog-'));
   const handle = openDb({ home });
   fixtures.push({ home, handle });
-  return createProviderModelCatalogRepository(handle.sqlite);
+  return { repo: createProviderModelCatalogRepository(handle.sqlite), sqlite: handle.sqlite };
 }
 
 test('read returns null for an unknown Provider ID', () => {
-  const repo = fixture();
+  const { repo } = fixture();
   repo.writeSuccess('known', 'digest-a', ['gpt-5'], 1_000);
 
   expect(repo.read('unknown')).toBeNull();
 });
 
 test('writeSuccess then read round-trips the model list and clears a prior failure', () => {
-  const repo = fixture();
+  const { repo } = fixture();
   repo.writeFailure('provider-a', 'digest-a', 'CATALOG_UNSUPPORTED', 500);
   expect(repo.read('provider-a')).toEqual({
     sourceDigest: 'digest-a',
@@ -58,7 +58,7 @@ test('writeSuccess then read round-trips the model list and clears a prior failu
 });
 
 test('writeFailure keeps the last good models for the same source digest', () => {
-  const repo = fixture();
+  const { repo } = fixture();
   repo.writeSuccess('provider-a', 'digest-a', ['gpt-5', 'gpt-5-mini'], 1_000);
   repo.writeFailure('provider-a', 'digest-a', 'CATALOG_UNAVAILABLE', 2_000);
 
@@ -71,7 +71,7 @@ test('writeFailure keeps the last good models for the same source digest', () =>
 });
 
 test('writeFailure under a new source digest drops the old models', () => {
-  const repo = fixture();
+  const { repo } = fixture();
   repo.writeSuccess('provider-a', 'digest-a', ['gpt-5'], 1_000);
   repo.writeSuccess('provider-b', 'digest-a', ['gpt-5-mini'], 1_500);
   repo.writeFailure('provider-a', 'digest-b', 'CATALOG_UNAVAILABLE', 2_000);
@@ -88,4 +88,12 @@ test('writeFailure under a new source digest drops the old models', () => {
     refreshedAt: 1_500,
     failure: null,
   });
+});
+
+test.each(['{"a":1}', '[1,2]'])('read rejects malformed stored model lists: %s', (modelsJson) => {
+  const { repo, sqlite } = fixture();
+  repo.writeSuccess('provider-a', 'digest-a', ['gpt-5'], 1_000);
+  sqlite.query('UPDATE provider_model_catalog SET models_json = ? WHERE provider_id = ?').run(modelsJson, 'provider-a');
+
+  expect(() => repo.read('provider-a')).toThrow('models_json must be an array of strings');
 });
