@@ -31,6 +31,8 @@ import { fetchSparkle } from './sparkle';
 
 const REPO = 'aio-proxy/aio-proxy';
 const FEED_TAG = 'desktop-feed';
+// website/theme/components/home-layout/hero.tsx links to this asset on FEED_TAG.
+const LATEST_DMG = 'aio-proxy-arm64.dmg';
 const root = join(import.meta.dir, '..', '..');
 const desktop = join(root, 'desktop');
 const out = join(desktop, 'target', 'bundle');
@@ -188,6 +190,17 @@ try {
     if (problems.length > 0) throw new Error(`refusing to replace the feed:\n${problems.join('\n')}`);
     await $`gh release upload ${FEED_TAG} ${join(feedDir, 'appcast.xml')} --repo ${REPO} --clobber`;
     console.error(`the feed now offers ${version}`);
+  }
+
+  // The website's download button links to one unversioned name, which must only ever hold the feed's
+  // newest version. It follows the feed commit, so a failed upload here is redone by re-dispatching.
+  step(`7. ${LATEST_DMG}`);
+  if (previous.every((item) => Bun.semver.order(item.version, version) <= 0)) {
+    copyFileSync(dmg, join(feedDir, LATEST_DMG));
+    // No waitForDownload: right after --clobber the CDN may still serve the previous bytes.
+    await $`gh release upload ${FEED_TAG} ${join(feedDir, LATEST_DMG)} --repo ${REPO} --clobber`;
+  } else {
+    console.error(`${version} is not the feed's newest version; ${LATEST_DMG} is not replaced`);
   }
 } finally {
   rmSync(feedDir, { recursive: true, force: true });
