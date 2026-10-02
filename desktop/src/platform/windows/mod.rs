@@ -72,6 +72,7 @@ pub use process::pid_alive;
 pub mod login_item;
 mod peer;
 mod process;
+pub mod user_path;
 
 pub mod updater {
     use futures::channel::mpsc::UnboundedSender;

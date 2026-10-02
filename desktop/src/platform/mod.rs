@@ -6,6 +6,8 @@ mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(any(windows, test))]
+pub mod shell_path;
+#[cfg(any(windows, test))]
 mod task_path;
 #[cfg(any(windows, test))]
 mod tcp_row;
