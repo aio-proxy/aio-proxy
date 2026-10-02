@@ -5,6 +5,7 @@ import type {
   DashboardRoutingModelMutation,
   DashboardRoutingModelsResponse,
   DashboardRoutingNumber,
+  DashboardRoutingSelectionMutation,
   Provider,
   ProviderAlias,
 } from '@aio-proxy/types';
@@ -23,6 +24,7 @@ export type ProviderRoutingNumberViews = {
 export type ModelRoutingControlPlane = {
   readonly list: () => Promise<DashboardRoutingModelsResponse>;
   readonly update: (input: DashboardRoutingModelMutation) => Promise<DashboardRoutingModelsResponse>;
+  readonly updateSelection: (input: DashboardRoutingSelectionMutation) => Promise<DashboardRoutingModelsResponse>;
   readonly providerNumberViews: (providerId: string) => Promise<ProviderRoutingNumberViews | undefined>;
 };
 
@@ -60,6 +62,14 @@ export function createModelRoutingControlPlane(options: ModelRoutingControlPlane
     list,
     async update(input) {
       await options.configStore.mutateConfig((current) => applyRoutingMutation(current, input));
+      return list();
+    },
+    async updateSelection({ selection }) {
+      // Only `router.selection` changes; `models` and any other authored `router` keys stay as written.
+      await options.configStore.mutateConfig((current) => ({
+        ...current,
+        router: { ...objectRecord(current['router']), selection },
+      }));
       return list();
     },
     async providerNumberViews(providerId) {

@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardRoutingModel } from '@aio-proxy/types';
+import type { DashboardRoutingModel, RouterSelection } from '@aio-proxy/types';
 import type { ColumnDef } from '@tanstack/react-table';
 
 import { tableHead } from '@/components/data-table/table-head';
@@ -14,10 +14,12 @@ const percentFormatter = new Intl.NumberFormat(undefined, { style: 'percent', ma
 
 interface CreateRoutingColumnsOptions {
   readonly traffic: RoutingTrafficIndex | undefined;
+  readonly selection?: RouterSelection;
 }
 
 export const createRoutingColumns = ({
   traffic,
+  selection,
 }: CreateRoutingColumnsOptions): ColumnDef<DataTableFeatures, DashboardRoutingModel>[] => [
   {
     id: 'modelId',
@@ -26,13 +28,17 @@ export const createRoutingColumns = ({
     // Fixed so the route column starts at the same x on every page, whatever the longest ID there is.
     meta: { className: 'w-64' },
     header: tableHead(() => m['dashboard.routing.table.col_model']()),
-    cell: ({ row }) => <RoutingModelCell model={row.original} totals={traffic?.get(row.original.modelId)} />,
+    cell: ({ row }) => (
+      <RoutingModelCell model={row.original} totals={traffic?.get(row.original.modelId)} selection={selection} />
+    ),
   },
   {
     id: 'route',
     accessorFn: (model) => model.tiers.length,
     header: tableHead(() => m['dashboard.routing.table.col_route']()),
-    cell: ({ row }) => <RoutingRoute model={row.original} totals={traffic?.get(row.original.modelId)} />,
+    cell: ({ row }) => (
+      <RoutingRoute model={row.original} totals={traffic?.get(row.original.modelId)} selection={selection} />
+    ),
   },
   {
     id: 'traffic',

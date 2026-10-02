@@ -69,12 +69,21 @@ const localFields = new Set([
   attributeName.sessionResolvedBy,
 ]);
 
+// A Provider ID (same shape as `identifiers` admits) and a fixed reason; nothing request-derived.
+const SKIPPED_CANDIDATE = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}:(cooldown|quota_exhausted)$/u;
+
 export function safeDiagnosticFields<T extends object>(fields: T, capturePayload = false): T {
   if (capturePayload) return fields;
   return Object.fromEntries(
     Object.entries(fields).filter(([key, value]) => {
       if (typeof value === 'number') return Number.isFinite(value);
       if (typeof value === 'boolean') return true;
+      if (Array.isArray(value)) {
+        return (
+          key === attributeName.routeSkippedCandidates &&
+          value.every((entry) => typeof entry === 'string' && SKIPPED_CANDIDATE.test(entry))
+        );
+      }
       if (typeof value !== 'string') return false;
       if (key === 'errorCode' || key === attributeName.errorCode) return reasons.has(value);
       if (identifiers.has(key)) return /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$/u.test(value);

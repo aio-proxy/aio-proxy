@@ -456,3 +456,11 @@ test('enabled proxy fallback requires primary and backup addresses', () => {
     }).success,
   ).toBe(true);
 });
+
+test('router selection defaults to the weighted draw and accepts quota-reset', () => {
+  expect(ConfigSchema.parse({ providers: {} }).router.selection).toBe('weighted');
+  expect(ConfigSchema.parse({ providers: {}, router: { selection: 'quota-reset' } }).router.selection).toBe(
+    'quota-reset',
+  );
+  expect(ConfigSchema.safeParse({ providers: {}, router: { selection: 'soonest' } }).success).toBe(false);
+});

@@ -10,4 +10,4 @@ export const defaultServer = {
   retry: { retryAfterCapMs: 30_000 },
 } as const;
 
-export const defaultRouter = { modelContextAggregation: 'min', models: {} } as const;
+export const defaultRouter = { modelContextAggregation: 'min', selection: 'weighted', models: {} } as const;

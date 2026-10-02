@@ -143,6 +143,7 @@ export const RoutingModelPage: React.FC<RoutingModelPageProps> = ({ modelId }) =
           removed={removed}
           range={range}
           actual={actual}
+          selection={query.data?.selection ?? 'weighted'}
           onReload={onReload}
         />
       </div>

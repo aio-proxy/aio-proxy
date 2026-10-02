@@ -90,6 +90,7 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
 
   return {
     writable: input.writable,
+    selection: input.config.router.selection,
     models: [...models.values()].map(finalizeModel),
   };
 }

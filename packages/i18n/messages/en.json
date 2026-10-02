@@ -753,6 +753,8 @@
       "load_failed": "Routing could not be loaded. Try again.",
       "retry": "Retry",
       "read_only": "This server has no writable config file. Routing can be inspected but not saved.",
+      "selection_quota_reset": "Spend the subscription that resets soonest first",
+      "selection_quota_reset_description": "Within each priority tier, try the subscription whose quota resets soonest before the weighted draw. Session affinity still takes precedence.",
       "table": {
         "label": "Model routes",
         "filter": "Filter models",

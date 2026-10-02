@@ -152,3 +152,15 @@ test('names the Providers that ran off their configured split, with the measured
   ]);
   expect(tierDeviations(tier, [totals(9n, 'primary'), totals(1n, 'fallback')]).size).toBe(0);
 });
+
+// Under quota-reset ordering a subscription is meant to carry its tier until it runs out, so the
+// weight split is no prediction of traffic and a lopsided tier is the policy working.
+test('quota-reset tiers raise no traffic deviation', () => {
+  const [tier] = model().tiers;
+  if (tier === undefined) throw new Error('fixture has a tier');
+  const lopsided = [totals(93n, 'primary'), totals(7n, 'fallback')];
+
+  expect(tierDeviations(tier, lopsided, 'quota-reset').size).toBe(0);
+  expect(isDeviating(model(), lopsided, 'quota-reset')).toBe(false);
+  expect(tierDeviations(tier, lopsided, 'weighted').size).toBe(2);
+});

@@ -258,6 +258,8 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     realtimeCalls: parts.realtimeCalls,
     videoJobs: parts.videoJobs,
     warmProviderQuota: (providerId) => parts.quotaCache.warm(providerId),
+    quotaStatus: (providerId) => parts.quotaCache.status(providerId),
+    refreshProviderQuota: (providerId) => parts.quotaCache.refresh(providerId),
     reload: parts.reload,
     traceStore: parts.traceStore,
     logger,

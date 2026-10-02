@@ -172,11 +172,17 @@ export const RouterModelPolicySchema = z.object({
   providers: z.record(z.string().min(1), RouterProviderOverrideSchema).default({}),
 });
 
+export const RouterSelectionSchema = z.enum(['weighted', 'quota-reset']);
+export type RouterSelection = z.output<typeof RouterSelectionSchema>;
+
 export const RouterConfigSchema = z.object({
   modelContextAggregation: z
     .enum([ModelContextAggregation.Min, ModelContextAggregation.Max])
     .default(ModelContextAggregation.Min)
     .describe('How to reconcile a public slug context window across providers: min (safe) or max.'),
+  selection: RouterSelectionSchema.default('weighted').describe(
+    'How to order candidates within one Provider priority tier: the weighted draw, or subscriptions whose quota allowance resets soonest first.',
+  ),
   models: z.record(z.string().min(1), RouterModelPolicySchema).default({}),
 });
 

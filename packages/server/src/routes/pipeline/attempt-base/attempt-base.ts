@@ -9,7 +9,8 @@ export type AttemptSelectionSource =
   | 'response_owner'
   | 'session_affinity'
   | 'deterministic_session'
-  | 'weighted_random';
+  | 'weighted_random'
+  | 'quota_reset';
 
 export type AttemptTraceMetadata = {
   readonly routingContractVersion: 2;

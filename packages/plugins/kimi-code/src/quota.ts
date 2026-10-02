@@ -42,6 +42,9 @@ function item(
     ...(ratio === undefined ? {} : { remainingRatio: Math.min(1, Math.max(0, ratio)) }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
     ...(windowMinutes === undefined ? {} : { windowMinutes }),
+    // Every Kimi Code window is account-wide: once one is spent, the coding API refuses all models
+    // until it resets.
+    scope: 'account',
   };
 }
 

@@ -70,6 +70,9 @@ test('maps the session, weekly, and model-specific windows', async () => {
         remainingRatio: 0.85,
         resetsAt: 1_767_972_193_000,
         windowMinutes: 300,
+        // Spark and the named-but-unreadable `Broken` limit are separate pools; image models use their
+        // own endpoint. The main lanes gate everything else.
+        scope: { models: ['*', '!gpt-image-*', '!gpt-5.3-codex-spark', '!broken'] },
       },
       {
         id: 'secondary',
@@ -77,6 +80,7 @@ test('maps the session, weekly, and model-specific windows', async () => {
         remainingRatio: 0.95,
         resetsAt: 1_768_972_193_000,
         windowMinutes: 10_080,
+        scope: { models: ['*', '!gpt-image-*', '!gpt-5.3-codex-spark', '!broken'] },
       },
       {
         id: 'codex-spark',
@@ -87,6 +91,7 @@ test('maps the session, weekly, and model-specific windows', async () => {
         remainingRatio: 0.6,
         resetsAt: 1_767_900_000_000,
         windowMinutes: 300,
+        scope: { models: ['gpt-5.3-codex-spark'] },
       },
       {
         id: 'codex-spark-secondary',
@@ -97,10 +102,42 @@ test('maps the session, weekly, and model-specific windows', async () => {
         remainingRatio: 0.09999999999999998,
         resetsAt: 1_768_900_000_000,
         windowMinutes: 10_080,
+        scope: { models: ['gpt-5.3-codex-spark'] },
       },
     ],
     plan: 'Free Workspace',
   });
+});
+
+test('main lanes cover every model but images when there is no separate limit', async () => {
+  const { rate_limit } = usagePayload;
+  const snapshot = await readOpenAIChatGPTQuota(context(), usageResponder({ rate_limit }));
+
+  expect(snapshot.items.map(({ id, scope }) => ({ id, scope }))).toEqual([
+    { id: 'primary', scope: { models: ['*', '!gpt-image-*'] } },
+    { id: 'secondary', scope: { models: ['*', '!gpt-image-*'] } },
+  ]);
+});
+
+// A separate pool that names no model could cover any of them, so the main lanes can no longer say
+// which models they gate. Unscoped, they stay display-only rather than skip a model that would serve.
+test('leaves every lane unscoped when a separate limit names no model', async () => {
+  const { rate_limit } = usagePayload;
+  const snapshot = await readOpenAIChatGPTQuota(
+    context(),
+    usageResponder({
+      rate_limit,
+      additional_rate_limits: [
+        { metered_feature: 'mystery', rate_limit: { primary_window: { used_percent: 100, reset_at: 1_767_900_000 } } },
+      ],
+    }),
+  );
+
+  expect(snapshot.items.map(({ id, scope }) => ({ id, scope }))).toEqual([
+    { id: 'primary', scope: undefined },
+    { id: 'secondary', scope: undefined },
+    { id: 'mystery', scope: undefined },
+  ]);
 });
 
 test('reports reset credits when the inventory endpoint answers', async () => {

@@ -1,4 +1,4 @@
-import type { DashboardRoutingModel } from '@aio-proxy/types';
+import type { DashboardRoutingModel, RouterSelection } from '@aio-proxy/types';
 import { cn } from '@aio-proxy/ui/lib/utils';
 import type React from 'react';
 
@@ -18,9 +18,10 @@ interface RoutingRouteTierProps {
   readonly tier: DashboardRoutingModel['tiers'][number];
   readonly providers: DashboardRoutingModel['providers'];
   readonly totals: readonly RoutingTrafficProviderTotals[] | undefined;
+  readonly selection?: RouterSelection;
 }
 
-export const RoutingRouteTier: React.FC<RoutingRouteTierProps> = ({ index, tier, providers, totals }) => {
+export const RoutingRouteTier: React.FC<RoutingRouteTierProps> = ({ index, tier, providers, totals, selection }) => {
   const split = tier.providers.length > 1;
   const labels = formatTierShares(tier.providers.map((entry) => entry.share));
   // Walk `tier.providers` for the measured bar too, so segment N is the same Provider in both bars.
@@ -29,7 +30,7 @@ export const RoutingRouteTier: React.FC<RoutingRouteTierProps> = ({ index, tier,
   const actual = measured.every((row) => row.actualShare === null)
     ? undefined
     : tier.providers.map((entry) => measured.find((row) => row.providerId === entry.providerId)?.actualShare ?? 0);
-  const deviations = tierDeviations(tier, totals);
+  const deviations = tierDeviations(tier, totals, selection);
 
   return (
     <div
