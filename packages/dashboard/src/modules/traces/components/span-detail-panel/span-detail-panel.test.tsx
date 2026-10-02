@@ -249,6 +249,33 @@ test('keeps all six metric cells, filling missing values with the placeholder', 
   expect(values).toEqual(['80 ms', '—', '40 ms', '8,412', '—', '1']);
 });
 
+test('shows the actual send count and the final response send separately from candidate count', () => {
+  const attempt = {
+    ...span,
+    attributes: { ...span.attributes, 'aio_proxy.attempt.http_sends': 2, 'aio_proxy.attempt.response_send_index': 1 },
+  };
+  render(<SpanDetailPanel span={attempt} trace={trace} spans={[attempt]} onFilter={rs.fn()} />);
+  const grid = screen.getByTestId('span-metric-grid');
+  const values = Array.from(grid.querySelectorAll('dd')).map((cell) => cell.textContent);
+  expect(values).toEqual(['80 ms', '—', '40 ms', '8,412', '—', '1', '2', '2']);
+});
+
+test('shows a send sequence and its own first-byte and SSE timings', () => {
+  const send = {
+    ...span,
+    name: 'POST',
+    attributes: {
+      'aio_proxy.upstream.send_index': 1,
+      'aio_proxy.upstream.first_byte_ms': 25,
+      'aio_proxy.upstream.first_sse_event_ms': 40,
+    },
+  };
+  render(<SpanDetailPanel span={send} trace={trace} spans={[send]} onFilter={rs.fn()} />);
+  const grid = screen.getByTestId('span-metric-grid');
+  const values = Array.from(grid.querySelectorAll('dd')).map((cell) => cell.textContent);
+  expect(values.slice(6)).toEqual(['2', '25 ms', '40 ms']);
+});
+
 // attempt 内隐藏重试时服务端不写 TTFT，格子会退回 `—`，和「没测到」长得一样。
 test('explains an unattributable TTFT instead of showing the missing-value placeholder', () => {
   const ambiguous: DashboardTraceSpan = {

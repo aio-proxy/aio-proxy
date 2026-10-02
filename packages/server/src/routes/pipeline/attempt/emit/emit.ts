@@ -123,6 +123,7 @@ export function createAttemptEmitter({ session, capability, onAttemptEnd }: Atte
     terminal: SpanTerminal,
     facts?: AttemptOutcomeFacts,
   ): void => {
+    observation.finishSends?.(terminal.outcome === 'success');
     const snapshot = observation.snapshot();
     if (snapshot.transportObservation !== undefined) {
       attemptSpan.span.setAttribute(attributeName.transportObservation, snapshot.transportObservation);
@@ -156,6 +157,9 @@ export function createAttemptEmitter({ session, capability, onAttemptEnd }: Atte
     // the AI SDK's maxRetries, which defaults to 2 and that we never set.
     if (snapshot.httpSends !== undefined) {
       attemptSpan.span.setAttribute(attributeName.attemptHttpSends, snapshot.httpSends);
+    }
+    if (snapshot.responseSendIndex !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.attemptResponseSendIndex, snapshot.responseSendIndex);
     }
     // Response-side gen_ai.* only exist once the upstream answered, so they land
     // here rather than at span creation. A failed attempt simply omits them.

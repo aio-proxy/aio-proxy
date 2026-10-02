@@ -60,6 +60,8 @@ const localFields = new Set([
   attributeName.weightSource,
   attributeName.selectionSource,
   attributeName.transportObservation,
+  attributeName.upstreamBodyOutcome,
+  attributeName.upstreamRetryReason,
   attributeName.prepareMode,
   attributeName.egressMode,
   attributeName.httpRequestMethod,

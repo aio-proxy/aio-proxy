@@ -468,6 +468,7 @@ test('upstream fetch opens a CLIENT span under the active span', async () => {
   await context.with(trace.setSpan(context.active(), parent), () =>
     withAttemptResponseObservation(observation, () => fetcher('https://upstream.test/v1/chat?key=secret')),
   );
+  observation.finishSends?.();
   parent.end();
 
   const spans = processor.take(traceId);
@@ -498,6 +499,7 @@ test('an upstream response that succeeded leaves the CLIENT span unset', async (
   await context.with(trace.setSpan(context.active(), parent), () =>
     withAttemptResponseObservation(observation, () => fetcher('https://upstream.test/v1/chat')),
   );
+  observation.finishSends?.();
   parent.end();
 
   // 没有这条，「4xx/5xx 设 ERROR」那句可以用无条件 setStatus(ERROR) 蒙混过关。
@@ -523,6 +525,7 @@ test('the upstream span is named after the request method, normalized', async ()
       await fetcher('https://upstream.test/v1/models', { method: 'patch' });
     }),
   );
+  observation.finishSends?.();
   parent.end();
 
   const spans = processor.take(traceId);
@@ -613,6 +616,7 @@ test('splits the upstream port out of server.address', async () => {
   await context.with(trace.setSpan(context.active(), parent), () =>
     withAttemptResponseObservation(observation, () => fetcher('https://provider.example:8443/v1/chat')),
   );
+  observation.finishSends?.();
   parent.end();
 
   const post = processor.take(traceId).find((span) => span.name === 'GET');
@@ -632,10 +636,271 @@ test('omits server.port on the default port and unwraps an IPv6 address', async 
   await context.with(trace.setSpan(context.active(), parent), () =>
     withAttemptResponseObservation(observation, () => fetcher('https://[::1]/v1/chat')),
   );
+  observation.finishSends?.();
   parent.end();
 
   const post = processor.take(traceId).find((span) => span.name === 'GET');
   // 方括号是 URL 语法，不属于地址本身。
   expect(post?.attributes['server.address']).toBe('::1');
   expect(post?.attributes['server.port']).toBeUndefined();
+});
+
+test('each response keeps its own transport measurements even when consumed in reverse order', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const observation = createAttemptResponseObservation({ startedAt: performance.now() });
+  let calls = 0;
+  const fetcher = createObservedFetch(async () => {
+    const body = calls++ === 0 ? 'data: first\n\n' : 'data: one\n\ndata: two\n\ndata: three\n\n';
+    return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+  });
+  const responses = await context.with(trace.setSpan(context.active(), parent), () =>
+    withAttemptResponseObservation(observation, async () => [
+      await fetcher('https://upstream.test/one', { decompress: false }),
+      await fetcher('https://upstream.test/two', { decompress: false }),
+    ]),
+  );
+  expect(await responses[1]!.text()).toContain('three');
+  expect(await responses[0]!.text()).toContain('first');
+  observation.finishSends?.();
+  parent.end();
+  const sends = processor.take(traceId).filter((span) => span.kind === SpanKind.CLIENT);
+  expect(sends).toHaveLength(2);
+  for (const [index, send] of sends.entries()) {
+    expect(send.parentSpanId).toBe(parent.spanContext().spanId);
+    expect(send.attributes).toMatchObject({
+      'aio_proxy.upstream.send_index': index,
+      'aio_proxy.upstream.transport_observation': 'sse',
+      'aio_proxy.upstream.headers_ms': expect.any(Number),
+      'aio_proxy.upstream.first_byte_ms': expect.any(Number),
+      'aio_proxy.upstream.first_sse_event_ms': expect.any(Number),
+      'aio_proxy.upstream.content_encoding': 'identity',
+      'aio_proxy.upstream.max_sse_frames_per_read': index === 0 ? 1 : 3,
+      'aio_proxy.upstream.body_outcome': 'complete',
+    });
+  }
+  // 两个可用响应无法确定内容归属，不能把最后消费的响应当作最终响应。
+  observation.observeContent();
+  expect(observation.snapshot().responseSendIndex).toBeUndefined();
+});
+
+test('a fetch exception and its successful retry both survive attempt settlement', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const observation = createAttemptResponseObservation({ startedAt: performance.now() });
+  const failure = new TypeError('connection reset');
+  let calls = 0;
+  const fetcher = createObservedFetch(async () => {
+    if (calls++ === 0) throw failure;
+    return new Response('ok');
+  });
+  await context.with(trace.setSpan(context.active(), parent), () =>
+    withAttemptResponseObservation(observation, async () => {
+      await expect(fetcher('https://upstream.test')).rejects.toBe(failure);
+      expect(await (await fetcher('https://upstream.test')).text()).toBe('ok');
+    }),
+  );
+  observation.observeContent();
+  observation.finishSends?.();
+  parent.end();
+  const sends = processor.take(traceId).filter((span) => span.kind === SpanKind.CLIENT);
+  expect(sends).toHaveLength(2);
+  expect(sends[0]?.attributes).toMatchObject({ 'aio_proxy.upstream.send_index': 0, 'error.type': 'TypeError' });
+  expect(sends[0]?.statusCode).toBe(SpanStatusCode.ERROR);
+  expect(sends[1]?.attributes).toMatchObject({
+    'aio_proxy.upstream.send_index': 1,
+    'aio_proxy.upstream.response_selected': true,
+  });
+  expect(observation.snapshot()).toMatchObject({ httpSends: 2, responseSendIndex: 1 });
+});
+
+test('body errors and cancelled sends keep their distinct terminal outcomes', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const observation = createAttemptResponseObservation({ startedAt: performance.now() });
+  const fetcher = createObservedFetch(async (input) =>
+    String(input).endsWith('/error')
+      ? new Response(
+          new ReadableStream({
+            pull: () => {
+              throw new TypeError('body reset');
+            },
+          }),
+        )
+      : new Response('cancel me'),
+  );
+  await context.with(trace.setSpan(context.active(), parent), () =>
+    withAttemptResponseObservation(observation, async () => {
+      await expect((await fetcher('https://upstream.test/error')).text()).rejects.toThrow('body reset');
+      await (await fetcher('https://upstream.test/cancel')).body!.cancel();
+      await fetcher('https://upstream.test/unread');
+    }),
+  );
+  observation.finishSends?.();
+  parent.end();
+  const sends = processor.take(traceId).filter((span) => span.kind === SpanKind.CLIENT);
+  expect(sends.map((span) => span.attributes['aio_proxy.upstream.body_outcome'])).toEqual([
+    'error',
+    'cancelled',
+    'unconsumed',
+  ]);
+  expect(sends[0]?.attributes['error.type']).toBe('TypeError');
+  expect(sends[0]?.statusCode).toBe(SpanStatusCode.ERROR);
+  expect(sends[1]?.statusCode).toBe(SpanStatusCode.UNSET);
+});
+
+test('an SDK-managed response does not label decoded reads as wire-level measurements', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const observation = createAttemptResponseObservation({ startedAt: performance.now() });
+  const fetcher = createObservedFetch(
+    async () => new Response('data: decoded\n\n', { headers: { 'content-type': 'text/event-stream' } }),
+  );
+  await context.with(trace.setSpan(context.active(), parent), () =>
+    withAttemptResponseObservation(observation, async () => {
+      expect(await (await fetcher('https://upstream.test')).text()).toContain('decoded');
+    }),
+  );
+  observation.finishSends?.();
+  parent.end();
+  const send = processor.take(traceId).find((span) => span.kind === SpanKind.CLIENT)!;
+  expect(send.attributes['aio_proxy.upstream.headers_ms']).toEqual(expect.any(Number));
+  expect(send.attributes['aio_proxy.upstream.body_outcome']).toBe('complete');
+  expect(send.attributes['aio_proxy.upstream.first_byte_ms']).toBeUndefined();
+  expect(send.attributes['aio_proxy.upstream.first_sse_event_ms']).toBeUndefined();
+  expect(observation.snapshot().firstSseEventMs).toBeUndefined();
+});
+
+test('a provider-internal active span does not steal the explicit candidate parent', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const parentContext = trace.setSpan(context.active(), parent);
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const internal = tracer.startSpan('provider.internal', {}, parentContext);
+  const observation = createAttemptResponseObservation({ startedAt: performance.now(), parentContext });
+  await context.with(trace.setSpan(parentContext, internal), () =>
+    withAttemptResponseObservation(observation, async () => {
+      await (await createObservedFetch(async () => new Response('ok'))('https://upstream.test')).text();
+    }),
+  );
+  observation.finishSends?.();
+  internal.end();
+  parent.end();
+  const send = processor.take(traceId).find((span) => span.name === 'GET');
+  expect(send?.parentSpanId).toBe(parent.spanContext().spanId);
+});
+
+test('the candidate context survives a cleared span reference during later streaming sends', async () => {
+  const { processor, tracer } = getTraceRuntime();
+  const parent = tracer.startSpan('test.attempt');
+  const parentContext = trace.setSpan(context.active(), parent);
+  const traceId = parent.spanContext().traceId;
+  processor.register(traceId);
+  const observation = createAttemptResponseObservation({ startedAt: performance.now() });
+  // inAttempt binds the candidate while the settlement span reference exists.
+  observation.bindParentContext?.(parentContext);
+  const internal = tracer.startSpan('provider.stream-step', {}, parentContext);
+  await context.with(trace.setSpan(parentContext, internal), () =>
+    withAttemptResponseObservation(observation, async () => {
+      await (await createObservedFetch(async () => new Response('later content'))('https://upstream.test')).text();
+    }),
+  );
+  observation.finishSends?.();
+  internal.end();
+  parent.end();
+  const send = processor.take(traceId).find((span) => span.name === 'GET');
+  expect(send?.parentSpanId).toBe(parent.spanContext().spanId);
+});
+
+test.each(['error', 'cancelled'] as const)(
+  'content keeps its send attribution after the body is %s',
+  async (outcome) => {
+    const { processor, tracer } = getTraceRuntime();
+    const parent = tracer.startSpan('test.attempt');
+    const traceId = parent.spanContext().traceId;
+    processor.register(traceId);
+    const observation = createAttemptResponseObservation({ startedAt: performance.now() });
+    let read = false;
+    const fetcher = createObservedFetch(
+      async () =>
+        new Response(
+          new ReadableStream(
+            {
+              pull(controller) {
+                if (read) throw new TypeError('stream reset');
+                read = true;
+                controller.enqueue(new TextEncoder().encode('data: partial content\n\n'));
+              },
+            },
+            { highWaterMark: 0 },
+          ),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+    );
+    const response = await context.with(trace.setSpan(context.active(), parent), () =>
+      withAttemptResponseObservation(observation, () => fetcher('https://upstream.test', { decompress: false })),
+    );
+    const reader = response.body!.getReader();
+    await reader.read();
+    observation.observeContent();
+    expect(observation.snapshot().responseSendIndex).toBe(0);
+    if (outcome === 'error') await expect(reader.read()).rejects.toThrow('stream reset');
+    else await reader.cancel();
+    observation.finishSends?.();
+    parent.end();
+    expect(observation.snapshot().responseSendIndex).toBe(0);
+    const send = processor.take(traceId).find((span) => span.kind === SpanKind.CLIENT)!;
+    expect(send.attributes).toMatchObject({
+      'aio_proxy.upstream.body_outcome': outcome,
+      'aio_proxy.upstream.response_selected': true,
+    });
+  },
+);
+
+test('a 200 response that fails before any model content does not obscure the retry content source', async () => {
+  const observation = createAttemptResponseObservation({ startedAt: performance.now() });
+  let calls = 0;
+  const fetcher = createObservedFetch(async () => {
+    if (calls++ !== 0) return new Response('good content');
+    let read = false;
+    return new Response(
+      new ReadableStream(
+        {
+          pull(controller) {
+            if (read) throw new TypeError('incomplete response');
+            read = true;
+            controller.enqueue(new TextEncoder().encode('incomplete protocol frame'));
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+    );
+  });
+  await withAttemptResponseObservation(observation, async () => {
+    await expect((await fetcher('https://upstream.test')).text()).rejects.toThrow('incomplete response');
+    expect(await (await fetcher('https://upstream.test')).text()).toBe('good content');
+  });
+  observation.observeContent();
+  observation.finishSends?.();
+  expect(observation.snapshot()).toMatchObject({ httpSends: 2, responseSendIndex: 1 });
+});
+
+test('a successful tool-only response can identify its send without a text TTFT signal', async () => {
+  const observation = createAttemptResponseObservation({ startedAt: performance.now() });
+  const response = await withAttemptResponseObservation(observation, () =>
+    createObservedFetch(async () => Response.json({ tool_calls: [{ name: 'weather' }] }))('https://upstream.test'),
+  );
+  await response.json();
+  observation.finishSends?.(true);
+  expect(observation.snapshot().responseSendIndex).toBe(0);
+  expect(observation.snapshot().firstContentMs).toBeUndefined();
 });

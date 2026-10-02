@@ -1,17 +1,18 @@
 import { ProviderProtocol } from '@aio-proxy/types';
-import { type Attributes, context, SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 import { createParser } from 'eventsource-parser';
 
-import { attributeName, getTraceRuntime } from '../../request-tracing';
-import type { AttemptResponseEndpoint, ResponseBodyObservation } from '../../response-observation';
-import { currentAttemptResponseObservation } from '../../response-observation';
+import type {
+  AttemptResponseObservation,
+  ResponseBodyObservation,
+  SendResponseObservation,
+} from '../../response-observation';
+import { currentAttemptResponseObservation, inheritObservedResponse } from '../../response-observation';
 import type { RequestBodyDirection, ServerLogSink } from '../../server-log';
 import { logServerEvent, serverErrorDetails, serverErrorType } from '../../server-log';
 import { tapTextBody } from '../body-tap';
-import { currentDebugRequestLogScope, currentUpstreamUrlTemplate } from '../context';
+import { currentDebugRequestLogScope } from '../context';
 import { requestMetadata, responseMetadata } from '../request-metadata';
-
-type BunFetchInit = RequestInit & { readonly decompress?: boolean };
+import { type BunFetchInit, fetchTarget, fetchWithSpan } from './upstream-span';
 
 type BodyIdentity = {
   readonly requestId: string;
@@ -49,6 +50,7 @@ type ResponseObservationOptions = {
   readonly observeSseEvent?: () => void;
   readonly debug?: DebugResponseObservation;
   readonly controlledIdentitySse?: boolean;
+  readonly bodyTerminal?: (outcome: 'complete' | 'cancelled' | 'error', error?: unknown) => void;
 };
 
 export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof globalThis.fetch {
@@ -71,15 +73,11 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
     if (debug === undefined && observation === undefined) {
       return fetchWithSpan(fetcher, input, init);
     }
-    safely(() => observation?.observeFetchStart(fetchTarget(input)?.endpoint));
+    const send = safely(() => observation?.observeFetchStart(fetchTarget(input)?.endpoint));
     if (debug === undefined) {
-      const response = await fetchWithSpan(fetcher, input, init);
-      const bodyObservation = safely(() =>
-        observation?.observeResponse(response, { controlledStream: controlledStream(init) }),
-      );
-      return bodyObservation === undefined
-        ? response
-        : responseWithObservedBody(response, responseObservationOptions(bodyObservation, observation?.observeSseEvent));
+      const response = await fetchWithSpan(fetcher, input, init, observation, send);
+      const options = responseObservationOptions(response, init, observation, send);
+      return options.bodyObservation === undefined ? response : responseWithObservedBody(response, options);
     }
     const startedAt = performance.now();
     try {
@@ -94,9 +92,12 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
       if (hideVideoBodies) logOmittedBody(debug.logger, requestIdentity);
       const delegated = hideVideoBodies ? request : requestWithObservedBody(request, requestIdentity, debug.logger);
       const decompress = (init as BunFetchInit | undefined)?.decompress;
-      const response = await fetchWithSpan(fetcher, delegated, decompress === undefined ? undefined : { decompress });
-      const bodyObservation = safely(() =>
-        observation?.observeResponse(response, { controlledStream: controlledStream(init) }),
+      const response = await fetchWithSpan(
+        fetcher,
+        delegated,
+        decompress === undefined ? undefined : { decompress },
+        observation,
+        send,
       );
       logServerEvent(debug.logger, {
         event: 'request.upstream_result',
@@ -108,7 +109,7 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
       // 视频正文故意不抓 chunk，但终态跟着客户端真正读完/失败/取消走：
       // 头到达时写 complete 会让 hop 提前变绿，消费失败也洗不掉。
       return responseWithObservedBody(response, {
-        ...responseObservationOptions(bodyObservation, observation?.observeSseEvent),
+        ...responseObservationOptions(response, init, observation, send),
         debug: {
           identity: { ...debug.identity, direction: 'upstream_response' },
           logger: debug.logger,
@@ -205,6 +206,7 @@ function observedBody(
         }
       },
       terminal({ byteLength, error, outcome }) {
+        safely(() => options.bodyTerminal?.(outcome, error));
         if (debug !== undefined) {
           logServerEvent(debug.logger, {
             event: 'request.body_terminal',
@@ -311,7 +313,10 @@ function responseWithObservedBody(response: Response, options: ResponseObservati
     observedBody(source, contentType, {
       ...options,
       controlledIdentitySse:
-        options.bodyObservation !== undefined && isSse(contentType) && isIdentityEncoding(contentEncoding),
+        options.controlledIdentitySse === true &&
+        options.bodyObservation !== undefined &&
+        isSse(contentType) &&
+        isIdentityEncoding(contentEncoding),
     }),
     metadata,
   );
@@ -322,12 +327,35 @@ function controlledStream(init: RequestInit | undefined): boolean {
 }
 
 function responseObservationOptions(
-  bodyObservation: ResponseBodyObservation | undefined,
-  observeSseEvent: (() => void) | undefined,
+  response: Response,
+  init: RequestInit | undefined,
+  observation: AttemptResponseObservation | undefined,
+  send: SendResponseObservation | void,
 ): ResponseObservationOptions {
+  const controlled = controlledStream(init);
+  const aggregate = safely(() => observation?.observeResponse(response, { controlledStream: controlled }));
+  const individual = safely(() => send?.observeResponse(response, controlled));
+  const bodyObservation =
+    aggregate === undefined && individual === undefined
+      ? undefined
+      : {
+          observeRead(byteLength: number, sseFrames: number) {
+            safely(() => aggregate?.observeRead(byteLength, sseFrames));
+            safely(() => individual?.observeRead(byteLength, sseFrames));
+          },
+        };
   return {
     ...(bodyObservation === undefined ? {} : { bodyObservation }),
-    ...(observeSseEvent === undefined ? {} : { observeSseEvent }),
+    controlledIdentitySse: controlled,
+    ...(observation === undefined && send === undefined
+      ? {}
+      : {
+          observeSseEvent() {
+            safely(() => observation?.observeSseEvent());
+            safely(() => send?.observeSseEvent());
+          },
+        }),
+    ...(send === undefined ? {} : { bodyTerminal: send.endBody }),
   };
 }
 
@@ -359,96 +387,9 @@ function responseWithBody(original: Response, body: ReadableStream<Uint8Array>, 
       type: { configurable: true, value: metadata.type },
       url: { configurable: true, value: metadata.url },
     });
+    inheritObservedResponse(original, wrapped);
     return wrapped;
   } catch {
     return original;
-  }
-}
-
-// The upstream HTTP call as a CLIENT child of the attempt. The span stops at the
-// response headers; the body timeline is carried by first_upstream_byte_ms /
-// ttft_ms on the attempt.
-//
-// The active-span check guards a reachable path, not a theoretical one: this
-// fetcher also serves callers that run outside any trace session at all —
-// dashboard, OAuth and plugin-host requests. Parenting a span to nothing would
-// put it on a fresh trace id the buffering processor was never told to
-// register, so it would be built and thrown away rather than persisted.
-async function fetchWithSpan(
-  fetcher: typeof globalThis.fetch,
-  input: Parameters<typeof globalThis.fetch>[0],
-  // BunFetchInit, not RequestInit: `globalThis.fetch` is overloaded and accepts
-  // Bun's `decompress`, but `Parameters<>` collapses to the last overload and
-  // drops it, so the caller at the debug branch would not type-check.
-  init?: BunFetchInit,
-): Promise<Response> {
-  const parent = context.active();
-  if (trace.getSpan(parent) === undefined) return fetcher(input, init);
-  const request = typeof input === 'object' && 'url' in input ? input : undefined;
-  const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
-  const urlTemplate = currentUpstreamUrlTemplate();
-  const startedAt = performance.now();
-  const span = getTraceRuntime().tracer.startSpan(
-    urlTemplate === undefined ? method : `${method} ${urlTemplate}`,
-    {
-      kind: SpanKind.CLIENT,
-      attributes: {
-        [attributeName.httpRequestMethod]: method,
-        ...(urlTemplate === undefined ? {} : { [attributeName.urlTemplate]: urlTemplate }),
-        ...targetAttributes(request?.url ?? String(input)),
-      },
-    },
-    parent,
-  );
-  try {
-    const response = await fetcher(input, init);
-    span.setAttribute(attributeName.upstreamHeadersMs, Math.max(0, performance.now() - startedAt));
-    span.setAttribute(attributeName.httpStatusCode, response.status);
-    // CLIENT span 的 4xx 也算错误，和 SERVER span 相反：语义约定只对 SERVER 网开一面
-    // （客户端发错请求不是服务端的故障），而对发起方来说，拿回 4xx 的这次上游调用就是
-    // 失败的。root 那边保持 UNSET 是同一条约定的另一半，别照搬过来。
-    if (response.status >= 400) span.setStatus({ code: SpanStatusCode.ERROR });
-    return response;
-  } catch (error) {
-    span.setStatus({ code: SpanStatusCode.ERROR });
-    span.setAttribute(attributeName.errorType, serverErrorType(error));
-    throw error;
-  } finally {
-    // Safe here, unlike the pipeline spans: this wraps a single await with no
-    // request settlement inside it, so the span cannot outlive its buffer drain.
-    span.end();
-  }
-}
-
-function targetAttributes(href: string): Attributes {
-  const target = fetchTarget(href);
-  if (target === undefined) return {};
-  const { endpoint, url } = target;
-  url.username = '';
-  url.password = '';
-  for (const key of new Set(url.searchParams.keys())) url.searchParams.set(key, 'REDACTED');
-  return {
-    [attributeName.serverAddress]: endpoint.serverAddress,
-    ...(endpoint.serverPort === undefined ? {} : { [attributeName.serverPort]: endpoint.serverPort }),
-    [attributeName.urlFull]: url.toString(),
-    [attributeName.urlPath]: url.pathname,
-  };
-}
-
-function fetchTarget(
-  input: Parameters<typeof globalThis.fetch>[0] | string,
-): { readonly endpoint: AttemptResponseEndpoint; readonly url: URL } | undefined {
-  try {
-    const href = typeof input === 'object' && 'url' in input ? input.url : String(input);
-    const url = new URL(href);
-    return {
-      endpoint: {
-        serverAddress: url.hostname.replace(/^\[|\]$/gu, ''),
-        ...(url.port === '' ? {} : { serverPort: Number(url.port) }),
-      },
-      url,
-    };
-  } catch {
-    return undefined;
   }
 }
