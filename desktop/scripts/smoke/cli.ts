@@ -2,7 +2,7 @@
 //
 // Installs <exec> as this user's managed service (systemd --user or Task Scheduler) and walks it through
 // the app's lifecycle. It replaces any aio-proxy service this account already has: run it on CI runners.
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -14,8 +14,14 @@ import { freePort, httpChecks, serviceSmoke, type ServiceSmokeDeps } from './smo
 // the command that hung instead of a cancelled job.
 const SPAWN_LIMITS = { timeout: 60_000, killSignal: 'SIGKILL', windowsHide: true } as const;
 
-async function run(cmd: readonly string[]): Promise<string> {
-  const proc = Bun.spawn([...cmd], { ...SPAWN_LIMITS, stdout: 'pipe', stderr: 'inherit' });
+async function run(cmd: readonly string[], env: Readonly<Record<string, string>> = {}): Promise<string> {
+  // Bun.spawn's default environment does not see assignments to process.env, so pass it explicitly.
+  const proc = Bun.spawn([...cmd], {
+    ...SPAWN_LIMITS,
+    env: { ...process.env, ...env },
+    stdout: 'pipe',
+    stderr: 'inherit',
+  });
   const stdout = await new Response(proc.stdout).text();
   const code = await proc.exited;
   if (code !== 0) throw new Error(`${cmd.join(' ')} exited ${code}\n${stdout}`);
@@ -43,18 +49,17 @@ const exec = resolve(values.service);
 
 // A throwaway home on a free loopback port keeps the runner's own config out of it. The unit records
 // this home, and discovery falls back to it once the unit is gone.
-const home = mkdtempSync(join(tmpdir(), 'aio-proxy-service-smoke-'));
+// Canonical (no 8.3 short names on Windows) so it compares equal to the home the unit records.
+const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'aio-proxy-service-smoke-')));
 writeFileSync(
   join(home, 'config.jsonc'),
   JSON.stringify({ server: { host: '127.0.0.1', port: freePort() }, providers: {} }),
 );
-process.env['AIO_PROXY_HOME'] = home;
-// Installed the way the desktop app installs it, so the unit and discovery see a desktop-owned service.
-process.env['AIO_PROXY_DESKTOP_EXEC'] = exec;
 // Bun's fetch honours HTTP_PROXY; the loopback checks must never go through a proxy.
 process.env['NO_PROXY'] = process.env['no_proxy'] = '*';
 
 const deps: ServiceSmokeDeps = {
+  home,
   run,
   httpChecks: async (base) => {
     const token = readDesktopToken(home);
@@ -70,7 +75,7 @@ try {
   await serviceSmoke(exec, deps);
   console.log('service smoke passed');
 } catch (error) {
-  await run([exec, 'service', 'uninstall']).catch(() => {});
+  await run([exec, 'service', 'uninstall'], { AIO_PROXY_HOME: home }).catch(() => {});
   throw error;
 } finally {
   // A file the stopped service still holds (EBUSY on Windows) must not replace the smoke's own result.

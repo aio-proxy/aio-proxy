@@ -17,13 +17,19 @@ test('an interpreted-only process (no allow-jit) or empty output has no JIT regi
   expect(hasJitRegion('')).toBe(false);
 });
 
-type FakeConnect = { job: { disabled: boolean }; instance: { reachable: boolean; controlUrl: string | null } };
+type FakeConnect = {
+  unit: { present: boolean; home: string | null; owner: string | null };
+  job: { disabled: boolean };
+  instance: { reachable: boolean; controlUrl: string | null };
+};
 
-async function runServiceSmokeWithFakes() {
+/** `unitHome` stands in for a unit installed somewhere other than the home the smoke passed. */
+async function runServiceSmokeWithFakes(unitHome?: string) {
   const commands: string[][] = [];
   // Lifecycle commands and process checks in the order they ran.
   const events: string[] = [];
   const connects: FakeConnect[] = [];
+  const envs: Array<Readonly<Record<string, string>>> = [];
   let clock = 0;
   const service = { enabled: false, running: false, uninstalled: false };
   const lifecycle: Record<string, () => void> = {
@@ -34,9 +40,14 @@ async function runServiceSmokeWithFakes() {
     uninstall: () => Object.assign(service, { enabled: false, running: false, uninstalled: true }),
   };
   await serviceSmoke('/opt/aio-proxy', {
-    run: async ([, ...args]) => {
+    home: '/tmp/smoke-home',
+    run: async ([, ...args], env) => {
+      envs.push(env);
       if (args[0] === '__desktop-connect') {
         const connect = {
+          unit: service.uninstalled
+            ? { present: false, home: null, owner: null }
+            : { present: true, home: unitHome ?? env['AIO_PROXY_HOME'] ?? null, owner: 'desktop' },
           job: { disabled: !service.enabled },
           instance: { reachable: service.running, controlUrl: service.running ? 'http://127.0.0.1:1' : null },
         };
@@ -57,7 +68,7 @@ async function runServiceSmokeWithFakes() {
     // Advancing time lets a wrong expectation time out instead of hanging the test.
     now: () => (clock += 1_000),
   });
-  return { commands, events, connects };
+  return { commands, events, connects, envs };
 }
 
 test('service smoke checks that a stop and an uninstall stay put', async () => {
@@ -70,6 +81,9 @@ test('service smoke checks that a stop and an uninstall stay put', async () => {
     ['service', 'restart'],
     ['service', 'uninstall'],
   ]);
+  // Every CLI call, discovery included, must target the throwaway home as the desktop-owned exec.
+  expect(seen.envs.every((env) => env['AIO_PROXY_HOME'] === '/tmp/smoke-home')).toBe(true);
+  expect(seen.envs.every((env) => env['AIO_PROXY_DESKTOP_EXEC'] === '/opt/aio-proxy')).toBe(true);
   expect(seen.events.slice(-2)).toEqual(['service uninstall', 'processRemains']);
   expect(seen.connects.map((c) => [c.job.disabled, c.instance.reachable])).toEqual([
     [false, true],
@@ -78,4 +92,10 @@ test('service smoke checks that a stop and an uninstall stay put', async () => {
     [false, true],
     [true, false],
   ]);
+});
+
+test('a unit recording some other home fails at the first discovery instead of timing out', async () => {
+  await expect(runServiceSmokeWithFakes('/home/runner/.aio-proxy')).rejects.toThrow(
+    "the unit is not the smoke's desktop-owned service at /tmp/smoke-home",
+  );
 });

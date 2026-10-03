@@ -92,13 +92,19 @@ export async function runtimeSmoke(
 
 /** The `__desktop-connect` fields the service smoke asserts on. */
 type ConnectReport = {
+  readonly unit: { readonly present: boolean; readonly home: string | null; readonly owner: string | null };
   readonly job: { readonly disabled: boolean };
   readonly instance: { readonly reachable: boolean; readonly controlUrl: string | null };
 };
 
 export type ServiceSmokeDeps = {
-  /** Runs a command to completion and returns its stdout; throws on a non-zero exit. */
-  readonly run: (cmd: readonly string[]) => Promise<string>;
+  /** The throwaway `AIO_PROXY_HOME` the service must be installed and discovered at. */
+  readonly home: string;
+  /**
+   * Runs a command to completion with `env` added to this process's environment and returns its stdout;
+   * throws on a non-zero exit.
+   */
+  readonly run: (cmd: readonly string[], env: Readonly<Record<string, string>>) => Promise<string>;
   readonly httpChecks: (base: string) => Promise<void>;
   /** Whether any `aio-proxy` process is still alive. */
   readonly processRemains: () => Promise<boolean>;
@@ -116,7 +122,9 @@ const redactToken = (key: string, value: unknown): unknown => (key === 'token' ?
  * leave the service disabled and down, not respawned by the manager.
  */
 export async function serviceSmoke(exec: string, deps: ServiceSmokeDeps): Promise<void> {
-  const service = (verb: string) => deps.run([exec, 'service', verb]);
+  // Passed to every CLI call: the unit records both, and discovery falls back to this home once it is gone.
+  const env = { AIO_PROXY_HOME: deps.home, AIO_PROXY_DESKTOP_EXEC: exec };
+  const service = (verb: string) => deps.run([exec, 'service', verb], env);
   const waitFor = async <T>(label: string, probe: () => Promise<T>, ok: (value: T) => boolean): Promise<T> => {
     const deadline = deps.now() + SERVICE_WAIT_MS;
     for (;;) {
@@ -127,7 +135,16 @@ export async function serviceSmoke(exec: string, deps: ServiceSmokeDeps): Promis
       await deps.sleep(500);
     }
   };
-  const connect = async () => JSON.parse(await deps.run([exec, '__desktop-connect'])) as ConnectReport;
+  const connect = async (): Promise<ConnectReport> => {
+    const report = JSON.parse(await deps.run([exec, '__desktop-connect'], env)) as ConnectReport;
+    // Polling cannot fix a unit installed somewhere else: every later check would describe the wrong service.
+    if (report.unit.present && (report.unit.home !== deps.home || report.unit.owner !== 'desktop')) {
+      throw new Error(
+        `the unit is not the smoke's desktop-owned service at ${deps.home}: ${JSON.stringify(report.unit)}`,
+      );
+    }
+    return report;
+  };
   const expectState = (label: string, disabled: boolean, reachable: boolean) =>
     waitFor(label, connect, (c) => c.job.disabled === disabled && c.instance.reachable === reachable);
 
