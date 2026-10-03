@@ -126,6 +126,8 @@ pub struct AppModel {
     rediscover_again: bool,
     auth_retry_used: bool,
     refetch_after_discovery: bool,
+    /// When a refused summary fetch last rediscovered, for [`refresh::rediscovers_after`].
+    gone_rediscovered_at: Option<Instant>,
     scheduler: Scheduler,
     instance: Option<(String, Option<u32>)>,
     instance_epoch: u64,
@@ -161,6 +163,7 @@ impl AppModel {
             rediscover_again: false,
             auth_retry_used: false,
             refetch_after_discovery: false,
+            gone_rediscovered_at: None,
             scheduler: Scheduler::default(),
             instance: None,
             instance_epoch: 0,
