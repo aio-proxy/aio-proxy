@@ -74,6 +74,7 @@
     "desktop:bundle": "bun desktop/scripts/bundle.ts",
     "desktop:package": "bun desktop/scripts/package.ts",
     "desktop:publish": "bun desktop/scripts/publish.ts",
+    "desktop:publish-assets": "bun desktop/scripts/publish-assets.ts",
     "dev:prepare": "turbo run build --filter=@aio-proxy/core",
     "dev": "bun run dev:prepare && AIO_PROXY_PORT=22078 turbo run dev serve:dev --filter=!@aio-proxy/infra --filter=!@aio-proxy/website",
     "preflight": "bun run lint:types && bun run format:check && bun run test"
