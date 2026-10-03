@@ -67,11 +67,12 @@ export type SchtasksIo = {
 
 export type TaskQuery = { kind: 'found'; xml: string } | { kind: 'missing' } | { kind: 'failed'; code: number };
 
-// `schtasks /HRESULT` exits with the HRESULT; ERROR_FILE_NOT_FOUND (0x80070002) is the task not existing. Bun keeps
-// only the exit code's low byte on Windows, so it arrives as 2 (access denied, 0x80070005, as 5; a plain failure, 1).
-const TASK_NOT_FOUND = 0x80070002;
+// `schtasks /HRESULT` exits with the HRESULT: ERROR_FILE_NOT_FOUND (0x80070002) is the task not existing, and
+// ERROR_PATH_NOT_FOUND (0x80070003) the same once the \AIO Proxy folder went with its last task. Bun keeps only the
+// exit code's low byte on Windows, so they arrive as 2 and 3 (access denied, 0x80070005, as 5; a plain failure, 1).
+const NOT_FOUND = [0x80070002, 0x80070003];
 const isTaskNotFound = (code: number): boolean =>
-  code === 2 || code === TASK_NOT_FOUND || code === (TASK_NOT_FOUND | 0);
+  NOT_FOUND.some((hresult) => code === hresult || code === (hresult | 0) || code === (hresult & 0xff));
 const SUPERVISOR_EXIT_TIMEOUT_MS = 10_000;
 const SUPERVISOR_POLL_MS = 100;
 
@@ -308,17 +309,23 @@ export async function schtasksRestart(io: SchtasksIo): Promise<void> {
     throw error;
   }
   try {
-    // `/Create /F` replaces the action and leaves the task enabled, undoing a `service stop`.
-    await createTask(io, path, file);
+    // The spec moves in before `/Create /F` replaces the task (which leaves it enabled, undoing a `service stop`),
+    // so a task is never registered against a spec that failed to land.
     io.rename(staged, specPath);
+    await createTask(io, path, file);
     await runTask(io, path);
   } catch (error) {
     io.remove(staged);
     // Bring the previous definition back rather than leave the proxy offline. It is rendered from the spec the
-    // previous task named (never from the queried XML), at the path that task named.
+    // previous task named (never from the queried XML), at the path that task named. Without a previous task
+    // there is nothing to bring back: a task this restart created goes again.
+    if (previousAtSpecPath === undefined) io.remove(specPath);
+    else io.writeFile(specPath, previousAtSpecPath);
+    if (previousTask === undefined) {
+      await io.run(['schtasks', '/Delete', '/TN', path, '/F'], true);
+      throw error;
+    }
     try {
-      if (previousAtSpecPath === undefined) io.remove(specPath);
-      else io.writeFile(specPath, previousAtSpecPath);
       const previousExec = previousSpec === undefined ? undefined : parseServiceSpec(previousSpec)?.exec;
       if (previousExec === undefined) throw new Error('no readable previous service spec');
       await createTask(

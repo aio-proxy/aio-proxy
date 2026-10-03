@@ -608,6 +608,14 @@ test('a failed restart restores a task that named an older spec path from that p
   expect(lastWarnings).toEqual([]);
 });
 
+test('a failed restart with no task before it deletes the task it created and keeps no spec', async () => {
+  const fs = fakeFs();
+  await expect(schtasksRestart(io({ fs, task: 'missing', failOn: '/Run' }))).rejects.toThrow('/Run failed');
+  expect(recorded().map((c) => c[1])).toEqual(['/End', '/Create', '/Run', '/Delete']);
+  expect(fs.exists(specPath)).toBe(false);
+  expect(lastWarnings).toEqual([]);
+});
+
 test('a rollback that cannot bring the old task back says so and still reports the original failure', async () => {
   for (const options of [
     { fs: fakeFs({ [specPath]: oldSpec }), failOn: '/Create', failAlways: true },
@@ -727,6 +735,9 @@ test('a task query tells "does not exist" apart from every other failure', async
   expect(await query(0x80070002 | 0)).toEqual({ kind: 'missing' });
   // What Bun actually reports on Windows: the HRESULT's low byte.
   expect(await query(2)).toEqual({ kind: 'missing' });
+  // A deleted last task takes the \\AIO Proxy folder with it: ERROR_PATH_NOT_FOUND, low byte 3.
+  expect(await query(3)).toEqual({ kind: 'missing' });
+  expect(await query(0x80070003 | 0)).toEqual({ kind: 'missing' });
   expect(await query(5)).toEqual({ kind: 'failed', code: 5 });
   expect(await query(1)).toEqual({ kind: 'failed', code: 1 });
 });
