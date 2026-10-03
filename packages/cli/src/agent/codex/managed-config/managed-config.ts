@@ -244,10 +244,13 @@ export async function configureCodexConfig(
           throw new Error(`Codex managed fields changed: ${drift.map((path) => path.join('.')).join(', ')}`);
       }
       const retainedCatalog = marker === undefined ? undefined : catalogOwnedField(marker);
+      const retainedPath = input.catalogPath === undefined ? catalogReference(retainedCatalog?.applied) : undefined;
+      // Pointing Codex at a retained catalog whose file is gone would stop it from starting.
+      const retainedMissing = retainedPath !== undefined && (await readRegularFile(retainedPath)) === undefined;
       const edits = [
         ...codexProviderEdits(providerId, baseUrl, auth, input.catalogPath),
         ...(input.catalogPath === undefined && retainedCatalog !== undefined
-          ? [{ path: retainedCatalog.path, next: retainedCatalog.applied }]
+          ? [{ path: retainedCatalog.path, next: retainedMissing ? retainedCatalog.before : retainedCatalog.applied }]
           : []),
       ];
       const editedText = editCodexDocument(workingText, edits);

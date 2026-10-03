@@ -1391,8 +1391,9 @@ test('keep-chatgpt writes catalog before committing its path and replaces remove
     expect(await readFile(await activeCatalog(location), 'utf8')).not.toContain('selected-proxy-token');
     write.mockRestore();
     toml.mockRestore();
+    // Codex refuses to start on a catalog without models, so an empty one keeps the previous file.
     await commitCodexSetup(keepSelection, { ...catalogContext(location), fetchCatalog: async () => ({ models: [] }) });
-    expect(await Bun.file(await activeCatalog(location)).json()).toEqual({ models: [] });
+    expect(await Bun.file(await activeCatalog(location)).json()).toEqual(fullCatalog);
   } finally {
     write.mockRestore();
     toml.mockRestore();
@@ -1719,6 +1720,18 @@ test('validates the prepared full catalog and config before retiring, revoking a
     expect(await readCredential(location)).toBeUndefined();
   } finally {
     for (const restore of restores.reverse()) restore();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('an empty catalog on first setup leaves model_catalog_json unset; a later catalog is written', async () => {
+  const { root, location } = await fixture();
+  try {
+    await commitCodexSetup(keepSelection, { ...catalogContext(location), fetchCatalog: async () => ({ models: [] }) });
+    expect(await activeCatalog(location)).toBeUndefined();
+    await commitCodexSetup(keepSelection, catalogContext(location));
+    expect(await Bun.file(await activeCatalog(location)).json()).toEqual(fullCatalog);
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });

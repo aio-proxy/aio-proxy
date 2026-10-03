@@ -314,3 +314,17 @@ test('unresolvable original catalog reference skips cleanup after remove', () =>
     expect(await f.active()).toBe('relative-user.json');
     expect(await Bun.file(a.path).exists()).toBe(true);
   }));
+
+test('empty catalog keeps a present catalog and restores the prior value when its file is gone', () =>
+  use(async (f) => {
+    const first = await f.prepare();
+    await configureCodexConfig({ ...f.input, catalogPath: first.path });
+    const config = await Bun.file(f.location.configPath).text();
+    expect(await f.update({ models: [] })).toBe('empty');
+    expect(await Bun.file(f.location.configPath).text()).toBe(config);
+    await rm(first.path);
+    expect(await f.update({ models: [] })).toBe('empty');
+    expect(await f.active()).toBeUndefined();
+    expect(await f.update()).toBe('updated');
+    expect(JSON.parse(await Bun.file(await f.active()).text())).toEqual(catalog());
+  }));

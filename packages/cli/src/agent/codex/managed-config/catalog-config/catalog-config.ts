@@ -1,6 +1,6 @@
 import type { CodexCatalog } from '@aio-proxy/server';
 
-import { editCodexDocument, readManagedField } from '../../config-document';
+import { editCodexDocument, readManagedField, type FieldEdit } from '../../config-document';
 import type { CodexCatalogUpdateResult, CodexLocation, CodexMarker, OwnedField } from '../../contracts';
 import { withCodexInstallation, type CodexLease } from '../../storage/installation-lock';
 import {
@@ -33,6 +33,34 @@ async function eligibleCatalogTarget(location: CodexLocation, baseUrl: string) {
   return { marker, current, prior, actual, previous };
 }
 
+async function commitCatalogField(
+  { location, signal }: { readonly location: CodexLocation; readonly signal: AbortSignal },
+  owned: CodexLease,
+  { marker, current }: NonNullable<Awaited<ReturnType<typeof eligibleCatalogTarget>>>,
+  nextMarker: CodexMarker,
+  edit: FieldEdit,
+): Promise<void> {
+  validateMarker(nextMarker, location);
+  const nextText = editCodexDocument(current.text, [edit]);
+  signal.throwIfAborted();
+  await completeOperation(
+    location,
+    {
+      operation: 'configure',
+      originalExists: true,
+      beforeFingerprint: fingerprint(current.text),
+      afterFingerprint: fingerprint(nextText),
+      oldMarker: marker,
+      targetMarker: nextMarker,
+      stage: 'prepared',
+    },
+    current,
+    nextText,
+    nextMarker,
+    owned,
+  );
+}
+
 export async function canUpdateManagedCodexCatalog(
   location: CodexLocation,
   baseUrl: string,
@@ -60,8 +88,24 @@ export async function updateManagedCodexCatalog(
         await owned.withOwnershipFence((assertOwned) => recoverPending(location, assertOwned));
         const target = await eligibleCatalogTarget(location, baseUrl);
         if (target === undefined) return 'skipped';
-        const { marker, current, prior, actual, previous } = target;
+        const { marker, prior, actual, previous } = target;
         signal.throwIfAborted();
+        // Codex refuses to start on a catalog without models, and an empty catalog usually means
+        // model metadata was briefly unavailable. Keep the last good file; with none, hand
+        // the field back to its pre-integration value so Codex falls back to its own catalog.
+        if (catalog.models.length === 0) {
+          if (prior === undefined || (previous !== undefined && (await readRegularFile(previous)) !== undefined))
+            return 'empty';
+          const fields = marker.fields.filter((field) => field !== prior);
+          await commitCatalogField(
+            input,
+            owned,
+            target,
+            { ...marker, fields },
+            { path: prior.path, next: prior.before },
+          );
+          return 'empty';
+        }
         const prepared = await prepareCodexCatalog(location, catalog, owned);
         if (previous === prepared.path) {
           return 'unchanged';
@@ -75,25 +119,7 @@ export async function updateManagedCodexCatalog(
           ...marker,
           fields: [...marker.fields.filter((field) => field !== prior), next],
         };
-        validateMarker(nextMarker, location);
-        const nextText = editCodexDocument(current.text, [{ path: next.path, next: next.applied }]);
-        signal.throwIfAborted();
-        await completeOperation(
-          location,
-          {
-            operation: 'configure',
-            originalExists: true,
-            beforeFingerprint: fingerprint(current.text),
-            afterFingerprint: fingerprint(nextText),
-            oldMarker: marker,
-            targetMarker: nextMarker,
-            stage: 'prepared',
-          },
-          current,
-          nextText,
-          nextMarker,
-          owned,
-        );
+        await commitCatalogField(input, owned, target, nextMarker, { path: next.path, next: next.applied });
         await pruneCodexCatalogs(location, previous === undefined ? [prepared.path] : [prepared.path, previous], owned);
         return 'updated';
       }),
