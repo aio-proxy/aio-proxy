@@ -378,7 +378,7 @@ platforms; no new secret.
 
 | | Linux | Windows |
 | --- | --- | --- |
-| Format | AppImage, `x86_64` and `aarch64` | NSIS, per-user into `%LOCALAPPDATA%\Programs\AIO Proxy\`, no admin |
+| Format | AppImage, `x86_64` and `aarch64` | NSIS, per-user into `%LOCALAPPDATA%\AIO Proxy\` (cargo-packager's fixed `currentUser` directory), no admin |
 | Contents | app, `usr/bin/aio-proxy`, `.desktop`, PNG icons | `aio-proxy-desktop.exe`, `aio-proxy.exe`, `.ico` |
 | Sidecar | `packages/cli/scripts/build-binary.ts` on the native runner | same, `bun-windows-x64` |
 | Notes | built on the oldest supported Ubuntu LTS runner for a low glibc floor; linuxdeploy bundles GPUI's X11 / Wayland / xkbcommon / Vulkan loader libraries | `main.rs` gets `#![cfg_attr(windows, windows_subsystem = "windows")]`; NSIS hooks: close the running app before install, section 4 cleanup on uninstall |

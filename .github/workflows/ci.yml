@@ -252,6 +252,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-desktop-package-
 
+      # `cargo install` skips a matching install it finds in ~/.cargo/bin plus its .crates*.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/bin/cargo-packager*
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+          key: ${{ runner.os }}-cargo-packager-0.11.8
+
       - run: cargo install cargo-packager --version 0.11.8 --locked
 
       - run: bun run desktop:package --target ${{ matrix.target }} --version 0.0.1
@@ -269,3 +278,4 @@ jobs:
           name: ${{ matrix.asset }}
           path: desktop/target/package/${{ matrix.asset }}
           if-no-files-found: error
+          retention-days: 7

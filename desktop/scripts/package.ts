@@ -8,7 +8,7 @@
 // Env: WINDOWS_SIGN_COMMAND becomes cargo-packager's windows.sign_command (`%1` is the file); it
 // signs the app, the installer and the uninstaller.
 // Needs cargo-packager 0.11.8: `cargo install cargo-packager --version 0.11.8 --locked`.
-import { readdirSync, renameSync, rmSync } from 'node:fs';
+import { readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -71,6 +71,14 @@ const sidecar = join(sidecarDir, `aio-proxy-${build.triple}${exe}`);
 const app = join(desktop, 'target', 'release', `aio-proxy-desktop${exe}`);
 const manifests = ['npm/aio-proxy/package.json', 'packages/cli/package.json'].map((path) => join(root, path));
 const originals = await Promise.all(manifests.map((path) => Bun.file(path).text()));
+const restore = (): void => manifests.forEach((path, i) => writeFileSync(path, originals[i] ?? ''));
+// Ctrl-C or a cancelled CI step must not leave the stamped versions behind.
+const onSignal = (signal: NodeJS.Signals): void => {
+  restore();
+  process.exit(signal === 'SIGINT' ? 130 : 143);
+};
+process.once('SIGINT', onSignal);
+process.once('SIGTERM', onSignal);
 try {
   await Promise.all(manifests.map((path, i) => Bun.write(path, withVersion(originals[i] ?? '', version))));
 
@@ -86,7 +94,9 @@ try {
     if (reported !== version) throw new Error(`${binary} --version printed ${reported}, expected ${version}`);
   }
 } finally {
-  await Promise.all(manifests.map((path, i) => Bun.write(path, originals[i] ?? '')));
+  process.off('SIGINT', onSignal);
+  process.off('SIGTERM', onSignal);
+  restore();
 }
 
 step(`5. cargo packager --formats ${build.format}`);

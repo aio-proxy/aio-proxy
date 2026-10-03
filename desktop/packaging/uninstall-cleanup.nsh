@@ -36,22 +36,30 @@ Section un.AioProxyCleanup
 
   ; Same rule as the CLI's readDesktopOwnedUnit: a unit is the app's when its program is the path the
   ; app recorded as AIO_PROXY_DESKTOP_EXEC. A service the user installed from the CLI stays.
+  ; ReadAllText decodes UTF-8: Windows PowerShell's Get-Content would use the ANSI code page and, on a
+  ; CJK one, mangle a non-ASCII profile path until ConvertFrom-Json fails. A missing file throws and
+  ; exits non-zero, which reads as "not the app's".
   System::Call 'kernel32::SetEnvironmentVariable(t "AIO_PROXY_SERVICE_SPEC", t "$LOCALAPPDATA\aio-proxy\service.json")'
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "$$u = Get-Content -LiteralPath $$env:AIO_PROXY_SERVICE_SPEC -Raw -ErrorAction SilentlyContinue | ConvertFrom-Json; if ($$u.exec -and $$u.exec -ceq $$u.env.AIO_PROXY_DESKTOP_EXEC) { exit 0 }; exit 1"'
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "$$u = [IO.File]::ReadAllText($$env:AIO_PROXY_SERVICE_SPEC) | ConvertFrom-Json; if ($$u.exec -and $$u.exec -ceq $$u.env.AIO_PROXY_DESKTOP_EXEC) { exit 0 }; exit 1"'
   Pop $R0
+  StrCpy $R3 0
   ${If} $R0 == 0
     ; Stops the task before deleting it.
     nsExec::ExecToLog '"$INSTDIR\aio-proxy.exe" service uninstall'
-    Pop $R0
+    Pop $R3
+    ${If} $R3 != 0
+      DetailPrint "aio-proxy service uninstall failed ($R3); keeping ${AIOP_SUPPORT}, which the task still runs"
+    ${EndIf}
   ${EndIf}
 
   ; Drop the shims entry from the user Path; every other entry stays byte for byte.
-  ; ponytail: a Path at NSIS_MAX_STRLEN or longer is left alone (the entry stays) rather than risk
-  ; writing back a truncated one; edit it from PowerShell if that ever matters.
+  ; ponytail: the wrapped ";Path;" plus its terminator must fit NSIS_MAX_STRLEN (1024 in a stock
+  ; build), so a Path longer than NSIS_MAX_STRLEN - 4 is left alone (the entry stays) rather than
+  ; written back truncated; edit it from PowerShell if that ever matters.
   ClearErrors
   ReadRegStr $R0 HKCU "Environment" "Path"
   StrLen $R1 $R0
-  IntOp $R2 ${NSIS_MAX_STRLEN} - 1
+  IntOp $R2 ${NSIS_MAX_STRLEN} - 3
   ${IfNot} ${Errors}
   ${AndIf} $R1 < $R2
     ${WordReplace} ";$R0;" ";${AIOP_SHIMS};" ";" "+" $R1
@@ -69,6 +77,8 @@ Section un.AioProxyCleanup
     DeleteRegValue HKCU "${AIOP_STARTUP_APPROVED_KEY}" "${AIOP_RUN_VALUE}"
   ${EndIf}
 
-  RMDir /r "${AIOP_SUPPORT}"
+  ${If} $R3 == 0
+    RMDir /r "${AIOP_SUPPORT}"
+  ${EndIf}
   cleanup_done:
 SectionEnd

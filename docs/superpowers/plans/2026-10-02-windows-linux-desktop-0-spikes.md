@@ -15,7 +15,7 @@
 - Task path: `\AIO Proxy\aio-proxy-<current user SID>`; no admin rights anywhere.
 - Task settings under test: logon trigger, `IgnoreNew`, no execution time limit, not stopped on battery, `RestartOnFailure` 1 minute × 3.
 - Candidate hidden-console actions, in order: `conhost.exe --headless <exec> __service-run <spec>`; S4U logon type; a `--windows-hide-console` launcher.
-- NSIS install mode: per-user into `%LOCALAPPDATA%\Programs\AIO Proxy\`.
+- NSIS install mode: per-user into `%LOCALAPPDATA%\AIO Proxy\` (the template's fixed `currentUser` directory).
 - Linux tray: `tray-icon` with `default-features = false, features = ["ksni"]`.
 
 ## Review Focus
