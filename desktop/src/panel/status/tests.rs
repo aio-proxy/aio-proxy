@@ -46,6 +46,13 @@ fn the_endpoint_line_names_who_runs_the_service() {
 }
 
 #[test]
+fn an_unreadable_linux_job_does_not_claim_the_user_stopped_it() {
+    let unread = model(|v| v["job"] = json!({ "loaded": false, "disabled": true, "pid": null }));
+    let expected = if cfg!(target_os = "linux") { "127.0.0.1:9317" } else { "127.0.0.1:9317 · stopped by you" };
+    assert_eq!(endpoint_line(&unread).as_deref(), Some(expected));
+}
+
+#[test]
 fn a_login_item_failure_outranks_every_other_notice() {
     let mut m = model(|_| {});
     m.action = ActionState::Failed("service start failed".into());

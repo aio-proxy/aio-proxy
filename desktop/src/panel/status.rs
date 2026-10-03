@@ -69,6 +69,9 @@ pub fn endpoint_line(model: &AppModel) -> Option<String> {
     let url = d.instance.control_url.as_deref()?;
     let address = url.strip_prefix("http://").unwrap_or(url).trim_end_matches('/');
     let owner = match d.unit.owner {
+        // systemd loads every unit file it can read, enabled or not: a disabled Linux job that is not
+        // loaded is one whose state was unreadable (no user manager), not one the user stopped.
+        Owner::Desktop if d.job.disabled && !d.job.loaded && cfg!(target_os = "linux") => None,
         Owner::Desktop if d.job.disabled => Some("stopped by you"),
         Owner::Desktop => Some("started by AIO Proxy"),
         Owner::External => Some("managed by the aio-proxy CLI"),
