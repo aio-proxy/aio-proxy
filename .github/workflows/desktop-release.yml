@@ -5,9 +5,11 @@ name: Desktop release
 # "Release job and feed"). Beside it, the Linux AppImages and the Windows installer are built without
 # secrets, signed and attached by publish-assets, and the feed job points latest.json on desktop-feed at
 # the highest complete version (docs/superpowers/specs/2026-10-02-windows-linux-desktop-design.md, section
-# 6). Each platform publishes on its own, so one failing never holds another. release.yml dispatches it
-# after a publish, so it runs as its own workflow run and never holds the release concurrency group. A maintainer can dispatch it with the tag to
-# resume a failed desktop publish for the same immutable version; it never re-runs the npm publish.
+# 6). macOS and Linux/Windows publish independently, so a failure on one side never holds the other; a
+# failed Linux or Windows build holds all three Linux/Windows uploads, since the feed needs every one.
+# release.yml dispatches it after a publish, so it runs as its own workflow run and never holds the
+# release concurrency group. A maintainer can dispatch it with the tag to resume a failed desktop publish
+# for the same immutable version; it never re-runs the npm publish.
 on:
   workflow_dispatch:
     inputs:
@@ -33,6 +35,7 @@ jobs:
       group: desktop-feed
       cancel-in-progress: false
     steps:
+      # Same gate as the verify job's two steps below: change both together.
       - name: Resolve the version
         id: version
         env:
@@ -144,6 +147,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       sha: ${{ steps.commit.outputs.sha }}
     steps:
+      # Same gate as the macOS job's first two steps: change both together.
       - name: Resolve the version
         id: version
         env:
@@ -225,7 +229,9 @@ jobs:
 
       - run: cargo install cargo-packager --version 0.11.8 --locked
 
-      - run: bun run desktop:package --target ${{ matrix.target }} --version ${{ needs.verify.outputs.version }}
+      - run: bun run desktop:package --target ${{ matrix.target }} --version "$VERSION"
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -265,7 +271,9 @@ jobs:
 
       - run: cargo install cargo-packager --version 0.11.8 --locked
 
-      - run: bun run desktop:package --target windows-x86_64 --version ${{ needs.verify.outputs.version }}
+      - run: bun run desktop:package --target windows-x86_64 --version "$VERSION"
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

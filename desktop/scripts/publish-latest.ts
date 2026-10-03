@@ -41,7 +41,9 @@ try {
     await $`gh release download ${FEED_TAG} --repo ${REPO} --pattern ${FEED} --dir ${work}`.quiet();
     // An unreadable feed is not "no feed": treating it as absent could move the feed down.
     current = parseLatestJson(await Bun.file(join(work, FEED)).text())?.version;
-    if (current === undefined) throw new Error(`${FEED} on ${FEED_TAG} is not a feed; fix or delete it by hand`);
+    if (current === undefined || !/^\d+\.\d+\.\d+$/u.test(current)) {
+      throw new Error(`${FEED} on ${FEED_TAG} is not a stable X.Y.Z feed; fix or delete it by hand`);
+    }
   }
   console.error(`feed version: ${current ?? '(none)'}`);
 
@@ -70,7 +72,15 @@ try {
         break;
       }
       // --pattern is a glob; asset names are [A-Za-z0-9._-], so each matches only itself.
-      await $`gh release download ${tag} --repo ${REPO} --pattern ${name} --pattern ${`${name}.minisig`} --dir ${dir}`.quiet();
+      // A failed download (e.g. a newer version still uploading) leaves only this candidate out.
+      const download =
+        await $`gh release download ${tag} --repo ${REPO} --pattern ${name} --pattern ${`${name}.minisig`} --dir ${dir}`
+          .nothrow()
+          .quiet();
+      if (download.exitCode !== 0) {
+        console.error(`cannot download ${name} from ${tag}: ${download.stderr.toString().trim()}`);
+        break;
+      }
       const bytes = new Uint8Array(await Bun.file(join(dir, name)).arrayBuffer());
       const minisig = await Bun.file(join(dir, `${name}.minisig`)).text();
       if (!(await verifyPair(bytes, minisig, publicKey, trustedComment(version, target, name)))) {
