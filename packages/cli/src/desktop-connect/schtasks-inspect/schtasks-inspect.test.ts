@@ -106,3 +106,25 @@ test('discovery after an exec change still reports the running supervisor, and n
   expect((await read((pid) => (pid === 4310 ? link : undefined))).job.pid).toBe(4310);
   expect((await read(() => 'C:\\Windows\\System32\\svchost.exe')).job.pid).toBeNull();
 });
+
+test('discovery reads the spec and supervisor state where a task left on an older LOCALAPPDATA points', async () => {
+  const localAppData = 'C:\\Users\\Ada\\AppData\\Local';
+  const oldSpec = 'D:\\Profiles\\Ada\\AppData\\Local\\aio-proxy\\service.json';
+  const result = await readTask({
+    env: { LOCALAPPDATA: localAppData },
+    unitPath: serviceSpecPath(localAppData),
+    imagePath: (pid) => (pid === 4310 ? link : undefined),
+    creationTime: () => '133000000000000000',
+    owner: sid,
+    sidForAccount: () => undefined,
+    run: async () => ({ code: 0, stdout: renderTaskXml({ sid, exec: link, specPath: oldSpec }) }),
+    readFile: async (path) => {
+      if (path === oldSpec) return specFor(link);
+      if (path === 'D:\\Profiles\\Ada\\AppData\\Local\\aio-proxy\\service.state.json')
+        return JSON.stringify({ pid: 4310, exec: link, created: '133000000000000000' });
+      throw new Error(`ENOENT ${path}`);
+    },
+  });
+  expect(result.unit.wrapperValid).toBe(true);
+  expect(result.job.pid).toBe(4310);
+});

@@ -3,7 +3,7 @@ import {
   isOwnTask,
   parseServiceSpec,
   parseTaskXml,
-  serviceStatePath,
+  serviceStatePathBeside,
   taskPath,
   type WindowsUser,
 } from '../../service/schtasks-unit';
@@ -69,15 +69,16 @@ export async function readTask(deps: TaskProbeDeps): Promise<{ unit: UnitInspect
   const capture = async (cmd: readonly string[]) => ({ ...(await deps.run(cmd)), stderr: '' });
   const read = (path: string) => deps.readFile(path).catch(() => undefined);
   try {
-    const localAppData = windowsLocalAppData(deps.env);
+    windowsLocalAppData(deps.env); // throws, and so reads as unknown, without LOCALAPPDATA
     if (deps.owner === '') throw new Error('no account SID');
     const user = { sid: deps.owner, sidForAccount: deps.sidForAccount };
     const query = await queryTaskXml(capture, taskPath(user.sid));
-    const unit =
-      query.kind === 'missing'
-        ? NO_UNIT
-        : inspectTask(query.kind === 'found' ? query.xml : undefined, await read(deps.unitPath), user, deps.unitPath);
-    const state = parseSupervisorState(await read(serviceStatePath(localAppData)));
+    const xml = query.kind === 'found' ? query.xml : undefined;
+    // A task left on an older LOCALAPPDATA or profile still names the spec its supervisor runs, and the
+    // supervisor's state sits beside that spec: both are read where the task points, not where they would go now.
+    const specPath = (xml === undefined ? undefined : parseTaskXml(xml)?.action?.specPath) ?? deps.unitPath;
+    const unit = query.kind === 'missing' ? NO_UNIT : inspectTask(xml, await read(specPath), user, specPath);
+    const state = parseSupervisorState(await read(serviceStatePathBeside(specPath)));
     const markerExists = uninstallMarkerExists('win32', deps.env);
     return {
       unit,
