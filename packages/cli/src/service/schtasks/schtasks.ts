@@ -336,6 +336,11 @@ export async function schtasksRestartInService(
     const exec = parseServiceSpec(spec)?.exec;
     if (!taskCurrent(action, exec, specPath)) await createTask(io, path, stageTaskXml(io, xml));
     io.rename(staged, specPath);
+    // The running supervisor keeps the spec path it was started with and re-reads that file after the exit below;
+    // a new task definition only takes effect at the next launch. So the supervisor's own spec gets the new unit too.
+    if (action !== undefined && action.specPath.toLowerCase() !== specPath.toLowerCase()) {
+      io.writeFile(action.specPath, spec);
+    }
   } catch (error) {
     io.remove(staged);
     throw error;

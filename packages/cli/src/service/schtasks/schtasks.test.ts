@@ -464,8 +464,12 @@ test('an in-service restart leaves our unchanged task alone and re-creates a mis
   expect(recorded().map((c) => c[1])).toEqual(['/Create']);
   // Same exec, but the supervisor would re-read a spec this restart never wrote.
   const staleSpec = renderTaskXml({ sid, exec, specPath: 'C:\\Users\\Zoë\\old\\service.json' });
-  await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), { task: staleSpec });
+  const { fs } = await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), {
+    task: staleSpec,
+  });
   expect(recorded().map((c) => c[1])).toEqual(['/Create']);
+  // The live supervisor re-reads its own (old) spec path, so it relaunches the new unit too.
+  expect(fs.read('C:\\Users\\Zoë\\old\\service.json')).toBe(fs.read(specPath));
   expect(exits).toEqual([75, 75, 75]);
 });
 
