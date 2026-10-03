@@ -260,7 +260,13 @@ export async function schtasksStop(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   // A task deleted by hand leaves its supervisor running: `/Delete` does not stop what the task started.
   const task = await ownTask(io, path);
-  if (!task) return endSupervisor(io, task);
+  if (!task) {
+    await endSupervisor(io, task);
+    // With no task to disable, the uninstall marker is what keeps the desktop app from reinstalling the stopped
+    // service; `service start` and `service install` clear it.
+    io.writeFile(uninstallMarkerPath('win32', { LOCALAPPDATA: io.localAppData })!, '');
+    return;
+  }
   await endTask(io, path, task);
   await io.run(['schtasks', '/Change', '/TN', path, '/DISABLE']);
 }

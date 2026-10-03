@@ -261,6 +261,14 @@ test('stop of a deleted task still kills its orphaned supervisor and waits for i
   expect(calls).toEqual([]);
 });
 
+test('stop of a deleted task records the stop with the uninstall marker, which a later start clears', async () => {
+  const { calls, fs } = await recordRun((io) => schtasksStop(io), { task: 'missing' });
+  expect(calls).toEqual([]);
+  expect(fs.exists(uninstallMarkerPath('win32', env)!)).toBe(true);
+  await recordRun((io) => schtasksStart(io), { task: 'missing', fs });
+  expect(fs.exists(uninstallMarkerPath('win32', env)!)).toBe(false);
+});
+
 test('start re-enables a stopped task before running it', async () => {
   const fs = fakeFs({ [specPath]: oldSpec, [exec]: '', [oldExec]: '' });
   const calls = await recordCalls((io) => schtasksStart(io), { fs, task: renderTaskXml({ sid, exec, specPath }) });
