@@ -40,6 +40,8 @@ export function minisignPublicKey(publicKeyBase64: string): string {
  * publish re-derives the same text.
  */
 export async function signMinisign(file: Uint8Array, privateKey: string, trustedComment: string): Promise<string> {
+  // The comment is one line of the four-line format.
+  if (/[\r\n]/u.test(trustedComment)) throw new Error('a trusted comment cannot contain a line break');
   const key = await importPrivate(privateKey, false);
   const digest = createHash('blake2b512').update(file).digest();
   const sig = Buffer.from(await crypto.subtle.sign('Ed25519', key, digest));
