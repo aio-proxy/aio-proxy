@@ -48,7 +48,8 @@ export type RecordedAttempt = {
     | 'response_owner'
     | 'session_affinity'
     | 'deterministic_session'
-    | 'weighted_random';
+    | 'weighted_random'
+    | 'quota_reset';
   readonly transport?: 'raw' | 'ai_sdk' | 'image' | 'audio';
   readonly sourceProtocol?: ProviderProtocol;
   readonly targetProtocol?: ProviderProtocol;

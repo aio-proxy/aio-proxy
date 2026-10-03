@@ -1073,6 +1073,97 @@ describe('draft Provider catalog and test routes', () => {
     }
   });
 
+  test.each(['api', 'ai-sdk'] as const)('draft test accepts a discovered model of a synced draft: %s', async (kind) => {
+    let discoveries = 0;
+    const testedModels: unknown[] = [];
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      async fetch(request) {
+        if (new URL(request.url).pathname === '/v1/models') {
+          discoveries++;
+          return Response.json({ data: [{ id: 'm-1' }, {}] });
+        }
+        const body = (await request.json()) as { readonly model?: unknown };
+        testedModels.push(body.model);
+        return kind === 'api'
+          ? Response.json({ choices: [] })
+          : new Response(
+              'data: {"id":"x","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' + 'data: [DONE]\n\n',
+              { headers: { 'content-type': 'text/event-stream' } },
+            );
+      },
+    });
+
+    try {
+      const draft = {
+        id: 'synced-draft',
+        syncModels: true,
+        excludedModels: ['other-model'],
+        alias: { public: { model: 'm-1' } },
+        ...(kind === 'api'
+          ? { kind, baseURL: `${upstream.url}v1`, protocol: ProviderProtocol.OpenAICompatible }
+          : {
+              kind,
+              packageName: '@ai-sdk/openai-compatible',
+              options: { baseURL: `${upstream.url}v1`, name: 'synced-draft' },
+            }),
+      };
+      const response = await routes.request('/providers/draft/test', jsonRequest({ draft, model: 'm-1' }));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+      expect(testedModels).toEqual(['m-1']);
+
+      const excluded = await routes.request(
+        '/providers/draft/test',
+        jsonRequest({ draft: { ...draft, excludedModels: ['m-1'] }, model: 'm-1' }),
+      );
+      expect(excluded.status).toBe(400);
+      expect(await excluded.json()).toEqual({ ok: false, error: { code: 'model_not_enabled', recoverable: true } });
+
+      const unknown = await routes.request('/providers/draft/test', jsonRequest({ draft, model: 'unknown' }));
+      expect(unknown.status).toBe(400);
+      expect(await unknown.json()).toEqual({ ok: false, error: { code: 'model_not_enabled', recoverable: true } });
+      expect(discoveries).toBe(3);
+      expect(testedModels).toEqual(['m-1']);
+      expect(state.currentConfig().providers.some(({ id }) => id === 'synced-draft')).toBe(false);
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
+  test('a synced draft with failed discovery rejects the model without sending a test request', async () => {
+    let testRequests = 0;
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        if (new URL(request.url).pathname !== '/v1/models') testRequests++;
+        return new Response(null, { status: 503 });
+      },
+    });
+    try {
+      const response = await routes.request(
+        '/providers/draft/test',
+        jsonRequest({
+          draft: {
+            id: 'unavailable-draft',
+            kind: 'api',
+            baseURL: `${upstream.url}v1`,
+            protocol: ProviderProtocol.OpenAICompatible,
+            syncModels: true,
+          },
+          model: 'm-1',
+        }),
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ ok: false, error: { code: 'model_not_enabled', recoverable: true } });
+      expect(testRequests).toBe(0);
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
   test('does not send a test request for a model outside the enabled draft models', async () => {
     let requests = 0;
     const upstream = Bun.serve({

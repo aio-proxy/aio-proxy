@@ -227,6 +227,7 @@
       "diagnostic_credential_refresh_failed": "Credential refresh failed for provider {provider}",
       "diagnostic_authorization_failed": "Authorization failed for provider {provider}",
       "diagnostic_catalog_unavailable": "The model catalog is unavailable for provider {provider}",
+      "diagnostic_catalog_unsupported": "Provider {provider} cannot list its upstream models, so syncModels cannot be used",
       "diagnostic_proxy_unsupported": "Provider {provider} does not support the configured proxy",
       "diagnostic_runtime_create_failed": "The runtime could not be created for provider {provider}",
       "state_failed": "failed"
@@ -762,6 +763,8 @@
       "load_failed": "Routing could not be loaded. Try again.",
       "retry": "Retry",
       "read_only": "This server has no writable config file. Routing can be inspected but not saved.",
+      "selection_quota_reset": "Spend the subscription that resets soonest first",
+      "selection_quota_reset_description": "Within each priority tier, try the subscription whose quota resets soonest before the weighted draw. Session affinity still takes precedence.",
       "table": {
         "label": "Model routes",
         "filter": "Filter models",
@@ -1406,6 +1409,11 @@
         "models_empty_title": "No models yet",
         "models_empty_description": "Pull the upstream catalog, or type a model ID directly.",
         "models_filter_no_matches": "No models match this filter",
+        "models_manual_label": "Manual",
+        "models_sync_label": "Sync with upstream",
+        "models_sync_hint": "New upstream models are added automatically; hide the ones you don't want.",
+        "models_sync_refreshed_at": "Last refreshed {time}",
+        "models_sync_never": "Not refreshed yet",
         "models_upstream_heading": "Upstream models",
         "models_upstream_hint": "Only enabled models can be a direct model, an alias target, or the test model.",
         "manual_models": "Add models manually",

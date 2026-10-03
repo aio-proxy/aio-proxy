@@ -6,6 +6,7 @@ import {
   type PluginLogSink,
   type PluginRegistrySnapshot,
   type PluginRepository,
+  type ProviderModelCatalogRepository,
 } from '@aio-proxy/core';
 import {
   type Config,
@@ -25,6 +26,7 @@ import {
   type PluginRuntimeCacheEntry,
   pluginOptionsIdentityDigest,
 } from '../plugin-runtime';
+import { resolveSyncedProviders, type SyncedProviderResolution } from '../provider-model-sync';
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import {
   materializeProviders,
@@ -61,6 +63,7 @@ export async function buildSnapshot(
   previous: Snapshot | undefined,
   options: ServerStateOptions,
   repository: PluginRepository,
+  providerModels: ProviderModelCatalogRepository,
   diagnostics: DiagnosticFactory,
   logger: PluginLogSink,
   onDiagnosticChanged: () => void,
@@ -78,13 +81,14 @@ export async function buildSnapshot(
   // Resolve router model `metadata.extend` before model resolution and capability
   // indexing read the policies, so downstream consumers see effective values.
   const configWithExtend = await applyMetadataExtend(config, logger, { onCatalogWarmed: onDiagnosticChanged });
+  const resolution = resolveSyncedProviders(configWithExtend, providerModels, diagnostics);
   // models.dev output modalities for ids that only appear in `models`/`alias`, so the
   // capability index can route them (e.g. an image model with no authored metadata).
-  const catalogMetadata = await resolveCatalogModalities(configWithExtend, { onCatalogWarmed: onDiagnosticChanged });
   const nonOAuth = {
     ...configWithExtend,
-    providers: configWithExtend.providers.filter((provider) => provider.kind !== ProviderKind.OAuth),
+    providers: resolution.providers.filter((provider) => provider.kind !== ProviderKind.OAuth),
   };
+  const catalogMetadata = await resolveCatalogModalities(nonOAuth, { onCatalogWarmed: onDiagnosticChanged });
   const base = materializeProviders(nonOAuth, { catalogMetadata });
   const oauthConfigs = configWithExtend.providers.filter((provider) => provider.kind === ProviderKind.OAuth);
   const oauth = await Promise.all(
@@ -123,6 +127,7 @@ export async function buildSnapshot(
     oauth,
     oauthConfigs,
     diagnostics,
+    resolution,
   );
   return {
     config: configWithExtend,
@@ -135,7 +140,7 @@ export async function buildSnapshot(
     providers,
     router: createRouter(providers, configWithExtend.router),
     summaries,
-    catalogJobs: compact(oauth.map((item) => item.catalogJob)),
+    catalogJobs: [...compact(oauth.map((item) => item.catalogJob)), ...resolution.jobs],
     runtimeCache: new Map(
       compact(
         oauth.map((item) =>
@@ -211,6 +216,7 @@ function assembleProviders(
   oauth: readonly PluginProviderMaterialization[],
   oauthConfigs: readonly OAuthProvider[],
   diagnostics: DiagnosticFactory,
+  resolution: SyncedProviderResolution,
 ): { readonly providers: readonly RuntimeProviderInstance[]; readonly summaries: readonly DashboardProviderSummary[] } {
   const providerById = new Map(
     [...base.providers, ...compact(oauth.map((item) => item.provider))].map(
@@ -240,7 +246,9 @@ function assembleProviders(
     ...compact(config.providers.map((configured) => summaryById.get(configured.id))),
   ];
   const assembledStates = new Map<string, ProviderState>();
-  for (const provider of nonOAuth.providers) assembledStates.set(provider.id, { status: 'ready' });
+  for (const provider of nonOAuth.providers) {
+    assembledStates.set(provider.id, resolution.states.get(provider.id) ?? { status: 'ready' });
+  }
   for (const invalid of config.invalidProviders) {
     assembledStates.set(invalid.id, {
       status: 'unavailable',
@@ -254,7 +262,8 @@ function assembleProviders(
   const summaries = summaryBases.map((summary): DashboardProviderSummary => {
     const state = assembledStates.get(summary.id);
     if (state === undefined) throw new Error(`Provider state missing for ${summary.id}`);
-    return { ...summary, state };
+    const catalogLastSuccessAt = resolution.lastSuccessAt.get(summary.id);
+    return { ...summary, state, ...(catalogLastSuccessAt === undefined ? {} : { catalogLastSuccessAt }) };
   });
   return { providers, summaries };
 }

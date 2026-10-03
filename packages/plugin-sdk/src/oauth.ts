@@ -161,7 +161,20 @@ export type OAuthQuotaItem = {
    * upstream states the duration or both ends of the period, never as a guess from the label.
    */
   readonly windowMinutes?: number;
+  /**
+   * Which models this window gates. Declare it only when the upstream **refuses** requests for the
+   * covered models once `remainingRatio` reaches 0, until `resetsAt`: aio-proxy then skips the
+   * Provider for those models instead of attempting a request bound to fail. Omit it for windows that
+   * overflow into paid usage or only inform; an item without a scope never affects routing.
+   *
+   * `'account'` covers every model the account serves. `models` entries match the upstream model id
+   * case-insensitively, `*` matches any run of characters, and a leading `!` excludes; a model is
+   * covered when it matches an inclusion and no exclusion.
+   */
+  readonly scope?: OAuthQuotaItemScope;
 };
+
+export type OAuthQuotaItemScope = 'account' | { readonly models: readonly string[] };
 
 export type OAuthQuotaResetCredit = {
   readonly id: string;

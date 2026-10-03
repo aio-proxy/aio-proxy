@@ -6,15 +6,19 @@ import type {
   VideoProtocolAdapter,
 } from '@aio-proxy/core';
 import type { Config } from '@aio-proxy/types';
+import { trace } from '@opentelemetry/api';
 
 import type { LogicalSessionResolution } from '../../../logical-session-store';
 import { withAttemptLogContext } from '../../../request-logging';
+import { attributeName } from '../../../request-tracing';
 import type { RequestTraceSession } from '../../../request-tracing';
 import { createAttemptResponseObservation, withAttemptResponseObservation } from '../../../response-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../../runtime';
 import { prioritizeAffinity } from '../affinity';
 import { candidateRoutingTrace, candidateSelectionSource } from '../attempt-base';
 import { type AttemptLog, logProviderAttemptFailed } from '../logging';
+import { candidateHold } from '../quota-gate';
+import { applySelectionPolicy } from '../quota-order';
 import { attemptAudioCandidate } from './audio';
 import type {
   AnyAttemptLoopContext,
@@ -234,7 +238,9 @@ async function attemptLanguageCandidate<TRequest, TContext>(
 export async function attemptCandidates<TRequest, TContext>(
   options: AttemptCandidatesOptions<TRequest, TContext>,
 ): Promise<Response> {
-  const { adapter, candidates, resolution, session } = options;
+  const { adapter, resolution, session } = options;
+  const now = Date.now();
+  const candidates = applySelectionPolicy(options.candidates, options.config?.router.selection, options.source, now);
   const affinityOrdered =
     resolution.affinity?.active === true ? prioritizeAffinity(candidates, resolution.affinity.providerId) : candidates;
   const ordered = prioritizeAffinity(affinityOrdered, resolution.responseOwner?.providerId);
@@ -245,7 +251,13 @@ export async function attemptCandidates<TRequest, TContext>(
   let lastFailure: Response | undefined;
   let lastSkipReason: string | undefined;
 
-  const selection = selectLiveCandidates(ctx.cooldown, ordered);
+  const selection = selectLiveCandidates(ordered, (candidate) => candidateHold(options.source, candidate, now));
+  if (selection.skipped.length > 0) {
+    trace.getSpan(session.rootContext)?.setAttribute(
+      attributeName.routeSkippedCandidates,
+      selection.skipped.map(({ providerId, reason }) => `${providerId}:${reason}`),
+    );
+  }
   if (selection.kind === 'all-cooled') {
     const response = adapter.errors.rateLimited(selection.retryAfterSeconds);
     // Request-level finalization: no provider was attempted, so do NOT use finalFailure

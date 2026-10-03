@@ -227,6 +227,7 @@
       "diagnostic_credential_refresh_failed": "提供商 {provider} 的憑證重新整理失敗",
       "diagnostic_authorization_failed": "提供商 {provider} 授權失敗",
       "diagnostic_catalog_unavailable": "提供商 {provider} 的模型目錄無法使用",
+      "diagnostic_catalog_unsupported": "提供商 {provider} 無法列出上游模型，因此無法使用 syncModels",
       "diagnostic_proxy_unsupported": "提供商 {provider} 不支援目前設定的代理",
       "diagnostic_runtime_create_failed": "無法為提供商 {provider} 建立執行階段",
       "state_failed": "載入失敗"
@@ -762,6 +763,8 @@
       "load_failed": "無法載入路由。請重試。",
       "retry": "重試",
       "read_only": "此伺服器沒有可寫入的設定檔。可以檢視路由，但無法儲存。",
+      "selection_quota_reset": "優先消耗最快重置的訂閱",
+      "selection_quota_reset_description": "在同一 priority 層內，先嘗試配額最快重置的訂閱，再按權重抽取；會話親和仍然優先。",
       "table": {
         "label": "模型路由",
         "filter": "篩選模型",
@@ -1406,6 +1409,11 @@
         "models_empty_title": "還沒有模型",
         "models_empty_description": "拉取上游目錄，或直接輸入一個模型 ID。",
         "models_filter_no_matches": "沒有模型符合目前的篩選",
+        "models_manual_label": "手動",
+        "models_sync_label": "與上游同步",
+        "models_sync_hint": "自動加入上游的新模型；可隱藏不需要的模型。",
+        "models_sync_refreshed_at": "上次重新整理於 {time}",
+        "models_sync_never": "尚未重新整理",
         "models_upstream_heading": "上游模型",
         "models_upstream_hint": "啟用後才可作為直連模型、別名目標或測試模型。",
         "manual_models": "手動新增模型",

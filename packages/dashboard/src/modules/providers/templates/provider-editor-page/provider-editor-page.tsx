@@ -35,6 +35,9 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     hasApiKey,
     sessionWarning,
     values,
+    candidates,
+    refreshedAt,
+    onCatalogLoaded,
     persistedId,
     session,
     sessionQuery,
@@ -56,9 +59,9 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
   const locked = mode === ProviderFormMode.Create && kind === ProviderKind.OAuth && !authorized;
   const models = values.kind === 'oauth' ? [] : (values.models ?? []);
   const exposed =
-    kind === ProviderKind.OAuth
-      ? oauthEditorExposedModels(oauth?.models, values.kind === 'oauth' ? values.excludedModels : undefined)
-      : exposedModels(models, oauth?.models);
+    kind === ProviderKind.OAuth || (values.kind !== 'oauth' && values.syncModels === true)
+      ? oauthEditorExposedModels(candidates, values.excludedModels)
+      : exposedModels(models, undefined);
   const railAlias =
     kind === ProviderKind.OAuth
       ? editorEffectiveAlias(
@@ -144,7 +147,10 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         form={form}
         kind={kind}
         persistedProviderId={persistedId}
-        candidates={oauth?.models}
+        candidates={candidates}
+        initial={props.initial}
+        refreshedAt={refreshedAt}
+        onCatalogLoaded={onCatalogLoaded}
         pluginAliases={oauth?.pluginAliases}
         summary={summaries.models}
       />

@@ -5,7 +5,7 @@ import type {
   DashboardOAuthSession,
   OAuthProvider,
 } from '@aio-proxy/types';
-import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { ProviderKind, ProviderMutationBodySchema, ProviderProtocol } from '@aio-proxy/types';
 import { Toaster, toast } from '@aio-proxy/ui/components/toast';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -290,6 +290,36 @@ test.each([ProviderFormMode.Create, ProviderFormMode.Edit])(
 // save." / "Save provider" and the zh success toasts all contain 保存/儲存 as a substring, and a loose
 // matcher would go green on those instead of on the line under test.
 const SAVED_LINE = /^(Saved|保存しました|저장됨|已保存|已儲存)$/u;
+
+test('editor page saves a synced Provider', async () => {
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.Api,
+    providerId: 'synced',
+    initial: {
+      id: 'synced',
+      protocol: ProviderProtocol.OpenAICompatible,
+      baseURL: 'https://api.example/v1',
+      syncModels: true,
+      models: [],
+      excludedModels: ['b'],
+      alias: { fast: { model: 'b', preserve: false } },
+    },
+    sync: { models: ['a', 'b'] },
+    onSessionIdChange: rs.fn(),
+  });
+
+  expect(saveButton()).toBeEnabled();
+  fireEvent.click(saveButton());
+  await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+  const input = mocks.update.mock.calls[0]?.[0] as { body: unknown };
+  expect(input.body).toMatchObject({ syncModels: true, models: [], excludedModels: ['b'] });
+  expect(ProviderMutationBodySchema.safeParse(input.body).success).toBe(true);
+  expect(screen.getByTestId('exposure-panel')).toHaveTextContent('a');
+  expect(screen.getByRole('combobox', { name: m['dashboard.providers.editor.validate_model']() })).toHaveTextContent(
+    'a',
+  );
+});
 
 // The success confirmation is the mutation hook's transient toast; the page keeps no "Saved" line of
 // its own, which used to sit there permanently while the footer went back to blocking the next save.

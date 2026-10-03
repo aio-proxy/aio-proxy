@@ -131,6 +131,29 @@ aio-proxy reload
 
 Editors that support `$schema` can provide completion and validation. Use `{{env.NAME}}` to read environment variables.
 
+### Sync models with upstream
+
+API and AI SDK Providers can opt into `syncModels: true` instead of maintaining `models`. Sync is off by default; enabling it together with a non-empty `models` list fails validation. `excludedModels` is only valid with `syncModels: true` and hides exact model IDs (no glob matching). Aliases can still target hidden models. A manual `models` list works as before.
+
+```jsonc
+{
+  "providers": {
+    "relay": {
+      "kind": "api",
+      "protocol": "openai-compatible",
+      "baseURL": "https://relay.example.com",
+      "apiKey": "{{env.RELAY_API_KEY}}",
+      "syncModels": true,
+      "excludedModels": ["gpt-3.5-turbo"],
+    },
+  },
+}
+```
+
+Discovery runs immediately on startup and after config changes, then every hour. Failed refreshes retry after 5 minutes once the list is stale; an outage or empty response keeps the last good list. Before the first successful discovery, only aliases route. Changing the API primary endpoint's `baseURL`, `protocol`, or endpoint form, or the AI SDK `packageName` or `options.baseURL`, discards the old list. Only the primary API endpoint is queried, and discovery never rewrites the config file.
+
+AI SDK sync requires the package instance's `listModels` method or `options.baseURL` serving an OpenAI-compatible `/models` endpoint; otherwise the Provider reports `CATALOG_UNSUPPORTED`. In the Dashboard models section, choose **Manual / Sync with upstream**, hide individual models, check the last refreshed time, or use the refresh button.
+
 ### Multi-protocol endpoints
 
 Some upstreams natively serve more than one protocol. Declare the extra endpoints with `endpoints`; a request whose inbound protocol matches any declared endpoint is forwarded verbatim (raw passthrough) instead of being converted:
@@ -173,7 +196,7 @@ See the [Command Code integration guide](https://github.com/aio-proxy/aio-proxy/
 
 ### Model metadata and pricing
 
-Configure client-facing metadata once per exposed model under `router.models.<slug>.metadata`, keyed by the exact slug clients request rather than by an upstream model id. The slug must already be exposed by a Provider's `models` or `alias` configuration: a `router.models` entry only customizes an existing route and never creates one. The removed `providers.<id>.metadata` field is silently ignored.
+Configure client-facing metadata once per exposed model under `router.models.<slug>.metadata`, keyed by the exact slug clients request rather than by an upstream model id. The slug must already be exposed by a Provider's `models`, synced catalog, or `alias` configuration: a `router.models` entry only customizes an existing route and never creates one. The removed `providers.<id>.metadata` field is silently ignored.
 
 Metadata is resolved per field in this order: the selected Provider's router override (for `cost` or `limit`) > slug metadata (including `extend`) > plugin-reported upstream metadata > [models.dev](https://models.dev) fallback > protocol default. A Provider override replaces the slug's entire `cost` or `limit` object rather than deep-merging it; other metadata is shared by every Provider serving that slug. Aliases only auto-discover catalog fallback by their public slug. Unknown metadata fields are preserved and warned about rather than rejected, while invalid values (for example a negative price or a non-positive context limit) fail validation with a clear error.
 
@@ -299,11 +322,12 @@ A request is handled as follows:
 1. Try the complete request model string as an exact Provider-qualified route first. If it matches, select that Provider directly and bypass Provider priority and Provider weight, including effective weight zero. `enabled: false` still blocks the Provider because disabled Providers are not in the route map.
 2. Otherwise try the same complete string as an exact normal client model ID, including strings containing `/`.
 3. Merge Provider defaults with the exact model's sparse `providers` overrides. Discard normal candidates with `enabled: false` or effective weight zero.
-4. Order remaining candidates by descending Provider priority, then by Provider weight within the same priority tier. Configuration order is a deterministic tie-breaker for catalog representation and diagnostics, not the request order for positive-weight candidates in the same tier.
+4. Order remaining candidates by descending Provider priority, then by Provider weight within the same priority tier. With the opt-in `router.selection: "quota-reset"` (also a switch on the Dashboard Routing page), subscriptions with a known quota reset go first within their tier, the one whose longest covering window resets soonest leading; Providers without quota data follow in their weighted order. Configuration order is a deterministic tie-breaker for catalog representation and diagnostics, not the request order for positive-weight candidates in the same tier.
 5. Stable (non-generated) logical sessions use a deterministic weighted draw so token-count and generation share the same pre-attempt order when the routing snapshot is unchanged. Generated sessions use independent random draws.
 6. Response owner, then session affinity, may move an eligible normal candidate to the front. They never resurrect a disabled or zero-weight Provider. Session affinity still overrides priority so a session can stick to a previously successful Provider (for example, prompt-cache continuity).
-7. Use raw passthrough for a same-protocol `api` Provider; use AI SDK conversion for other supported combinations.
-8. Try the next candidate after a Provider failure; return the final failure if every candidate fails.
+7. Remove candidates that cannot serve right now, even when response owner or session affinity put them first: a Provider cooling down after a 429 with `Retry-After`, and a subscription Provider whose cached quota snapshot shows the window covering this model exhausted with a known reset (Kimi Code, Muse Code, ChatGPT, and Cursor report which models each window covers). Quota that is unknown, failed to read, or older than 10 minutes never removes a candidate. If every candidate is removed, the client gets a 429 whose `Retry-After` is the earliest reset. The request trace lists removed candidates in `aio_proxy.route.skipped_candidates`.
+8. Use raw passthrough for a same-protocol `api` Provider; use AI SDK conversion for other supported combinations.
+9. Try the next candidate after a Provider failure; return the final failure if every candidate fails.
 
 On the example policy, `provider-a` is first about 60% of the time and `provider-b` about 40% at priority 30. If the selected Provider fails, the other priority-30 Provider is tried before `provider-c`.
 

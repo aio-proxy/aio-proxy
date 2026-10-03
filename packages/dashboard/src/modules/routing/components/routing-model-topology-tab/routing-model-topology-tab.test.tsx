@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
+import type { DashboardRoutingModel, DashboardRoutingProvider, RouterSelection } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -92,12 +92,15 @@ const share = (
   finalCount: 1n,
 });
 
-const TopologyHarness: React.FC<{
+interface TopologyHarnessProps {
   readonly actual: readonly RoutingTierShare[] | undefined;
-}> = ({ actual }) => {
+  readonly selection?: RouterSelection;
+}
+
+const TopologyHarness: React.FC<TopologyHarnessProps> = ({ actual, selection = 'weighted' }) => {
   const model = topologyModel();
   const form = useRoutingForm(model, rs.fn());
-  return <RoutingModelTopologyTab form={form} model={model} writable={true} actual={actual} />;
+  return <RoutingModelTopologyTab form={form} model={model} writable={true} actual={actual} selection={selection} />;
 };
 
 const renderTopology = (options: { readonly actual: readonly RoutingTierShare[] | undefined }) =>
@@ -111,6 +114,23 @@ test('shows configured and actual share side by side on a provider row', () => {
   const row = within(screen.getByTestId('routing-row-primary'));
   expect(row.getByTestId('routing-share-primary')).toHaveTextContent('50%');
   expect(row.getByText('93%')).toBeInTheDocument();
+});
+
+test('flags lopsided traffic only under weighted selection and keeps the measured share', () => {
+  const actual = [share('primary', 0.93, 0.5, 60)];
+  const { rerender } = renderTopology({ actual });
+  const measuredShare = () => within(screen.getByTestId('routing-row-primary')).getByText('93%');
+
+  expect(measuredShare()).toHaveClass('text-destructive');
+
+  rerender(<TopologyHarness actual={actual} selection="quota-reset" />);
+
+  expect(measuredShare()).not.toHaveClass('text-destructive');
+  expect(screen.getByTestId('routing-share-primary')).toHaveTextContent('50%');
+
+  rerender(<TopologyHarness actual={actual} selection="weighted" />);
+
+  expect(measuredShare()).toHaveClass('text-destructive');
 });
 
 test('shows the success rate that explains a collapsed share', () => {
