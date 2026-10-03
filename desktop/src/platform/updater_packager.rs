@@ -75,6 +75,9 @@ mod imp {
     /// The update the last check offered; the panel's button installs this one.
     static PENDING: Mutex<Option<Update>> = Mutex::new(None);
     static INSTALLING: AtomicBool = AtomicBool::new(false);
+    /// One check at a time, in call order: a slow earlier check must not restore or clear an offer after a later
+    /// one decided. (std's Mutex is not FIFO, but a waiter only ever applies a result fetched after the holder's.)
+    static CHECKING: Mutex<()> = Mutex::new(());
 
     fn send(event: AppEvent) {
         if let Some(events) = EVENTS.get() {
@@ -119,6 +122,7 @@ mod imp {
     }
 
     fn check(interactive: bool) {
+        let _serial = CHECKING.lock().unwrap_or_else(|e| e.into_inner());
         let update = match updater().and_then(|updater| updater.check()) {
             // Nothing newer: an offer from an earlier check was withdrawn (a feed rollback).
             Ok(None) => withdraw_offer(),
