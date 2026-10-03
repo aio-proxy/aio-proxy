@@ -349,7 +349,9 @@ export async function serviceRestart(io: ServiceRestartIo = {}): Promise<void> {
   const unitInstalled = io.unitInstalled ?? isManagedServiceInstalled;
   const writeUnit = io.writeManagedUnit ?? writeManagedUnit;
   const run = io.runManager ?? runManager;
-  if (!unitInstalled()) {
+  // On Windows the spec at today's LOCALAPPDATA is not the whole story: a task left on an older path still runs, and
+  // only the schtasks restart ends its supervisor and migrates it (a missing task is created there too).
+  if (os !== 'win32' && !unitInstalled()) {
     await serviceStart({ ...io, platform: os, unitInstalled: () => false });
     return;
   }
