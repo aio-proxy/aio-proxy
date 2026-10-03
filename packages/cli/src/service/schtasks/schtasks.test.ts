@@ -692,6 +692,14 @@ test('status prints the task and succeeds only while the recorded supervisor run
   expect(await schtasksStatus({ ...alive, run: async () => 1 })).toBe(1);
 });
 
+test('status finds a supervisor whose task names an older spec path', async () => {
+  const movedSpec = 'C:\\Users\\old\\AppData\\Local\\aio-proxy\\service.json';
+  const movedState = 'C:\\Users\\old\\AppData\\Local\\aio-proxy\\service.state.json';
+  const fs = fakeFs({ [movedState]: supervisorState });
+  const task = renderTaskXml({ sid, exec: oldExec, specPath: movedSpec });
+  expect(await schtasksStatus(io({ fs, task, imagePath: () => oldExec }))).toBe(0);
+});
+
 // Settles whether `/Create /XML /TN \\Folder\\Name` makes a missing folder, as schtasksInstall relies on.
 test.skipIf(process.platform !== 'win32')(
   'schtasks creates a task under a folder that does not exist yet',

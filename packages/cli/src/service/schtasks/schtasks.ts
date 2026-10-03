@@ -384,12 +384,14 @@ export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
 }
 
 /** Prints the task, then exits 0 only when the supervisor runs: a registered but stopped or disabled task is not active. */
-export async function schtasksStatus(
-  io: Pick<SchtasksIo, 'run' | 'sid' | 'localAppData' | 'readFile' | 'imagePath' | 'creationTime'>,
-): Promise<number> {
-  const code = await io.run(['schtasks', '/Query', '/TN', taskPath(io.sid), '/V', '/FO', 'LIST'], true);
+export async function schtasksStatus(io: SchtasksIo): Promise<number> {
+  const path = taskPath(io.sid);
+  const code = await io.run(['schtasks', '/Query', '/TN', path, '/V', '/FO', 'LIST'], true);
   if (code !== 0) return code;
-  const state = parseSupervisorState(io.readFile(serviceStatePath(io.localAppData)));
+  // The supervisor writes its state beside the spec its task names, which may be an older path.
+  const query = await queryTaskXml(io.capture, path);
+  const task = query.kind === 'found' ? parseTaskXml(query.xml) : undefined;
+  const state = parseSupervisorState(io.readFile(supervisorStatePath(io, task)));
   return supervisorAlive(state, io.imagePath, io.creationTime) ? 0 : EXIT.transient;
 }
 
