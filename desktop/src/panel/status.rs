@@ -69,6 +69,9 @@ pub fn endpoint_line(model: &AppModel) -> Option<String> {
     let url = d.instance.control_url.as_deref()?;
     let address = url.strip_prefix("http://").unwrap_or(url).trim_end_matches('/');
     let owner = match d.unit.owner {
+        // systemd loads every unit file it can read, enabled or not: a disabled Linux job that is not
+        // loaded is one whose state was unreadable (no user manager), not one the user stopped.
+        Owner::Desktop if d.job.disabled && !d.job.loaded && cfg!(target_os = "linux") => None,
         Owner::Desktop if d.job.disabled => Some("stopped by you"),
         Owner::Desktop => Some("started by AIO Proxy"),
         Owner::External => Some("managed by the aio-proxy CLI"),
@@ -92,7 +95,17 @@ pub fn notice(model: &AppModel) -> Option<String> {
     }
     match &model.install {
         Some(InstallState::ReadOnly(ReadOnlyReason::Location)) => {
-            return Some("Move AIO Proxy to Applications to let it manage the proxy.".into());
+            return Some(if cfg!(target_os = "macos") {
+                "Move AIO Proxy to Applications to let it manage the proxy.".into()
+            } else if cfg!(target_os = "linux") {
+                "AIO Proxy can't manage the proxy: its bundled command-line tool is missing, or \
+                 ~/.local/share/aio-proxy-desktop isn't writable."
+                    .into()
+            } else {
+                "AIO Proxy can't manage the proxy: aio-proxy.exe is missing next to the app, or \
+                 %LOCALAPPDATA%\\aio-proxy-desktop isn't writable."
+                    .into()
+            });
         }
         Some(InstallState::ReadOnly(ReadOnlyReason::NewerCopy { app, version })) => {
             return Some(format!(
@@ -104,7 +117,8 @@ pub fn notice(model: &AppModel) -> Option<String> {
             return Some(format!("Cannot read the version of {}. This copy is read-only.", app.display()));
         }
         Some(InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(error))) => {
-            return Some(format!("Cannot update the service link: {error}"));
+            let what = if cfg!(target_os = "macos") { "service link" } else { "command-line copy" };
+            return Some(format!("Cannot update the {what}: {error}"));
         }
         _ => {}
     }

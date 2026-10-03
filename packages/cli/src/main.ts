@@ -17,7 +17,8 @@ import { configEdit, configPathCommand, configShow, configValidate } from './con
 import { dashboardCommand } from './dashboard';
 import { type CliDeps, defaultCliDeps } from './dashboard-assets';
 import { doctorCommand } from './doctor';
-import { CliExit, EXIT, isKnownCliUserError, toExitCode } from './exit';
+import { isKnownCliUserError, toExitCode } from './exit';
+import { registerHiddenCommands } from './hidden-commands';
 import { pluginAdd, pluginConfig, pluginList, pluginPrune, pluginRemove } from './plugin-commands';
 import { providerImport, providerList, providerLogin, providerTest } from './provider-commands';
 import { reloadCommand } from './reload';
@@ -26,6 +27,7 @@ import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceSto
 import { statusCommand } from './status';
 import { applyHelpStyle, createStyle, formatErrorLines, PromptCancelledError } from './ui';
 import { printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
+import { sweepStartupBackup } from './upgrade/binary';
 import { runUpgradeCommand } from './upgrade/upgrade';
 
 export { readOrBootstrapConfig } from './run';
@@ -138,37 +140,6 @@ const bindAgentCommands = (program: Command, deps: CliDeps): void => {
       },
     },
     print: console.log,
-  });
-};
-
-const registerHiddenPostUpgrade = (program: Command, deps: CliDeps): void => {
-  program.command('__agent-post-upgrade', { hidden: true }).action(async () => {
-    const [{ createAgentCommandDeps }, { readAgentPostUpgradePayload, runAgentPostUpgrade }] = await Promise.all([
-      import('./agent'),
-      import('./upgrade/post-upgrade-agents'),
-    ]);
-    const payload = await readAgentPostUpgradePayload();
-    const agent = createAgentCommandDeps(deps);
-    const results = await runAgentPostUpgrade(payload, {
-      resolveLocation: agent.resolveLocation,
-      inspect: agent.inspect,
-      install: agent.install,
-      readAssets: agent.readAssets,
-      adapterVersion: VERSION,
-      now: agent.now,
-    });
-    console.log(JSON.stringify(results));
-  });
-};
-
-const registerHiddenDesktopConnect = (program: Command): void => {
-  program.command('__desktop-connect', { hidden: true }).action(async () => {
-    const { defaultDesktopConnectDeps, printDesktopConnect } = await import('./desktop-connect');
-    const deps = defaultDesktopConnectDeps(VERSION);
-    if (deps.platform !== 'darwin') {
-      throw new CliExit(EXIT.unrecoverable, m['cli.service.unsupported_platform']({ platform: deps.platform }));
-    }
-    await printDesktopConnect(deps, (text) => process.stdout.write(text));
   });
 };
 
@@ -333,14 +304,14 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
       await runUpgradeCommand(options);
     });
 
-  registerHiddenPostUpgrade(program, deps);
-  registerHiddenDesktopConnect(program);
+  registerHiddenCommands(program, deps, VERSION);
   applyHelpStyle(program, createStyle(process.stdout));
 
   return program;
 };
 
 export const main = async (deps: CliDeps = defaultCliDeps) => {
+  await sweepStartupBackup();
   try {
     const installationId = codexAuthInvocation(process.argv.slice(2));
     if (installationId !== undefined) {

@@ -98,13 +98,8 @@ pub fn until(now: i64, at: i64) -> String {
 
 /// The local UTC offset in seconds (glue for the pure functions above).
 pub fn local_utc_offset(unix: i64) -> i64 {
-    let mut tm = std::mem::MaybeUninit::<libc::tm>::zeroed();
-    let time = unix as libc::time_t;
-    // SAFETY: localtime_r writes `tm` and returns null on failure.
-    if unsafe { libc::localtime_r(&time, tm.as_mut_ptr()) }.is_null() {
-        return 0;
-    }
-    unsafe { tm.assume_init() }.tm_gmtoff
+    use chrono::{Local, Offset, TimeZone};
+    Local.timestamp_opt(unix, 0).single().map_or(0, |time| i64::from(time.offset().fix().local_minus_utc()))
 }
 
 #[cfg(test)]

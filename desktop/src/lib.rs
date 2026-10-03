@@ -2,18 +2,17 @@
 //! modules is unit-tested without either.
 
 pub mod app;
+pub mod assets;
 pub mod cli_command;
 pub mod client;
 pub mod connect;
-pub mod http;
 pub mod install;
 pub mod log;
-pub mod login_item;
 pub mod panel;
+pub mod platform;
 pub mod process;
 pub mod summary;
 pub mod theme;
 pub mod token;
 pub mod tray;
-pub mod updater;
 pub mod version;

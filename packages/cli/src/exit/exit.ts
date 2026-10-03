@@ -13,7 +13,9 @@ import { PromptRequiresTtyError } from '../ui';
 
 // Exit-code contract with the OS service manager (see the CLI redesign spec):
 //   0 = normal, 1 = unrecoverable (retrying is futile), >=2 = transient (restart).
-export const EXIT = { ok: 0, unrecoverable: 1, transient: 2 } as const;
+//   75 (EX_TEMPFAIL) = "restart me": re-read the service spec and relaunch at once. Only the Windows
+//   `__service-run` supervisor gives it meaning; elsewhere it is just another transient code.
+export const EXIT = { ok: 0, unrecoverable: 1, transient: 2, restartRequested: 75 } as const;
 
 export class CliExit extends Error {
   override readonly name = 'CliExit';

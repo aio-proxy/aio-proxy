@@ -1,24 +1,31 @@
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 
 import { aioHome, configPathIn, readDesktopToken } from '@aio-proxy/core';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { controlBaseUrl, localControlHost, probeHealth, resolveControlAddress } from '../control-plane';
 import { launchdDomain, launchdJobTarget, managedUnitPath } from '../service';
+import { decodeOutput } from '../service/run-capture';
+import { processCreationTime, processImagePath, processUserSid, sidForAccount } from '../win32-ffi';
 import {
   inspectUnit,
   isRunnable,
+  type JobState,
   parseDisabled,
   parseJobPrint,
   type UnitInspection,
   type UnitOwner,
   unitOwner,
 } from './launchd-inspect';
-import { parseSockets, type Socket, verifiedGet } from './verified-get';
+import { readTask } from './schtasks-inspect';
+import { currentOwner, listSockets, type Socket } from './sockets';
+import { readSystemdJob, readSystemdUnit } from './systemd-inspect';
+import { verifiedGet } from './verified-get';
 
 const PROBE_TIMEOUT_MS = 2_000;
 // The spec bounds the whole command at 10 s. The two HTTP probes take at most 2 s each, so the
-// helper processes (plutil, launchctl) share what is left.
+// helper processes (plutil, launchctl, systemctl, schtasks, …) share what is left.
 const COMMAND_BUDGET_MS = 10_000;
 const SPAWN_BUDGET_MS = COMMAND_BUDGET_MS - 2 * PROBE_TIMEOUT_MS;
 
@@ -26,15 +33,24 @@ export type DesktopConnectDeps = {
   readonly platform: NodeJS.Platform;
   readonly env: NodeJS.ProcessEnv;
   readonly bundledVersion: string;
-  readonly plistPath: string;
+  /** The plist, the systemd unit, or Windows' `service.json`. */
+  readonly unitPath: string;
   readonly defaultHome: () => string;
-  readonly plistExists: () => boolean;
-  /** Whether the plist's wrapper target is still something launchd can run. */
+  readonly unitExists: () => boolean;
+  /** Whether the unit's target is still something the service manager can run. */
   readonly targetRunnable: (path: string) => boolean;
+  /** A process's full image path (win32), to tell the supervisor from any other process with its PID. */
+  readonly imagePath: (pid: number) => string | undefined;
+  readonly creationTime: (pid: number) => string | undefined;
+  /** The SID of a process's account (win32): who owns a socket, by the process netstat names. */
+  readonly userSid: (pid: number) => string | undefined;
+  /** An account name's SID (win32): the task may name its principal by account. */
+  readonly sidForAccount: (account: string) => string | undefined;
   readonly readToken: (home: string) => string | undefined;
-  /** This process's uid: the listener must belong to it before the token is offered. */
-  readonly uid: number;
+  /** This process's account: the listener must belong to it before the token is offered. */
+  readonly owner: string;
   readonly run: (cmd: readonly string[]) => Promise<{ readonly code: number; readonly stdout: string }>;
+  readonly readFile: (path: string) => Promise<string>;
   readonly fetch: typeof fetch;
   /** The token-bearing identity GET, sent only over a connection this user's process serves. */
   readonly identityGet: (
@@ -49,7 +65,7 @@ export type DesktopConnectResult = {
   readonly protocolVersion: 1;
   readonly bundledVersion: string;
   readonly unit: UnitInspection & { readonly owner: UnitOwner };
-  readonly job: { readonly loaded: boolean; readonly disabled: boolean; readonly pid: number | null };
+  readonly job: JobState;
   readonly instance: {
     readonly controlUrl: string | null;
     readonly dashboardUrl: string | null;
@@ -73,17 +89,17 @@ const UNREACHABLE: DesktopConnectResult['instance'] = {
   matchesJob: null,
 };
 
-async function readUnit(deps: DesktopConnectDeps): Promise<UnitInspection> {
-  if (!deps.plistExists()) return NO_UNIT;
+async function readLaunchdUnit(deps: DesktopConnectDeps): Promise<UnitInspection> {
+  if (!deps.unitExists()) return NO_UNIT;
   try {
-    const { code, stdout } = await deps.run(['plutil', '-convert', 'json', '-o', '-', deps.plistPath]);
+    const { code, stdout } = await deps.run(['plutil', '-convert', 'json', '-o', '-', deps.unitPath]);
     return code === 0 ? inspectUnit(JSON.parse(stdout)) : inspectUnit(undefined);
   } catch {
     return inspectUnit(undefined);
   }
 }
 
-async function readJob(deps: DesktopConnectDeps): Promise<DesktopConnectResult['job']> {
+async function readLaunchdJob(deps: DesktopConnectDeps): Promise<JobState> {
   try {
     const printed = await deps.run(['launchctl', 'print', launchdJobTarget()]);
     const disabled = await deps.run(['launchctl', 'print-disabled', launchdDomain()]);
@@ -96,6 +112,12 @@ async function readJob(deps: DesktopConnectDeps): Promise<DesktopConnectResult['
   } catch {
     return { loaded: false, disabled: true, pid: null };
   }
+}
+
+async function readService(deps: DesktopConnectDeps): Promise<{ unit: UnitInspection; job: JobState }> {
+  if (deps.platform === 'win32') return readTask(deps);
+  if (deps.platform === 'linux') return { unit: await readSystemdUnit(deps), job: await readSystemdJob(deps) };
+  return { unit: await readLaunchdUnit(deps), job: await readLaunchdJob(deps) };
 }
 
 async function summaryIdentity(
@@ -123,29 +145,30 @@ async function summaryIdentity(
 }
 
 /**
- * Whether `uid` listens where the probe connects: on `host` itself or on its family's wildcard. The
+ * Whether `owner` listens where the probe connects: on `host` itself or on its family's wildcard. The
  * kernel refuses a second user the same port within one family, but not across IPv4 and IPv6, so a
  * listener of this user on `127.0.0.1` proves nothing about `::1`.
  */
-export function listensAt(listeners: readonly Socket[], uid: number, host: string, port: string): boolean {
+export function listensAt(listeners: readonly Socket[], owner: string, host: string, port: string): boolean {
   const ipv6 = host.includes(':');
   const exact = ipv6 ? `[${host}]:${port}` : `${host}:${port}`;
   const family = ipv6 ? 'IPv6' : 'IPv4';
   return listeners.some(
-    (l) => l.uid === uid && l.family === family && (l.address === exact || l.address === `*:${port}`),
+    (l) => l.owner === owner && l.family === family && (l.address === exact || l.address === `*:${port}`),
   );
 }
 
 /**
  * Whether a process of this user listens where the probe goes. Another local account could bind the
  * port while the proxy is down and answer `/health`; the token goes only to a listener this user owns.
- * An unprivileged `lsof` does not even see other users' sockets, and a failure counts as not ours.
+ * The listing is `lsof` on macOS (an unprivileged one does not even see other users' sockets),
+ * `/proc/net/tcp{,6}` uids on Linux, and `netstat` PIDs resolved to their account SID on Windows. A
+ * failure counts as not ours.
  */
 async function listenerIsOurs(deps: DesktopConnectDeps, host: string, port: string): Promise<boolean> {
   if (!/^\d+$/u.test(port)) return false;
   try {
-    const { code, stdout } = await deps.run(['/usr/sbin/lsof', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Ftun']);
-    return code === 0 && listensAt(parseSockets(stdout), deps.uid, host, port);
+    return listensAt(await listSockets(deps.platform, Number(port), deps), deps.owner, host, port);
   } catch {
     return false;
   }
@@ -160,9 +183,8 @@ function readTokenSafely(deps: DesktopConnectDeps, home: string): string | undef
 }
 
 export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopConnectResult> {
-  const unit = await readUnit(deps);
-  const owner = unitOwner(unit, deps.env['AIO_PROXY_DESKTOP_EXEC'], deps.targetRunnable);
-  const job = await readJob(deps);
+  const { unit, job } = await readService(deps);
+  const owner = unitOwner(unit, deps.env['AIO_PROXY_DESKTOP_EXEC'], deps.targetRunnable, deps.platform);
   // The service's own home, not this process's environment: the app is launched from Finder and
   // does not inherit the shell that installed the service.
   const home = unit.home ?? deps.defaultHome();
@@ -202,14 +224,15 @@ export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopC
       version: identity?.version ?? health?.version ?? null,
       pid,
       ppid,
-      // job.pid is the /bin/sh wrapper launchd started; a managed sidecar is its child, so ppid matches.
+      // job.pid is launchd's /bin/sh wrapper or Windows' supervisor, whose child the proxy is (ppid
+      // matches), or systemd's MainPID, the proxy itself (pid matches).
       matchesJob: pid === null || job.pid === null ? null : pid === job.pid || ppid === job.pid,
     },
     token: trustedToken ?? null,
   };
 }
 
-// Reported when discovery itself throws. `owner: 'unknown'` is deliberate: `null` means "no plist",
+// Reported when discovery itself throws. `owner: 'unknown'` is deliberate: `null` means "no unit",
 // which the app answers with a fresh install, while `unknown` permits no automatic action at all.
 const failedDiscovery = (bundledVersion: string): DesktopConnectResult => ({
   protocolVersion: 1,
@@ -238,41 +261,70 @@ export async function runWithin(
 ): Promise<{ readonly code: number; readonly stdout: string }> {
   const remaining = deadline - Date.now();
   if (remaining <= 0) throw new Error('desktop-connect time budget exhausted');
-  const proc = Bun.spawn([...cmd], { stdout: 'pipe', stderr: 'ignore', timeout: remaining, killSignal: 'SIGKILL' });
-  const stdout = await new Response(proc.stdout).text();
+  const proc = Bun.spawn([...cmd], {
+    stdout: 'pipe',
+    stderr: 'ignore',
+    timeout: remaining,
+    killSignal: 'SIGKILL',
+    windowsHide: true,
+    windowsVerbatimArguments: cmd[0] === 'cmd.exe',
+  });
+  // Windows tools may write UTF-16LE to a pipe.
+  const stdout = decodeOutput(await new Response(proc.stdout).bytes());
   return { code: await proc.exited, stdout };
 }
 
-export const defaultDesktopConnectDeps = (
+// No socket is ever owned by the empty string (every listing drops a row without a uid or SID), so an
+// unreadable account withholds the token while discovery still prints its one line.
+const NO_OWNER = '';
+
+export const defaultDesktopConnectDeps = async (
   bundledVersion: string,
   spawnDeadline: number = Date.now() + SPAWN_BUDGET_MS,
-): DesktopConnectDeps => {
+  ownAccount: () => string = () => currentOwner(process.platform),
+): Promise<DesktopConnectDeps> => {
   // Bun's fetch honours HTTP_PROXY even for loopback, which would hand the desktop token's bearer
   // header to the proxy. `*` bypasses every host (a plain `::1` entry does not match [::1]); set on
   // both spellings because the lowercase one wins. This process only probes the local control address.
   process.env['NO_PROXY'] = process.env['no_proxy'] = '*';
-  return desktopConnectDeps(bundledVersion, spawnDeadline);
+  let owner: string;
+  try {
+    owner = ownAccount();
+  } catch {
+    owner = NO_OWNER;
+  }
+  return desktopConnectDeps(bundledVersion, spawnDeadline, owner);
 };
 
-const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number): DesktopConnectDeps => ({
+const desktopConnectDeps = (bundledVersion: string, spawnDeadline: number, owner: string): DesktopConnectDeps => ({
   platform: process.platform,
   env: process.env,
   bundledVersion,
-  plistPath: managedUnitPath('darwin') ?? '',
+  unitPath: managedUnitPath(process.platform) ?? '',
   defaultHome: aioHome,
-  plistExists: () => {
-    const path = managedUnitPath('darwin');
+  unitExists: () => {
+    const path = managedUnitPath(process.platform);
     return path !== undefined && existsSync(path);
   },
   targetRunnable: isRunnable,
+  imagePath: processImagePath,
+  creationTime: processCreationTime,
+  userSid: processUserSid,
+  sidForAccount,
   readToken: (home) => readDesktopToken(home),
-  uid: process.getuid?.() ?? -1,
-  // A killed or budget-exhausted helper degrades its fields like any other launchctl/plutil failure.
+  owner,
+  // A killed or budget-exhausted helper degrades its fields like any other probe failure.
   run: (cmd) => runWithin(cmd, spawnDeadline),
+  readFile: (path) => readFile(path, 'utf8'),
   identityGet: (host, port, path, token) =>
     verifiedGet(
-      (cmd) => runWithin(cmd, spawnDeadline),
-      process.getuid?.() ?? -1,
+      process.platform,
+      {
+        run: (cmd) => runWithin(cmd, spawnDeadline),
+        readFile: (path) => readFile(path, 'utf8'),
+        userSid: processUserSid,
+      },
+      owner,
       host,
       port,
       path,

@@ -1,0 +1,17 @@
+export {
+  currentUser,
+  currentUserSid,
+  defaultSchtasksIo,
+  exitProcessLater,
+  queryTaskXml,
+  schtasksInstall,
+  schtasksRestart,
+  schtasksRestartInService,
+  schtasksStart,
+  schtasksStatus,
+  schtasksStop,
+  schtasksUninstall,
+  windowsLocalAppData,
+  type SchtasksIo,
+  type TaskQuery,
+} from './schtasks';

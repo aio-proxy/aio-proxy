@@ -1,7 +1,7 @@
 //! Summary fetching: the refresh scheduler's orders become transport requests, and responses
 //! come back through the scheduler's tag check.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use gpui_kit::App;
 
@@ -11,6 +11,16 @@ use crate::client::transport::{self, HttpError, Limits, LocalUrl, Method, Reques
 use crate::summary::{DegradedReason, FetchOutcome, UsageRange, classify};
 
 const SUMMARY_PATH: &str = "/dashboard/api/desktop-summary";
+/// The least time between two rediscoveries a vanished instance triggers.
+const GONE_REDISCOVERY_GAP: Duration = Duration::from_secs(5);
+
+/// Whether a failed fetch means the discovered instance is gone (nothing, or a stranger, listens),
+/// so discovery must re-run before the panel claims it runs. The gap keeps a discovery that still
+/// reports the address reachable from turning every poll into another rediscovery.
+pub(crate) fn rediscovers_after(error: &HttpError, last: Option<Instant>, now: Instant) -> bool {
+    matches!(error, HttpError::Connect(_) | HttpError::UntrustedListener)
+        && last.is_none_or(|at| now.saturating_duration_since(at) >= GONE_REDISCOVERY_GAP)
+}
 
 pub(crate) fn summary_path(range: UsageRange, refresh_quota: bool) -> String {
     let mut path = format!("{SUMMARY_PATH}?range={}", range.query());
@@ -22,7 +32,7 @@ pub(crate) fn summary_path(range: UsageRange, refresh_quota: bool) -> String {
 
 pub fn panel_opened(cx: &mut App) {
     let model = cx.global_mut::<AppModel>();
-    model.login_item = crate::login_item::status();
+    model.login_item = crate::platform::login_item::status();
     let order = model.scheduler.open(Instant::now());
     dispatch(cx, order);
     super::check_health(cx);
@@ -163,7 +173,14 @@ fn finish(cx: &mut App, order: FetchOrder, result: Result<Response, HttpError>) 
             model.summary_error = None;
         }
         Ok(FetchOutcome::Failed(error)) => show(model, SummaryState::Unavailable(error), order.range),
-        Err(error) => show(model, SummaryState::Unavailable(format!("desktop summary: {error}")), order.range),
+        Err(error) => {
+            let now = Instant::now();
+            if rediscovers_after(&error, model.gone_rediscovered_at, now) {
+                model.gone_rediscovered_at = Some(now);
+                retry_discovery = true;
+            }
+            show(model, SummaryState::Unavailable(format!("desktop summary: {error}")), order.range);
+        }
     }
     dispatch(cx, follow);
     changed(cx);

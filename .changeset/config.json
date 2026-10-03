@@ -15,6 +15,7 @@
       "@aio-proxy/cli-darwin-x64",
       "@aio-proxy/cli-linux-arm64",
       "@aio-proxy/cli-linux-x64",
+      "@aio-proxy/cli-win32-x64",
       "@aio-proxy/core",
       "@aio-proxy/dashboard",
       "@aio-proxy/i18n",

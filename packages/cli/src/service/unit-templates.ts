@@ -12,6 +12,18 @@ export type UnitOptions = {
 export const LAUNCHD_LABEL = 'com.aio-proxy.agent';
 export const SYSTEMD_UNIT_NAME = 'aio-proxy.service';
 
+/** Environment every managed unit hands the daemon. `dirOf` lets the Windows spec resolve a Windows config path on any host. */
+export const unitEnv = (
+  { configPath, path, upgradeMethod, desktopExec }: UnitOptions,
+  dirOf: (p: string) => string = dirname,
+): Record<string, string> => ({
+  AIO_PROXY_HOME: dirOf(configPath),
+  AIO_PROXY_MANAGED: '1',
+  ...(path === undefined ? {} : { PATH: path }),
+  ...(upgradeMethod === undefined ? {} : { AIO_PROXY_UPGRADE_METHOD: upgradeMethod }),
+  ...(desktopExec === undefined ? {} : { AIO_PROXY_DESKTOP_EXEC: desktopExec }),
+});
+
 // systemd splits command lines on whitespace unless a token is double-quoted, and
 // treats `%` as a specifier and `\` / `"` as escapes. Quote the value and escape
 // those metacharacters so an exec or config-home path containing spaces (or any of
@@ -26,7 +38,10 @@ const systemdQuote = (value: string): string =>
 // The daemon loads the optional service.env itself (see service-env), so no
 // EnvironmentFile= is needed and the env file is parsed identically on both
 // platforms without a shell.
-export function renderSystemdUnit({ exec, configPath, path, upgradeMethod }: UnitOptions): string {
+export function renderSystemdUnit(o: UnitOptions): string {
+  const environment = Object.entries(unitEnv(o))
+    .map(([name, value]) => `Environment=${systemdQuote(`${name}=${value}`)}`)
+    .join('\n');
   return `[Unit]
 Description=AIO Proxy
 After=network-online.target
@@ -34,12 +49,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${systemdQuote(exec)} run
+ExecStart=${systemdQuote(o.exec)} run
 Restart=on-failure
 RestartSec=5
 RestartPreventExitStatus=1
-Environment=${systemdQuote(`AIO_PROXY_HOME=${dirname(configPath)}`)}
-Environment=${systemdQuote('AIO_PROXY_MANAGED=1')}${path === undefined ? '' : `\nEnvironment=${systemdQuote(`PATH=${path}`)}`}${upgradeMethod === undefined ? '' : `\nEnvironment=${systemdQuote(`AIO_PROXY_UPGRADE_METHOD=${upgradeMethod}`)}`}
+${environment}
 
 [Install]
 WantedBy=default.target
@@ -69,19 +83,9 @@ const launchdEmpty = (name: string): Bun.XML.NodeInput => ({ name, children: [] 
 const launchdDict = (children: Bun.XML.NodeInput[]): Bun.XML.NodeInput => ({ name: 'dict', children });
 
 export function renderLaunchdPlist({ exec, configPath, path, upgradeMethod, desktopExec }: UnitOptions): string {
-  const environmentVariables = [
-    launchdText('key', 'AIO_PROXY_HOME'),
-    launchdText('string', dirname(configPath)),
-    launchdText('key', 'AIO_PROXY_MANAGED'),
-    launchdText('string', '1'),
-    ...(path === undefined ? [] : [launchdText('key', 'PATH'), launchdText('string', path)]),
-    ...(upgradeMethod === undefined
-      ? []
-      : [launchdText('key', 'AIO_PROXY_UPGRADE_METHOD'), launchdText('string', upgradeMethod)]),
-    ...(desktopExec === undefined
-      ? []
-      : [launchdText('key', 'AIO_PROXY_DESKTOP_EXEC'), launchdText('string', desktopExec)]),
-  ];
+  const environmentVariables = Object.entries(unitEnv({ exec, configPath, path, upgradeMethod, desktopExec })).flatMap(
+    ([name, value]) => [launchdText('key', name), launchdText('string', value)],
+  );
   const plist: Bun.XML.NodeInput = {
     name: 'plist',
     attributes: { version: '1.0' },

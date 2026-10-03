@@ -33,9 +33,8 @@ pub struct PanelView {
 
 impl PanelView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        // Click-away closes the panel (passed by hand on 2026-09-30, spike check 2 item 1).
         let activation = cx.observe_window_activation(window, |_, window, cx| {
-            if !window.is_window_active() {
+            if crate::platform::panel::closes_on_deactivate() && !window.is_window_active() {
                 super::window::close(window, cx);
             }
         });
@@ -146,9 +145,13 @@ impl Render for PanelView {
             }
             None => states::body(model, cx).into_any_element(),
         };
+        // Linux panels are ordinary windows; the app draws their title bar and its close button.
+        let title_bar = cfg!(target_os = "linux")
+            .then(|| TitleBar::new().on_close_window(|_, window, cx| super::window::close_by_user(window, cx)));
         v_flex()
             .size_full()
             .text_color(crate::theme::colors(cx).foreground)
+            .children(title_bar)
             .child(header)
             .child(content)
             .child(footer::footer(model))

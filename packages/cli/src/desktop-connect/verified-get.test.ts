@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test';
+import { readFile } from 'node:fs/promises';
 
-import { parseResponse, parseSockets, servesConnection, verifiedGet, type Run } from './verified-get';
+import { type Run, parseSockets } from './sockets';
+import { parseResponse, servesConnection, verifiedGet } from './verified-get';
 
 const run: Run = async (cmd) => {
   const proc = Bun.spawn([...cmd], { stdout: 'pipe', stderr: 'ignore' });
@@ -11,9 +13,9 @@ test("only this user's socket serving this very connection counts", () => {
   const sockets = parseSockets(
     'p1\nu501\nf8\ntIPv4\nn127.0.0.1:55000->127.0.0.1:9317\nf9\ntIPv4\nn127.0.0.1:9317->127.0.0.1:55000\n',
   );
-  expect(servesConnection(sockets, 501, '127.0.0.1:9317', '127.0.0.1:55000')).toBe(true);
+  expect(servesConnection(sockets, '501', '127.0.0.1:9317', '127.0.0.1:55000')).toBe(true);
   // With only our client end visible, another account accepted the connection.
-  expect(servesConnection(sockets.slice(0, 1), 501, '127.0.0.1:9317', '127.0.0.1:55000')).toBe(false);
+  expect(servesConnection(sockets.slice(0, 1), '501', '127.0.0.1:9317', '127.0.0.1:55000')).toBe(false);
 });
 
 test('a chunked or plain HTTP/1.1 response is read whole', () => {
@@ -27,8 +29,8 @@ test('a chunked or plain HTTP/1.1 response is read whole', () => {
   expect(parseResponse('garbage')).toBeUndefined();
 });
 
-// macOS only, like the feature: it needs /usr/sbin/lsof, which Linux CI runners lack.
-test.skipIf(process.platform !== 'darwin')(
+// Real-kernel check on both listing sources: lsof on macOS, /proc/net/tcp on Linux (byte order, columns).
+test.skipIf(process.platform !== 'darwin' && process.platform !== 'linux')(
   "the bearer is sent to this user's server and withheld when the serving socket is not ours",
   async () => {
     const seen: Array<string | null> = [];
@@ -43,11 +45,22 @@ test.skipIf(process.platform !== 'darwin')(
     try {
       const port = String(server.port);
       const uid = process.getuid?.() ?? -1;
-      const ours = await verifiedGet(run, uid, '127.0.0.1', port, '/x', 'secret', 2_000);
+      const deps = { run, readFile: (path: string) => readFile(path, 'utf8') };
+      const ours = await verifiedGet(process.platform, deps, String(uid), '127.0.0.1', port, '/x', 'secret', 2_000);
       expect(ours?.status).toBe(200);
       expect(JSON.parse(ours?.body ?? '{}')).toEqual({ server: { version: '1', pid: 7 } });
-      // Another uid owns nothing here: lsof shows only our sockets, so the check fails and nothing is sent.
-      const foreign = await verifiedGet(run, uid + 1, '127.0.0.1', port, '/x', 'secret', 300);
+      // Another uid does not hold this connection's serving end (lsof hides other users' sockets, /proc
+      // shows them under their own uid), so the check fails and nothing is sent.
+      const foreign = await verifiedGet(
+        process.platform,
+        deps,
+        String(uid + 1),
+        '127.0.0.1',
+        port,
+        '/x',
+        'secret',
+        300,
+      );
       expect(foreign).toBeUndefined();
       expect(seen).toEqual(['Bearer secret']);
     } finally {

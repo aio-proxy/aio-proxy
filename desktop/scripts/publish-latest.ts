@@ -1,0 +1,109 @@
+// Points the Linux/Windows update feed (`latest.json` on the `desktop-feed` prerelease) at the highest
+// stable Release among the newest 20 whose three builds and `.minisig` files are present and verify (spec
+// "Release job and feed", `feed`). Independent of the dispatched tag, and never moves the feed down.
+//
+//   bun run desktop:publish-latest
+// Env: GH_TOKEN; SPARKLE_PUBLIC_ED_KEY (the update public key). No signing key: it only verifies.
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { $ } from 'bun';
+
+import { buildLatestJson, feedCandidates, parseLatestJson, pickFeedVersion, TARGETS } from './latest-json/index';
+import type { UpdateTarget } from './latest-json/index';
+import { trustedComment } from './minisign';
+import { assetName } from './package/index';
+import { verifyPair } from './publish-assets/index';
+
+const REPO = 'aio-proxy/aio-proxy';
+const FEED_TAG = 'desktop-feed';
+const FEED = 'latest.json';
+
+const publicKey = process.env['SPARKLE_PUBLIC_ED_KEY'] ?? '';
+if (publicKey === '') throw new Error('SPARKLE_PUBLIC_ED_KEY is required');
+
+const step = (text: string): void => console.error(`\n==> ${text}`);
+const assetsOf = async (tag: string): Promise<Set<string>> => {
+  const view = await $`gh release view ${tag} --repo ${REPO} --json assets`.quiet();
+  return new Set((JSON.parse(view.stdout.toString()) as { assets: { name: string }[] }).assets.map((a) => a.name));
+};
+
+const work = mkdtempSync(join(tmpdir(), 'aio-proxy-feed-'));
+try {
+  // A missing desktop-feed fails here: the macOS job owns its creation.
+  step(`1. read ${FEED} on ${FEED_TAG}`);
+  const feedAssets = await assetsOf(FEED_TAG).catch((error: unknown) => {
+    throw new Error(`cannot read the ${FEED_TAG} Release (the macOS release job creates it)`, { cause: error });
+  });
+  let current: string | undefined;
+  if (feedAssets.has(FEED)) {
+    await $`gh release download ${FEED_TAG} --repo ${REPO} --pattern ${FEED} --dir ${work}`.quiet();
+    // An unreadable feed is not "no feed": treating it as absent could move the feed down.
+    current = parseLatestJson(await Bun.file(join(work, FEED)).text())?.version;
+    if (current === undefined || !/^\d+\.\d+\.\d+$/u.test(current)) {
+      throw new Error(`${FEED} on ${FEED_TAG} is not a stable X.Y.Z feed; fix or delete it by hand`);
+    }
+  }
+  console.error(`feed version: ${current ?? '(none)'}`);
+
+  step('2. list the newest 20 stable Releases');
+  const list =
+    await $`gh release list --repo ${REPO} --exclude-drafts --exclude-pre-releases --limit 20 --json tagName`.quiet();
+  const candidates = feedCandidates(
+    current,
+    (JSON.parse(list.stdout.toString()) as { tagName: string }[]).map((release) => release.tagName),
+  );
+
+  // Highest first, so the first complete Release is the pick and older builds are never downloaded.
+  const checked: { version: string; complete: boolean }[] = [];
+  let entries = new Map<UpdateTarget, { url: string; minisig: string }>();
+  for (const version of candidates) {
+    const tag = `v${version}`;
+    step(`3. is ${tag} complete`);
+    const published = await assetsOf(tag);
+    const dir = join(work, tag);
+    mkdirSync(dir);
+    entries = new Map();
+    for (const target of TARGETS) {
+      const name = assetName(target, version);
+      if (!published.has(name) || !published.has(`${name}.minisig`)) {
+        console.error(`${tag} lacks ${name} or its .minisig`);
+        break;
+      }
+      // --pattern is a glob; asset names are [A-Za-z0-9._-], so each matches only itself.
+      // A failed download (e.g. a newer version still uploading) leaves only this candidate out.
+      const download =
+        await $`gh release download ${tag} --repo ${REPO} --pattern ${name} --pattern ${`${name}.minisig`} --dir ${dir}`
+          .nothrow()
+          .quiet();
+      if (download.exitCode !== 0) {
+        console.error(`cannot download ${name} from ${tag}: ${download.stderr.toString().trim()}`);
+        break;
+      }
+      const bytes = new Uint8Array(await Bun.file(join(dir, name)).arrayBuffer());
+      const minisig = await Bun.file(join(dir, `${name}.minisig`)).text();
+      if (!(await verifyPair(bytes, minisig, publicKey, trustedComment(version, target, name)))) {
+        console.error(`${name} on ${tag} does not verify against the update key and its trusted comment`);
+        break;
+      }
+      entries.set(target, { url: `https://github.com/${REPO}/releases/download/${tag}/${name}`, minisig });
+    }
+    rmSync(dir, { recursive: true, force: true });
+    const complete = entries.size === TARGETS.length;
+    checked.push({ version, complete });
+    if (complete) break;
+  }
+
+  const picked = pickFeedVersion(current, checked);
+  if (picked === undefined) {
+    console.error(`\nno complete stable Release above ${current ?? '(none)'}; ${FEED} unchanged`);
+  } else {
+    step(`4. publish ${FEED} for ${picked}`);
+    const feed = join(work, FEED);
+    await Bun.write(feed, buildLatestJson(picked, entries));
+    await $`gh release upload ${FEED_TAG} ${feed} --repo ${REPO} --clobber`;
+  }
+} finally {
+  rmSync(work, { recursive: true, force: true });
+}

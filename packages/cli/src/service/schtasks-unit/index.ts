@@ -1,0 +1,15 @@
+export {
+  isOwnTask,
+  parseServiceSpec,
+  parseTaskXml,
+  renderServiceSpec,
+  renderTaskXml,
+  serviceSpecPath,
+  serviceStatePath,
+  serviceStatePathBeside,
+  taskPath,
+  TASK_FOLDER,
+  type ParsedTask,
+  type ServiceSpec,
+  type WindowsUser,
+} from './schtasks-unit';

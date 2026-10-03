@@ -85,6 +85,14 @@ bun add -g aio-proxy
 curl -fsSL https://aioproxy.dev/install.sh | sh
 ```
 
+### Desktop app (macOS, Linux, Windows)
+
+Download from [GitHub Releases](https://github.com/aio-proxy/aio-proxy/releases/latest):
+`aio-proxy-<version>-arm64.dmg` (macOS), `aio-proxy-<version>-x86_64.AppImage` or
+`aio-proxy-<version>-aarch64.AppImage` (Linux, `chmod +x` then run), and
+`aio-proxy-<version>-x64-setup.exe` (Windows). Each updates itself in the app. The Windows installer is not
+code-signed yet, so SmartScreen may warn: choose "More info" then "Run anyway".
+
 ## Quick start
 
 ```bash

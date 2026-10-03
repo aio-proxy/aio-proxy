@@ -26,9 +26,13 @@ pub fn start(cx: &mut App) {
             log::info(format!("install: {install:?}"));
             let model = cx.global_mut::<AppModel>();
             model.install = Some(install);
+            #[cfg(target_os = "linux")]
+            if let Err(error) = crate::platform::login_item::refresh() {
+                log::info(format!("login item refresh: {error}"));
+            }
             // The menu exists from launch, so its check item needs the real status before any
             // panel open.
-            model.login_item = crate::login_item::status();
+            model.login_item = crate::platform::login_item::status();
             changed(cx);
             rediscover(cx);
             probe_cli(cx);
@@ -54,10 +58,21 @@ fn probe_cli(cx: &mut App) {
 /// per-user stable symlink: a machine-wide command must not run through one account's home.
 pub fn install_cli(cx: &mut App) {
     let model = cx.global_mut::<AppModel>();
-    let (true, false, Some(bundle)) = (model.can_link_cli(), model.cli_installing, model.bundle.as_deref()) else {
+    if !model.can_link_cli() || model.cli_installing {
         return;
+    }
+    // Off macOS the command is per-user, so it goes through the stable copy that the app keeps.
+    #[cfg(target_os = "macos")]
+    let target = match model.bundle.as_deref() {
+        Some(bundle) => install::sidecar_of(bundle),
+        None => return,
     };
-    let target = install::sidecar_of(bundle);
+    #[cfg(not(target_os = "macos"))]
+    let target = model.paths.stable.clone();
+    #[cfg(windows)]
+    let aiop = crate::cli_command::aiop_path(&target);
+    #[cfg(not(windows))]
+    let aiop = crate::cli_command::aiop_path();
     model.cli_installing = true;
     changed(cx);
     let task = cx.background_executor().spawn(async move {
@@ -79,9 +94,7 @@ pub fn install_cli(cx: &mut App) {
             // The service-action state machine owns `action` while it runs.
             if !model.action.is_busy() {
                 match result {
-                    Ok(true) => {
-                        model.action = ActionState::Done(format!("Installed aiop at {}.", crate::cli_command::LINK))
-                    }
+                    Ok(true) => model.action = ActionState::Done(installed_notice(&aiop)),
                     Ok(false) => {}
                     Err(error) => model.action = ActionState::Failed(format!("Install aiop failed: {error}")),
                 }
@@ -93,16 +106,32 @@ pub fn install_cli(cx: &mut App) {
     .detach();
 }
 
+#[cfg(target_os = "linux")]
+fn installed_notice(aiop: &Path) -> String {
+    crate::cli_command::installed_notice(aiop, std::env::var_os("PATH").as_deref())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn installed_notice(aiop: &Path) -> String {
+    format!("Installed aiop at {}.", aiop.display())
+}
+
 fn prepare_install(paths: &Paths, bundle: Option<&Path>) -> InstallState {
     let Some(bundle) = bundle else {
         return InstallState::ReadOnly(ReadOnlyReason::Location);
     };
-    let location_ok = install::location_allows_persistence(bundle, &paths.home, install::volume_is_read_only(bundle));
-    install::prepare(paths, bundle, location_ok, APP_VERSION, install::probe_version)
+    #[cfg(target_os = "macos")]
+    {
+        let location_ok =
+            install::location_allows_persistence(bundle, &paths.home, install::volume_is_read_only(bundle));
+        install::prepare(paths, bundle, location_ok, APP_VERSION, install::probe_version)
+    }
+    #[cfg(not(target_os = "macos"))]
+    install::copy::prepare(paths, &install::sidecar_of(bundle), APP_VERSION, install::probe_version)
 }
 
 fn host(model: &AppModel) -> Option<SystemHost> {
-    SystemHost::new(&model.paths, model.bundle.as_deref())
+    SystemHost::new(&model.paths, model.bundle.as_deref(), model.install.as_ref())
 }
 
 pub fn rediscover(cx: &mut App) {
@@ -337,22 +366,22 @@ pub fn set_login_item(cx: &mut App, enabled: bool) {
         return;
     }
     model.login_item_error =
-        crate::login_item::set_enabled(enabled).err().map(|error| format!("Launch at login: {error}"));
-    model.login_item = crate::login_item::status();
+        crate::platform::login_item::set_enabled(enabled).err().map(|error| format!("Launch at login: {error}"));
+    model.login_item = crate::platform::login_item::status();
     changed(cx);
 }
 
 /// The menu's check item. Approval pending → System Settings; otherwise flip the registration.
 pub fn toggle_login_item(cx: &mut App) {
     let status = cx.global::<AppModel>().login_item;
-    if status == crate::login_item::LoginItemStatus::RequiresApproval {
-        crate::login_item::open_settings();
+    if status == crate::platform::LoginItemStatus::RequiresApproval {
+        crate::platform::login_item::open_settings();
     } else {
-        set_login_item(cx, status != crate::login_item::LoginItemStatus::Enabled);
+        set_login_item(cx, status != crate::platform::LoginItemStatus::Enabled);
     }
     // muda flips the native check itself on click; re-read the status and force a menu rebuild so
     // an unchanged model (approval pending, failed register) cannot leave it flipped.
-    cx.global_mut::<AppModel>().login_item = crate::login_item::status();
+    cx.global_mut::<AppModel>().login_item = crate::platform::login_item::status();
     crate::tray::invalidate_menu(cx);
     changed(cx);
 }

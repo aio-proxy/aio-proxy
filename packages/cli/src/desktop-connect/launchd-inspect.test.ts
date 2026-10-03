@@ -77,7 +77,8 @@ test('parses print-disabled in both the current and the older boolean format', (
   expect(parseDisabled('disabled services = {\n\t"com.other" => disabled\n}')).toBe(false);
 });
 
-test('a target the launchd wrapper would skip with [ -x ] is not runnable', () => {
+// POSIX-only: relies on chmod execute bits, which Windows does not enforce.
+test.skipIf(process.platform === 'win32')('a target the launchd wrapper would skip with [ -x ] is not runnable', () => {
   const dir = mkdtempSync(join(tmpdir(), 'aio-runnable-'));
   const binary = join(dir, 'aio-proxy');
   writeFileSync(binary, '#!/bin/sh\n');
