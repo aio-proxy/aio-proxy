@@ -110,6 +110,11 @@ icons = ["packaging/icons/*.png"]
 installer-mode = "currentUser"
 installer-icon = "packaging/icons/icon.ico"
 
+# The AppImage's .desktop entry: cargo-packager's default with StartupWMClass (the window's app id,
+# so docks match the window to the entry) and no trailing argument placeholder on Exec.
+[package.metadata.packager.deb]
+desktop-template = "packaging/linux/main.desktop"
+
 # GPUI loads these with dlopen, which linuxdeploy's ELF scan cannot see; it bundles the linked
 # libraries (xkbcommon, xkbcommon-x11) on its own.
 [package.metadata.packager.appimage]

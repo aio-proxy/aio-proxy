@@ -347,6 +347,10 @@ jobs:
           echo "cli: $cli / app: $app"
           test "$cli" = 0.0.1
           test "$app" = 0.0.1
+          # Launchers read the root icon; docks match the window's WM_CLASS to StartupWMClass.
+          file -L squashfs-root/aio-proxy-desktop.png | grep -F '512 x 512'
+          grep -x 'StartupWMClass=aio-proxy-desktop' squashfs-root/aio-proxy-desktop.desktop
+          grep -x 'Exec=aio-proxy-desktop' squashfs-root/aio-proxy-desktop.desktop
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

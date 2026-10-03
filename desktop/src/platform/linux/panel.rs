@@ -19,6 +19,10 @@ pub fn window_options(cx: &App, _tray: Option<&Tray>) -> Option<WindowOptions> {
         // drops its window controls.
         window_decorations: Some(WindowDecorations::Client),
         window_background: WindowBackgroundAppearance::Opaque,
+        // WM_NAME and WM_CLASS (X11) or the xdg app id (Wayland): docks and taskbars match the window
+        // to the .desktop entry by this id (its StartupWMClass).
+        titlebar: Some(TitlebarOptions { title: Some("AIO Proxy".into()), ..TitleBar::title_bar_options() }),
+        app_id: Some("aio-proxy-desktop".into()),
         ..TitleBar::window_options()
     })
 }

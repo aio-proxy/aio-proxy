@@ -8,7 +8,17 @@
 // Env: WINDOWS_SIGN_COMMAND becomes cargo-packager's windows.sign_command (`%1` is the file); it
 // signs the app, the installer and the uninstaller.
 // Needs cargo-packager 0.11.8: `cargo install cargo-packager --version 0.11.8 --locked`.
-import { chmodSync, copyFileSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -131,19 +141,24 @@ await $`cargo packager --formats ${build.format} --config ${JSON.stringify(confi
 const built = readdirSync(packagerOut).filter((name) => name.endsWith(build.extension));
 if (built.length !== 1) throw new Error(`expected one ${build.extension} in ${packagerOut}, found ${built.join(', ')}`);
 const image = join(packagerOut, built[0] ?? '');
-if (build.format === 'appimage') await restoreSidecar(image);
+if (build.format === 'appimage') await repackAppImage(image);
 rmSync(join(out, asset), { force: true });
 renameSync(image, join(out, asset));
 step(`done: ${join(out, asset)}`);
 
 /**
+ * Fixes two things linuxdeploy does, then rebuilds the image.
+ *
  * linuxdeploy gives every ELF in usr/bin a `$ORIGIN/../lib` RUNPATH with patchelf. On arm64 that grows a Bun
  * `--compile` executable by a 64 KiB page and moves its embedded payload, so the CLI segfaults. The CLI links no
  * bundled library, so its original bytes go back in: the image is rebuilt from the same runtime and a squashfs
  * with the same compression, downloading nothing.
+ *
+ * linuxdeploy also re-points the AppDir root icon at a small hicolor size (32x32); launchers that read it show a
+ * blurry icon, so it goes back to the largest one, the same file cargo-packager copied to .DirIcon.
  */
-async function restoreSidecar(image: string): Promise<void> {
-  step('6. restore the sidecar linuxdeploy patched');
+async function repackAppImage(image: string): Promise<void> {
+  step('6. restore the sidecar linuxdeploy patched and the root icon');
   const work = join(packagerOut, 'repack');
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work);
@@ -153,6 +168,10 @@ async function restoreSidecar(image: string): Promise<void> {
   const root = join(work, 'squashfs-root');
   copyFileSync(sidecar, join(root, 'usr', 'bin', 'aio-proxy'));
   chmodSync(join(root, 'usr', 'bin', 'aio-proxy'), 0o755);
+  const largestIcon = 'usr/share/icons/hicolor/512x512/apps/aio-proxy-desktop.png';
+  if (!existsSync(join(root, largestIcon))) throw new Error(`${image} has no ${largestIcon}`);
+  rmSync(join(root, 'aio-proxy-desktop.png'), { force: true });
+  symlinkSync(largestIcon, join(root, 'aio-proxy-desktop.png'));
   const info = await $`unsquashfs -o ${offset} -s ${image}`.text();
   const compression = /Compression (\w+)/u.exec(info)?.[1];
   if (compression === undefined) throw new Error(`cannot read the squashfs compression of ${image}`);
