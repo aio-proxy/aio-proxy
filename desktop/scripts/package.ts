@@ -8,7 +8,7 @@
 // Env: WINDOWS_SIGN_COMMAND becomes cargo-packager's windows.sign_command (`%1` is the file); it
 // signs the app, the installer and the uninstaller.
 // Needs cargo-packager 0.11.8: `cargo install cargo-packager --version 0.11.8 --locked`.
-import { readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -130,6 +130,36 @@ await $`cargo packager --formats ${build.format} --config ${JSON.stringify(confi
 
 const built = readdirSync(packagerOut).filter((name) => name.endsWith(build.extension));
 if (built.length !== 1) throw new Error(`expected one ${build.extension} in ${packagerOut}, found ${built.join(', ')}`);
+const image = join(packagerOut, built[0] ?? '');
+if (build.format === 'appimage') await restoreSidecar(image);
 rmSync(join(out, asset), { force: true });
-renameSync(join(packagerOut, built[0] ?? ''), join(out, asset));
+renameSync(image, join(out, asset));
 step(`done: ${join(out, asset)}`);
+
+/**
+ * linuxdeploy gives every ELF in usr/bin a `$ORIGIN/../lib` RUNPATH with patchelf. On arm64 that grows a Bun
+ * `--compile` executable by a 64 KiB page and moves its embedded payload, so the CLI segfaults. The CLI links no
+ * bundled library, so its original bytes go back in: the image is rebuilt from the same runtime and a squashfs
+ * with the same compression, downloading nothing.
+ */
+async function restoreSidecar(image: string): Promise<void> {
+  step('6. restore the sidecar linuxdeploy patched');
+  const work = join(packagerOut, 'repack');
+  rmSync(work, { recursive: true, force: true });
+  mkdirSync(work);
+  const offset = Number((await $`${image} --appimage-offset`.text()).trim());
+  if (!Number.isInteger(offset) || offset <= 0) throw new Error(`${image} reported no squashfs offset`);
+  await $`${image} --appimage-extract`.cwd(work).quiet();
+  const root = join(work, 'squashfs-root');
+  copyFileSync(sidecar, join(root, 'usr', 'bin', 'aio-proxy'));
+  chmodSync(join(root, 'usr', 'bin', 'aio-proxy'), 0o755);
+  const info = await $`unsquashfs -o ${offset} -s ${image}`.text();
+  const compression = /Compression (\w+)/u.exec(info)?.[1];
+  if (compression === undefined) throw new Error(`cannot read the squashfs compression of ${image}`);
+  const squashfs = join(work, 'image.squashfs');
+  await $`mksquashfs ${root} ${squashfs} -root-owned -noappend -comp ${compression}`.quiet();
+  const runtime = new Uint8Array(await Bun.file(image).slice(0, offset).arrayBuffer());
+  await Bun.write(image, new Blob([runtime, Bun.file(squashfs)]));
+  chmodSync(image, 0o755);
+  rmSync(work, { recursive: true, force: true });
+}

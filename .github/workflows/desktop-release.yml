@@ -217,9 +217,9 @@ jobs:
 
       - run: bun install --frozen-lockfile --prefer-offline
 
-      # libfuse2 runs linuxdeploy's AppImage plugins.
+      # libfuse2 runs linuxdeploy's AppImage plugins; squashfs-tools repacks the image with the original CLI.
       - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev pkg-config libfuse2
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev pkg-config libfuse2 squashfs-tools
 
       - name: Install the pinned Rust toolchain
         working-directory: desktop

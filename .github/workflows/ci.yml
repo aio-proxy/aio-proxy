@@ -298,10 +298,10 @@ jobs:
 
       - run: bun install --frozen-lockfile --prefer-offline
 
-      # libfuse2 runs linuxdeploy's AppImage plugins.
+      # libfuse2 runs linuxdeploy's AppImage plugins; squashfs-tools repacks the image with the original CLI.
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev pkg-config libfuse2
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev pkg-config libfuse2 squashfs-tools
 
       - name: Install the pinned Rust toolchain
         working-directory: desktop
@@ -340,12 +340,8 @@ jobs:
           file ./${{ matrix.asset }}
           ./${{ matrix.asset }} --appimage-extract > /dev/null
           file squashfs-root/usr/bin/aio-proxy squashfs-root/usr/bin/aio-proxy-desktop
-          # Diagnostics: is the packaged CLI byte-identical to the built sidecar?
-          orig="sidecar/aio-proxy-${{ matrix.rust-target }}"
-          ls -l "$orig" squashfs-root/usr/bin/aio-proxy
-          sha256sum "$orig" squashfs-root/usr/bin/aio-proxy
-          readelf -d squashfs-root/usr/bin/aio-proxy | grep -iE 'rpath|runpath' || echo "no rpath"
-          "$orig" --version || echo "original sidecar exit $?"
+          # The packaged CLI must be the built sidecar byte for byte (linuxdeploy's patchelf breaks it).
+          cmp "sidecar/aio-proxy-${{ matrix.rust-target }}" squashfs-root/usr/bin/aio-proxy
           cli="$(squashfs-root/usr/bin/aio-proxy --version)"
           app="$(squashfs-root/usr/bin/aio-proxy-desktop --version)"
           echo "cli: $cli / app: $app"
