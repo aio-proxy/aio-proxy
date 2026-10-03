@@ -58,3 +58,17 @@ export const updaterPubkey = (publicKeyBase64: string): string =>
 
 /** The signature field the feed carries: base64 of the four-line .minisig text. */
 export const updaterSignature = (minisig: string): string => Buffer.from(minisig).toString('base64');
+
+const TARGETS = ['linux-x86_64', 'linux-aarch64', 'windows-x86_64'] as const;
+
+/**
+ * The trusted comment the desktop updater requires: `aio-proxy-desktop <version> <target> <asset>`. The app compares
+ * the version as re-serialized semver (no leading `v`) and the asset as the feed URL's raw last segment, so the asset
+ * name must need no percent-encoding and must survive GitHub's upload renaming unchanged.
+ */
+export function trustedComment(version: string, target: (typeof TARGETS)[number], asset: string): string {
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(version)) throw new Error(`not a plain semver version: ${version}`);
+  if (!TARGETS.includes(target)) throw new Error(`unknown update target: ${target}`);
+  if (!/^[A-Za-z0-9._-]+$/u.test(asset)) throw new Error(`asset name needs [A-Za-z0-9._-] only: ${asset}`);
+  return `aio-proxy-desktop ${version} ${target} ${asset}`;
+}

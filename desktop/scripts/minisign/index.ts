@@ -3,6 +3,7 @@ export {
   minisignPublicKey,
   publicKeyFromPrivate,
   signMinisign,
+  trustedComment,
   updaterPubkey,
   updaterSignature,
 } from './minisign';

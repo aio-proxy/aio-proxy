@@ -1,7 +1,14 @@
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 
-import { KEY_ID, publicKeyFromPrivate, signMinisign, updaterPubkey, updaterSignature } from './minisign';
+import {
+  KEY_ID,
+  publicKeyFromPrivate,
+  signMinisign,
+  trustedComment,
+  updaterPubkey,
+  updaterSignature,
+} from './minisign';
 
 test('minisign text verifies with WebCrypto for both Sparkle key forms', async () => {
   const seed = crypto.getRandomValues(new Uint8Array(32));
@@ -46,4 +53,13 @@ test('the updater strings wrap the minisign texts in one more base64 layer', asy
   expect(Buffer.from(body, 'base64').subarray(10)).toEqual(Buffer.from(pub, 'base64'));
   const text = await signMinisign(new Uint8Array([1]), Buffer.alloc(32, 7).toString('base64'), 'c');
   expect(Buffer.from(updaterSignature(text), 'base64').toString()).toBe(text);
+});
+
+test('the trusted comment refuses inputs the app would compare differently', () => {
+  expect(trustedComment('0.41.0', 'windows-x86_64', 'AIO-Proxy_0.41.0_x64-setup.exe')).toBe(
+    'aio-proxy-desktop 0.41.0 windows-x86_64 AIO-Proxy_0.41.0_x64-setup.exe',
+  );
+  // The app sees `0.41.0` for a feed's `v0.41.0`, and `AIO%20Proxy…` in the URL for a name with a space.
+  expect(() => trustedComment('v0.41.0', 'linux-x86_64', 'a.AppImage')).toThrow();
+  expect(() => trustedComment('0.41.0', 'linux-x86_64', 'AIO Proxy.AppImage')).toThrow();
 });
