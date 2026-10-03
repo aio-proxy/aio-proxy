@@ -57,7 +57,21 @@ const packageBinTargets = (packageDir: string): readonly string[] => {
 // without a shebang. realpath is the shim itself; ownership is an exec target that resolves inside the package.
 const MAX_SHIM_BYTES = 64 * 1024;
 
+// Bun's Windows launcher is a generic `<name>.exe` shim beside a `<name>.bunx` file naming the target in UTF-16LE;
+// only that metadata file says which package the shim runs, so an arbitrary .exe is never read as owned.
+const readBunShimTarget = (binPath: string): string | undefined => {
+  if (!/\.exe$/iu.test(binPath)) return undefined;
+  try {
+    const raw = readFileSync(binPath.replace(/\.exe$/iu, '.bunx'));
+    return raw.length === 0 || raw.length > MAX_SHIM_BYTES ? undefined : raw.toString('utf16le');
+  } catch {
+    return undefined;
+  }
+};
+
 const readLauncherShim = (binPath: string): string | undefined => {
+  const bunTarget = readBunShimTarget(binPath);
+  if (bunTarget !== undefined) return bunTarget;
   try {
     const raw = readFileSync(binPath);
     if (raw.length === 0 || raw.length > MAX_SHIM_BYTES) return undefined;

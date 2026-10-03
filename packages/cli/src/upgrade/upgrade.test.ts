@@ -530,6 +530,31 @@ test('resolveUpgradeTargetFrom on Windows picks the npm .cmd shim, never the ext
   expect(await resolve()).toEqual({ method: 'npm', command: join(dir, 'npm.cmd'), bin });
 });
 
+test("resolveUpgradeTargetFrom on Windows maps Bun's .exe shim to bun only through its .bunx target", async () => {
+  const bunHome = join(mkdtempSync(join(tmpdir(), 'aio-win-bun-shim-')), '.bun');
+  const pkg = join(bunHome, 'install', 'global', 'node_modules', 'aio-proxy');
+  const bin = join(bunHome, 'bin', 'aio-proxy.exe');
+  mkdirSync(join(pkg, 'bin'), { recursive: true });
+  mkdirSync(join(bunHome, 'bin'), { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeFileSync(join(pkg, 'bin', 'aio-proxy.js'), '');
+  writeFileSync(join(bunHome, 'bin', 'bun.exe'), '');
+  writeFileSync(bin, 'MZ shim');
+  await withEmptyManagerPath(async () => {
+    // A bare .exe next to bun is a standalone binary, not Bun's.
+    expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'win32')).toEqual({ method: 'binary', path: bin });
+    writeFileSync(
+      join(bunHome, 'bin', 'aio-proxy.bunx'),
+      Buffer.from('..\\install\\global\\node_modules\\aio-proxy\\bin\\aio-proxy.js\0', 'utf16le'),
+    );
+    expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'win32')).toEqual({
+      method: 'bun',
+      command: join(bunHome, 'bin', 'bun.exe'),
+      bin,
+    });
+  });
+});
+
 test('resolveUpgradeTargetFrom on Windows maps the npm-generated aio-proxy.cmd launcher to npm', async () => {
   const prefix = mkdtempSync(join(tmpdir(), 'aio-win-npm-cmd-'));
   const pkg = join(prefix, 'node_modules', 'aio-proxy');
