@@ -185,8 +185,9 @@ export async function prepareOAuthPluginAccount(
     onDiagnosticChanged: options.onDiagnosticChanged,
     onCredentialChanged: options.onDiagnosticChanged,
   };
+  // A prepared port can outlive a relogin; the wrapper checks the current link state inside the lease.
   const link: LocalSignInLink | undefined =
-    account.localSignIn !== undefined && adapter.localSignIn?.write !== undefined
+    adapter.localSignIn?.write !== undefined
       ? {
           localSignIn: adapter.localSignIn,
           options: accountOptions,

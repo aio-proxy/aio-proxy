@@ -23,7 +23,7 @@ const config = {
 
 function replaceAccount(
   repository: PluginRepository,
-  overrides: Partial<Pick<StoredAccount, 'options' | 'secrets' | 'credential' | 'label' | 'expiresAt'>>,
+  overrides: Partial<Pick<StoredAccount, 'options' | 'secrets' | 'credential' | 'label' | 'expiresAt' | 'localSignIn'>>,
 ): StoredAccount {
   const current = repository.readAccount(config.id);
   if (current === null) throw new Error('account fixture missing');
@@ -41,6 +41,7 @@ function replaceAccount(
       credential: overrides.credential ?? current.credential,
       ...(overrides.label === undefined ? {} : { label: overrides.label }),
       ...(overrides.expiresAt === undefined ? {} : { expiresAt: overrides.expiresAt }),
+      ...(overrides.localSignIn === undefined ? {} : { localSignIn: overrides.localSignIn }),
       catalog: { kind: 'replace', value: { catalog, refreshedAt: 1_000 } },
     },
   });
@@ -372,6 +373,44 @@ test.each(credentialModes)('an unmarked account never calls host read or write (
   expect(prepared.accountSummary).not.toHaveProperty('localSignInSource');
   expect(fixture.repository.readAccount(config.id)).not.toHaveProperty('localSignIn');
 });
+
+test.each(credentialModes)(
+  'a port created before local sign-in links synchronizes a subsequent manual refresh (%s)',
+  async (credentialMode) => {
+    const fixture = localSignInFixture({ linked: false });
+    const prepared =
+      credentialMode === 'runtime'
+        ? await prepareOAuthPluginAccount(fixture.input)
+        : await prepareOAuthPluginAccount({ ...fixture.input, credentialMode });
+    const credentials = prepared.createCredentials();
+    const beforeLink = await credentials.read();
+    expect(beforeLink.value).toEqual({ token: 'secret' });
+
+    const hostBeforeRefresh = fixture.host();
+    const linked = replaceAccount(fixture.repository, { credential: hostBeforeRefresh, localSignIn: {} });
+    const current = await credentials.read();
+    expect(current).toEqual({ value: hostBeforeRefresh, revision: linked.revision });
+    expect(current.revision).toBeGreaterThan(beforeLink.revision);
+    expect(fixture.calls()).toEqual({ detects: 0, reads: 0, writes: 0 });
+
+    const next = { token: 'next-host-token' };
+    let exchanged: unknown;
+    const result = await credentials.refresh(current.revision, async (snapshot) => {
+      exchanged = snapshot.value;
+      return { value: next };
+    });
+
+    expect(exchanged).toEqual(hostBeforeRefresh);
+    expect(result).toMatchObject({ status: 'updated', snapshot: { value: next } });
+    expect(fixture.calls()).toEqual({ detects: 0, reads: 1, writes: 1 });
+    expect(fixture.observedWrites).toEqual([{ next, previous: hostBeforeRefresh }]);
+    expect(fixture.host()).toEqual(next);
+    expect(fixture.repository.readAccount(config.id)).toMatchObject({
+      credential: next,
+      localSignIn: { consumed: localSignInDigest(hostBeforeRefresh) },
+    });
+  },
+);
 
 test.each(credentialModes)('a non-rotating linked store is never read on refresh (%s)', async (credentialMode) => {
   const fixture = localSignInFixture({ rotating: false });
