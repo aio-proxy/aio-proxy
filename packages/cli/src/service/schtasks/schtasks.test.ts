@@ -210,6 +210,29 @@ test('restart leaves the task alone and drops its staged files when the old supe
   expect(fs.files.size).toBe(2);
 });
 
+test('stop ends the supervisor recorded beside the spec the task names, even at an older path', async () => {
+  const movedSpec = 'C:\\Users\\old\\AppData\\Local\\aio-proxy\\service.json';
+  const movedState = 'C:\\Users\\old\\AppData\\Local\\aio-proxy\\service.state.json';
+  let running = true;
+  const killed: number[] = [];
+  await recordRun(
+    (io) =>
+      schtasksStop({
+        ...io,
+        imagePath: () => (running ? oldExec : undefined),
+        kill: (pid) => {
+          killed.push(pid);
+          running = false;
+        },
+      }),
+    {
+      fs: fakeFs({ [movedSpec]: oldSpec, [movedState]: supervisorState }),
+      task: renderTaskXml({ sid, exec: oldExec, specPath: movedSpec }),
+    },
+  );
+  expect(killed).toEqual([4242]);
+});
+
 test('stop does nothing for a missing task and refuses a foreign one or a failed query without mutating', async () => {
   expect(await recordCalls((io) => schtasksStop(io), { task: 'missing' })).toEqual([]);
   const foreign = previousXml.replaceAll(sid, 'S-1-5-21-9-9-9-500');
