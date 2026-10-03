@@ -87,9 +87,10 @@ fn open(cx: &mut App) {
             log::info(format!("panel: open_window failed: {error:#}"));
             // Without a tray nothing would be on screen: say why and stop, rather than idle unseen.
             if close_action(cx.global::<PanelWindow>().tray_mode) == CloseAction::Quit {
-                eprintln!(
+                // The log mirrors to stderr, and a user launching from a menu only has the log.
+                log::info(format!(
                     "aio-proxy-desktop: cannot open the window ({error:#}); install a Vulkan driver (e.g. mesa-vulkan-drivers)"
-                );
+                ));
                 std::process::exit(1);
             }
         }
