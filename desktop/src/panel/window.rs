@@ -83,7 +83,16 @@ fn open(cx: &mut App) {
             cx.global_mut::<PanelWindow>().handle = Some(handle);
             crate::app::panel_opened(cx);
         }
-        Err(error) => log::info(format!("panel: open_window failed: {error:#}")),
+        Err(error) => {
+            log::info(format!("panel: open_window failed: {error:#}"));
+            // Without a tray nothing would be on screen: say why and stop, rather than idle unseen.
+            if close_action(cx.global::<PanelWindow>().tray_mode) == CloseAction::Quit {
+                eprintln!(
+                    "aio-proxy-desktop: cannot open the window ({error:#}); install a Vulkan driver (e.g. mesa-vulkan-drivers)"
+                );
+                std::process::exit(1);
+            }
+        }
     }
 }
 
