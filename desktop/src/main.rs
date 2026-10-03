@@ -48,7 +48,7 @@ fn main() {
         std::env::current_exe().ok().and_then(|exe| exe.canonicalize().ok()).and_then(|exe| install::bundle_of(&exe));
     log::info(format!("aio-proxy-desktop {APP_VERSION} starting from {bundle:?}"));
 
-    gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(move |cx| {
+    gpui_kit::application().with_assets(aio_proxy_desktop::assets::AppAssets).run(move |cx| {
         gpui_kit::init(cx);
         theme::apply(cx.window_appearance(), cx);
         cx.set_http_client(std::sync::Arc::new(reqwest_client::ReqwestClient::new()));
