@@ -4,6 +4,7 @@ import { editCodexDocument, readManagedField, type FieldEdit } from '../../confi
 import type { CodexCatalogUpdateResult, CodexLocation, CodexMarker, OwnedField } from '../../contracts';
 import { withCodexInstallation, type CodexLease } from '../../storage/installation-lock';
 import {
+  catalogHasModels,
   catalogOwnedField,
   catalogReference,
   prepareCodexCatalog,
@@ -91,11 +92,10 @@ export async function updateManagedCodexCatalog(
         const { marker, prior, actual, previous } = target;
         signal.throwIfAborted();
         // Codex refuses to start on a catalog without models, and an empty catalog usually means
-        // model metadata was briefly unavailable. Keep the last good file; with none, hand
+        // model metadata was briefly unavailable. Keep the last non-empty file; with none, hand
         // the field back to its pre-integration value so Codex falls back to its own catalog.
         if (catalog.models.length === 0) {
-          if (prior === undefined || (previous !== undefined && (await readRegularFile(previous)) !== undefined))
-            return 'empty';
+          if (prior === undefined || (previous !== undefined && (await catalogHasModels(previous)))) return 'empty';
           const fields = marker.fields.filter((field) => field !== prior);
           await commitCatalogField(
             input,

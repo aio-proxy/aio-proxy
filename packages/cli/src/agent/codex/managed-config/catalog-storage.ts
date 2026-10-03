@@ -49,6 +49,14 @@ function assertCatalogContents(text: string): void {
     throw new Error('Codex catalog is invalid');
 }
 
+// Codex refuses to start on a catalog without models, so only a non-empty file is worth keeping.
+export async function catalogHasModels(path: string): Promise<boolean> {
+  const file = await readRegularFile(path);
+  if (file === undefined) return false;
+  const models: unknown = (JSON.parse(file.text) as { models?: unknown }).models;
+  return Array.isArray(models) && models.length > 0;
+}
+
 export async function validateCatalogPath(location: CodexLocation, path: string, allowMissing = false): Promise<void> {
   const digest = assertCatalogPath(location, path);
   await assertNoSymlinkParents(dirname(path));

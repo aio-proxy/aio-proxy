@@ -328,3 +328,26 @@ test('empty catalog keeps a present catalog and restores the prior value when it
     expect(await f.update()).toBe('updated');
     expect(JSON.parse(await Bun.file(await f.active()).text())).toEqual(catalog());
   }));
+
+// Installations configured before the empty-catalog guard may already point at `{"models":[]}`.
+test('an already-empty managed catalog is never kept by sync or setup', () =>
+  use(async (f) => {
+    const empty = await f.prepare({ models: [] });
+    await configureCodexConfig({ ...f.input, catalogPath: empty.path });
+    expect(await f.update({ models: [] })).toBe('empty');
+    expect(await f.active()).toBeUndefined();
+    await configureCodexConfig({ ...f.input, catalogPath: empty.path });
+    await configureCodexConfig(f.input);
+    expect(await f.active()).toBeUndefined();
+    expect(await f.update()).toBe('updated');
+  }));
+
+test('setup restoring a user catalog path in place of a missing managed one stops owning it', () =>
+  use(async (f) => {
+    const first = await f.prepare();
+    await configureCodexConfig({ ...f.input, catalogPath: first.path });
+    await rm(first.path);
+    await configureCodexConfig(f.input);
+    expect(await f.active()).toBe('/user/catalog.json');
+    expect(await f.update()).toBe('skipped');
+  }, 'model_catalog_json = "/user/catalog.json"\nmodel_provider = "openai"\n'));

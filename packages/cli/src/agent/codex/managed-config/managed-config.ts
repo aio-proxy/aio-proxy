@@ -19,6 +19,7 @@ import type {
 } from '../contracts';
 import type { CodexLease } from '../storage/installation-lock';
 import {
+  catalogHasModels,
   catalogOwnedField,
   catalogReference,
   pruneCodexCatalogs,
@@ -245,15 +246,19 @@ export async function configureCodexConfig(
       }
       const retainedCatalog = marker === undefined ? undefined : catalogOwnedField(marker);
       const retainedPath = input.catalogPath === undefined ? catalogReference(retainedCatalog?.applied) : undefined;
-      // Pointing Codex at a retained catalog whose file is gone would stop it from starting.
-      const retainedMissing = retainedPath !== undefined && (await readRegularFile(retainedPath)) === undefined;
+      // Pointing Codex at a missing or empty retained catalog would stop it from starting. Its
+      // pre-integration value is restored unowned, so a user path never becomes a managed one.
+      const retainedUnusable = retainedPath !== undefined && !(await catalogHasModels(retainedPath));
+      const keptCatalog = input.catalogPath === undefined && retainedCatalog !== undefined && !retainedUnusable;
       const edits = [
         ...codexProviderEdits(providerId, baseUrl, auth, input.catalogPath),
-        ...(input.catalogPath === undefined && retainedCatalog !== undefined
-          ? [{ path: retainedCatalog.path, next: retainedMissing ? retainedCatalog.before : retainedCatalog.applied }]
-          : []),
+        ...(keptCatalog ? [{ path: retainedCatalog.path, next: retainedCatalog.applied }] : []),
       ];
-      const editedText = editCodexDocument(workingText, edits);
+      const restored =
+        retainedUnusable && retainedCatalog !== undefined
+          ? [{ path: retainedCatalog.path, next: retainedCatalog.before }]
+          : [];
+      const editedText = editCodexDocument(workingText, [...edits, ...restored]);
       const nextText = marker?.providerId === providerId ? removeCreatedTables(editedText, marker) : editedText;
       const fields = makeFields(workingText, edits, marker?.providerId === providerId ? marker : undefined);
       if (marker?.providerId === providerId) createdTables = marker.createdTables;
