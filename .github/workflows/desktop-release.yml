@@ -318,7 +318,11 @@ jobs:
   # Picks the highest complete stable version itself, whatever tag was dispatched, so a replaced pending
   # run cannot leave the feed behind. Its own group: it writes latest.json, the macOS job appcast.xml.
   feed:
-    needs: [verify, publish-assets]
+    # Waits for the macOS job whatever its outcome: on a first release (or after desktop-feed was deleted to
+    # rebuild the feeds) only that job may create desktop-feed, since publish.ts refuses a feed Release that
+    # has no appcast.xml. A failed macOS job still lets Linux/Windows publish when the Release exists.
+    needs: [verify, publish-assets, desktop]
+    if: ${{ !cancelled() && needs.verify.result == 'success' && needs.publish-assets.result == 'success' }}
     environment: desktop-release
     runs-on: ubuntu-24.04
     timeout-minutes: 30

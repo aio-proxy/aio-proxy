@@ -134,7 +134,7 @@ died between the two uploads and left an orphan `.minisig` (no asset), delete it
 gh release delete-asset v<version> aio-proxy-<version>-x86_64.AppImage.minisig --repo aio-proxy/aio-proxy --yes
 ```
 
-`feed` never creates `desktop-feed` (create it once as a prerelease) and never moves the feed down;
+`feed` never creates `desktop-feed` (the macOS job does, and `feed` waits for that job whatever its outcome) and never moves the feed down;
 a `latest.json` that does not parse fails the job. A failed or incomplete newer version leaves the
 feed on the previous complete one.
 
