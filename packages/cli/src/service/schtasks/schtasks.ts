@@ -355,20 +355,27 @@ export async function schtasksRestartInService(
   const { spec, xml } = await renderUnit(io);
   const staged = `${specPath}.new`;
   io.writeFile(staged, spec);
+  // The running supervisor keeps the spec path it was started with and re-reads that file after the exit below;
+  // a new task definition only takes effect at the next launch. So the supervisor's own spec gets the new unit too,
+  // written first and put back if anything after it fails, so a failed restart changes nothing.
+  let supervisorSpec: { path: string; previous: string | undefined } | undefined;
   try {
     // A failed query or a foreign task throws before anything is written: `/Create /F` would overwrite it.
     // The supervisor re-reads the spec the task names, so a stale spec path needs a new task as much as a moved exec.
     const action = (await ownTask(io, path))?.action;
+    if (action !== undefined && action.specPath.toLowerCase() !== specPath.toLowerCase()) {
+      supervisorSpec = { path: action.specPath, previous: io.readFile(action.specPath) };
+      io.writeFile(action.specPath, spec);
+    }
     const exec = parseServiceSpec(spec)?.exec;
     if (!taskCurrent(action, exec, specPath)) await createTask(io, path, stageTaskXml(io, xml));
     io.rename(staged, specPath);
-    // The running supervisor keeps the spec path it was started with and re-reads that file after the exit below;
-    // a new task definition only takes effect at the next launch. So the supervisor's own spec gets the new unit too.
-    if (action !== undefined && action.specPath.toLowerCase() !== specPath.toLowerCase()) {
-      io.writeFile(action.specPath, spec);
-    }
   } catch (error) {
     io.remove(staged);
+    if (supervisorSpec !== undefined) {
+      if (supervisorSpec.previous === undefined) io.remove(supervisorSpec.path);
+      else io.writeFile(supervisorSpec.path, supervisorSpec.previous);
+    }
     throw error;
   }
   scheduleExit(EXIT.restartRequested, 1000);

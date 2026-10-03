@@ -544,6 +544,17 @@ test('an in-service restart that cannot re-create the task keeps the old spec an
   expect(exits).toEqual([]);
 });
 
+test("an in-service restart that fails after updating the supervisor's older spec puts that spec back", async () => {
+  const movedSpec = 'C:\\Users\\Zoë\\old\\service.json';
+  const fs = fakeFs({ [movedSpec]: oldSpec });
+  const task = renderTaskXml({ sid, exec, specPath: movedSpec });
+  await expect(schtasksRestartInService(io({ fs, task, failOn: '/Create' }), () => undefined)).rejects.toThrow(
+    '/Create failed',
+  );
+  expect(fs.read(movedSpec)).toBe(oldSpec);
+  expect(fs.exists(specPath)).toBe(false);
+});
+
 test('the default scheduled exit ends the process with 75 after the restart already returned', async () => {
   const dir = import.meta.dir;
   const script = `
