@@ -963,3 +963,12 @@ test('a desktop-owned Windows spec is recognized by the same rule', () => {
   writeFileSync(spec, 'not json');
   expect(readDesktopOwnedUnit(spec, 'win32')).toBe(false);
 });
+
+test('the systemd unit path ignores a relative XDG_CONFIG_HOME, as the XDG spec requires', async () => {
+  const { systemdUnitPath } = await import('./systemd');
+  const home = (await import('node:os')).homedir();
+  expect(systemdUnitPath({ XDG_CONFIG_HOME: 'relative/config' })).toBe(
+    join(home, '.config', 'systemd', 'user', 'aio-proxy.service'),
+  );
+  expect(systemdUnitPath({ XDG_CONFIG_HOME: '/xdg' })).toBe(join('/xdg', 'systemd', 'user', 'aio-proxy.service'));
+});

@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 
 import { SYSTEMD_UNIT_NAME } from './unit-templates';
 
@@ -16,7 +16,8 @@ export async function systemdUserProblem(): Promise<SystemdUserProblem> {
 
 export function systemdUnitPath(env: NodeJS.ProcessEnv = process.env): string {
   const xdg = env['XDG_CONFIG_HOME'];
-  const base = xdg === undefined || xdg === '' ? join(homedir(), '.config') : xdg;
+  // The XDG Base Directory spec says a relative value is ignored; honoring one would put the unit under the cwd.
+  const base = xdg !== undefined && isAbsolute(xdg) ? xdg : join(homedir(), '.config');
   return join(base, 'systemd', 'user', SYSTEMD_UNIT_NAME);
 }
 
