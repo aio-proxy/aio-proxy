@@ -266,6 +266,11 @@ jobs:
             target: linux-x86_64
             rust-target: x86_64-unknown-linux-gnu
             asset: aio-proxy-0.0.1-x86_64.AppImage
+          # Release builds run the tag's packaging code, so aarch64 must be proven before a tag, not after.
+          - os: ubuntu-22.04-arm
+            target: linux-aarch64
+            rust-target: aarch64-unknown-linux-gnu
+            asset: aio-proxy-0.0.1-aarch64.AppImage
           - os: windows-2025
             target: windows-x86_64
             rust-target: x86_64-pc-windows-msvc
@@ -287,9 +292,9 @@ jobs:
       - uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
-            ${{ runner.os }}-bun-
+            ${{ runner.os }}-${{ runner.arch }}-bun-
 
       - run: bun install --frozen-lockfile --prefer-offline
 
@@ -311,9 +316,9 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
             desktop/target
-          key: ${{ runner.os }}-desktop-package-${{ hashFiles('desktop/rust-toolchain.toml', 'desktop/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-desktop-package-${{ hashFiles('desktop/rust-toolchain.toml', 'desktop/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-desktop-package-
+            ${{ runner.os }}-${{ runner.arch }}-desktop-package-
 
       # `cargo install` skips a matching install it finds in ~/.cargo/bin plus its .crates*.
       - uses: actions/cache@v6
@@ -322,7 +327,7 @@ jobs:
             ~/.cargo/bin/cargo-packager*
             ~/.cargo/.crates.toml
             ~/.cargo/.crates2.json
-          key: ${{ runner.os }}-cargo-packager-0.11.8
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-packager-0.11.8
 
       - run: cargo install cargo-packager --version 0.11.8 --locked
 

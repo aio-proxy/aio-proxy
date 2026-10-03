@@ -54,10 +54,10 @@ them to the names the scripts read (the same names a local release sets).
 
    (`bun run desktop:bundle --unsigned` downloads `desktop/vendor` first.)
    - Repository variable `SPARKLE_PUBLIC_ED_KEY`: the printed public key.
-   - Repository secret `SPARKLE_ED_PRIVATE_KEY`: the contents of `sparkle-private.key`. Delete the file afterwards.
+   - `desktop-release` environment secret `SPARKLE_ED_PRIVATE_KEY` (see step 0): the contents of `sparkle-private.key`. Delete the file afterwards.
 
    The same key signs the Linux and Windows assets. `publish-assets` wraps the Sparkle Ed25519 key
-   as a minisign key (prehashed `ED` signatures, trusted comment `<version> <target> <asset>`), so
+   as a minisign key (prehashed `ED` signatures, trusted comment `aio-proxy-desktop <version> <target> <asset>`), so
    there is one update root of trust and no second secret. The Linux/Windows updater embeds the
    matching public key.
 
@@ -123,12 +123,16 @@ environment) deliberately.
 
 ## Resuming a failed Linux/Windows publish
 
-Re-dispatch the tag the same way (`gh workflow run desktop-release.yml -f tag=v<version>`). A
-dispatch runs that tag's copy of the workflow and scripts, so a fix on `main` does not reach an
-older tag. `publish-assets` is resumable and never replaces a published asset: for each asset it
-signs and uploads (`.minisig` first), or re-verifies a pair already on the Release, or, when only
-the asset exists with a signature that does not verify against this run's bytes, stops. If a run
-died between the two uploads and left an orphan `.minisig` (no asset), delete it and re-dispatch:
+Re-dispatch the tag the same way (`gh workflow run desktop-release.yml -f tag=v<version>`). The
+workflow YAML always comes from `main` (the dispatch runs `--ref main` and the jobs refuse any other
+ref), but the build and publish scripts are the tag's checkout, so a script fix on `main` does not
+reach an older tag. "Re-run failed jobs" reuses the same run's artifacts; a fresh dispatch rebuilds.
+
+`publish-assets` is resumable and never replaces a published asset. For each asset it signs and
+uploads (`.minisig` first), or re-verifies a pair already on the Release. When only the `.minisig`
+exists (a run died between the two uploads), it uploads this run's asset if it verifies against that
+`.minisig` — always the case on "Re-run failed jobs", which reuses the same bytes — and otherwise
+stops: a fresh dispatch rebuilt different bytes, so delete the orphan `.minisig` and dispatch again:
 
 ```bash
 gh release delete-asset v<version> aio-proxy-<version>-x86_64.AppImage.minisig --repo aio-proxy/aio-proxy --yes

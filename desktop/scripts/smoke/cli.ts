@@ -75,7 +75,7 @@ try {
   await serviceSmoke(exec, deps);
   console.log('service smoke passed');
 } catch (error) {
-  await run([exec, 'service', 'uninstall'], { AIO_PROXY_HOME: home }).catch(() => {});
+  await run([exec, 'service', 'uninstall'], { AIO_PROXY_HOME: home, AIO_PROXY_DESKTOP_EXEC: exec }).catch(() => {});
   throw error;
 } finally {
   // A file the stopped service still holds (EBUSY on Windows) must not replace the smoke's own result.
