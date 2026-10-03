@@ -70,3 +70,18 @@ fn only_macos_needs_an_applications_bundle_to_offer_aiop() {
     model.install = Some(crate::install::InstallState::Persistent);
     assert_eq!(model.can_link_cli(), !cfg!(target_os = "macos"));
 }
+
+#[test]
+fn an_up_to_date_check_only_sets_the_action_line_and_never_interrupts_a_service_action() {
+    use crate::connect::policy::UserAction;
+    let mut model =
+        super::AppModel::new(crate::platform::paths_from(std::path::Path::new("/Users/me"), |_| None), None);
+    model.update_pending = Some("0.41.0".into());
+    let up_to_date = ActionState::Done("AIO Proxy is up to date.".into());
+    model.show_update_outcome(up_to_date.clone());
+    assert_eq!(model.action, up_to_date);
+    assert_eq!(model.update_pending.as_deref(), Some("0.41.0"));
+    model.action = ActionState::Running(UserAction::Restart);
+    model.show_update_outcome(up_to_date);
+    assert_eq!(model.action, ActionState::Running(UserAction::Restart));
+}

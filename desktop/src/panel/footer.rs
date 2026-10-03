@@ -34,7 +34,7 @@ pub fn footer(model: &AppModel) -> impl IntoElement {
             Button::new("update")
                 .small()
                 .label(format!("Update to {version}…"))
-                .on_click(|_, _, _| crate::platform::updater::check_now()),
+                .on_click(|_, _, _| crate::platform::updater::install_now()),
         );
     }
     let more = Button::new("more").ghost().small().icon(IconName::Ellipsis).dropdown_menu_with_anchor(

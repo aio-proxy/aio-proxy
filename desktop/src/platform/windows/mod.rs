@@ -1,5 +1,4 @@
-//! Windows. Stub until a later phase 3 task: no updater. Connection ownership
-//! comes from the TCP table and the owning process's account SID.
+//! Windows. Connection ownership comes from the TCP table and the owning process's account SID.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -74,17 +73,6 @@ mod peer;
 mod process;
 pub mod user_path;
 
-pub mod updater {
-    use futures::channel::mpsc::UnboundedSender;
-
-    use crate::app::AppEvent;
-    use crate::log;
-
-    pub fn start(_events: UnboundedSender<AppEvent>) {
-        log::info("updater: not available on this platform yet");
-    }
-
-    pub fn check_now() {}
-}
+pub use super::updater_packager as updater;
 
 pub mod panel;

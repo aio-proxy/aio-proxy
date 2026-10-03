@@ -114,3 +114,8 @@ pub fn check_now() {
         }
     });
 }
+
+/// The panel's update button. Sparkle's own alert installs, so this brings it up.
+pub fn install_now() {
+    check_now();
+}

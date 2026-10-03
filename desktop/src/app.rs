@@ -39,6 +39,15 @@ pub enum AppEvent {
     Wake,
     UpdateAvailable(String),
     UpdateAttended,
+    /// A manual check found nothing newer (Linux, Windows).
+    UpToDate,
+    /// A manual check or an install failed (Linux, Windows).
+    UpdateFailed(String),
+    /// An update this AppImage cannot install in place: its Release page.
+    OpenUrl(String),
+    /// The AppImage at this path was replaced: exec it on the main thread.
+    #[cfg(target_os = "linux")]
+    RelaunchInto(PathBuf),
     /// Linux: whether a StatusNotifierWatcher owns its D-Bus name, so a tray icon can show.
     TrayHost(bool),
 }
@@ -198,6 +207,13 @@ impl AppModel {
             return self.persistent();
         }
         self.persistent() && self.bundle.as_deref().is_some_and(|bundle| bundle.starts_with("/Applications"))
+    }
+
+    /// An updater result for the action line; it never replaces a service action in flight.
+    pub fn show_update_outcome(&mut self, outcome: ActionState) {
+        if !self.action.is_busy() {
+            self.action = outcome;
+        }
     }
 
     pub fn persistent(&self) -> bool {

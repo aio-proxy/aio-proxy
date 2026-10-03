@@ -1,7 +1,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 //! The menu-bar app: GPUI application, single-instance lock, tray, `--version`.
 
-use aio_proxy_desktop::app::{self, AppEvent, AppModel, changed};
+use aio_proxy_desktop::app::{self, ActionState, AppEvent, AppModel, changed};
 use aio_proxy_desktop::install;
 use aio_proxy_desktop::panel::{self, PanelWindow};
 use aio_proxy_desktop::version::APP_VERSION;
@@ -71,6 +71,25 @@ fn handle(cx: &mut App, event: AppEvent, events: &mpsc::UnboundedSender<AppEvent
         }
         AppEvent::UpdateAttended => {
             cx.global_mut::<AppModel>().update_pending = None;
+            changed(cx);
+        }
+        AppEvent::UpToDate => {
+            cx.global_mut::<AppModel>().show_update_outcome(ActionState::Done("AIO Proxy is up to date.".into()));
+            changed(cx);
+        }
+        AppEvent::UpdateFailed(error) => {
+            cx.global_mut::<AppModel>().show_update_outcome(ActionState::Failed(error));
+            changed(cx);
+        }
+        AppEvent::OpenUrl(url) => cx.open_url(&url),
+        #[cfg(target_os = "linux")]
+        AppEvent::RelaunchInto(appimage) => {
+            use std::os::unix::process::CommandExt;
+            // The instance lock is close-on-exec (std opens files O_CLOEXEC), so the new image takes it.
+            let error = std::process::Command::new(&appimage).exec();
+            log::info(format!("updater: cannot relaunch {}: {error}", appimage.display()));
+            let message = format!("Updated, but could not relaunch: {error}. Quit and reopen AIO Proxy.");
+            cx.global_mut::<AppModel>().show_update_outcome(ActionState::Failed(message));
             changed(cx);
         }
         AppEvent::TrayHost(owned) => {

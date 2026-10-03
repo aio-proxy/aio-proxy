@@ -17,6 +17,8 @@ mod tcp_row;
 mod unix;
 #[cfg(any(target_os = "linux", windows))]
 pub mod update_key;
+#[cfg(any(target_os = "linux", windows, test))]
+pub mod updater_packager;
 #[cfg(windows)]
 mod windows;
 

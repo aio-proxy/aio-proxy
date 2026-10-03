@@ -1,4 +1,4 @@
-//! Linux. No updater yet; connection ownership comes from `/proc/net/tcp`.
+//! Linux. Connection ownership comes from `/proc/net/tcp`.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -62,18 +62,7 @@ pub use peer::peer_owned_by_this_user;
 pub mod login_item;
 mod peer;
 
-pub mod updater {
-    use futures::channel::mpsc::UnboundedSender;
-
-    use crate::app::AppEvent;
-    use crate::log;
-
-    pub fn start(_events: UnboundedSender<AppEvent>) {
-        log::info("updater: not available on this platform yet");
-    }
-
-    pub fn check_now() {}
-}
+pub use super::updater_packager as updater;
 
 pub mod panel;
 mod tray_host;
