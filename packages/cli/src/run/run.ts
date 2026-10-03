@@ -51,7 +51,7 @@ export const localAgentHost = async (
   const { createAgentCommandDeps } = await import('../agent');
   const { createCodexDashboardDeps, resolveCodexExecutable } = await import('../agent/codex');
   const { configuredLocation } = await import('../agent/codex/runtime');
-  const { createLocalCodexCatalogSync } = await import('../agent/codex/model-catalog');
+  const { CODEX_CATALOG_EMPTY, createLocalCodexCatalogSync } = await import('../agent/codex/model-catalog');
   const logger = createLogger(['aio-proxy', 'server']);
   return {
     agentHost: createAgentHostPort({
@@ -66,6 +66,7 @@ export const localAgentHost = async (
         logger.warn({
           event: 'codex.catalog_sync_failed',
           errorType: error instanceof Error ? 'Error' : typeof error,
+          ...(error instanceof Error && error.message === CODEX_CATALOG_EMPTY ? { code: 'empty_catalog' } : {}),
         } satisfies ServerLog),
     }),
   };

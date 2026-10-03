@@ -17,6 +17,9 @@ export type LocalCodexCatalogSyncOptions = {
   readonly clock?: { readonly setInterval: (callback: () => void, ms: number) => { readonly clear: () => void } };
 };
 
+/** Reported through `onError` when the server produced a catalog without models and nothing was written. */
+export const CODEX_CATALOG_EMPTY = 'CODEX_CATALOG_EMPTY';
+
 const clock = {
   setInterval(callback: () => void, ms: number) {
     const timer = setInterval(callback, ms);
@@ -46,7 +49,10 @@ export function createLocalCodexCatalogSync(options: LocalCodexCatalogSyncOption
       const catalog = await source.load(signal);
       signal.throwIfAborted();
       // The updater reacquires its lease, recovers, and rechecks after this asynchronous load.
-      await updateManagedCodexCatalog({ location: options.location, baseUrl, catalog, signal });
+      const result = await updateManagedCodexCatalog({ location: options.location, baseUrl, catalog, signal });
+      // The cause is not reported: an empty catalog is indistinguishable here between no text
+      // models being enabled and model metadata being unavailable, which only the server can tell.
+      if (result === 'empty') throw new Error(CODEX_CATALOG_EMPTY);
     }
 
     async function drain(): Promise<void> {

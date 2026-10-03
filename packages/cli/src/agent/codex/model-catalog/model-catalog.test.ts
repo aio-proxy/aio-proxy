@@ -14,7 +14,7 @@ import {
 } from '../managed-config';
 import { fingerprint, journalPath } from '../managed-config/journal';
 import { withCodexInstallation, type CodexLease } from '../storage/installation-lock';
-import { createLocalCodexCatalogSync } from './index';
+import { CODEX_CATALOG_EMPTY, createLocalCodexCatalogSync } from './index';
 
 const endpoint = 'http://127.0.0.1:9317';
 const baseUrl = `${endpoint}/v1`;
@@ -431,4 +431,22 @@ test('unsafe lock errors and write errors preserve old catalog and retry only on
     sync.schedule('request');
     await until(async () => JSON.parse(await Bun.file(await f.active()).text()).models[0].slug === 'new');
     expect(calls).toBe(2);
+  }));
+
+test('empty catalog keeps the previous file, reports a diagnostic, and a later catalog is written', () =>
+  use(async (f) => {
+    await f.configure();
+    const before = await f.active();
+    const config = await Bun.file(f.location.configPath).text();
+    let next: CodexCatalog = { models: [] };
+    const sync = f.start(async () => next);
+    sync.schedule('startup');
+    await until(() => f.errors.length === 1);
+    expect((f.errors[0] as Error).message).toBe(CODEX_CATALOG_EMPTY);
+    expect(await Bun.file(f.location.configPath).text()).toBe(config);
+    expect(JSON.parse(await Bun.file(before).text()).models[0].slug).toBe('old');
+    next = catalog('new');
+    sync.schedule('models-changed');
+    await until(async () => JSON.parse(await Bun.file(await f.active()).text()).models[0].slug === 'new');
+    expect(f.errors).toHaveLength(1);
   }));
