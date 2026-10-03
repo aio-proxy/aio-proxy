@@ -33,6 +33,21 @@ fn a_service_command_carries_the_plist_home() {
     assert_eq!(env_of(&command, "AIO_PROXY_HOME"), Some(Some(OsStr::new("/Users/me/.aio-proxy-work"))));
 }
 
+/// `/End` leaves the supervisor running, and `service restart` would take an external task over.
+#[cfg(windows)]
+#[test]
+fn a_windows_kickstart_stops_then_starts_through_the_cli_with_the_service_home() {
+    let host = host(r"C:\Users\me\AppData\Local\aio-proxy-desktop\bin\aio-proxy.exe");
+    let commands = crate::platform::kickstart(&host.user, |args| host.cli(args, Some(r"C:\Users\me\.aio-proxy-work")));
+    let verbs: Vec<String> = commands.iter().map(|(command, _)| describe(command)).collect();
+    assert_eq!(verbs, ["aio-proxy.exe service stop", "aio-proxy.exe service start"]);
+    for (command, allow_failure) in &commands {
+        assert!(!allow_failure);
+        assert_eq!(command.get_program(), host.exec.as_os_str());
+        assert_eq!(env_of(command, "AIO_PROXY_HOME"), Some(Some(OsStr::new(r"C:\Users\me\.aio-proxy-work"))));
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn discovery_reads_the_childs_stdout_and_reports_failures_without_it() {

@@ -10,8 +10,6 @@ pub mod shell_path;
 #[cfg(any(windows, test))]
 mod startup_approved;
 #[cfg(any(windows, test))]
-mod task_path;
-#[cfg(any(windows, test))]
 mod tcp_row;
 #[cfg(unix)]
 mod unix;

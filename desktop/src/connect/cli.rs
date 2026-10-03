@@ -78,7 +78,7 @@ impl Host for SystemHost {
                 check(self.cli(&["service", verb], home), SERVICE_TIMEOUT, &format!("service {verb}")).map(drop)
             }
             Mutation::Kickstart => {
-                let commands = crate::platform::kickstart(&self.user);
+                let commands = crate::platform::kickstart(&self.user, |args| self.cli(args, home));
                 if commands.is_empty() {
                     return Err("kickstart is not supported on this platform yet".into());
                 }

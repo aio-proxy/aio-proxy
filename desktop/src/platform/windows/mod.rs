@@ -51,18 +51,12 @@ pub fn current_user() -> String {
     process::sid_string(&process::current_user_sid())
 }
 
-/// Restart the CLI's scheduled task: `/End` then `/Run`. `/End` exits non-zero when nothing is
-/// running, which is exactly when a restart is needed, so only `/Run` must succeed.
-pub fn kickstart(sid: &str) -> Vec<(Command, bool)> {
-    use std::os::windows::process::CommandExt;
-    let task = super::task_path::task_path(sid);
-    [("/End", true), ("/Run", false)]
-        .map(|(verb, allow_failure)| {
-            let mut command = Command::new("schtasks");
-            command.args([verb, "/TN", &task]).creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-            (command, allow_failure)
-        })
-        .into()
+/// Restart an external service through the CLI: `service stop`, then `service start`. A bare
+/// `schtasks /End` ends only the task's `conhost`, leaving the supervisor running for `/Run` to
+/// start a second one; `service stop` ends the supervisor too. `service restart` would rewrite the
+/// task to this app's binary, but `start` keeps the existing task and spec.
+pub fn kickstart(_sid: &str, cli: impl Fn(&[&str]) -> Command) -> Vec<(Command, bool)> {
+    vec![(cli(&["service", "stop"]), false), (cli(&["service", "start"]), false)]
 }
 
 pub use peer::peer_owned_by_this_user;

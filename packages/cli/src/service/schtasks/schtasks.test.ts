@@ -158,6 +158,58 @@ test('stop ends the task and disables it so the stop survives a logon', async ()
   ]);
 });
 
+/** A supervisor `/End` leaves running (it ends only conhost): alive until killed, and every event in order. */
+function survivingSupervisor() {
+  const events: string[] = [];
+  let running = true;
+  return {
+    events,
+    options: {
+      imagePath: () => (running ? oldExec : undefined),
+      kill: (pid: number) => {
+        events.push(`kill ${pid}`);
+        running = false;
+      },
+    },
+    track: (io: SchtasksIo): SchtasksIo => ({
+      ...io,
+      run: async (cmd, allowFailure) => {
+        events.push(cmd[1]!);
+        return io.run(cmd, allowFailure);
+      },
+    }),
+  };
+}
+
+test('stop, restart and uninstall kill the supervisor that `/End` left running before going on', async () => {
+  const flows: [(io: SchtasksIo) => Promise<void>, string[]][] = [
+    [schtasksStop, ['/End', 'kill 4242', '/Change']],
+    [schtasksRestart, ['/End', 'kill 4242', '/Create', '/Run']],
+    [schtasksUninstall, ['/End', 'kill 4242', '/Delete']],
+  ];
+  for (const [flow, expected] of flows) {
+    const supervisor = survivingSupervisor();
+    await recordRun((io) => flow(supervisor.track(io)), supervisor.options);
+    expect(supervisor.events).toEqual(expected);
+  }
+});
+
+test('a supervisor that `/End` did end is not killed', async () => {
+  const killed: number[] = [];
+  await recordRun((io) => schtasksStop(io), { imagePath: () => undefined, kill: (pid) => void killed.push(pid) });
+  expect(killed).toEqual([]);
+  expect(recorded().map((c) => c[1])).toEqual(['/End', '/Change']);
+});
+
+test('restart leaves the task alone and drops its staged files when the old supervisor never dies', async () => {
+  const fs = fakeFs({ [specPath]: oldSpec, [statePath]: supervisorState });
+  await expect(schtasksRestart(io({ fs, imagePath: () => oldExec }))).rejects.toBeInstanceOf(CliExit);
+  expect(recorded().map((c) => c[1])).toEqual(['/End']);
+  expect(fs.read(specPath)).toBe(oldSpec);
+  expect(onlyFilesBesides(fs).sort()).toEqual([specPath, statePath].sort());
+  expect(fs.files.size).toBe(2);
+});
+
 test('stop does nothing for a missing task and refuses a foreign one or a failed query without mutating', async () => {
   expect(await recordCalls((io) => schtasksStop(io), { task: 'missing' })).toEqual([]);
   const foreign = previousXml.replaceAll(sid, 'S-1-5-21-9-9-9-500');
@@ -475,11 +527,14 @@ test('uninstall fails without deleting when the supervisor outlives 10 s', async
   expect(fs.exists(specPath)).toBe(true);
 });
 
-test('uninstall does not wait on a supervisor PID that another program now holds', async () => {
+test('uninstall neither kills nor waits on a supervisor PID that another program now holds', async () => {
   const asked: number[] = [];
   const { calls } = await recordRun((io) =>
     schtasksUninstall({
       ...io,
+      kill: () => {
+        throw new Error('killed a recycled PID');
+      },
       imagePath: (pid) => {
         asked.push(pid);
         return 'C:\\Windows\\System32\\svchost.exe';
@@ -489,7 +544,7 @@ test('uninstall does not wait on a supervisor PID that another program now holds
       },
     }),
   );
-  expect(asked).toEqual([4242]);
+  expect(asked).toEqual([4242, 4242]);
   expect(calls.map((c) => c[1])).toEqual(['/End', '/Delete']);
 });
 

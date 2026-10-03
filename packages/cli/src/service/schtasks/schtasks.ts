@@ -181,7 +181,14 @@ const desktopOwned = (unit: ReturnType<typeof parseServiceSpec>): boolean => {
   return marker !== undefined && marker !== '' && marker === unit?.exec;
 };
 
-const endTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/End', '/TN', path], true);
+/**
+ * `/End` terminates only the task's own process, `conhost --headless`, and not the supervisor it hosts, so the
+ * supervisor (and through its Job Object the proxy) outlives it: terminate the recorded supervisor ourselves.
+ */
+async function endTask(io: SchtasksIo, path: string): Promise<void> {
+  await io.run(['schtasks', '/End', '/TN', path], true);
+  await endSupervisor(io);
+}
 const runTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/Run', '/TN', path]);
 
 export async function schtasksInstall(io: SchtasksIo): Promise<void> {
@@ -231,7 +238,7 @@ async function refreshesStaleTask(io: SchtasksIo, task: ParsedTask): Promise<boo
 export async function schtasksStop(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   // A task deleted by hand leaves its supervisor running: `/Delete` does not stop what the task started.
-  if (!(await ownTaskExists(io, path))) return awaitSupervisorExit(io, true);
+  if (!(await ownTaskExists(io, path))) return endSupervisor(io);
   await endTask(io, path);
   await io.run(['schtasks', '/Change', '/TN', path, '/DISABLE']);
 }
@@ -246,7 +253,14 @@ export async function schtasksRestart(io: SchtasksIo): Promise<void> {
   const staged = `${specPath}.new`;
   io.writeFile(staged, spec);
   const file = stageTaskXml(io, xml);
-  await endTask(io, path);
+  try {
+    await endTask(io, path);
+  } catch (error) {
+    // The old supervisor may still run its task: leave both untouched, only drop what was staged.
+    io.remove(staged);
+    io.remove(file);
+    throw error;
+  }
   try {
     // `/Create /F` replaces the action and leaves the task enabled, undoing a `service stop`.
     await createTask(io, path, file);
@@ -304,10 +318,10 @@ export async function schtasksRestartInService(
   scheduleExit(EXIT.restartRequested, 1000);
 }
 
-/** Waits up to 10 s for the recorded supervisor to be gone, terminating it first when `kill` is set. */
-async function awaitSupervisorExit(io: SchtasksIo, kill: boolean): Promise<void> {
+/** Terminates the recorded supervisor when it still runs, then waits up to 10 s for it to be gone. */
+async function endSupervisor(io: SchtasksIo): Promise<void> {
   const state = parseSupervisorState(io.readFile(serviceStatePath(io.localAppData)));
-  if (kill && supervisorAlive(state, io.imagePath, io.creationTime)) {
+  if (supervisorAlive(state, io.imagePath, io.creationTime)) {
     try {
       io.kill(state.pid);
     } catch {
@@ -326,13 +340,13 @@ async function awaitSupervisorExit(io: SchtasksIo, kill: boolean): Promise<void>
   }
 }
 
-// `/End` kills the supervisor, whose Job Object takes the proxy with it; `/Delete` alone would leave both running.
+// Ending the supervisor closes its Job Object, which takes the proxy with it; `/Delete` alone would leave both running.
 export async function schtasksUninstall(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   const taskExists = await ownTaskExists(io, path);
-  if (taskExists) await endTask(io, path);
   // With the task deleted by hand there is nothing for `/End` to stop, so end an orphaned supervisor ourselves.
-  await awaitSupervisorExit(io, !taskExists);
+  if (taskExists) await endTask(io, path);
+  else await endSupervisor(io);
   if (taskExists) await io.run(['schtasks', '/Delete', '/TN', path, '/F']);
   io.remove(serviceSpecPath(io.localAppData));
   io.remove(serviceStatePath(io.localAppData));

@@ -7,7 +7,7 @@ const LAUNCHD_LABEL: &str = "com.aio-proxy.agent";
 
 /// `launchctl kickstart -k gui/<uid>/com.aio-proxy.agent`: restarts the external agent without
 /// rewriting its plist.
-pub fn kickstart(user: &str) -> Vec<(Command, bool)> {
+pub fn kickstart(user: &str, _cli: impl Fn(&[&str]) -> Command) -> Vec<(Command, bool)> {
     let mut command = Command::new("/bin/launchctl");
     command.args(["kickstart", "-k", &format!("gui/{user}/{LAUNCHD_LABEL}")]);
     vec![(command, false)]

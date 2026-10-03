@@ -55,7 +55,7 @@ the test seam.
 | Launch at login (`LoginItemStatus` unchanged) | `SMAppService` | write/remove `~/.config/autostart/aio-proxy-desktop.desktop` | HKCU `Software\Microsoft\Windows\CurrentVersion\Run` value |
 | `pid_alive` | `kill(pid, 0)` | same | `OpenProcess` + `GetExitCodeProcess` |
 | Connection ownership (security, section 2d) | `lsof` | `/proc/net/tcp{,6}`: the uid of the row matching the four-tuple | `GetExtendedTcpTable` (IPv4 and IPv6) → owner PID → process token SID |
-| Kickstart (restart an external unit without rewriting it) | `launchctl kickstart -k` | `systemctl --user restart aio-proxy.service` | `schtasks /End` then `/Run` on the user's task path (section 2b) |
+| Kickstart (restart an external unit without rewriting it) | `launchctl kickstart -k` | `systemctl --user restart aio-proxy.service` | `aio-proxy service stop` then `service start` through the stable CLI: `/End` ends only the task's `conhost`, and `service restart` would rewrite the task |
 | Activation policy | `Accessory` | n/a | n/a |
 | Wake notification | `NSWorkspaceDidWakeNotification` | none | none |
 | Updater | Sparkle | `cargo-packager-updater` | `cargo-packager-updater` |
@@ -155,8 +155,11 @@ owner. Windows instead keeps the token where only this user can create files:
 | `uninstall` | `disable --now`, remove unit, write the uninstall marker | `/End`, wait until the supervisor PID is gone (10 s, else fail), `/Delete /F`, remove spec and state, write the uninstall marker |
 | `install` | remove the uninstall marker, write unit | remove the uninstall marker, write XML + spec |
 
-  `/End` terminates the supervisor; the supervisor runs its child in a Job Object with
-  `KILL_ON_JOB_CLOSE`, so the proxy ends with it. `schtasks /Delete` alone would leave both running.
+  `/End` terminates only the task's own process, `conhost --headless`, which does not pass it down
+  (CI service-smoke on windows-2025), so after every `/End` the CLI terminates the supervisor recorded in
+  the state file (PID, image, creation time) and waits for it (10 s, else fail). The supervisor runs its
+  child in a Job Object with `KILL_ON_JOB_CLOSE`, so the proxy ends with it. `schtasks /Delete` alone would
+  leave both running.
 - Uninstall marker: a per-user file at a fixed path beside where the unit lives, so it is found whatever
   `AIO_PROXY_HOME` the removed service used — Linux `<systemd user unit dir>/aio-proxy.service.uninstalled`,
   Windows `%LOCALAPPDATA%\aio-proxy\service.uninstalled`. Each user has at most one service, so one marker
@@ -178,7 +181,7 @@ owner. Windows instead keeps the token where only this user can create files:
      non-interactive session;
   3. a separate launcher compiled with `--windows-hide-console` (costs a second ~100 MB Bun binary).
 
-  The spike also confirms that `/End` reaches the child through the Job Object.
+  The spike also asked whether `/End` reaches the child through the Job Object: it does not (see above).
 
 ### 2d. `__desktop-connect` on every platform
 
