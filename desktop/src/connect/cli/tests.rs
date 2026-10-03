@@ -87,3 +87,28 @@ fn a_failing_discovery_is_an_error_even_when_stdout_is_valid_json() {
     let error = SystemHost { exec: script, ..host("/bin/sh") }.discover().unwrap_err();
     assert!(error.contains("boom") && !error.contains("tok-abc"), "{error}");
 }
+
+#[cfg(unix)]
+#[test]
+fn a_stable_copy_that_cannot_run_falls_back_to_the_bundled_sidecar() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let bundle = dir.path().join("bundle");
+    let sidecar = crate::install::sidecar_of(&bundle);
+    std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+    std::fs::write(&sidecar, "").unwrap();
+    std::fs::set_permissions(&sidecar, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let stable = dir.path().join("aio-proxy");
+    std::fs::write(&stable, "").unwrap();
+    std::fs::set_permissions(&stable, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let paths = crate::install::Paths {
+        home: dir.path().into(),
+        support: dir.path().into(),
+        stable: stable.clone(),
+        lock: dir.path().join("lock"),
+        logs: dir.path().join("logs"),
+    };
+    assert_eq!(SystemHost::new(&paths, Some(&bundle)).unwrap().exec, sidecar);
+    std::fs::set_permissions(&stable, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(SystemHost::new(&paths, Some(&bundle)).unwrap().exec, stable);
+}

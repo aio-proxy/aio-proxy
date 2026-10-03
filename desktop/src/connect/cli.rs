@@ -30,8 +30,15 @@ pub struct SystemHost {
 
 impl SystemHost {
     pub fn new(paths: &Paths, bundle: Option<&Path>) -> Option<Self> {
-        let exec = if paths.stable.exists() { paths.stable.clone() } else { sidecar_of(bundle?) };
-        exec.exists().then(|| Self { exec, desktop_exec: paths.stable.clone(), user: crate::platform::current_user() })
+        // A stable copy that cannot run (execute bit lost, a directory in its place) would fail every spawn; the
+        // bundled sidecar still works.
+        let runnable = crate::install::copy::executable;
+        let exec = if runnable(&paths.stable) { paths.stable.clone() } else { sidecar_of(bundle?) };
+        runnable(&exec).then(|| Self {
+            exec,
+            desktop_exec: paths.stable.clone(),
+            user: crate::platform::current_user(),
+        })
     }
 
     /// The child environment contract. The app never passes its own `AIO_PROXY_HOME` (discovery

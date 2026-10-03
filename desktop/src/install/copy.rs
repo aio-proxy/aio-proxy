@@ -138,14 +138,15 @@ pub fn persistent(sidecar: &Path, stable_dir: &Path) -> bool {
     executable(sidecar) && writable(stable_dir)
 }
 
+/// A regular file the OS will run (a directory, or a file without an execute bit, is not).
 #[cfg(unix)]
-fn executable(path: &Path) -> bool {
+pub fn executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     fs::metadata(path).is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
 }
 
 #[cfg(windows)]
-fn executable(path: &Path) -> bool {
+pub fn executable(path: &Path) -> bool {
     path.is_file()
 }
 
