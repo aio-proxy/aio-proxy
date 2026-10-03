@@ -56,7 +56,9 @@ export function linkLocalSignInCredentials(
     refresh(revision, exchange) {
       return port.refresh(revision, async (current, signal) => {
         const state = link.account();
-        if (state === null || state.revision !== current.revision) throw new LocalSignInSupersededError();
+        if (state === null) throw new LocalSignInSupersededError();
+        // Avoid consuming an old token; the port's failed CAS re-reads and returns the newer snapshot as superseded.
+        if (state.revision !== current.revision) return { value: current.value };
         if (!state.linked) return exchange(current, signal);
 
         let observed;

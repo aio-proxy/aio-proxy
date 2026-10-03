@@ -261,20 +261,76 @@ test('writes back even after the signal aborted, because the host token was cons
   expect(f.host.credentials).toEqual(credential('host-initial:next'));
 });
 
-test('a browser re-login committed between the snapshot read and the wrapper is detected by revision and consumes nothing', async () => {
-  const f = setup();
-  const port = f.link(f.rawPort, () => {
-    f.browserLogin();
-    const current = f.repository.readAccount('provider-1')!;
-    return { revision: current.revision, linked: false };
-  });
-  await expect(port.refresh(1, f.exchange)).rejects.toBeInstanceOf(LocalSignInSupersededError);
-  expect(f.exchangeState.inputs).toEqual([]);
-  expect(f.host.reads).toBe(0);
-  expect(f.host.writes).toEqual([]);
-  expect(f.repository.readAccount('provider-1')?.localSignIn).toBeUndefined();
-  expect(f.repository.readDiagnostics('provider-1')).toEqual([]);
-});
+test.each([false, true])(
+  'a browser re-login between snapshot and wrapper lets the current request use the new snapshot (previously linked: %s)',
+  async (linked) => {
+    const f = setup(linked, 'previous-digest');
+    // A linked snapshot can hold the host's token even after browser login clears the marker.
+    if (linked) f.host.credentials = credential('mirror-initial');
+    const hostBefore = f.host.credentials;
+    const port = f.link(f.rawPort, () => {
+      f.browserLogin();
+      const current = f.repository.readAccount('provider-1')!;
+      return { revision: current.revision, linked: false };
+    });
+    const current = await port.read();
+    const refreshed = await port.refresh(current.revision, f.exchange);
+    expect(refreshed.status).toBe('superseded');
+    // Request consumers await refresh and immediately use its snapshot, without retrying.
+    expect(refreshed.snapshot.value).toEqual(credential('browser-login'));
+    expect(refreshed.snapshot.revision).toBe(current.revision + 1);
+    expect(f.exchangeState.inputs).toEqual([]);
+    expect(f.exchangeState.used.size).toBe(0);
+    expect(f.host.reads).toBe(0);
+    expect(f.host.writes).toEqual([]);
+    expect(f.host.credentials).toEqual(hostBefore);
+    expect(f.writeFailures).toEqual([]);
+    expect(f.repository.readAccount('provider-1')?.credential).toEqual(credential('browser-login'));
+    expect(f.handle.sqlite.query('SELECT local_sign_in, local_sign_in_consumed FROM oauth_account').get()).toEqual({
+      local_sign_in: 0,
+      local_sign_in_consumed: null,
+    });
+    expect(f.logs).toEqual([]);
+    expect(f.repository.readDiagnostics('provider-1')).toEqual([]);
+  },
+);
+
+test.each([false, true])(
+  'a linked re-login between snapshot and wrapper returns the new snapshot without consuming a token (previously linked: %s)',
+  async (linked) => {
+    const f = setup(linked, 'previous-digest');
+    const hostBefore = f.host.credentials;
+    const port = f.link(f.rawPort, () => {
+      const current = f.repository.readAccount('provider-1')!;
+      const pending = f.repository.stageAccountOperation({
+        kind: 'update',
+        targetDigest: 'linked-login',
+        expectedRuntimeRevision: current.runtimeRevision,
+        account: account('provider-1', { credential: credential('linked-login'), localSignIn: {} }),
+      });
+      f.repository.completeAccountOperation(pending.operationId);
+      return { revision: f.repository.readAccount('provider-1')!.revision, linked: true };
+    });
+    const current = await port.read();
+    expect(await port.refresh(current.revision, f.exchange)).toEqual({
+      status: 'superseded',
+      snapshot: { revision: current.revision + 1, value: credential('linked-login') },
+    });
+    expect(f.exchangeState.inputs).toEqual([]);
+    expect(f.exchangeState.used.size).toBe(0);
+    expect(f.host.reads).toBe(0);
+    expect(f.host.writes).toEqual([]);
+    expect(f.host.credentials).toEqual(hostBefore);
+    expect(f.writeFailures).toEqual([]);
+    expect(f.repository.readAccount('provider-1')).toMatchObject({
+      revision: current.revision + 1,
+      credential: credential('linked-login'),
+      localSignIn: {},
+    });
+    expect(f.logs).toEqual([]);
+    expect(f.repository.readDiagnostics('provider-1')).toEqual([]);
+  },
+);
 
 test('a browser re-login during exchange leaves the marker and digest cleared (CAS rejects the late result)', async () => {
   const f = setup(true, 'previous-digest');
