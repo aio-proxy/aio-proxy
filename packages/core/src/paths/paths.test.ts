@@ -7,6 +7,16 @@ import { aioHome, configPath, configPathIn, dbPath, packagesDir, tmpDir, updateC
 
 const original = process.env.AIO_PROXY_HOME;
 
+function withNodeEnv(value: string, run: () => void): void {
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = value;
+  try {
+    run();
+  } finally {
+    process.env.NODE_ENV = previous;
+  }
+}
+
 afterEach(() => {
   if (original === undefined) {
     delete process.env.AIO_PROXY_HOME;
@@ -26,16 +36,27 @@ describe('paths', () => {
     expect(updateCheckPath()).toBe('/tmp/foo/update-check.json');
   });
 
-  test('absent env falls back to ~/.aio-proxy', () => {
+  test('absent env falls back to ~/.aio-proxy outside tests', () => {
     delete process.env.AIO_PROXY_HOME;
-    expect(aioHome()).toBe(join(homedir(), '.aio-proxy'));
-    expect(aioHome().endsWith('.aio-proxy')).toBe(true);
+    withNodeEnv('production', () => expect(aioHome()).toBe(join(homedir(), '.aio-proxy')));
   });
 
   test('empty string is treated as absent', () => {
     process.env.AIO_PROXY_HOME = '';
-    expect(aioHome()).toBe(join(homedir(), '.aio-proxy'));
-    expect(configPath()).toBe(join(homedir(), '.aio-proxy', 'config.jsonc'));
+    withNodeEnv('production', () => {
+      expect(aioHome()).toBe(join(homedir(), '.aio-proxy'));
+      expect(configPath()).toBe(join(homedir(), '.aio-proxy', 'config.jsonc'));
+    });
+  });
+
+  // Regression: an unisolated test once overwrote the real models.dev cache.
+  test('refuses the real home under bun test, so no test can write there', () => {
+    expect(process.env.NODE_ENV).toBe('test');
+    for (const value of [undefined, '', join(homedir(), '.aio-proxy')]) {
+      if (value === undefined) delete process.env.AIO_PROXY_HOME;
+      else process.env.AIO_PROXY_HOME = value;
+      expect(() => tmpDir()).toThrow('Refusing to use the real aio-proxy home');
+    }
   });
 
   test('derived paths end with the correct basenames', () => {

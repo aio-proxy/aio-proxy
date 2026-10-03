@@ -1,7 +1,6 @@
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { readUpdateCheckState, withUpdateCheckLock, writeUpdateCheckState } from '@aio-proxy/core';
+import { aioHome, readUpdateCheckState, withUpdateCheckLock, writeUpdateCheckState } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 import { isRecord } from '@aio-proxy/shared';
 
@@ -52,7 +51,7 @@ const defaultSpawn: NotifySpawn = async (command) => {
 export const notifyUpdateAvailable = async (
   latest: string,
   spawn: NotifySpawn = defaultSpawn,
-  notificationPath: string = join(homedir(), '.aio-proxy', 'update-notify.json'),
+  notificationPath: string = join(aioHome(), 'update-notify.json'),
 ): Promise<void> => {
   if (process.platform !== 'darwin' && process.platform !== 'linux') return;
   const title = m['cli.update.notify_title']({ version: latest });
