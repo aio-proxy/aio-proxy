@@ -308,11 +308,35 @@ test('start leaves a package-manager-owned service alone when the desktop app re
   const external = JSON.stringify(
     renderServiceSpec({ exec: oldExec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc' }),
   );
-  const fs = fakeFs({ [specPath]: external });
+  const fs = fakeFs({ [specPath]: external, [oldExec]: '' });
   const desktopUnit = async () => ({ exec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc', desktopExec: exec });
   const run = io({ fs, task: oldTaskXml });
   await schtasksStart({ ...run, unit: desktopUnit });
   expect(recorded().map((c) => c[1])).toEqual(['/Change', '/Run']);
+  expect(fs.files.get(specPath)).toBe(external);
+});
+
+test('start repairs an external task whose action broke from its own spec, without taking it over', async () => {
+  const external = JSON.stringify(
+    renderServiceSpec({ exec: oldExec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc' }),
+  );
+  const fs = fakeFs({ [specPath]: external, [oldExec]: '' });
+  const desktopUnit = async () => ({ exec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc', desktopExec: exec });
+  const broken = renderTaskXml({ sid, exec: 'C:\\gone\\aio-proxy.exe', specPath });
+  await schtasksStart({ ...io({ fs, task: broken }), unit: desktopUnit });
+  expect(recorded().map((c) => c[1])).toEqual(['/Create', '/Run']);
+  expect(fs.lastXmlCreated()).toContain(oldExec);
+  expect(fs.files.get(specPath)).toBe(external);
+});
+
+test('start refuses an external service whose own program is gone instead of running a dead task', async () => {
+  const external = JSON.stringify(
+    renderServiceSpec({ exec: oldExec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc' }),
+  );
+  const fs = fakeFs({ [specPath]: external });
+  const desktopUnit = async () => ({ exec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc', desktopExec: exec });
+  await expect(schtasksStart({ ...io({ fs, task: oldTaskXml }), unit: desktopUnit })).rejects.toBeInstanceOf(CliExit);
+  expect(recorded()).toEqual([]);
   expect(fs.files.get(specPath)).toBe(external);
 });
 

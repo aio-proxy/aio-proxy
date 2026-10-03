@@ -267,6 +267,7 @@
       "command_failed": "サービスコマンドが失敗しました: {command} (終了コード {code})",
       "bootout_timeout": "`launchctl bootout {target}` から {seconds} 秒経ってもサービスがまだロードされています。再起動は行いません",
       "task_owned_by_other_user": "スケジュールされたタスク {path} は別のユーザーとして実行されます。置き換えは行いません",
+      "external_task_unusable": "{path} のサービスは別のインストーラーが管理しており、そのプログラムが見つかりません。元のツールで再インストールしてください",
       "supervisor_timeout": "`schtasks /End` から {seconds} 秒経ってもサービスのスーパーバイザーがまだ実行中です。タスクは削除しません",
       "local_app_data_missing": "LOCALAPPDATA が設定されていないため、Windows サービスのファイルの場所を特定できません",
       "restore_failed": "以前のサービス定義を復元できませんでした。`aio-proxy service install` を実行して修復してください",

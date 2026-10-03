@@ -267,6 +267,7 @@
       "command_failed": "服務命令執行失敗：{command}（結束代碼 {code}）",
       "bootout_timeout": "`launchctl bootout {target}` 執行 {seconds} 秒後服務仍處於已載入狀態，未再次啟動",
       "task_owned_by_other_user": "排程工作 {path} 以其他使用者身分執行，未取代",
+      "external_task_unusable": "{path} 的服務由其他安裝方式管理，且其程式已不存在；請用原安裝工具重新安裝",
       "supervisor_timeout": "執行 `schtasks /End` {seconds} 秒後服務監督程序仍在執行，未刪除該工作",
       "local_app_data_missing": "未設定 LOCALAPPDATA，無法定位 Windows 服務檔案",
       "restore_failed": "無法還原先前的服務定義，請執行 `aio-proxy service install` 進行修復",

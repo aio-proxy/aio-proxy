@@ -205,9 +205,21 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   // A spec without its task (a failed `/Create`, or the task deleted by hand) can only be fixed by creating it again.
   const task = await ownTask(io, path);
-  if (!task || (await refreshesStaleTask(io, task))) await schtasksInstall(io);
+  const refresh = task ? await refreshesStaleTask(io, task) : 'reinstall';
+  if (refresh === 'reinstall') await schtasksInstall(io);
+  else if (refresh === 'repair-action') await repairAction(io, path);
   else await io.run(['schtasks', '/Change', '/TN', path, '/ENABLE']);
   await runTask(io, path);
+}
+
+/**
+ * Another installer's service whose task action broke: the task is rebuilt from that owner's own spec, which stays
+ * as it is, so ownership never moves. `/Create /F` leaves the task enabled.
+ */
+async function repairAction(io: SchtasksIo, path: string): Promise<void> {
+  const specPath = serviceSpecPath(io.localAppData);
+  const exec = parseServiceSpec(io.readFile(specPath) ?? '')!.exec;
+  await createTask(io, path, stageTaskXml(io, renderTaskXml({ sid: io.sid, exec, specPath })));
 }
 
 /**
@@ -217,7 +229,7 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
  * the resolved unit is gets refreshed: starting a package-manager-owned service from the desktop app must not
  * rewrite it and hand ownership over.
  */
-async function refreshesStaleTask(io: SchtasksIo, task: ParsedTask): Promise<boolean> {
+async function refreshesStaleTask(io: SchtasksIo, task: ParsedTask): Promise<'keep' | 'reinstall' | 'repair-action'> {
   const specPath = serviceSpecPath(io.localAppData);
   const { action } = task;
   // The supervisor exits on a spec it cannot parse or whose exec is gone, so either is as stale as a missing spec.
@@ -228,10 +240,14 @@ async function refreshesStaleTask(io: SchtasksIo, task: ParsedTask): Promise<boo
     action.specPath.toLowerCase() === specPath.toLowerCase() &&
     current !== undefined &&
     io.exists(current.exec);
-  if (sound) return false;
+  if (sound) return 'keep';
   const { spec } = await renderUnit(io);
   // Without a readable spec there is no ownership left to protect, and the task cannot run as it is.
-  return current === undefined || desktopOwned(current) === desktopOwned(parseServiceSpec(spec));
+  if (current === undefined || desktopOwned(current) === desktopOwned(parseServiceSpec(spec))) return 'reinstall';
+  // Another owner's service: never rewrite its spec. Its own exec can still be relaunched; a gone one is theirs to fix,
+  // and running the task as it is would report success while no proxy starts.
+  if (io.exists(current.exec)) return 'repair-action';
+  throw new CliExit(EXIT.unrecoverable, m['cli.service.external_task_unusable']({ path: taskPath(io.sid) }));
 }
 
 // Disabling makes the stop survive the next logon, which would otherwise start the task again.
