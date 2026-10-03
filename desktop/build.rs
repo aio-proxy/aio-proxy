@@ -11,6 +11,9 @@ fn main() {
     let version = json["version"].as_str().expect("npm/aio-proxy/package.json has a string version");
     println!("cargo:rustc-env=AIO_PROXY_VERSION={version}");
 
+    #[cfg(windows)]
+    windows_resources(&manifest, version);
+
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
         return;
     }
@@ -25,4 +28,40 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=Sparkle");
         println!("cargo:rustc-link-arg-bins=-Wl,-rpath,@loader_path/../Frameworks");
     }
+}
+
+// GPUI never opts the process into DPI awareness, so without this manifest Windows bitmap-scales the
+// app above 100%. The icon is what Explorer, the Start menu and the taskbar show.
+#[cfg(windows)]
+fn windows_resources(manifest: &std::path::Path, version: &str) {
+    const DPI_MANIFEST: &str = r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>
+"#;
+    let icon = manifest.join("packaging/icons/icon.ico");
+    println!("cargo:rerun-if-changed={}", icon.display());
+    // VERSIONINFO packs major.minor.patch into the top three 16-bit words; a pre-release tag is dropped.
+    let numeric = version
+        .split(['.', '-', '+'])
+        .take(3)
+        .map(|part| part.parse::<u64>().unwrap_or(0))
+        .zip([48, 32, 16])
+        .fold(0, |packed, (part, shift)| packed | (part << shift));
+    let mut resource = winresource::WindowsResource::new();
+    resource
+        .set_icon(&icon.to_string_lossy())
+        .set_manifest(DPI_MANIFEST)
+        .set("ProductName", "AIO Proxy")
+        // Task Manager shows the description as the process name.
+        .set("FileDescription", "AIO Proxy")
+        .set("FileVersion", version)
+        .set("ProductVersion", version)
+        .set_version_info(winresource::VersionInfo::FILEVERSION, numeric)
+        .set_version_info(winresource::VersionInfo::PRODUCTVERSION, numeric);
+    resource.compile().expect("compile the Windows resources (needs the Windows SDK's rc.exe)");
 }

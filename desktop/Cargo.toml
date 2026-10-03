@@ -91,5 +91,29 @@ tempfile = "3.27.0"
 [build-dependencies]
 serde_json = "1.0.151"
 
+# The exe's icon and its per-monitor DPI manifest; GPUI sets no DPI awareness itself.
+[target.'cfg(windows)'.build-dependencies]
+winresource = { version = "0.1.31", default-features = false }
+
+# Linux and Windows packages. desktop/scripts/package.ts reads this table, adds the release version,
+# the sidecar and the paths it builds, and passes the whole config to `cargo packager --config`, which
+# replaces this table rather than merging with it. Run `bun run desktop:package`, not `cargo packager`.
+[package.metadata.packager]
+product-name = "AIO Proxy"
+identifier = "com.aio-proxy.desktop"
+description = "AIO Proxy"
+category = "Developer Tool"
+binaries = [{ path = "aio-proxy-desktop", main = true }]
+icons = ["packaging/icons/*.png"]
+
+[package.metadata.packager.nsis]
+installer-mode = "currentUser"
+installer-icon = "packaging/icons/icon.ico"
+
+# GPUI loads these with dlopen, which linuxdeploy's ELF scan cannot see; it bundles the linked
+# libraries (xkbcommon, xkbcommon-x11) on its own.
+[package.metadata.packager.appimage]
+libs = ["libwayland-client.so.0", "libvulkan.so.1"]
+
 [profile.release]
 lto = "thin"

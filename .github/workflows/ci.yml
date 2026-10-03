@@ -190,3 +190,82 @@ jobs:
       # Build, Mach-O checks, runtime smoke, ad-hoc hardened signature, then the signed smoke with
       # the JIT check.
       - run: bun run desktop:bundle --unsigned
+
+  desktop-package:
+    needs: desktop-changes
+    if: needs.desktop-changes.outputs.bundle == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest supported Ubuntu LTS keeps the AppImage's glibc floor low.
+          - os: ubuntu-22.04
+            target: linux-x86_64
+            rust-target: x86_64-unknown-linux-gnu
+            asset: aio-proxy-0.0.1-x86_64.AppImage
+          - os: windows-2025
+            target: windows-x86_64
+            rust-target: x86_64-pc-windows-msvc
+            asset: aio-proxy-0.0.1-x64-setup.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - run: bun install --frozen-lockfile --prefer-offline
+
+      # libfuse2 runs linuxdeploy's AppImage plugins.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev pkg-config libfuse2
+
+      - name: Install the pinned Rust toolchain
+        working-directory: desktop
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --target ${{ matrix.rust-target }}
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            desktop/target
+          key: ${{ runner.os }}-desktop-package-${{ hashFiles('desktop/rust-toolchain.toml', 'desktop/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-desktop-package-
+
+      - run: cargo install cargo-packager --version 0.11.8 --locked
+
+      - run: bun run desktop:package --target ${{ matrix.target }} --version 0.0.1
+
+      - name: Check the AppImage's bundled binaries
+        if: runner.os == 'Linux'
+        working-directory: desktop/target/package
+        run: |
+          ./${{ matrix.asset }} --appimage-extract > /dev/null
+          test "$(squashfs-root/usr/bin/aio-proxy --version)" = 0.0.1
+          test "$(squashfs-root/usr/bin/aio-proxy-desktop --version)" = 0.0.1
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.asset }}
+          path: desktop/target/package/${{ matrix.asset }}
+          if-no-files-found: error

@@ -3,7 +3,9 @@ export {
   minisignPublicKey,
   publicKeyFromPrivate,
   signMinisign,
+  TARGETS,
   trustedComment,
   updaterPubkey,
   updaterSignature,
+  type UpdateTarget,
 } from './minisign';
