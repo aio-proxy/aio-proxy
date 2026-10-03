@@ -1,5 +1,18 @@
 # @aio-proxy/dashboard
 
+## 0.39.1
+
+### Patch Changes
+
+- [#487](https://github.com/aio-proxy/aio-proxy/pull/487) [`7ba11b2`](https://github.com/aio-proxy/aio-proxy/commit/7ba11b2ef78af331754be0e94bda7bc19de19312) Thanks @baranwang - Align desktop usage trend colors with the Dashboard: higher-usage series appear first in lighter colors, while lower-usage series use darker colors. Hide zero-valued entries in Dashboard model trend hover tooltips.
+- Updated dependencies []:
+  - @aio-proxy/brand@0.39.1
+  - @aio-proxy/i18n@0.39.1
+  - @aio-proxy/plugin-sdk@0.39.1
+  - @aio-proxy/server@0.39.1
+  - @aio-proxy/types@0.39.1
+  - @aio-proxy/ui@0.39.1
+
 ## 0.39.0
 
 ### Minor Changes
