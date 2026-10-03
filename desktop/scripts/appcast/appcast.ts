@@ -1,5 +1,7 @@
 import { MINIMUM_MACOS } from '../macho';
 
+export { publicKeyFromPrivate } from '../minisign';
+
 /** generate_appcast keeps this many versions; passed explicitly instead of relying on its default. */
 export const MAXIMUM_VERSIONS = 3;
 
@@ -126,20 +128,4 @@ export async function verifyEdSignature(
 ): Promise<boolean> {
   const key = await crypto.subtle.importKey('raw', Buffer.from(publicKey, 'base64'), 'Ed25519', false, ['verify']);
   return crypto.subtle.verify('Ed25519', key, Buffer.from(signature, 'base64'), bytes);
-}
-
-const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
-
-/**
- * The base64 public key for Sparkle's private key file (the base64 Ed25519 seed; a 64-byte
- * seed-then-public form is accepted). Lets publish check the key pair before anything irreversible.
- */
-export async function publicKeyFromPrivate(privateKey: string): Promise<string> {
-  const raw = Buffer.from(privateKey.trim(), 'base64');
-  if (raw.length !== 32 && raw.length !== 64) throw new Error('SPARKLE_ED_PRIVATE_KEY is not a base64 Ed25519 key');
-  const pkcs8 = Buffer.concat([PKCS8_ED25519_PREFIX, raw.subarray(0, 32)]);
-  const key = await crypto.subtle.importKey('pkcs8', pkcs8, 'Ed25519', true, ['sign']);
-  const { x } = await crypto.subtle.exportKey('jwk', key);
-  if (x === undefined) throw new Error('SPARKLE_ED_PRIVATE_KEY is not a base64 Ed25519 key');
-  return Buffer.from(x, 'base64url').toString('base64');
 }
