@@ -94,7 +94,7 @@ try {
       const minisig = await Bun.file(await download(sigName)).text();
       if (!(await verifyPair(bytes, minisig, publicKey, comment))) {
         throw new Error(
-          `${sigName} on ${tag} does not verify this run's ${name} (an interrupted earlier run signed another build). Delete the orphan, then re-dispatch:\n  gh release delete-asset ${tag} ${sigName} --yes`,
+          `${sigName} on ${tag} does not verify this run's ${name} (an interrupted earlier run signed another build). Delete the orphan, then re-dispatch:\n  gh release delete-asset ${tag} ${sigName} --repo ${REPO} --yes`,
         );
       }
       await upload(path);
