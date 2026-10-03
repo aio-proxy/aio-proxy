@@ -15,6 +15,8 @@ mod task_path;
 mod tcp_row;
 #[cfg(unix)]
 mod unix;
+#[cfg(any(target_os = "linux", windows))]
+pub mod update_key;
 #[cfg(windows)]
 mod windows;
 

@@ -37,6 +37,13 @@ windows-sys = { version = "0.61.2", features = [
   "Win32_UI_WindowsAndMessaging",
 ] }
 
+# The Linux and Windows in-app updater; minisign-verify is its verifier (same version), used to read
+# the signed trusted comment.
+[target.'cfg(any(target_os = "linux", windows))'.dependencies]
+cargo-packager-updater = "0.2.3"
+minisign-verify = "=0.2.5"
+base64 = "0.22.1"
+
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 tray-icon = "0.25.1"
 
