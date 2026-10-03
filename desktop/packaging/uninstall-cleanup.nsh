@@ -37,12 +37,13 @@ Section un.AioProxyCleanup
   ; Same rule as the CLI's readDesktopOwnedUnit: a unit is the app's when its program is the path the
   ; app recorded as AIO_PROXY_DESKTOP_EXEC. A service the user installed from the CLI stays.
   ; ReadAllText decodes UTF-8: Windows PowerShell's Get-Content would use the ANSI code page and, on a
-  ; CJK one, mangle a non-ASCII profile path until ConvertFrom-Json fails. A missing file throws and
-  ; exits non-zero, which reads as "not the app's".
+  ; CJK one, mangle a non-ASCII profile path until ConvertFrom-Json fails.
+  ; Exit 0: the app's service. Exit 1: verified not the app's (another owner, or no spec and no task).
+  ; Exit 2: unverifiable (spec missing or unreadable while a task exists) — the task may run the
+  ; support copy, so it is kept, as it is when PowerShell itself fails ("error").
   System::Call 'kernel32::SetEnvironmentVariable(t "AIO_PROXY_SERVICE_SPEC", t "$LOCALAPPDATA\aio-proxy\service.json")'
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "$$u = [IO.File]::ReadAllText($$env:AIO_PROXY_SERVICE_SPEC) | ConvertFrom-Json; if ($$u.exec -and $$u.exec -ceq $$u.env.AIO_PROXY_DESKTOP_EXEC) { exit 0 }; exit 1"'
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "try { $$u = [IO.File]::ReadAllText($$env:AIO_PROXY_SERVICE_SPEC) | ConvertFrom-Json } catch { $$u = $$null }; if ($$u -ne $$null) { if ($$u.exec -and $$u.exec -ceq $$u.env.AIO_PROXY_DESKTOP_EXEC) { exit 0 }; exit 1 }; if (Get-ScheduledTask -TaskPath $\'\AIO Proxy\$\' -ErrorAction SilentlyContinue) { exit 2 }; exit 1"'
   Pop $R0
-  StrCpy $R3 0
   ${If} $R0 == 0
     ; Stops the task before deleting it.
     nsExec::ExecToLog '"$INSTDIR\aio-proxy.exe" service uninstall'
@@ -50,6 +51,11 @@ Section un.AioProxyCleanup
     ${If} $R3 != 0
       DetailPrint "aio-proxy service uninstall failed ($R3); keeping ${AIOP_SUPPORT}, which the task still runs"
     ${EndIf}
+  ${ElseIf} $R0 == 1
+    StrCpy $R3 0
+  ${Else}
+    StrCpy $R3 $R0
+    DetailPrint "cannot tell who owns the AIO Proxy scheduled task ($R0); keeping ${AIOP_SUPPORT}, which it may run"
   ${EndIf}
 
   ; Drop the shims entry from the user Path; every other entry stays byte for byte.
