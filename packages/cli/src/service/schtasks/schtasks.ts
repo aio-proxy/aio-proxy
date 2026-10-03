@@ -196,18 +196,25 @@ export async function schtasksInstall(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   await ownTaskExists(io, path);
   const { spec, xml } = await renderUnit(io);
-  // The spec moves in only after `/Create` succeeds: a running task re-reads it on its next relaunch, so a failed
-  // install must leave the previous one in place.
+  // Spec and task change together: the spec moves in first (an atomic rename, so the task is never left without one),
+  // and a failed `/Create` puts the previous spec back, since a running task re-reads it on its next relaunch.
   const specPath = serviceSpecPath(io.localAppData);
+  const previous = io.readFile(specPath);
   const staged = `${specPath}.new`;
   io.writeFile(staged, spec);
   try {
-    await createTask(io, path, stageTaskXml(io, xml));
+    io.rename(staged, specPath);
   } catch (error) {
     io.remove(staged);
     throw error;
   }
-  io.rename(staged, specPath);
+  try {
+    await createTask(io, path, stageTaskXml(io, xml));
+  } catch (error) {
+    if (previous === undefined) io.remove(specPath);
+    else io.writeFile(specPath, previous);
+    throw error;
+  }
   io.remove(uninstallMarkerPath('win32', { LOCALAPPDATA: io.localAppData })!);
 }
 

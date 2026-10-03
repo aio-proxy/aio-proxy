@@ -433,9 +433,23 @@ test('install clears the uninstall marker and writes the spec and a UTF-16 task 
   expect(fs.files.size).toBe(1);
 });
 
-test('a failed install keeps the spec the existing task runs', async () => {
+test('a failed install keeps the spec the existing task runs, and a first install leaves none', async () => {
   const fs = fakeFs({ [specPath]: oldSpec });
   await expect(schtasksInstall(io({ fs, failOn: '/Create' }))).rejects.toThrow('/Create failed');
+  expect(fs.read(specPath)).toBe(oldSpec);
+  expect(fs.exists(`${specPath}.new`)).toBe(false);
+  const fresh = fakeFs();
+  await expect(schtasksInstall(io({ fs: fresh, task: 'missing', failOn: '/Create' }))).rejects.toThrow();
+  expect(fresh.exists(specPath)).toBe(false);
+});
+
+test('a spec that cannot move in fails the install before any task is created', async () => {
+  const fs = fakeFs({ [specPath]: oldSpec });
+  const failingRename = () => {
+    throw new Error('EBUSY');
+  };
+  await expect(schtasksInstall({ ...io({ fs }), rename: failingRename })).rejects.toThrow('EBUSY');
+  expect(recorded().map((c) => c[1])).toEqual([]);
   expect(fs.read(specPath)).toBe(oldSpec);
   expect(fs.exists(`${specPath}.new`)).toBe(false);
 });
