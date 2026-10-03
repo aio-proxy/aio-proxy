@@ -5,6 +5,43 @@ import type { ZodType } from 'zod';
 import * as dashboard from './dashboard-oauth';
 import { DashboardOAuthSessionSchema } from './dashboard-oauth';
 
+test('dashboard OAuth local sign-in metadata accepts localized sources and rejects credentials', () => {
+  const capability = {
+    plugin: '@example/oauth',
+    capability: 'default',
+    displayName: 'Example OAuth',
+    form: [],
+    defaults: {},
+    localSignIn: { source: { default: 'Example Tool', 'zh-Hans': '示例工具' } },
+  };
+  expect(dashboard.DashboardOAuthCapabilitySchema.parse(capability)).toEqual(capability);
+  expect(
+    dashboard.DashboardOAuthCapabilitySchema.safeParse({
+      ...capability,
+      localSignIn: { ...capability.localSignIn, token: 'synthetic-token' },
+    }).success,
+  ).toBe(false);
+});
+
+test('dashboard OAuth session start keeps local sign-in optional for existing callers and accepts explicit choices', () => {
+  const request: dashboard.DashboardOAuthSessionStart = {
+    capability: { plugin: '@example/oauth', capability: 'default' },
+    publicValues: {},
+    secrets: {},
+    clearSecrets: [],
+  };
+  expect(dashboard.DashboardOAuthSessionStartSchema.parse(request)).toEqual(request);
+  expect(dashboard.DashboardOAuthSessionStartSchema.parse({ ...request, localSignIn: false })).toHaveProperty(
+    'localSignIn',
+    false,
+  );
+  expect(dashboard.DashboardOAuthSessionStartSchema.parse({ ...request, localSignIn: true })).toHaveProperty(
+    'localSignIn',
+    true,
+  );
+  expect(dashboard.DashboardOAuthSessionStartSchema.safeParse({ ...request, localSignIn: 'true' }).success).toBe(false);
+});
+
 test('dashboard OAuth capability schema accepts safe form metadata and rejects secret values', () => {
   expect(dashboard).toHaveProperty('DashboardOAuthCapabilitySchema');
   const schema = Reflect.get(dashboard, 'DashboardOAuthCapabilitySchema') as ZodType;

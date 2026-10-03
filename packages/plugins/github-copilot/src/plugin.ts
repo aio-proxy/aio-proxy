@@ -17,6 +17,7 @@ import {
   normalizeEnterpriseURL,
   readGitHubCopilotQuota,
 } from './github-api';
+import { createCopilotLocalSignIn } from './local-sign-in';
 import { createGitHubCopilotRuntime } from './runtime/index';
 
 export type GitHubCopilotPresentationText = {
@@ -95,6 +96,7 @@ export function createGitHubCopilotPlugin(
     id: 'default',
     displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
+    localSignIn: createCopilotLocalSignIn(),
     credentials: zod
       .object({
         githubToken: zod.string(),

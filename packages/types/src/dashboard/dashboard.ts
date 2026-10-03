@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { providerLoginCommand } from '../commands';
 import { IdSchema } from '../common';
+import { DashboardLocalizedTextSchema } from '../dashboard-localized-text';
 import { type DiagnosticCode, ProviderStateSchema } from '../plugin';
 import { ProviderKind, ProviderProtocolSchema, RoutingPrioritySchema, RoutingWeightSchema } from '../provider';
 import {
@@ -37,6 +38,7 @@ export const DashboardProviderSummarySchema = z.object({
   capability: z.string().optional(),
   accountLabel: z.string().optional(),
   expiresAt: z.number().int().optional(),
+  localSignInSource: DashboardLocalizedTextSchema.optional(),
   catalogLastSuccessAt: z.iso.datetime().optional(),
 });
 

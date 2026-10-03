@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { createPluginRepository } from '../../plugins/repository';
 import { openDb } from '../index';
 import { MIGRATIONS } from '../migrations.manifest';
 
@@ -173,6 +174,39 @@ test('upgrading a version-six database preserves legacy provider weight without 
     expect(handle.sqlite.query('SELECT provider_weight, selection_reason FROM trace_span').get()).toEqual({
       provider_weight: 100,
       selection_reason: 'weight',
+    });
+  } finally {
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('upgrading existing OAuth accounts preserves credentials and defaults to an unlinked local sign-in', () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-migration-local-sign-in-'));
+  const previous = new Database(join(home, 'aio-proxy.db'));
+  try {
+    for (const migration of MIGRATIONS.slice(0, 10)) previous.run(migration.sql);
+    previous.run('PRAGMA user_version = 10');
+    previous.run(`INSERT INTO oauth_account (
+      provider_id, plugin, capability, fingerprint, options_json, secret_json, credential_json,
+      revision, runtime_revision, updated_at
+    ) VALUES ('legacy', '@aio-proxy/example', 'oauth', 'legacy-fingerprint', '{}', '{}',
+      '{"refreshToken":"temporary-test-token"}', 3, 2, 100)`);
+  } finally {
+    previous.close();
+  }
+  const handle = openDb({ home });
+  try {
+    const repository = createPluginRepository(handle.sqlite);
+    expect(repository.readAccount('legacy')).toMatchObject({
+      credential: { refreshToken: 'temporary-test-token' },
+      revision: 3,
+      runtimeRevision: 2,
+    });
+    expect(repository.readAccount('legacy')?.localSignIn).toBeUndefined();
+    expect(handle.sqlite.query('SELECT local_sign_in, local_sign_in_consumed FROM oauth_account').get()).toEqual({
+      local_sign_in: 0,
+      local_sign_in_consumed: null,
     });
   } finally {
     handle.close();

@@ -16,6 +16,7 @@ export type DiscoverCatalogInput = {
   readonly secrets: unknown;
   readonly credentialPort: CredentialPort<unknown>;
   readonly currentCredential: () => unknown;
+  readonly localSignIn: boolean;
   readonly discoverOptions: unknown;
   readonly deadline: Deadline;
   readonly discoveryDeadline: Deadline;
@@ -41,16 +42,18 @@ export async function discoverCatalog(input: DiscoverCatalogInput): Promise<Cata
   } catch (error) {
     if (deadline.signal.aborted) throw error;
     const fallback = initial.account === undefined ? adapter.catalog.initialFallback?.(error) : undefined;
+    // Discovery may retain errors with host credentials from before a refresh; current values cannot redact them.
+    const discoveryError = input.localSignIn ? new Error('CATALOG_UNAVAILABLE') : error;
     const discovered: CatalogDiscovery =
       fallback === undefined
-        ? { kind: 'failure', error }
+        ? { kind: 'failure', error: discoveryError }
         : { kind: 'success', catalog: validateModelCatalog(fallback) };
     if (discovered.kind === 'failure') {
       options.logger({
         event: 'plugin.catalog.discovery.failed',
         code: 'CATALOG_UNAVAILABLE',
         context: { plugin: initial.capability.plugin, capability: initial.capability.capability },
-        error: redactPluginError(error, {
+        error: redactPluginError(discovered.error, {
           secretValues: [...collectSecretStrings(secrets), ...collectSecretStrings(currentCredential())],
         }),
       });

@@ -69,6 +69,9 @@ interface HarnessProps {
   /** OAuth create only, and only once a capability is picked: what enables the authorize button. */
   readonly pickedCapability?: boolean;
   readonly isAuthorizationPending?: boolean;
+  readonly localSignIn?: boolean;
+  readonly accountLocked?: boolean;
+  readonly isReauthorizeBlocked?: boolean;
   /** Edit mode with one of the two required oauth props withheld, to pin each half of that guard. */
   readonly withhold?: 'oauth' | 'provider';
 }
@@ -78,6 +81,9 @@ const Harness: React.FC<HarnessProps> = ({
   mode = ProviderFormMode.Create,
   pickedCapability = false,
   isAuthorizationPending = false,
+  localSignIn = false,
+  accountLocked = false,
+  isReauthorizeBlocked = false,
   withhold,
 }) => {
   const form = useProviderEditorForm({ kind, initial: initialFor(kind) });
@@ -91,7 +97,7 @@ const Harness: React.FC<HarnessProps> = ({
       accountForm={accountForm}
       mode={mode}
       kind={kind}
-      capabilities={[capability]}
+      capabilities={[{ ...capability, ...(localSignIn ? { localSignIn: { source: 'Codex' } } : {}) }]}
       // Supplied regardless of `kind` and `mode`, and only `withhold` takes them away. Tying them to
       // `isEdit` made them `undefined` in every non-edit test, which meant the edit arm's own
       // `oauth !== undefined && provider !== undefined` half suppressed it there — so dropping the
@@ -101,6 +107,9 @@ const Harness: React.FC<HarnessProps> = ({
       onReauthorize={() => undefined}
       isAuthorizationPending={isAuthorizationPending}
       onAuthorize={() => undefined}
+      onLocalSignIn={() => undefined}
+      accountLocked={accountLocked}
+      isReauthorizeBlocked={isReauthorizeBlocked}
       summary={{ status: 'todo', hint: '' }}
     />
   );
@@ -119,6 +128,29 @@ beforeEach(() => {
 });
 
 describe('ConnectionSection', () => {
+  test.each([ProviderFormMode.Create, ProviderFormMode.Edit])(
+    'local sign-in in %s is disabled during authorization or while the account fields are locked',
+    (mode) => {
+      const view = renderConnection({ kind: ProviderKind.OAuth, mode, pickedCapability: true, localSignIn: true });
+      expect(screen.getByTestId('connection-local-sign-in')).toBeEnabled();
+      view.rerender(
+        <Harness kind={ProviderKind.OAuth} mode={mode} pickedCapability localSignIn isAuthorizationPending />,
+      );
+      expect(screen.getByTestId('connection-local-sign-in')).toBeDisabled();
+      view.rerender(<Harness kind={ProviderKind.OAuth} mode={mode} pickedCapability localSignIn accountLocked />);
+      expect(screen.getByTestId('connection-local-sign-in')).toBeDisabled();
+    },
+  );
+
+  test('a blocked edit disables local sign-in alongside browser reauthorization', () => {
+    renderConnection({
+      kind: ProviderKind.OAuth,
+      mode: ProviderFormMode.Edit,
+      localSignIn: true,
+      isReauthorizeBlocked: true,
+    });
+    expect(screen.getByTestId('connection-local-sign-in')).toBeDisabled();
+  });
   // The kind switch is four sibling ternaries over the same children, so the mutant that matters is a
   // dropped guard rather than a wrong one. Because the Harness now hands `oauth` and `provider` to
   // every case, each arm's "the other three are absent" assertions are live: a dropped `kind` or `mode`

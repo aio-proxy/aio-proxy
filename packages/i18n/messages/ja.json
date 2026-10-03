@@ -74,6 +74,16 @@
       "description": "AIO Proxy ダッシュボードを開きます",
       "opened": "既定のブラウザーでダッシュボードを開きました"
     },
+    "provider_login": {
+      "method_prompt": "どの方法でログインしますか？",
+      "method_local": "このマシンの {source} のログインを使用",
+      "method_browser": "ブラウザーでログイン",
+      "option_local_sign_in_description": "このマシンのツールに保存されているログインを使用",
+      "error_local_sign_in_unavailable": "このマシンに {source} のログイン情報が見つかりませんでした。",
+      "error_local_sign_in_unavailable_generic": "このマシンにログイン情報が見つかりませんでした。",
+      "error_local_sign_in_invalid": "このマシンのログイン情報は無効または不完全です。ツールで再度ログインしてから、もう一度お試しください。",
+      "error_local_sign_in_stale": "aio-proxy はこの Provider の新しいログイン情報をすでに保持しています。次回の更新時にツールのログイン情報を更新します。"
+    },
     "provider": {
       "description": "プロバイダーパッケージを管理します",
       "login": {
@@ -1078,7 +1088,13 @@
         "reauthorize_helper": "アカウント設定の変更は認可が成功した後にのみ保存されます",
         "copied_device_code": "デバイスコードをクリップボードにコピーしました",
         "open_authorization_aria": "認可ページを開く",
-        "start_failed": "認可を開始できませんでした。サーバーを確認して再試行してください。"
+        "start_failed": "認可を開始できませんでした。サーバーを確認して再試行してください。",
+        "use_local_sign_in": "{source} のログインを使用",
+        "local_sign_in_confirm_title": "このマシンの {source} のログインを使用しますか？",
+        "local_sign_in_confirm_description": "aio-proxy は、{source} がこのマシンに保存しているログイン情報を読み取り、トークンの更新時に同期します。この Provider を削除しても、{source} からはログアウトされません。",
+        "local_sign_in_unavailable": "このマシンのログイン情報は利用できなくなりました。ツールでログインしてから、もう一度お試しください。",
+        "local_sign_in_invalid": "このマシンのログイン情報を使用できませんでした。ツールで再度ログインしてから、もう一度お試しください。",
+        "local_sign_in_stale": "aio-proxy はすでに新しいログイン情報を保持しています。このマシンのログイン情報は、トークンの更新時に更新されます。"
       },
       "transforms": {
         "description": "上流に送信する前に適用するリクエストの書き換えをカスタマイズします。一致条件と更新アクションはルールの順に実行されるため、後のルールは前のルールの結果を参照します。",
@@ -1485,7 +1501,9 @@
       "new_title": "新規プロバイダー",
       "edit_title": "プロバイダーを編集",
       "aliases_title": "プロバイダーのエイリアス",
-      "kind_not_supported": "プロバイダーの種類 \"{kind}\" は UI からの作成に対応していません"
+      "kind_not_supported": "プロバイダーの種類 \"{kind}\" は UI からの作成に対応していません",
+      "local_sign_in_badge": "このマシンの {source} のログインに連携済み",
+      "local_sign_in_delete_note": "この Provider は、このマシンの {source} のログインを使用しています。削除しても、{source} からはログアウトされません。"
     },
     "usage": {
       "range_label": "時間範囲",

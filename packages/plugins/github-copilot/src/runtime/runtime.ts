@@ -100,10 +100,11 @@ function createDynamicFetch(
   credentials: RuntimeContext<GitHubCopilotCredential, GitHubAccountOptions>['credentials'],
   fetcher: RuntimeFetch,
 ): typeof fetch {
-  return async (input, init) => {
+  const dynamicFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const credential = await currentGitHubCopilotCredential(credentials, fetcher);
     return await fetchWithCredential(input, init, credential, fetcher);
   };
+  return dynamicFetch as typeof fetch;
 }
 
 async function fetchWithCredential(

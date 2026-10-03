@@ -74,6 +74,16 @@
       "description": "AIO Proxy 대시보드 열기",
       "opened": "기본 브라우저에서 대시보드를 열었습니다"
     },
+    "provider_login": {
+      "method_prompt": "어떤 방법으로 로그인하시겠어요?",
+      "method_local": "이 컴퓨터의 {source} 로그인 사용",
+      "method_browser": "브라우저로 로그인",
+      "option_local_sign_in_description": "이 컴퓨터의 도구에 저장된 기존 로그인 사용",
+      "error_local_sign_in_unavailable": "이 컴퓨터에서 {source} 로그인 정보를 찾지 못했습니다.",
+      "error_local_sign_in_unavailable_generic": "이 컴퓨터에서 로그인 정보를 찾지 못했습니다.",
+      "error_local_sign_in_invalid": "이 컴퓨터의 로그인 정보가 유효하지 않거나 불완전합니다. 도구에서 다시 로그인한 후 재시도하세요.",
+      "error_local_sign_in_stale": "aio-proxy에 이미 이 Provider의 더 최신 로그인 정보가 있습니다. 다음 갱신 시 도구의 로그인 정보를 업데이트합니다."
+    },
     "provider": {
       "description": "프로바이더 패키지 관리",
       "login": {
@@ -1078,7 +1088,13 @@
         "reauthorize_helper": "계정 설정 변경은 인증에 성공한 후에만 저장됩니다",
         "copied_device_code": "디바이스 코드를 클립보드에 복사했습니다",
         "open_authorization_aria": "인증 페이지 열기",
-        "start_failed": "인증을 시작하지 못했습니다. 서버를 확인한 뒤 다시 시도하세요."
+        "start_failed": "인증을 시작하지 못했습니다. 서버를 확인한 뒤 다시 시도하세요.",
+        "use_local_sign_in": "{source} 로그인 사용",
+        "local_sign_in_confirm_title": "이 컴퓨터의 {source} 로그인을 사용할까요?",
+        "local_sign_in_confirm_description": "aio-proxy는 {source}가 이 컴퓨터에 저장한 로그인 정보를 읽고 토큰이 갱신될 때 동기화합니다. 이 Provider를 제거해도 {source}에서 로그아웃되지 않습니다.",
+        "local_sign_in_unavailable": "이 컴퓨터의 로그인 정보를 더 이상 사용할 수 없습니다. 도구에서 로그인한 후 다시 시도하세요.",
+        "local_sign_in_invalid": "이 컴퓨터의 로그인 정보를 사용할 수 없습니다. 도구에서 다시 로그인한 후 다시 시도하세요.",
+        "local_sign_in_stale": "aio-proxy에 이미 더 최신 로그인 정보가 있습니다. 이 컴퓨터의 로그인 정보는 토큰이 갱신될 때 업데이트됩니다."
       },
       "transforms": {
         "description": "업스트림으로 전송하기 전에 적용할 요청 재작성을 사용자 지정합니다. 일치 조건과 업데이트 동작은 규칙 순서대로 실행되므로 뒤의 규칙은 앞의 규칙 결과를 보게 됩니다.",
@@ -1485,7 +1501,9 @@
       "new_title": "새 프로바이더",
       "edit_title": "프로바이더 편집",
       "aliases_title": "프로바이더 별칭",
-      "kind_not_supported": "프로바이더 종류 \"{kind}\"은(는) UI를 통한 생성이 지원되지 않습니다"
+      "kind_not_supported": "프로바이더 종류 \"{kind}\"은(는) UI를 통한 생성이 지원되지 않습니다",
+      "local_sign_in_badge": "이 컴퓨터의 {source} 로그인에 연결됨",
+      "local_sign_in_delete_note": "이 Provider는 이 컴퓨터의 {source} 로그인을 사용합니다. 제거해도 {source}에서 로그아웃되지 않습니다."
     },
     "usage": {
       "range_label": "시간 범위",

@@ -98,6 +98,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
       isReauthorizeBlocked={saveBlocked}
       isAuthorizationPending={isReauthorizing}
       onAuthorize={() => save(false)}
+      onLocalSignIn={() => save(true, true)}
       onOptionsValidityChange={setOptionsValid}
       summary={summaries.connection}
       session={

@@ -74,6 +74,16 @@
       "description": "打开 AIO Proxy 控制台",
       "opened": "已在默认浏览器中打开控制台"
     },
+    "provider_login": {
+      "method_prompt": "你想如何登录？",
+      "method_local": "使用本机上的 {source} 登录",
+      "method_browser": "通过浏览器登录",
+      "option_local_sign_in_description": "使用厂商工具在本机上已有的登录",
+      "error_local_sign_in_unavailable": "未在本机上找到 {source} 登录。",
+      "error_local_sign_in_unavailable_generic": "未在本机上找到已有登录。",
+      "error_local_sign_in_invalid": "本机上的登录无效或不完整。请在厂商工具中重新登录，然后重试。",
+      "error_local_sign_in_stale": "aio-proxy 已持有此 Provider 的更新登录；下次刷新时将更新厂商工具中的登录。"
+    },
     "provider": {
       "description": "管理提供商包",
       "login": {
@@ -1078,7 +1088,13 @@
         "reauthorize_helper": "账户设置变更只会在授权成功后保存",
         "copied_device_code": "已将设备码复制到剪贴板",
         "open_authorization_aria": "打开授权页面",
-        "start_failed": "无法开始授权。请检查服务端后重试。"
+        "start_failed": "无法开始授权。请检查服务端后重试。",
+        "use_local_sign_in": "使用 {source} 登录",
+        "local_sign_in_confirm_title": "使用本机上的 {source} 登录？",
+        "local_sign_in_confirm_description": "aio-proxy 将读取 {source} 保存在本机上的登录信息，并在令牌刷新时保持同步。移除此 Provider 不会使 {source} 退出登录。",
+        "local_sign_in_unavailable": "本机上的登录信息已不可用。请先在该工具中登录，然后重试。",
+        "local_sign_in_invalid": "无法使用本机上的登录信息。请在该工具中重新登录，然后重试。",
+        "local_sign_in_stale": "aio-proxy 已持有更新的登录信息。本机上的登录信息将在令牌刷新时更新。"
       },
       "transforms": {
         "description": "自定义发往上游前的请求改写。匹配条件与更新动作按规则顺序执行，后面的规则会看到前面规则的结果。",
@@ -1485,7 +1501,9 @@
       "new_title": "新建提供商",
       "edit_title": "编辑提供商",
       "aliases_title": "提供商别名",
-      "kind_not_supported": "不支持通过 UI 创建 \"{kind}\" 类型的提供商"
+      "kind_not_supported": "不支持通过 UI 创建 \"{kind}\" 类型的提供商",
+      "local_sign_in_badge": "已关联本机上的 {source} 登录",
+      "local_sign_in_delete_note": "此 Provider 使用本机上的 {source} 登录。移除它不会使 {source} 退出登录。"
     },
     "usage": {
       "range_label": "时间范围",

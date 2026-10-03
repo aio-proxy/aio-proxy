@@ -17,6 +17,8 @@ test('creates the vault tables without the legacy auth table', () => {
       'label',
       'expires_at',
       'updated_at',
+      'local_sign_in',
+      'local_sign_in_consumed',
     ]);
     expect(
       handle.sqlite.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth'").get(),

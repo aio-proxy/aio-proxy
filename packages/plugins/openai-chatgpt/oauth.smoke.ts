@@ -7,10 +7,10 @@ import type { ChatGPTCredential } from './src/schema';
 
 test('build embeds the ChatGPT OAuth client ID without leaving source plaintext', async () => {
   const [source, config, setup, artifact] = await Promise.all([
-    Bun.file('./src/oauth-flow.ts').text(),
+    Bun.file('./src/oauth-flow/oauth-flow.ts').text(),
     Bun.file('./rslib.config.ts').text(),
     Bun.file('./test/setup.ts').text(),
-    Bun.file('./dist/oauth-flow.js').text(),
+    Bun.file('./dist/oauth-flow/oauth-flow.js').text(),
   ]);
 
   expect(new Bun.CryptoHasher('sha256').update(openAIChatGPTClientId).digest('hex')).toBe(

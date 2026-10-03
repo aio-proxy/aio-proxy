@@ -19,7 +19,7 @@ export * from './config/index';
 export * from './dashboard/index';
 export * from './dashboard/routing/index';
 export * from './dashboard-localized-text';
-export * from './dashboard-oauth';
+export * from './dashboard-oauth/index';
 export * from './dashboard-provider-mutation';
 export * from './desktop-summary/index';
 export * from './dashboard-provider-draft/index';

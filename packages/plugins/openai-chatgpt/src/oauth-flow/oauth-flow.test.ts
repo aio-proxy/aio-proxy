@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 
 import type { RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
+import { base64url } from '../pkce';
 import { CHATGPT_CLIENT_ID, ChatGPTTokenExchangeError, exchangeCodeForTokens, refreshAccessToken } from './oauth-flow';
-import { base64url } from './pkce';
 
 describe('OpenAI ChatGPT OAuth flow', () => {
   test('posts the host-selected redirect URI during authorization code exchange', async () => {
@@ -33,6 +33,7 @@ describe('OpenAI ChatGPT OAuth flow', () => {
       accountId: 'access-account',
       expiresAt: 1_700_000_900_000,
       refreshToken: 'refresh-123',
+      idToken: buildJwt({ chatgpt_account_id: 'id-account' }),
     });
   });
 
@@ -49,6 +50,24 @@ describe('OpenAI ChatGPT OAuth flow', () => {
 
     expect(response.refreshToken).toBe('refresh-123');
   });
+
+  test.each([undefined, buildJwt({ chatgpt_account_id: 'access-account', email: 'new@example.test' })])(
+    'refresh preserves the old id_token unless upstream supplies a replacement (case %#)',
+    async (nextIdToken) => {
+      const previousIdToken = buildJwt({ email: 'old@example.test' });
+      const response = await refreshAccessToken('refresh-123', {
+        idToken: previousIdToken,
+        fetch: createTokenFetchMock(
+          {
+            access_token: buildJwt({ chatgpt_account_id: 'access-account' }),
+            ...(nextIdToken === undefined ? {} : { id_token: nextIdToken }),
+          },
+          refreshBody('refresh-123'),
+        ),
+      });
+      expect(response.idToken).toBe(nextIdToken ?? previousIdToken);
+    },
+  );
 
   test('stores a rotated refresh token supplied by upstream', async () => {
     const response = await refreshAccessToken('refresh-123', {

@@ -241,6 +241,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
     .command('login [capability]')
     .description(m['cli.provider.login.description']())
     .option('--provider <id>', m['cli.provider.login.option_provider_description']())
+    .option('--local-sign-in', m['cli.provider_login.option_local_sign_in_description']())
     .action(providerLogin);
   provider
     .command('import [path]')

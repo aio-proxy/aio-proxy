@@ -73,6 +73,7 @@ Options:
 - `aio-proxy provider list`：列出当前运行实例加载的全部提供商。
   - `--probe`：对所有提供商并发执行在线存活探测。
 - `aio-proxy provider login [capability]`：交互式执行 OAuth 厂商登录。
+  - `--local-sign-in`：使用厂商工具在本机上的已有登录，跳过登录方式选择。支持 ChatGPT（Codex）和 GitHub Copilot；只有明确选择后才读取凭据，账号选项仍会按提示填写。不传此参数时，检测到本机登录也可在交互提示中选择。
 - `aio-proxy provider import [path]`：从本地认证文件或目录中导入提供商凭据。
 - `aio-proxy provider test <provider-id>`：针对特定的提供商发起在线探针测试。
 

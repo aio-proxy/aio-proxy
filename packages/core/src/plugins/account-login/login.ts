@@ -27,6 +27,12 @@ import {
   ProviderFingerprintMismatchError,
 } from './errors';
 import { discoverCatalog } from './login/discovery';
+import {
+  assertLocalSignInFresh,
+  localSignInDiscoveryPort,
+  readLocalSignInAccount,
+  validateLocalSignInResult,
+} from './login/local-sign-in';
 import { preflight } from './login/preflight';
 import { type StageState, stageAccountWrite } from './login/stage';
 import { safeSupersededDiagnostic } from './recovery';
@@ -79,6 +85,7 @@ export type OAuthAccountWriteOptions = {
 };
 
 export type LoginOAuthAccountOptions = OAuthAccountWriteOptions & {
+  readonly localSignIn?: boolean;
   readonly renderAccountOptions: RenderAccountOptions;
   readonly createAuthorization: (signal: AbortSignal) => AuthorizationPort;
   readonly onAuthorized?: () => void;
@@ -114,14 +121,17 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
       }),
     );
     const parsedOptions = await validatedAccountOptions(adapter, rendered, deadline.signal);
-    const loginResult = await loginWithProtectedAuthorization(
-      adapter,
-      () => options.createAuthorization(deadline.signal),
-      options.progress ?? (() => {}),
-      deadline.signal,
-      parsedOptions.value,
-      options.fetch,
-    );
+    const loginResult =
+      options.localSignIn === true
+        ? await readLocalSignInAccount(adapter, options, parsedOptions.value, deadline.signal)
+        : await loginWithProtectedAuthorization(
+            adapter,
+            () => options.createAuthorization(deadline.signal),
+            options.progress ?? (() => {}),
+            deadline.signal,
+            parsedOptions.value,
+            options.fetch,
+          );
     return await persistOAuthAccount({
       options,
       initial,
@@ -131,6 +141,7 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
       rawResult: loginResult,
       deadline,
       afterValidation: options.onAuthorized,
+      localSignIn: options.localSignIn === true,
     });
   } finally {
     deadline.close();
@@ -192,26 +203,46 @@ async function persistOAuthAccount(input: {
   readonly rawResult: OAuthLoginResult<unknown>;
   readonly deadline: ReturnType<typeof deadlineController>;
   readonly afterValidation?: () => void;
+  readonly localSignIn?: boolean;
 }): Promise<LoginOAuthAccountResult> {
   const { options, initial, adapter, rendered, parsedOptions, rawResult, deadline } = input;
-  const validated = await validatedLoginResult(adapter, rawResult, deadline.signal);
+  const consumed = input.localSignIn === true ? initial.account?.localSignIn?.consumed : undefined;
+  const validated =
+    input.localSignIn === true
+      ? await validateLocalSignInResult(adapter, rawResult, deadline.signal)
+      : await validatedLoginResult(adapter, rawResult, deadline.signal);
   if (initial.fingerprint !== undefined && validated.fingerprint !== initial.fingerprint) {
     throw new ProviderFingerprintMismatchError(options.targetProviderId as string);
   }
+  if (input.localSignIn === true) assertLocalSignInFresh(rawResult, consumed);
   input.afterValidation?.();
-  const metadata: { accountLabel?: string; expiresAt?: number } = {
+  const metadata: { accountLabel?: string; expiresAt?: number; localSignInConsumed?: string } = {
     ...(validated.accountLabel === undefined ? {} : { accountLabel: validated.accountLabel }),
     ...(validated.expiresAt === undefined ? {} : { expiresAt: validated.expiresAt }),
+    ...(consumed === undefined ? {} : { localSignInConsumed: consumed }),
   };
   const discoveryDeadline = childDeadline(deadline.signal, CATALOG_DISCOVERY_TIMEOUT_MS);
   const credentials = inMemoryCredentialPort(adapter, validated.credential, discoveryDeadline.signal, metadata);
+  const credentialPort =
+    input.localSignIn === true
+      ? localSignInDiscoveryPort({
+          ...credentials,
+          metadata,
+          adapter,
+          capability: initial.capability,
+          options,
+          accountOptions: parsedOptions,
+          fingerprint: validated.fingerprint,
+        })
+      : credentials.port;
   const discovered = await discoverCatalog({
     adapter,
     initial,
     options,
     secrets: rendered.secrets,
-    credentialPort: credentials.port,
+    credentialPort,
     currentCredential: credentials.current,
+    localSignIn: input.localSignIn === true,
     discoverOptions: parsedOptions,
     deadline,
     discoveryDeadline,
@@ -236,6 +267,12 @@ async function persistOAuthAccount(input: {
               fingerprint: validated.fingerprint,
               suggestedKey: validated.suggestedKey,
               metadata,
+              ...(input.localSignIn === true
+                ? {
+                    localSignIn:
+                      metadata.localSignInConsumed === undefined ? {} : { consumed: metadata.localSignInConsumed },
+                  }
+                : {}),
               diagnostics: options.diagnostics,
               signal: deadline.signal,
             },
