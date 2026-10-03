@@ -340,6 +340,12 @@ jobs:
           file ./${{ matrix.asset }}
           ./${{ matrix.asset }} --appimage-extract > /dev/null
           file squashfs-root/usr/bin/aio-proxy squashfs-root/usr/bin/aio-proxy-desktop
+          # Diagnostics: is the packaged CLI byte-identical to the built sidecar?
+          orig="sidecar/aio-proxy-${{ matrix.rust-target }}"
+          ls -l "$orig" squashfs-root/usr/bin/aio-proxy
+          sha256sum "$orig" squashfs-root/usr/bin/aio-proxy
+          readelf -d squashfs-root/usr/bin/aio-proxy | grep -iE 'rpath|runpath' || echo "no rpath"
+          "$orig" --version || echo "original sidecar exit $?"
           cli="$(squashfs-root/usr/bin/aio-proxy --version)"
           app="$(squashfs-root/usr/bin/aio-proxy-desktop --version)"
           echo "cli: $cli / app: $app"
