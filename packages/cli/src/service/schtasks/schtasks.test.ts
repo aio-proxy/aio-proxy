@@ -352,6 +352,22 @@ test('start repairs an external task whose action broke from its own spec, witho
   expect(fs.files.get(specPath)).toBe(external);
 });
 
+test('start keeps an external task on an older spec path external, repairing it from that spec', async () => {
+  const movedSpec = 'C:\\Users\\old\\AppData\\Local\\aio-proxy\\service.json';
+  const external = JSON.stringify(
+    renderServiceSpec({ exec: oldExec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc' }),
+  );
+  const fs = fakeFs({ [movedSpec]: external, [oldExec]: '' });
+  const desktopUnit = async () => ({ exec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc', desktopExec: exec });
+  await schtasksStart({
+    ...io({ fs, task: renderTaskXml({ sid, exec: oldExec, specPath: movedSpec }) }),
+    unit: desktopUnit,
+  });
+  expect(recorded().map((c) => c[1])).toEqual(['/Create', '/Run']);
+  expect(fs.lastXmlCreated()).toBe(renderTaskXml({ sid, exec: oldExec, specPath: movedSpec }));
+  expect(fs.exists(specPath)).toBe(false);
+});
+
 test('start refuses an external service whose own program is gone instead of running a dead task', async () => {
   const external = JSON.stringify(
     renderServiceSpec({ exec: oldExec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc' }),

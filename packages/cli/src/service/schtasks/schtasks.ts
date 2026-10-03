@@ -208,17 +208,20 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
   const task = await ownTask(io, path);
   const refresh = task ? await refreshesStaleTask(io, task) : 'reinstall';
   if (refresh === 'reinstall') await schtasksInstall(io);
-  else if (refresh === 'repair-action') await repairAction(io, path);
+  else if (refresh === 'repair-action') await repairAction(io, path, ownedSpecPath(io, task));
   else await io.run(['schtasks', '/Change', '/TN', path, '/ENABLE']);
   await runTask(io, path);
 }
+
+/** The spec the task runs: its recorded path, or where it would go now when the action cannot be read. */
+const ownedSpecPath = (io: SchtasksIo, task: ParsedTask | undefined): string =>
+  task?.action?.specPath ?? serviceSpecPath(io.localAppData);
 
 /**
  * Another installer's service whose task action broke: the task is rebuilt from that owner's own spec, which stays
  * as it is, so ownership never moves. `/Create /F` leaves the task enabled.
  */
-async function repairAction(io: SchtasksIo, path: string): Promise<void> {
-  const specPath = serviceSpecPath(io.localAppData);
+async function repairAction(io: SchtasksIo, path: string, specPath: string): Promise<void> {
   const exec = parseServiceSpec(io.readFile(specPath) ?? '')!.exec;
   await createTask(io, path, stageTaskXml(io, renderTaskXml({ sid: io.sid, exec, specPath })));
 }
@@ -233,8 +236,9 @@ async function repairAction(io: SchtasksIo, path: string): Promise<void> {
 async function refreshesStaleTask(io: SchtasksIo, task: ParsedTask): Promise<'keep' | 'reinstall' | 'repair-action'> {
   const specPath = serviceSpecPath(io.localAppData);
   const { action } = task;
+  // Ownership is the spec the task runs, which may sit on an older LOCALAPPDATA or profile path.
   // The supervisor exits on a spec it cannot parse or whose exec is gone, so either is as stale as a missing spec.
-  const current = parseServiceSpec(io.readFile(specPath) ?? '');
+  const current = parseServiceSpec(io.readFile(ownedSpecPath(io, task)) ?? '');
   const sound =
     action !== undefined &&
     io.exists(action.exec) &&
