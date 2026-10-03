@@ -45,7 +45,9 @@ pub fn window_options(cx: &App, _tray: Option<&Tray>) -> Option<WindowOptions> {
         is_movable: false,
         is_resizable: false,
         is_minimizable: false,
-        window_background: WindowBackgroundAppearance::Blurred,
+        // Opaque, painted by the theme: a Blurred backdrop depends on DWM and the GPU, and where it does not take
+        // (a VM, Remote Desktop, transparency effects off) the cleared root shows black under light-theme text.
+        window_background: WindowBackgroundAppearance::Opaque,
         display_id: Some(display),
         ..Default::default()
     })
