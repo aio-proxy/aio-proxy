@@ -302,7 +302,6 @@ for (const scenario of ['synthetic', 'original', 'retry', 'ordinary', 'failover'
           risk_level: deny ? 'critical' : 'low',
           user_authorization: 'unknown',
           outcome: deny ? 'deny' : 'allow',
-          reason: deny ? 'critical_risk' : 'low_risk',
         };
         return Response.json({
           answers: Object.fromEntries(

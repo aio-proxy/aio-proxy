@@ -201,10 +201,10 @@ export function createOpenAIChatGPTPlugin(
             })
           : undefined;
       register?.('openai-response', 'wrap', ({ original, evaluate }) =>
-        createGuardianRawInvoke({ pluginOptions: parsed, original, evaluate }),
+        createGuardianRawInvoke({ pluginOptions: parsed, original, evaluate, logger: api.logger }),
       );
       register?.('openai-response', 'pre-route', ({ evaluate }) =>
-        createGuardianPreRouteInvoke({ pluginOptions: parsed, evaluate }),
+        createGuardianPreRouteInvoke({ pluginOptions: parsed, evaluate, logger: api.logger }),
       );
       /*
        * The built-in API is injected by the host and is intentionally absent
