@@ -73,12 +73,14 @@ fn commit(stable: &Path, temp: &Path) -> io::Result<()> {
     if cfg!(windows) { commit_windows(stable, temp, |from, to| fs::rename(from, to)) } else { fs::rename(temp, stable) }
 }
 
-/// A running `.exe` cannot be overwritten but can be renamed: move it to `.old-<pid>`, move the
-/// temp in, and move the old one straight back if that fails. A crash in between is healed by
-/// `recover_backups` on the next start.
+/// A running `.exe` cannot be overwritten but can be renamed: move it to `.old-<pid>-<nanos>`, move
+/// the temp in, and move the old one straight back if that fails. A crash in between is healed by
+/// `recover_backups` on the next start. The timestamp keeps the name unique: a backup the old
+/// supervisor still runs cannot be deleted, and Windows may give a later process the same PID.
 pub fn commit_windows(stable: &Path, temp: &Path, rename: impl Fn(&Path, &Path) -> io::Result<()>) -> io::Result<()> {
     let name = stable.file_name().unwrap_or_default().to_string_lossy();
-    let backup = stable.with_file_name(format!("{name}.old-{}", std::process::id()));
+    let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let backup = stable.with_file_name(format!("{name}.old-{}-{nanos}", std::process::id()));
     let backed_up = match rename(stable, &backup) {
         Ok(()) => true,
         Err(error) if error.kind() == io::ErrorKind::NotFound => false,

@@ -157,6 +157,23 @@ fn a_failed_windows_commit_puts_the_old_copy_back() {
 }
 
 #[test]
+fn a_commit_succeeds_while_an_undeletable_backup_holds_this_pid() {
+    let dir = tempfile::tempdir().unwrap();
+    let stable = dir.path().join("aio-proxy.exe");
+    let temp = dir.path().join(".aio-proxy.tmp.exe");
+    fs::write(&stable, "old").unwrap();
+    fs::write(&temp, "new").unwrap();
+    // An earlier process with this PID left a backup the old supervisor still runs.
+    fs::write(dir.path().join(format!("aio-proxy.exe.old-{}", std::process::id())), "locked").unwrap();
+    // Windows renames never replace an existing file.
+    commit_windows(&stable, &temp, |from, to| {
+        if to.exists() { Err(io::Error::from(io::ErrorKind::AlreadyExists)) } else { fs::rename(from, to) }
+    })
+    .unwrap();
+    assert_eq!(fs::read(&stable).unwrap(), b"new");
+}
+
+#[test]
 fn recovery_restores_the_newest_backup_and_deletes_the_rest() {
     let dir = tempfile::tempdir().unwrap();
     let stable = dir.path().join("aio-proxy.exe");
