@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/plugin-sdk",
-  "version": "0.39.0",
+  "version": "0.39.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/aio-proxy/aio-proxy.git",

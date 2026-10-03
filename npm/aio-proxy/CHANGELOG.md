@@ -1,5 +1,13 @@
 # aio-proxy
 
+## 0.39.1
+
+### Patch Changes
+
+- [#489](https://github.com/aio-proxy/aio-proxy/pull/489) [`ec485f0`](https://github.com/aio-proxy/aio-proxy/commit/ec485f035dfea998bed00c2852bb74bfb730d6b5) Thanks @baranwang - Codex no longer fails to start with "model_catalog_json ... must contain at least one model" when model metadata is briefly unavailable. An empty model catalog is never written, and one written by an earlier version is no longer kept: the last non-empty catalog is kept, or, with none, Codex uses its built-in catalog. The server logs a `codex.catalog_sync_failed` warning with code `empty_catalog` while the catalog stays empty.
+
+- [#487](https://github.com/aio-proxy/aio-proxy/pull/487) [`7ba11b2`](https://github.com/aio-proxy/aio-proxy/commit/7ba11b2ef78af331754be0e94bda7bc19de19312) Thanks @baranwang - Align desktop usage trend colors with the Dashboard: higher-usage series appear first in lighter colors, while lower-usage series use darker colors. Hide zero-valued entries in Dashboard model trend hover tooltips.
+
 ## 0.39.0
 
 ### Minor Changes

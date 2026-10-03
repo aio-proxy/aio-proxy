@@ -1,5 +1,12 @@
 # @aio-proxy/plugin-muse-code
 
+## 0.39.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.39.1
+
 ## 0.39.0
 
 ### Minor Changes
