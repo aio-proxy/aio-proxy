@@ -529,12 +529,11 @@ test('uninstall fails without deleting when the supervisor outlives 10 s', async
 
 test('uninstall neither kills nor waits on a supervisor PID that another program now holds', async () => {
   const asked: number[] = [];
+  const killed: number[] = [];
   const { calls } = await recordRun((io) =>
     schtasksUninstall({
       ...io,
-      kill: () => {
-        throw new Error('killed a recycled PID');
-      },
+      kill: (pid) => void killed.push(pid),
       imagePath: (pid) => {
         asked.push(pid);
         return 'C:\\Windows\\System32\\svchost.exe';
@@ -545,6 +544,7 @@ test('uninstall neither kills nor waits on a supervisor PID that another program
     }),
   );
   expect(asked).toEqual([4242, 4242]);
+  expect(killed).toEqual([]);
   expect(calls.map((c) => c[1])).toEqual(['/End', '/Delete']);
 });
 

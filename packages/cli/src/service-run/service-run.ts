@@ -44,8 +44,8 @@ export async function runSupervisor(specPath: string, deps: SupervisorDeps): Pro
 }
 
 export function defaultSupervisorDeps(specPath: string): SupervisorDeps {
-  // Created once and never closed: the handle dies with this process, and kill-on-close then ends the proxy,
-  // which is how `schtasks /End` (terminating the supervisor) reaches the child.
+  // Created once and never closed: the handle dies with this process, and kill-on-close then ends the proxy.
+  // `schtasks /End` only ends the task's conhost, so the CLI terminates this supervisor itself after it.
   const job = process.platform === 'win32' ? createKillOnCloseJob() : undefined;
   return {
     readSpec: (path) => {

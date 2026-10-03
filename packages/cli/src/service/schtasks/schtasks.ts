@@ -290,8 +290,8 @@ export const exitProcessLater = (code: number, ms: number): void => {
 };
 
 /**
- * Restart from inside the service. `/End` would kill our own supervisor (and, through its Job Object, this
- * process) before `/Run`, so instead refresh the spec (and the task when its `exec` or spec path moved) and exit with the
+ * Restart from inside the service. Ending the task would end our own supervisor (and, through its Job Object,
+ * this process) before `/Run`, so instead refresh the spec (and the task when its `exec` or spec path moved) and exit with the
  * restart code: the supervisor re-reads the spec and relaunches. Returns normally so a caller that awaits the
  * restart (the auto-update task) does not see a failure.
  */
