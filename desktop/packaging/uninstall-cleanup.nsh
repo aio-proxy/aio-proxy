@@ -39,10 +39,13 @@ Section un.AioProxyCleanup
   ; ReadAllText decodes UTF-8: Windows PowerShell's Get-Content would use the ANSI code page and, on a
   ; CJK one, mangle a non-ASCII profile path until ConvertFrom-Json fails.
   ; Exit 0: the app's service. Exit 1: verified not the app's (another owner, or no spec and no task).
+  ; Exit 2 also for another owner's spec that runs the support copy (`aiop service install` from the
+  ; app's shim): that task still needs the executable.
   ; Exit 2: unverifiable (spec missing or unreadable while a task exists) — the task may run the
   ; support copy, so it is kept, as it is when PowerShell itself fails ("error").
+  System::Call 'kernel32::SetEnvironmentVariable(t "AIO_PROXY_SUPPORT", t "${AIOP_SUPPORT}")'
   System::Call 'kernel32::SetEnvironmentVariable(t "AIO_PROXY_SERVICE_SPEC", t "$LOCALAPPDATA\aio-proxy\service.json")'
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "try { $$u = [IO.File]::ReadAllText($$env:AIO_PROXY_SERVICE_SPEC) | ConvertFrom-Json } catch { $$u = $$null }; if ($$u -ne $$null) { if ($$u.exec -and $$u.exec -ceq $$u.env.AIO_PROXY_DESKTOP_EXEC) { exit 0 }; exit 1 }; if (Get-ScheduledTask -TaskPath $\'\AIO Proxy\$\' -ErrorAction SilentlyContinue) { exit 2 }; exit 1"'
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "try { $$u = [IO.File]::ReadAllText($$env:AIO_PROXY_SERVICE_SPEC) | ConvertFrom-Json } catch { $$u = $$null }; if ($$u -ne $$null) { if ($$u.exec -and $$u.exec -ceq $$u.env.AIO_PROXY_DESKTOP_EXEC) { exit 0 }; if ($$u.exec -and $$u.exec.ToLower().StartsWith(($$env:AIO_PROXY_SUPPORT + [char]92).ToLower())) { exit 2 }; exit 1 }; if (Get-ScheduledTask -TaskPath $\'\AIO Proxy\$\' -ErrorAction SilentlyContinue) { exit 2 }; exit 1"'
   Pop $R0
   ${If} $R0 == 0
     ; Stops the task before deleting it.
