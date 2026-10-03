@@ -120,3 +120,18 @@ fn only_a_stable_copy_that_preparation_ran_and_can_still_run_is_used_over_the_bu
     assert_eq!(exec(Some(InstallState::ReadOnly(unreadable))), sidecar);
     assert_eq!(exec(None), sidecar);
 }
+
+#[cfg(unix)]
+#[test]
+fn an_appimage_mount_leaves_the_path_lists_the_cli_records() {
+    let mount = Path::new("/tmp/.mount_aio-praMiEbh");
+    let path = OsStr::new(
+        "/tmp/.mount_aio-praMiEbh/usr/bin/:/tmp/.mount_aio-praMiEbh-other/bin:/home/me/.opencode/bin:/usr/bin",
+    );
+    assert_eq!(
+        without_dir(path, mount),
+        Some("/tmp/.mount_aio-praMiEbh-other/bin:/home/me/.opencode/bin:/usr/bin".into()),
+        "a sibling sharing the prefix and a missing agent dir stay"
+    );
+    assert_eq!(without_dir(OsStr::new("/tmp/.mount_aio-praMiEbh/usr/lib"), mount), None);
+}

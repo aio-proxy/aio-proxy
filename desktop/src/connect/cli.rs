@@ -2,6 +2,7 @@
 //! and the local transport. Every CLI child gets `AIO_PROXY_DESKTOP_EXEC=<stable exec>`, the only input that makes a
 //! plist desktop-owned.
 
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -61,8 +62,33 @@ impl SystemHost {
         if let Some(home) = home {
             command.env("AIO_PROXY_HOME", home);
         }
+        if let Some(appdir) = std::env::var_os("APPDIR").filter(|dir| cfg!(target_os = "linux") && !dir.is_empty()) {
+            leave_appimage(&mut command, Path::new(&appdir));
+        }
         command
     }
+}
+
+/// AppRun puts the AppImage's mount into these lists, and the CLI records PATH into the systemd unit,
+/// where a mount that dies with the app would lead every lookup. Nothing the CLI or the service runs
+/// reads the AppImage markers.
+fn leave_appimage(command: &mut Command, appdir: &Path) {
+    for name in ["PATH", "LD_LIBRARY_PATH", "XDG_DATA_DIRS"] {
+        let Some(list) = std::env::var_os(name) else { continue };
+        match without_dir(&list, appdir) {
+            Some(list) => command.env(name, list),
+            None => command.env_remove(name),
+        };
+    }
+    for name in ["APPDIR", "APPIMAGE", "ARGV0", "OWD"] {
+        command.env_remove(name);
+    }
+}
+
+/// `list` (a PATH-style list) without the entries under `dir`; `None` when none are left.
+fn without_dir(list: &OsStr, dir: &Path) -> Option<OsString> {
+    let kept: Vec<PathBuf> = std::env::split_paths(list).filter(|entry| !entry.starts_with(dir)).collect();
+    if kept.is_empty() { None } else { std::env::join_paths(kept).ok() }
 }
 
 fn check(command: Command, timeout: Duration, what: &str) -> Result<Vec<u8>, String> {
