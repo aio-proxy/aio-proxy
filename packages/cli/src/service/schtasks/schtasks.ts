@@ -195,11 +195,20 @@ const runTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/Run', '/
 export async function schtasksInstall(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   await ownTaskExists(io, path);
-  io.remove(uninstallMarkerPath('win32', { LOCALAPPDATA: io.localAppData })!);
   const { spec, xml } = await renderUnit(io);
-  const file = stageTaskXml(io, xml);
-  io.writeFile(serviceSpecPath(io.localAppData), spec);
-  await createTask(io, path, file);
+  // The spec moves in only after `/Create` succeeds: a running task re-reads it on its next relaunch, so a failed
+  // install must leave the previous one in place.
+  const specPath = serviceSpecPath(io.localAppData);
+  const staged = `${specPath}.new`;
+  io.writeFile(staged, spec);
+  try {
+    await createTask(io, path, stageTaskXml(io, xml));
+  } catch (error) {
+    io.remove(staged);
+    throw error;
+  }
+  io.rename(staged, specPath);
+  io.remove(uninstallMarkerPath('win32', { LOCALAPPDATA: io.localAppData })!);
 }
 
 export async function schtasksStart(io: SchtasksIo): Promise<void> {

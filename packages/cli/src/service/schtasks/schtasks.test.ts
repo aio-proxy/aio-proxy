@@ -433,6 +433,13 @@ test('install clears the uninstall marker and writes the spec and a UTF-16 task 
   expect(fs.files.size).toBe(1);
 });
 
+test('a failed install keeps the spec the existing task runs', async () => {
+  const fs = fakeFs({ [specPath]: oldSpec });
+  await expect(schtasksInstall(io({ fs, failOn: '/Create' }))).rejects.toThrow('/Create failed');
+  expect(fs.read(specPath)).toBe(oldSpec);
+  expect(fs.exists(`${specPath}.new`)).toBe(false);
+});
+
 test('install replaces a task that already runs as the current user', async () => {
   const calls = await recordCalls((io) => schtasksInstall(io));
   expect(calls.map((c) => c[1])).toEqual(['/Create']);
