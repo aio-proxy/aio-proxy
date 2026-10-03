@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-/** "aioprxyd" as the little-endian bytes of 0x6169_6f70_7278_7964; the updater verifies against this key id. */
+/** The little-endian bytes of 0x6169_6f70_7278_7964 ("aioprxyd" read big-endian; the bytes spell "dyxrpoia"); the updater verifies against this key id. */
 export const KEY_ID = Uint8Array.from(Buffer.from('64797872706f6961', 'hex'));
 
 const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');

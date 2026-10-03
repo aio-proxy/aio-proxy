@@ -15,15 +15,15 @@ fn signature_field() -> String {
     STANDARD.encode(MINISIG)
 }
 
-/// A 9.9.9 feed for the running target, served with the fixture payload over HTTP/1.1 on loopback,
-/// read by an updater for 1.0.0 that trusts `pubkey`.
-fn updater_against_local_feed(pubkey: String) -> cargo_packager_updater::Updater {
+/// A feed offering the fixture payload as `version` for the running target, served over HTTP/1.1 on
+/// loopback, read by an updater for 1.0.0 that trusts `pubkey`.
+fn updater_against_local_feed(version: &str, pubkey: String) -> cargo_packager_updater::Updater {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     // The feed is keyed `{os}-{arch}` by the running build, so this runs on Linux and Windows alike.
     let target = cargo_packager_updater::target().expect("the updater supports this platform");
     let feed = serde_json::json!({
-        "version": "9.9.9",
+        "version": version,
         "platforms": { target: { "url": format!("{base}/payload.bin"), "signature": signature_field(), "format": "appimage" } },
     })
     .to_string();
@@ -54,15 +54,39 @@ fn updater_against_local_feed(pubkey: String) -> cargo_packager_updater::Updater
 
 #[test]
 fn the_bun_signature_passes_the_updater_verification_entry_point() {
-    let update = updater_against_local_feed(updater_pubkey(FIXTURE_KEY.trim())).check().unwrap();
+    let update = updater_against_local_feed("9.9.9", updater_pubkey(FIXTURE_KEY.trim())).check().unwrap();
     let update = update.expect("9.9.9 is newer than 1.0.0");
     assert_eq!(update.download().unwrap(), PAYLOAD);
+    // The fixture is signed for linux-x86_64: that build accepts it, every other target refuses it.
+    match cargo_packager_updater::target().as_deref() {
+        Some("linux-x86_64") => assert_eq!(verified_download(&update).unwrap(), PAYLOAD),
+        _ => assert!(verified_download(&update).unwrap_err().contains("not `aio-proxy-desktop 9.9.9")),
+    }
 }
 
 #[test]
 fn a_payload_signed_by_another_key_is_refused() {
-    let update = updater_against_local_feed(updater_pubkey(PUBLIC_KEY_B64)).check().unwrap();
-    assert!(update.expect("9.9.9 is newer than 1.0.0").download().is_err());
+    let update = updater_against_local_feed("9.9.9", updater_pubkey(PUBLIC_KEY_B64)).check().unwrap();
+    // Both keys carry the same key id, so the refusal is the Ed25519 check itself.
+    assert!(matches!(
+        update.expect("9.9.9 is newer than 1.0.0").download(),
+        Err(cargo_packager_updater::Error::Minisign(minisign_verify::Error::InvalidSignature))
+    ));
+}
+
+#[test]
+fn a_package_replayed_under_a_newer_version_is_not_downloaded() {
+    // The fixture signature names 9.9.9; the feed offers it as 10.0.0.
+    let update = updater_against_local_feed("10.0.0", updater_pubkey(FIXTURE_KEY.trim())).check().unwrap();
+    let error = verified_download(&update.expect("10.0.0 is newer than 1.0.0")).unwrap_err();
+    assert!(error.contains("aio-proxy-desktop 10.0.0"), "{error}");
+}
+
+#[test]
+fn the_shipped_release_key_is_a_valid_minisign_key() {
+    assert_eq!(STANDARD.decode(PUBLIC_KEY_B64).unwrap().len(), 32);
+    let text = String::from_utf8(STANDARD.decode(updater_pubkey(PUBLIC_KEY_B64)).unwrap()).unwrap();
+    assert!(minisign_verify::PublicKey::decode(&text).is_ok());
 }
 
 #[test]
