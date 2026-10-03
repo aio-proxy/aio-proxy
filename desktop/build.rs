@@ -30,19 +30,11 @@ fn main() {
     }
 }
 
-// GPUI never opts the process into DPI awareness, so without this manifest Windows bitmap-scales the
-// app above 100%. The icon is what Explorer, the Start menu and the taskbar show.
+// gpui-pre's default `windows-manifest` feature already embeds the application manifest (PerMonitorV2 DPI
+// awareness, common controls); a second manifest fails the link with CVT1100, so only the icon and version
+// info are added here. The icon is what Explorer, the Start menu and the taskbar show.
 #[cfg(windows)]
 fn windows_resources(manifest: &std::path::Path, version: &str) {
-    const DPI_MANIFEST: &str = r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <application xmlns="urn:schemas-microsoft-com:asm.v3">
-    <windowsSettings>
-      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
-      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
-    </windowsSettings>
-  </application>
-</assembly>
-"#;
     let icon = manifest.join("packaging/icons/icon.ico");
     println!("cargo:rerun-if-changed={}", icon.display());
     // VERSIONINFO packs major.minor.patch into the top three 16-bit words; a pre-release tag is dropped.
@@ -55,7 +47,6 @@ fn windows_resources(manifest: &std::path::Path, version: &str) {
     let mut resource = winresource::WindowsResource::new();
     resource
         .set_icon(&icon.to_string_lossy())
-        .set_manifest(DPI_MANIFEST)
         .set("ProductName", "AIO Proxy")
         // Task Manager shows the description as the process name.
         .set("FileDescription", "AIO Proxy")
