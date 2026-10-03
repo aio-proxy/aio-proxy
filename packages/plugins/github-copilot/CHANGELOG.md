@@ -1,5 +1,16 @@
 # @aio-proxy/plugin-github-copilot
 
+## 0.39.0
+
+### Minor Changes
+
+- [#486](https://github.com/aio-proxy/aio-proxy/pull/486) [`a59559d`](https://github.com/aio-proxy/aio-proxy/commit/a59559db8ba07d62f1f2b8dab50a77b5fba272b8) Thanks @baranwang - ChatGPT and GitHub Copilot Providers can use the sign-in Codex or Copilot already keeps on this machine instead of a browser login; aio-proxy keeps Codex signed in when it refreshes, and removing the Provider never signs the tool out.
+
+### Patch Changes
+
+- Updated dependencies [[`2763925`](https://github.com/aio-proxy/aio-proxy/commit/27639251609ad47a3d5265815c2a27bd7bc0abb9), [`946073c`](https://github.com/aio-proxy/aio-proxy/commit/946073caf8219dd6309498aba893b77993193ef1)]:
+  - @aio-proxy/plugin-sdk@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes

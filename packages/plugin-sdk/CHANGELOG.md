@@ -1,5 +1,19 @@
 # @aio-proxy/plugin-sdk
 
+## 0.39.0
+
+### Minor Changes
+
+- [#486](https://github.com/aio-proxy/aio-proxy/pull/486) [`2763925`](https://github.com/aio-proxy/aio-proxy/commit/27639251609ad47a3d5265815c2a27bd7bc0abb9) Thanks @baranwang - Plugins can offer a vendor tool's existing local sign-in as an alternative to the browser OAuth flow.
+
+- [#483](https://github.com/aio-proxy/aio-proxy/pull/483) [`946073c`](https://github.com/aio-proxy/aio-proxy/commit/946073caf8219dd6309498aba893b77993193ef1) Thanks @baranwang - Quota items can declare a `scope` — the whole account, or a list of model patterns — to tell aio-proxy which models are refused once that window is exhausted, so routing can skip the Provider for those models until the window resets. Items without a scope stay display-only.
+
+### Patch Changes
+
+- Updated dependencies [[`94024af`](https://github.com/aio-proxy/aio-proxy/commit/94024af667f4b691cef234a3f305d6561c5a9192), [`a59559d`](https://github.com/aio-proxy/aio-proxy/commit/a59559db8ba07d62f1f2b8dab50a77b5fba272b8), [`dd47aa2`](https://github.com/aio-proxy/aio-proxy/commit/dd47aa2333b53934df5b65deec9d72894c629bfa), [`13ff41d`](https://github.com/aio-proxy/aio-proxy/commit/13ff41dba0d21ef4ec79589e0598d1973fb72f64), [`b2e7941`](https://github.com/aio-proxy/aio-proxy/commit/b2e7941313846cea0c6e179f64c73cc137565e13)]:
+  - @aio-proxy/types@0.39.0
+  - @aio-proxy/shared@0.39.0
+
 ## 0.38.0
 
 ### Patch Changes
