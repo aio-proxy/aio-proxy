@@ -128,3 +128,15 @@ test('discovery reads the spec and supervisor state where a task left on an olde
   expect(result.unit.wrapperValid).toBe(true);
   expect(result.job.pid).toBe(4310);
 });
+
+test("a Windows task whose exec differs from the desktop marker only in case is the desktop's", () => {
+  const unit = {
+    present: true,
+    wrapperValid: true,
+    target: 'C:\\USERS\\Ada\\aio-proxy-desktop\\bin\\aio-proxy.exe',
+    home: null,
+  };
+  const marker = 'C:\\Users\\Ada\\aio-proxy-desktop\\bin\\aio-proxy.exe';
+  expect(unitOwner(unit, marker, () => true, 'win32')).toBe('desktop');
+  expect(unitOwner(unit, marker, () => true, 'linux')).toBe('external');
+});

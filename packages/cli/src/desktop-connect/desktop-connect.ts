@@ -184,7 +184,7 @@ function readTokenSafely(deps: DesktopConnectDeps, home: string): string | undef
 
 export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopConnectResult> {
   const { unit, job } = await readService(deps);
-  const owner = unitOwner(unit, deps.env['AIO_PROXY_DESKTOP_EXEC'], deps.targetRunnable);
+  const owner = unitOwner(unit, deps.env['AIO_PROXY_DESKTOP_EXEC'], deps.targetRunnable, deps.platform);
   // The service's own home, not this process's environment: the app is launched from Finder and
   // does not inherit the shell that installed the service.
   const home = unit.home ?? deps.defaultHome();
