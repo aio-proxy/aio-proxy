@@ -6,6 +6,8 @@ export interface HomeCopy {
     readonly tagline: string;
     readonly primary: string;
     readonly secondary: string;
+    readonly download: string;
+    readonly downloadRequirement: string;
     readonly copy: string;
     readonly copied: string;
   };
@@ -77,6 +79,8 @@ const en: HomeCopy = {
       'AIO Proxy sits between your tools and your model providers. Keep the SDKs and coding agents you already use, plug in API keys or the subscriptions you already pay for, and get routing, failover, and full request traces from one local binary.',
     primary: 'Get started',
     secondary: 'Star on GitHub',
+    download: 'Download for macOS',
+    downloadRequirement: 'Apple Silicon · macOS 13+',
     copy: 'Copy',
     copied: 'Copied',
   },
@@ -177,6 +181,8 @@ const zh: HomeCopy = {
       'AIO Proxy 位于你的工具与模型提供商之间。继续使用现有的 SDK 和编程 Agent，接入 API Key 或你已经订阅的服务，一个本地二进制即可获得智能路由、自动故障转移与完整请求链路。',
     primary: '开始使用',
     secondary: '在 GitHub 上 Star',
+    download: '下载 macOS 版',
+    downloadRequirement: 'Apple Silicon · macOS 13+',
     copy: '复制',
     copied: '已复制',
   },

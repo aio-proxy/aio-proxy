@@ -3,7 +3,9 @@
 The app ships from CI. After Changesets publishes a release, `release.yml` dispatches
 `desktop-release.yml`, which builds, signs, notarizes and uploads
 `aio-proxy-<version>-arm64.dmg` to the `v<version>` Release, then replaces the Sparkle feed
-`appcast.xml` on the `desktop-feed` prerelease. Canary releases never ship the app.
+`appcast.xml` on the `desktop-feed` prerelease. When that version is the feed's newest, it also
+replaces `aio-proxy-arm64.dmg` there, the unversioned copy the website's download button links to.
+Canary releases never ship the app.
 
 ## One-time setup
 

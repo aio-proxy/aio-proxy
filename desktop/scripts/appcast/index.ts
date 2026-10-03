@@ -4,6 +4,7 @@ export {
   feedProblems,
   feedState,
   itemProblems,
+  ownsLatestDownload,
   parseAppcast,
   publicKeyFromPrivate,
   verifyEdSignature,
