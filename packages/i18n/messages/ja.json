@@ -273,6 +273,8 @@
       "restore_failed": "以前のサービス定義を復元できませんでした。`aio-proxy service install` を実行して修復してください",
       "unsupported_platform": "service コマンドはこのプラットフォームをサポートしていません: {platform}",
       "system_unsupported": "システムスコープのインストールは現在未対応です。代わりにユーザーごとのサービスとしてインストールしてください",
+      "systemctl_missing": "systemctl が見つかりません。Linux のバックグラウンドサービスには systemd が必要です",
+      "systemd_user_unavailable": "systemd ユーザーマネージャーに接続できません (`systemctl --user` が失敗しました)。バックグラウンドサービスには systemd のログインセッションが必要です",
       "exec_not_found": "PATH 上に \"aio-proxy\" 実行ファイルが見つかりません。サービスをインストールする前に aio-proxy をグローバルにインストールしてください (例: `npm i -g aio-proxy`)",
       "env_hint": "設定内の env テンプレートで参照されるプロバイダー環境変数は {path} から読み取られます。`KEY=value` 形式で 1 行ずつ記述して作成してください。マネージドサービスはシェル環境を継承しません"
     },

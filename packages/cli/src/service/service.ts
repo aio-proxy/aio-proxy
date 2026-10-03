@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { delimiter as platformDelimiter, dirname, isAbsolute, join, win32 } from 'node:path';
 
@@ -32,7 +32,7 @@ import {
   schtasksUninstall,
 } from './schtasks';
 import { serviceSpecPath } from './schtasks-unit';
-import { systemdUnitPath } from './systemd';
+import { systemdUnitPath, systemdUserProblem } from './systemd';
 import { clearUninstallMarker, writeUninstallMarker } from './uninstall-marker';
 import {
   LAUNCHD_LABEL,
@@ -82,6 +82,11 @@ function requirePlatform(): SupportedPlatform {
 // Run a manager command, streaming its output. `allowFailure` is for status-style
 // probes where a non-zero code means "not running", not a CLI error.
 async function runManager(cmd: readonly string[], allowFailure = false): Promise<number> {
+  // Without systemd (containers, WSL) a spawn would fail with an internal error instead of saying why.
+  if (cmd[0] === 'systemctl' && Bun.which('systemctl') === null) {
+    if (allowFailure) return 127;
+    throw new CliExit(EXIT.unrecoverable, m['cli.service.systemctl_missing']());
+  }
   const proc = Bun.spawn(cmd as string[], { stdout: 'inherit', stderr: 'inherit', windowsHide: true });
   const code = await proc.exited;
   if (code !== 0 && !allowFailure) {
@@ -177,6 +182,7 @@ type ServiceLifecycleIo = {
   readonly runManager?: ServiceRestartIo['runManager'];
   // Injected so install does not depend on whether this host has an `aio-proxy` on PATH.
   readonly exec?: string;
+  readonly systemdUserProblem?: typeof systemdUserProblem;
 };
 
 export async function serviceInstall(
@@ -192,11 +198,30 @@ export async function serviceInstall(
     const winIo = await windowsIo(undefined, io.exec);
     await schtasksInstall(winIo);
     target = serviceSpecPath(winIo.localAppData);
-  } else {
+  } else if (os === 'darwin') {
     clearUninstallMarker(os);
     target = await writeManagedUnit(os, io.exec, undefined, process.env, run);
+  } else {
+    const problem = await (io.systemdUserProblem ?? systemdUserProblem)();
+    if (problem !== null) {
+      const message =
+        problem === 'systemctl_missing'
+          ? m['cli.service.systemctl_missing']()
+          : m['cli.service.systemd_user_unavailable']();
+      throw new CliExit(EXIT.unrecoverable, message);
+    }
+    target = systemdUnitPath();
+    const existed = existsSync(target);
+    try {
+      await writeManagedUnit(os, io.exec, target, process.env, run);
+      await run(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
+    } catch (error) {
+      // A unit the manager never took would read as installed but stopped.
+      if (!existed) rmSync(target, { force: true });
+      throw error;
+    }
+    clearUninstallMarker(os);
   }
-  if (os === 'linux') await run(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
   print(`${createStyle(process.stdout).mark('ok')} ${m['cli.service.installed']({ path: target })}`);
   print(m['cli.service.env_hint']({ path: serviceEnvFile(configPath()) }));
 }

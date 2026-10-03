@@ -273,6 +273,8 @@
       "restore_failed": "無法還原先前的服務定義，請執行 `aio-proxy service install` 進行修復",
       "unsupported_platform": "service 命令不支援目前平台：{platform}",
       "system_unsupported": "暫不支援系統層級安裝，請改用使用者層級服務安裝",
+      "systemctl_missing": "找不到 systemctl；Linux 上的背景服務需要 systemd",
+      "systemd_user_unavailable": "無法連線 systemd 使用者管理器（`systemctl --user` 失敗）；背景服務需要 systemd 登入工作階段",
       "exec_not_found": "在 PATH 中找不到 “aio-proxy” 可執行檔。請先全域安裝 aio-proxy（例如 `npm i -g aio-proxy`）再安裝服務",
       "env_hint": "設定中透過 env 範本引用的 provider 環境變數將從 {path} 讀取。請在其中依 `KEY=value` 逐行填寫；受管服務不會繼承你的 shell 環境"
     },

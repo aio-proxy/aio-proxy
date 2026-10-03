@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileS
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { CliExit } from '../exit';
+import { CliExit, EXIT } from '../exit';
 import { resolveStableManagedExec } from '../upgrade/detect';
 import {
   renderLaunchdPlist,
@@ -814,7 +814,11 @@ const withLinuxHome = async (
   body: (
     home: string,
     calls: string[][],
-    io: { platform: 'linux'; runManager: (cmd: readonly string[]) => Promise<number> },
+    io: {
+      platform: 'linux';
+      runManager: (cmd: readonly string[]) => Promise<number>;
+      systemdUserProblem: () => Promise<null>;
+    },
   ) => Promise<void>,
 ) => {
   const home = mkdtempSync(join(tmpdir(), 'aio-linux-'));
@@ -826,7 +830,7 @@ const withLinuxHome = async (
     return 0;
   };
   try {
-    await body(home, calls, { platform: 'linux', runManager });
+    await body(home, calls, { platform: 'linux', runManager, systemdUserProblem: async () => null });
   } finally {
     if (previous === undefined) delete process.env['XDG_CONFIG_HOME'];
     else process.env['XDG_CONFIG_HOME'] = previous;
@@ -871,6 +875,34 @@ test('linux uninstall leaves the marker and install clears it', async () => {
     expect(calls).toContainEqual(['systemctl', '--user', 'disable', '--now', 'aio-proxy.service']);
     await serviceInstall({}, () => {}, { ...io, exec: '/opt/aio-proxy/bin/aio-proxy' });
     expect(existsSync(marker!)).toBe(false);
+  });
+});
+
+test('linux install without a systemd user manager fails before writing anything', async () => {
+  await withLinuxHome(async (home, calls, io) => {
+    const install = serviceInstall({}, () => {}, {
+      ...io,
+      exec: '/opt/aio-proxy/bin/aio-proxy',
+      systemdUserProblem: async () => 'systemd_user_unavailable',
+    });
+    await expect(install).rejects.toMatchObject({ code: EXIT.unrecoverable });
+    expect(existsSync(join(home, 'systemd', 'user', 'aio-proxy.service'))).toBe(false);
+    expect(calls).toEqual([]);
+  });
+});
+
+test('a linux install the manager rejects leaves no unit behind', async () => {
+  await withLinuxHome(async (home, _calls, io) => {
+    const install = serviceInstall({}, () => {}, {
+      ...io,
+      exec: '/opt/aio-proxy/bin/aio-proxy',
+      runManager: async (cmd) => {
+        if (cmd.includes('enable')) throw new CliExit(EXIT.transient, 'enable failed');
+        return 0;
+      },
+    });
+    await expect(install).rejects.toThrow('enable failed');
+    expect(existsSync(join(home, 'systemd', 'user', 'aio-proxy.service'))).toBe(false);
   });
 });
 

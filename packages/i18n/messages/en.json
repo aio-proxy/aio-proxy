@@ -273,6 +273,8 @@
       "restore_failed": "Could not restore the previous service definition; run `aio-proxy service install` to repair it",
       "unsupported_platform": "The service command does not support this platform: {platform}",
       "system_unsupported": "System-scope install is not yet supported; install as a per-user service instead",
+      "systemctl_missing": "systemctl was not found; the background service on Linux needs systemd",
+      "systemd_user_unavailable": "No systemd user manager is reachable (`systemctl --user` failed); the background service needs a systemd login session",
       "exec_not_found": "Cannot find the \"aio-proxy\" executable on PATH. Install aio-proxy globally (e.g. `npm i -g aio-proxy`) before installing the service",
       "env_hint": "Provider env vars referenced by env templates in your config are read from {path}. Create it with `KEY=value` lines; a managed service does not inherit your shell environment"
     },
