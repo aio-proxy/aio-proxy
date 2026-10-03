@@ -154,16 +154,24 @@ mod imp {
     }
 
     /// The panel's update button: downloads, verifies and installs the pending update off the main
-    /// thread. A second press while one runs does nothing.
+    /// thread, as the feed offers it once any running check finishes. A second press while one runs does nothing.
     pub fn install_now() {
         if INSTALLING.swap(true, Ordering::SeqCst) {
             return;
         }
         std::thread::spawn(|| {
             let _guard = InstallingGuard;
-            let pending = PENDING.lock().unwrap_or_else(|e| e.into_inner()).clone();
-            let result = pending.ok_or_else(|| "no update is pending".to_string()).and_then(|update| install(&update));
-            if let Err(error) = result {
+            // Waits out a check already in flight: it may withdraw or replace the offer the click saw.
+            let pending = {
+                let _serial = CHECKING.lock().unwrap_or_else(|e| e.into_inner());
+                PENDING.lock().unwrap_or_else(|e| e.into_inner()).clone()
+            };
+            // Withdrawn meanwhile: install nothing and clear the panel's stale offer.
+            let Some(update) = pending else {
+                send(AppEvent::UpdateAttended);
+                return;
+            };
+            if let Err(error) = install(&update) {
                 log::info(format!("updater: install failed: {error}"));
                 send(AppEvent::UpdateFailed(format!("Update failed: {error}")));
             }
