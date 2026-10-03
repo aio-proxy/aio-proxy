@@ -112,6 +112,15 @@ for (const platform of ['linux', 'darwin'] as const) {
   }
 }
 
+test("serviceStart on Windows never installs before consulting the task, even without a spec at today's path", async () => {
+  const install = mock(async () => {});
+  // The task query itself fails off Windows; the point is that install never ran first.
+  await serviceStart({ platform: 'win32', unitInstalled: () => false, install, runManager: async () => 1 }).catch(
+    () => undefined,
+  );
+  expect(install).not.toHaveBeenCalled();
+});
+
 test('serviceStart on linux enables an installed service through its manager', async () => {
   const runManager = mock(async () => 0);
   const install = mock(async () => {});

@@ -265,7 +265,9 @@ export async function serviceStart(io: ServiceStartIo = {}): Promise<void> {
   const run = io.runManager ?? runManager;
   const installed = (io.unitInstalled ?? isManagedServiceInstalled)();
   try {
-    if (!installed) await (io.install ?? serviceInstall)({});
+    // On Windows the spec at today's LOCALAPPDATA is not the whole story: a task left on an older path still runs
+    // its own spec, and schtasksStart installs only when no task exists, keeping such a task's owner.
+    if (!installed && os !== 'win32') await (io.install ?? serviceInstall)({});
     if (os === 'darwin') {
       await startLaunchdJob(io.unitPath ?? launchdPlistPath(), run, io.printJob ?? printLaunchdJob);
       return;
