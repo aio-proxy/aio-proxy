@@ -22,10 +22,13 @@ pub fn paths_from(home: &Path, env: impl Fn(&str) -> Option<OsString>) -> Paths 
         .filter(|dir| dir.is_absolute())
         .unwrap_or_else(|| home.join("AppData").join("Local"));
     let support = local.join("aio-proxy-desktop");
+    // The lock is runtime state and is taken before `copy::prepare` runs, so it must not sit in the install
+    // directory that check may find read-only: the per-user temp directory, as Windows resolves it.
+    let temp = env("TEMP").map(PathBuf::from).filter(|dir| dir.is_absolute()).unwrap_or_else(|| local.join("Temp"));
     Paths {
         home: home.to_path_buf(),
         stable: support.join("bin").join("aio-proxy.exe"),
-        lock: support.join("instance.lock"),
+        lock: temp.join("aio-proxy-desktop.lock"),
         logs: support.join("logs"),
         support,
     }
@@ -70,3 +73,6 @@ pub mod user_path;
 pub use super::updater_packager as updater;
 
 pub mod panel;
+
+#[cfg(test)]
+mod tests;
