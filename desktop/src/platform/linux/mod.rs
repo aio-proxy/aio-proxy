@@ -21,11 +21,14 @@ pub fn paths_from(home: &Path, env: impl Fn(&str) -> Option<OsString>) -> Paths 
         env(var).map(PathBuf::from).filter(|dir| dir.is_absolute()).unwrap_or_else(|| home.join(default))
     };
     let support = base("XDG_DATA_HOME", ".local/share").join("aio-proxy-desktop");
+    let state = base("XDG_STATE_HOME", ".local/state").join("aio-proxy-desktop");
     Paths {
         home: home.to_path_buf(),
         stable: support.join("bin/aio-proxy"),
-        lock: support.join("instance.lock"),
-        logs: base("XDG_STATE_HOME", ".local/state").join("aio-proxy-desktop"),
+        // Runtime state, not the install directory: an unwritable data directory must still reach the read-only
+        // mode `copy::prepare` reports, and the lock is taken before that check runs.
+        lock: state.join("instance.lock"),
+        logs: state,
         support,
     }
 }
