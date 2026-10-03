@@ -158,8 +158,11 @@ async function restoreSidecar(image: string): Promise<void> {
   if (compression === undefined) throw new Error(`cannot read the squashfs compression of ${image}`);
   const squashfs = join(work, 'image.squashfs');
   await $`mksquashfs ${root} ${squashfs} -root-owned -noappend -comp ${compression}`.quiet();
+  // Both parts are read into memory: a BunFile inside a Blob is silently dropped by Bun.write.
   const runtime = new Uint8Array(await Bun.file(image).slice(0, offset).arrayBuffer());
-  await Bun.write(image, new Blob([runtime, Bun.file(squashfs)]));
+  const filesystem = new Uint8Array(await Bun.file(squashfs).arrayBuffer());
+  await Bun.write(image, new Blob([runtime, filesystem]));
   chmodSync(image, 0o755);
+  await $`unsquashfs -o ${offset} -s ${image}`.quiet();
   rmSync(work, { recursive: true, force: true });
 }
