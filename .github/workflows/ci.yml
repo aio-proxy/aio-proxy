@@ -191,6 +191,61 @@ jobs:
       # the JIT check.
       - run: bun run desktop:bundle --unsigned
 
+  service-smoke:
+    needs: desktop-changes
+    if: needs.desktop-changes.outputs.bundle == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            sidecar: linux-x64
+            exec: aio-proxy
+          - os: windows-2025
+            sidecar: win32-x64
+            exec: aio-proxy.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - run: bun install --frozen-lockfile --prefer-offline
+      - run: bun run build
+      - run: bun packages/cli/scripts/build-binary.ts ${{ matrix.sidecar }} "$RUNNER_TEMP/sidecar/${{ matrix.exec }}"
+
+      # A runner job has no login session, so this user has no systemd --user manager until lingering
+      # starts one.
+      - name: Start a systemd user manager
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER"
+          runtime="/run/user/$(id -u)"
+          for _ in $(seq 1 30); do
+            [ -S "$runtime/systemd/private" ] && break
+            sleep 1
+          done
+          test -S "$runtime/systemd/private"
+          echo "XDG_RUNTIME_DIR=$runtime" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus" >> "$GITHUB_ENV"
+
+      - run: bun desktop/scripts/smoke/cli.ts --service "$RUNNER_TEMP/sidecar/${{ matrix.exec }}"
+
   desktop-package:
     needs: desktop-changes
     if: needs.desktop-changes.outputs.bundle == 'true'
