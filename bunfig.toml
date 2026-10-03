@@ -1,2 +1,7 @@
 [install]
 registry = "https://registry.npmjs.org/"
+
+# Package-level bunfig.toml files replace this one for runs launched inside a
+# package; this preload covers `bun test packages/...` from the repo root.
+[test]
+preload = ["./scripts/isolate-test-home.ts"]

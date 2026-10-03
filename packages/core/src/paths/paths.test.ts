@@ -52,7 +52,7 @@ describe('paths', () => {
   // Regression: an unisolated test once overwrote the real models.dev cache.
   test('refuses the real home under bun test, so no test can write there', () => {
     expect(process.env.NODE_ENV).toBe('test');
-    for (const value of [undefined, '', join(homedir(), '.aio-proxy')]) {
+    for (const value of [undefined, '', join(homedir(), '.aio-proxy'), `${homedir()}/x/../.aio-proxy/`]) {
       if (value === undefined) delete process.env.AIO_PROXY_HOME;
       else process.env.AIO_PROXY_HOME = value;
       expect(() => tmpDir()).toThrow('Refusing to use the real aio-proxy home');

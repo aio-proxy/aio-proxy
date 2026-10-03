@@ -1,6 +1,7 @@
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { aioHome, readUpdateCheckState, withUpdateCheckLock, writeUpdateCheckState } from '@aio-proxy/core';
+import { readUpdateCheckState, withUpdateCheckLock, writeUpdateCheckState } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
 import { isRecord } from '@aio-proxy/shared';
 
@@ -51,7 +52,9 @@ const defaultSpawn: NotifySpawn = async (command) => {
 export const notifyUpdateAvailable = async (
   latest: string,
   spawn: NotifySpawn = defaultSpawn,
-  notificationPath: string = join(aioHome(), 'update-notify.json'),
+  // Deliberately per user, not per AIO_PROXY_HOME: every instance shares one
+  // record so a release notifies the desktop once.
+  notificationPath: string = join(homedir(), '.aio-proxy', 'update-notify.json'),
 ): Promise<void> => {
   if (process.platform !== 'darwin' && process.platform !== 'linux') return;
   const title = m['cli.update.notify_title']({ version: latest });

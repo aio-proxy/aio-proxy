@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const CONFIG_FILE_NAMES = ['config.yml', 'config.yaml', 'config.jsonc', 'config.json'] as const;
 
@@ -11,16 +11,17 @@ const CONFIG_FILE_NAMES = ['config.yml', 'config.yaml', 'config.jsonc', 'config.
  * treated as absent — an empty override falls back to `~/.aio-proxy` rather
  * than resolving paths against the current directory.
  *
- * `bun test` sets `NODE_ENV=test`. Under it, resolving to the real
- * `~/.aio-proxy` throws: a test that writes there poisons the developer's live
- * cache, database, and config, and bunfig preloads only isolate runs launched
- * from a package root.
+ * `bun test` sets `NODE_ENV=test` unless it is already set. Under it,
+ * resolving to the real `~/.aio-proxy` throws: a test that writes there poisons
+ * the developer's live cache, database, and config. Bunfig preloads (root and
+ * per-package) isolate runs launched from those directories; this catches the
+ * rest, such as runs from a package subdirectory.
  */
 export function aioHome(): string {
   const env = process.env as { readonly AIO_PROXY_HOME?: string; readonly NODE_ENV?: string };
   const realHome = join(homedir(), '.aio-proxy');
   const home = env.AIO_PROXY_HOME === undefined || env.AIO_PROXY_HOME === '' ? realHome : env.AIO_PROXY_HOME;
-  if (env.NODE_ENV === 'test' && home === realHome) {
+  if (env.NODE_ENV === 'test' && resolve(home) === realHome) {
     throw new Error(
       `Refusing to use the real aio-proxy home (${realHome}) under test. Run the package's test:unit script or set AIO_PROXY_HOME to a temp dir.`,
     );
