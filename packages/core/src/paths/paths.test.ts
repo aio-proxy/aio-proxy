@@ -36,26 +36,42 @@ describe('paths', () => {
     expect(updateCheckPath()).toBe('/tmp/foo/update-check.json');
   });
 
-  test('absent env falls back to ~/.aio-proxy outside tests', () => {
-    delete process.env.AIO_PROXY_HOME;
-    withNodeEnv('production', () => expect(aioHome()).toBe(join(homedir(), '.aio-proxy')));
-  });
-
-  test('empty string is treated as absent', () => {
-    process.env.AIO_PROXY_HOME = '';
-    withNodeEnv('production', () => {
-      expect(aioHome()).toBe(join(homedir(), '.aio-proxy'));
-      expect(configPath()).toBe(join(homedir(), '.aio-proxy', 'config.jsonc'));
-    });
+  // Under bun test the guard refuses the real home, so observe the fallback from
+  // a plain `bun -e` process with a throwaway HOME.
+  test('absent or empty AIO_PROXY_HOME falls back to ~/.aio-proxy outside tests', () => {
+    const home = mkdtempSync(join(tmpdir(), 'aio-proxy-paths-home-'));
+    try {
+      for (const override of [undefined, '']) {
+        const env: Record<string, string | undefined> = { ...process.env, HOME: home, AIO_PROXY_HOME: override };
+        delete env['NODE_ENV'];
+        const result = Bun.spawnSync(
+          [
+            process.execPath,
+            '-e',
+            `const p = await import(${JSON.stringify(import.meta.resolve('.'))}); console.log(p.aioHome(), p.configPath())`,
+          ],
+          { env },
+        );
+        expect(result.stdout.toString().trim()).toBe(
+          `${join(home, '.aio-proxy')} ${join(home, '.aio-proxy', 'config.jsonc')}`,
+        );
+      }
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   // Regression: an unisolated test once overwrote the real models.dev cache.
   test('refuses the real home under bun test, so no test can write there', () => {
-    expect(process.env.NODE_ENV).toBe('test');
-    for (const value of [undefined, '', join(homedir(), '.aio-proxy'), `${homedir()}/x/../.aio-proxy/`]) {
-      if (value === undefined) delete process.env.AIO_PROXY_HOME;
-      else process.env.AIO_PROXY_HOME = value;
-      expect(() => tmpDir()).toThrow('Refusing to use the real aio-proxy home');
+    // `production` mimics an inherited NODE_ENV that `bun test` preserves.
+    for (const nodeEnv of ['test', 'production']) {
+      withNodeEnv(nodeEnv, () => {
+        for (const value of [undefined, '', join(homedir(), '.aio-proxy'), `${homedir()}/x/../.aio-proxy/`]) {
+          if (value === undefined) delete process.env.AIO_PROXY_HOME;
+          else process.env.AIO_PROXY_HOME = value;
+          expect(() => tmpDir()).toThrow('Refusing to use the real aio-proxy home');
+        }
+      });
     }
   });
 
