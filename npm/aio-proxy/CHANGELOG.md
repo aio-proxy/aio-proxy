@@ -1,5 +1,27 @@
 # aio-proxy
 
+## 0.39.0
+
+### Minor Changes
+
+- [#477](https://github.com/aio-proxy/aio-proxy/pull/477) [`94024af`](https://github.com/aio-proxy/aio-proxy/commit/94024af667f4b691cef234a3f305d6561c5a9192) Thanks @baranwang - `aiop agent configure claude-code` points Claude Code at aio-proxy by merging `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` into the global `~/.claude/settings.json`, leaving every other setting in place. Without proxy API keys it writes a placeholder token so Claude Code stops using its claude.ai login; with keys you choose one, in the terminal or on the Dashboard's Agents page. `agent list` shows the integration, and `agent remove claude-code` restores only those two keys.
+
+- [#486](https://github.com/aio-proxy/aio-proxy/pull/486) [`a59559d`](https://github.com/aio-proxy/aio-proxy/commit/a59559db8ba07d62f1f2b8dab50a77b5fba272b8) Thanks @baranwang - ChatGPT and GitHub Copilot Providers can use the sign-in Codex or Copilot already keeps on this machine instead of a browser login; aio-proxy keeps Codex signed in when it refreshes, and removing the Provider never signs the tool out.
+
+- [#483](https://github.com/aio-proxy/aio-proxy/pull/483) [`4a26f10`](https://github.com/aio-proxy/aio-proxy/commit/4a26f10bde2ee22dccd0312c484327bc92bf1578) Thanks @baranwang - A Kimi Code, Muse Code, ChatGPT, or Cursor subscription whose quota window is known to be exhausted is now skipped for the models that window covers until it resets, instead of being attempted and failing on every request. Quota that is unknown or older than 10 minutes never skips a Provider. When every candidate is exhausted or cooling down, the client gets a 429 with `Retry-After` set to the earliest reset, and the request trace lists the skipped Providers and why.
+
+- [#483](https://github.com/aio-proxy/aio-proxy/pull/483) [`13ff41d`](https://github.com/aio-proxy/aio-proxy/commit/13ff41dba0d21ef4ec79589e0598d1973fb72f64) Thanks @baranwang - New opt-in `router.selection: quota-reset` (also a switch on the Dashboard Routing page): within each Provider priority tier, the subscription whose quota allowance expires soonest is tried first instead of the weighted draw, so allowance is not left to lapse on one subscription while another is drained. Session affinity still takes precedence, Providers without quota data follow in their weighted order, and the routing list and model details show measured traffic shares without deviation warnings. Nothing changes while the setting stays `weighted`.
+
+- [#484](https://github.com/aio-proxy/aio-proxy/pull/484) [`b2e7941`](https://github.com/aio-proxy/aio-proxy/commit/b2e7941313846cea0c6e179f64c73cc137565e13) Thanks @baranwang - API and discoverable AI SDK Providers can set `syncModels: true` to follow upstream model lists without editing the config: models refresh every hour or on demand in the Dashboard, upstream outages and empty responses keep the last good list, and `excludedModels` hides exact model IDs while aliases can still target them. The Dashboard supports switching between manual and synced models, hiding models, and viewing the last refreshed time; hand-written `models` lists work as before.
+
+### Patch Changes
+
+- [#479](https://github.com/aio-proxy/aio-proxy/pull/479) [`1c501d4`](https://github.com/aio-proxy/aio-proxy/commit/1c501d4dfe3e5a84f1c170891b02c8cd460b5608) Thanks @baranwang - The dashboard protocol pickers now offer OpenAI Images, Audio, and Videos endpoints, so media providers can be configured and their traces filtered without editing the config file. Protocols are also labelled by their official API name (OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, Gemini generateContent, Gemini Interactions) instead of the ambiguous "Gemini" and "OpenAI Compatible".
+
+- [#482](https://github.com/aio-proxy/aio-proxy/pull/482) [`a4d8780`](https://github.com/aio-proxy/aio-proxy/commit/a4d8780eeb767e00a56c151f657f888021ab69f5) Thanks @baranwang - Guardian System One approvals now evaluate the supplied review policy, including custom rules, without falling back just because its wording or formatting changed. Requests without review instructions, incompatible requests, unusable results, and failed evaluations retain the original-model fallback with diagnostic reason codes.
+
+- [#478](https://github.com/aio-proxy/aio-proxy/pull/478) [`dd47aa2`](https://github.com/aio-proxy/aio-proxy/commit/dd47aa2333b53934df5b65deec9d72894c629bfa) Thanks @baranwang - The dashboard no longer offers Repair for a Codex or Grok Build integration whose managed fields you edited. Setup deliberately does not overwrite your edits, so Repair always failed with "Something went wrong". The card now tells you to remove the integration (your edits are kept) and configure it again, and setup that hits edited fields reports exactly that instead of an unknown error.
+
 ## 0.38.0
 
 ### Minor Changes
