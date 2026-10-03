@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { delimiter as platformDelimiter, dirname, isAbsolute, join, win32 } from 'node:path';
 
@@ -211,13 +211,16 @@ export async function serviceInstall(
       throw new CliExit(EXIT.unrecoverable, message);
     }
     target = systemdUnitPath();
-    const existed = existsSync(target);
+    const previous = existsSync(target) ? readFileSync(target) : undefined;
     try {
       await writeManagedUnit(os, io.exec, target, process.env, run);
       await run(['systemctl', '--user', 'enable', SYSTEMD_UNIT_NAME]);
     } catch (error) {
-      // A unit the manager never took would read as installed but stopped.
-      if (!existed) rmSync(target, { force: true });
+      // A failed install leaves the service as it was: a new unit the manager never took would read as installed
+      // but stopped, and a replaced one would hand a later reload the definition this install failed to set up.
+      if (previous === undefined) rmSync(target, { force: true });
+      else writeFileSync(target, previous);
+      await run(['systemctl', '--user', 'daemon-reload'], true).catch(() => undefined);
       throw error;
     }
     clearUninstallMarker(os);
@@ -245,7 +248,20 @@ export async function serviceUninstall(print: Printer = console.log, io: Service
     return;
   }
   const target = systemdUnitPath();
-  await run(['systemctl', '--user', 'disable', '--now', SYSTEMD_UNIT_NAME], true);
+  if ((await run(['systemctl', '--user', 'disable', '--now', SYSTEMD_UNIT_NAME], true)) !== 0) {
+    // Removing the unit is safe only when nothing runs from it: `is-active` exits 3 for an inactive unit and 4 for
+    // an unknown one. An active unit, or a manager that cannot answer, keeps the unit and fails the uninstall.
+    const active = await run(['systemctl', '--user', 'is-active', '--quiet', SYSTEMD_UNIT_NAME], true);
+    if (active !== 3 && active !== 4) {
+      throw new CliExit(
+        EXIT.transient,
+        m['cli.service.command_failed']({
+          command: `systemctl --user disable --now ${SYSTEMD_UNIT_NAME}`,
+          code: active,
+        }),
+      );
+    }
+  }
   rmSync(target, { force: true });
   writeUninstallMarker('linux');
   await run(['systemctl', '--user', 'daemon-reload']);

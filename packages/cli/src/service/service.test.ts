@@ -904,6 +904,39 @@ test('linux install without a systemd user manager fails before writing anything
   });
 });
 
+test('a linux reinstall the manager rejects puts the previous unit back', async () => {
+  await withLinuxHome(async (home, _calls, io) => {
+    const unit = join(home, 'systemd', 'user', 'aio-proxy.service');
+    await serviceInstall({}, () => {}, { ...io, exec: '/opt/aio-proxy/bin/aio-proxy' });
+    const before = readFileSync(unit, 'utf8');
+    const install = serviceInstall({}, () => {}, {
+      ...io,
+      exec: '/opt/other/bin/aio-proxy',
+      runManager: async (cmd) => {
+        if (cmd.includes('enable')) throw new CliExit(EXIT.transient, 'enable failed');
+        return 0;
+      },
+    });
+    await expect(install).rejects.toBeInstanceOf(CliExit);
+    expect(readFileSync(unit, 'utf8')).toBe(before);
+  });
+});
+
+test('linux uninstall keeps the unit when systemd cannot stop it, and goes on when it is already inactive', async () => {
+  await withLinuxHome(async (home, _calls, io) => {
+    const unit = join(home, 'systemd', 'user', 'aio-proxy.service');
+    await serviceInstall({}, () => {}, { ...io, exec: '/opt/aio-proxy/bin/aio-proxy' });
+    const manager = (activeCode: number) => async (cmd: readonly string[]) =>
+      cmd.includes('disable') ? 1 : cmd.includes('is-active') ? activeCode : 0;
+    await expect(serviceUninstall(() => {}, { ...io, runManager: manager(0) })).rejects.toBeInstanceOf(CliExit);
+    expect(existsSync(unit)).toBe(true);
+    await expect(serviceUninstall(() => {}, { ...io, runManager: manager(1) })).rejects.toBeInstanceOf(CliExit);
+    expect(existsSync(unit)).toBe(true);
+    await serviceUninstall(() => {}, { ...io, runManager: manager(3) });
+    expect(existsSync(unit)).toBe(false);
+  });
+});
+
 test('a linux install the manager rejects leaves no unit behind', async () => {
   await withLinuxHome(async (home, _calls, io) => {
     const install = serviceInstall({}, () => {}, {
