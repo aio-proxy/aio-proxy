@@ -359,6 +359,7 @@ export async function schtasksRestartInService(
   // a new task definition only takes effect at the next launch. So the supervisor's own spec gets the new unit too,
   // written first and put back if anything after it fails, so a failed restart changes nothing.
   let supervisorSpec: { path: string; previous: string | undefined } | undefined;
+  let previousCurrent: { content: string | undefined } | undefined;
   try {
     // A failed query or a foreign task throws before anything is written: `/Create /F` would overwrite it.
     // The supervisor re-reads the spec the task names, so a stale spec path needs a new task as much as a moved exec.
@@ -368,10 +369,17 @@ export async function schtasksRestartInService(
       io.writeFile(action.specPath, spec);
     }
     const exec = parseServiceSpec(spec)?.exec;
-    if (!taskCurrent(action, exec, specPath)) await createTask(io, path, stageTaskXml(io, xml));
+    // The current spec moves in before `/Create /F` replaces the task, so the task is never left pointing at a spec
+    // that a failed rename did not write; a failed create puts that spec back below.
+    previousCurrent = { content: io.readFile(specPath) };
     io.rename(staged, specPath);
+    if (!taskCurrent(action, exec, specPath)) await createTask(io, path, stageTaskXml(io, xml));
   } catch (error) {
     io.remove(staged);
+    if (previousCurrent !== undefined) {
+      if (previousCurrent.content === undefined) io.remove(specPath);
+      else io.writeFile(specPath, previousCurrent.content);
+    }
     if (supervisorSpec !== undefined) {
       if (supervisorSpec.previous === undefined) io.remove(supervisorSpec.path);
       else io.writeFile(supervisorSpec.path, supervisorSpec.previous);
