@@ -41,6 +41,8 @@ pub enum AppEvent {
     UpdateAttended,
     /// A manual check found nothing newer (Linux, Windows).
     UpToDate,
+    /// An install in progress, for the action line (Linux, Windows).
+    UpdateProgress(String),
     /// A manual check or an install failed (Linux, Windows).
     UpdateFailed(String),
     /// An update this AppImage cannot install in place: its Release page.

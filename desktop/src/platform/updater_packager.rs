@@ -112,6 +112,13 @@ mod imp {
 
     fn check(interactive: bool) {
         let update = match updater().and_then(|updater| updater.check()) {
+            // Nothing newer: an offer from an earlier check was withdrawn (a feed rollback).
+            Ok(None) => {
+                if PENDING.lock().unwrap_or_else(|e| e.into_inner()).take().is_some() {
+                    send(AppEvent::UpdateAttended);
+                }
+                None
+            }
             Ok(update) => update,
             // Only raised for a newer version: the feed has not shipped this target yet.
             Err(Error::TargetNotFound(target)) => {
@@ -146,21 +153,39 @@ mod imp {
             return;
         }
         std::thread::spawn(|| {
+            let _guard = InstallingGuard;
             let pending = PENDING.lock().unwrap_or_else(|e| e.into_inner()).clone();
             let result = pending.ok_or_else(|| "no update is pending".to_string()).and_then(|update| install(&update));
             if let Err(error) = result {
                 log::info(format!("updater: install failed: {error}"));
                 send(AppEvent::UpdateFailed(format!("Update failed: {error}")));
             }
-            INSTALLING.store(false, Ordering::SeqCst);
         });
+    }
+
+    /// Re-arms the button however the install thread ends, including a panic inside the library
+    /// (Windows `expect("installer failed to start")`).
+    struct InstallingGuard;
+
+    impl Drop for InstallingGuard {
+        fn drop(&mut self) {
+            if std::thread::panicking() {
+                send(AppEvent::UpdateFailed("Update failed: the installer did not start".into()));
+            }
+            INSTALLING.store(false, Ordering::SeqCst);
+        }
+    }
+
+    fn download(update: &Update) -> Result<Vec<u8>, String> {
+        send(AppEvent::UpdateProgress(format!("Downloading AIO Proxy {}…", update.version)));
+        verified_download(update)
     }
 
     /// The library launches the NSIS installer (Passive) and exits this process; the installer
     /// relaunches the app.
     #[cfg(windows)]
     fn install(update: &Update) -> Result<(), String> {
-        update.install(verified_download(update)?).map_err(|e| e.to_string())
+        update.install(download(update)?).map_err(|e| e.to_string())
     }
 
     /// The library swaps `$APPIMAGE` for the new file; the main thread then execs it.
@@ -174,7 +199,7 @@ mod imp {
         match install_action(appimage.as_deref(), dir_writable, &update.version) {
             InstallAction::OpenUrl(url) => send(AppEvent::OpenUrl(url)),
             InstallAction::InPlace => {
-                update.install(verified_download(update)?).map_err(|e| e.to_string())?;
+                update.install(download(update)?).map_err(|e| e.to_string())?;
                 // `InPlace` means `$APPIMAGE` is set.
                 if let Some(appimage) = appimage {
                     send(AppEvent::RelaunchInto(appimage));

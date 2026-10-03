@@ -11,6 +11,17 @@ use futures::channel::mpsc;
 use gpui_kit::App;
 
 fn main() {
+    // cargo-packager-updater's Linux `check()` sets these when unset, from its own thread, while
+    // GPUI's C libraries read the environment: setenv racing getenv. Set the same defaults first,
+    // so the library never writes.
+    #[cfg(target_os = "linux")]
+    for (name, default) in [("SSL_CERT_FILE", "/etc/ssl/certs/ca-certificates.crt"), ("SSL_CERT_DIR", "/etc/ssl/certs")]
+    {
+        if std::env::var_os(name).is_none() {
+            // SAFETY: no other thread exists yet.
+            unsafe { std::env::set_var(name, default) };
+        }
+    }
     if std::env::args().nth(1).as_deref() == Some("--version") {
         println!("{APP_VERSION}");
         return;
@@ -75,6 +86,10 @@ fn handle(cx: &mut App, event: AppEvent, events: &mpsc::UnboundedSender<AppEvent
         }
         AppEvent::UpToDate => {
             cx.global_mut::<AppModel>().show_update_outcome(ActionState::Done("AIO Proxy is up to date.".into()));
+            changed(cx);
+        }
+        AppEvent::UpdateProgress(text) => {
+            cx.global_mut::<AppModel>().show_update_outcome(ActionState::Done(text));
             changed(cx);
         }
         AppEvent::UpdateFailed(error) => {
