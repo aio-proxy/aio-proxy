@@ -9,7 +9,14 @@ export function decodeOutput(bytes: Uint8Array): string {
 
 /** Runs a query command hidden, capturing its output instead of streaming it to the user. */
 export async function runCapture(cmd: readonly string[]): Promise<CaptureResult> {
-  const proc = Bun.spawn(cmd as string[], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe', windowsHide: true });
+  const proc = Bun.spawn(cmd as string[], {
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
+    windowsHide: true,
+    // cmd.exe parses its own quoting; Bun's escaping (\") would break a `cmd /s /c "…"` line.
+    windowsVerbatimArguments: cmd[0] === 'cmd.exe',
+  });
   const [stdout, stderr, code] = await Promise.all([
     new Response(proc.stdout).bytes(),
     new Response(proc.stderr).bytes(),

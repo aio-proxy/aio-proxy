@@ -73,6 +73,8 @@ export async function readTask(deps: TaskProbeDeps): Promise<{ unit: UnitInspect
     if (deps.owner === '') throw new Error('no account SID');
     const user = { sid: deps.owner, sidForAccount: deps.sidForAccount };
     const query = await queryTaskXml(capture, taskPath(user.sid));
+    if (query.kind === 'failed')
+      process.stderr.write(`desktop-connect: the scheduled task query exited ${query.code}\n`);
     const xml = query.kind === 'found' ? query.xml : undefined;
     // A task left on an older LOCALAPPDATA or profile still names the spec its supervisor runs, and the
     // supervisor's state sits beside that spec: both are read where the task points, not where they would go now.
@@ -84,7 +86,9 @@ export async function readTask(deps: TaskProbeDeps): Promise<{ unit: UnitInspect
       unit,
       job: taskJob(query, markerExists, supervisorAlive(state, deps.imagePath, deps.creationTime) ? state.pid : null),
     };
-  } catch {
+  } catch (error) {
+    // stdout carries only the JSON; the reason goes to stderr, where the app's log can show it.
+    process.stderr.write(`desktop-connect: reading the scheduled task failed: ${String(error)}\n`);
     return {
       unit: { present: true, wrapperValid: false, target: null, home: null },
       job: { loaded: false, disabled: true, pid: null },

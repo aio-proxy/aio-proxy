@@ -109,9 +109,9 @@ function io({
       return 0;
     },
     capture: async (cmd): Promise<CaptureResult> => {
-      expect(cmd[0]).toBe('powershell.exe');
-      expect(cmd.at(-1)).toContain(`-TaskPath '\\AIO Proxy\\' -TaskName 'aio-proxy-${sid}'`);
-      if (task === 'missing') return { code: 3, stdout: '', stderr: '' };
+      expect(cmd[0]).toBe('cmd.exe');
+      expect(cmd.at(-1)).toBe(`"chcp 65001 >nul & schtasks /Query /XML /TN "\\AIO Proxy\\aio-proxy-${sid}" /HRESULT"`);
+      if (task === 'missing') return { code: 0x80070002, stdout: '', stderr: '' };
       if (typeof task === 'number') return { code: task, stdout: '', stderr: 'Access is denied.' };
       return { code: 0, stdout: task, stderr: '' };
     },
@@ -562,7 +562,7 @@ test('the default scheduled exit ends the process with 75 after the restart alre
     const files = new Map();
     const io = {
       run: async () => 0,
-      capture: async () => ({ code: 3, stdout: '', stderr: '' }),
+      capture: async () => ({ code: 0x80070002, stdout: '', stderr: '' }),
       sid: 'S-1-5-21-1', sidForAccount: () => undefined, localAppData: 'C:/L', tempDir: 'C:/T',
       unit: async () => ({ exec: 'C:/a.exe', configPath: 'C:/c.jsonc' }),
       readFile: (p) => files.get(p), writeFile: (p, d) => void files.set(p, d),
@@ -722,7 +722,12 @@ test('a task query tells "does not exist" apart from every other failure', async
   const query = (code: number) =>
     queryTaskXml(async () => ({ code, stdout: code === 0 ? '<Task/>' : '', stderr: '' }), path);
   expect(await query(0)).toEqual({ kind: 'found', xml: '<Task/>' });
-  expect(await query(3)).toEqual({ kind: 'missing' });
+  // `/HRESULT` exits with ERROR_FILE_NOT_FOUND's HRESULT, which a runtime may report signed or unsigned.
+  expect(await query(0x80070002)).toEqual({ kind: 'missing' });
+  expect(await query(0x80070002 | 0)).toEqual({ kind: 'missing' });
+  // What Bun actually reports on Windows: the HRESULT's low byte.
+  expect(await query(2)).toEqual({ kind: 'missing' });
+  expect(await query(5)).toEqual({ kind: 'failed', code: 5 });
   expect(await query(1)).toEqual({ kind: 'failed', code: 1 });
 });
 
@@ -768,12 +773,17 @@ test.skipIf(process.platform !== 'win32')(
     const folder = `AIO Proxy Test ${process.pid}`;
     const taskName = `\\${folder}\\aio-proxy-${ownSid}`;
     const file = join(tmpdir(), `aio-proxy-task-test-${process.pid}.xml`);
-    const xml = renderTaskXml({ sid: ownSid, exec: process.execPath, specPath: join(tmpdir(), 'service.json') });
+    const specPathWide = join(tmpdir(), 'Zoë 张三', 'service.json');
+    const xml = renderTaskXml({ sid: ownSid, exec: process.execPath, specPath: specPathWide });
     writeFileSync(file, Buffer.from(`\uFEFF${xml}`, 'utf16le'));
     try {
       const created = await runCapture(['schtasks', '/Create', '/XML', file, '/TN', taskName, '/F']);
       expect(created.code, created.stderr).toBe(0);
-      expect((await queryTaskXml(runCapture, taskName)).kind).toBe('found');
+      const found = await queryTaskXml(runCapture, taskName);
+      expect(found.kind).toBe('found');
+      // The XML must come back exactly, non-ASCII paths included, in whatever code page the console uses.
+      if (found.kind === 'found') expect(parseTaskXml(found.xml)?.action?.specPath).toBe(specPathWide);
+      expect((await queryTaskXml(runCapture, `${taskName}-missing`)).kind).toBe('missing');
     } finally {
       rmSync(file, { force: true });
       await runCapture(['schtasks', '/Delete', '/TN', taskName, '/F']);

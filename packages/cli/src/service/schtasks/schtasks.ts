@@ -67,7 +67,11 @@ export type SchtasksIo = {
 
 export type TaskQuery = { kind: 'found'; xml: string } | { kind: 'missing' } | { kind: 'failed'; code: number };
 
-const TASK_NOT_FOUND = 3;
+// `schtasks /HRESULT` exits with the HRESULT; ERROR_FILE_NOT_FOUND (0x80070002) is the task not existing. Bun keeps
+// only the exit code's low byte on Windows, so it arrives as 2 (access denied, 0x80070005, as 5; a plain failure, 1).
+const TASK_NOT_FOUND = 0x80070002;
+const isTaskNotFound = (code: number): boolean =>
+  code === 2 || code === TASK_NOT_FOUND || code === (TASK_NOT_FOUND | 0);
 const SUPERVISOR_EXIT_TIMEOUT_MS = 10_000;
 const SUPERVISOR_POLL_MS = 100;
 
@@ -105,29 +109,24 @@ export async function currentUser(
 
 export const currentUserSid = async (capture: Capture): Promise<string> => (await currentUser(capture)).sid;
 
-const psQuoted = (text: string): string => `'${text.replaceAll("'", "''")}'`;
-
 /**
- * Exports the task XML as UTF-8 so non-ASCII paths and accounts read back exactly; `schtasks /Query /XML`
- * writes it in an unverified encoding. Exits 3 when the task does not exist.
+ * `schtasks /Query /XML`, run under `chcp 65001` so the XML (and any non-ASCII path or account in it) reaches the pipe
+ * as UTF-8 rather than in the console code page. PowerShell's Get-ScheduledTask returned the same data but took
+ * seconds to load its CIM module, over the time `__desktop-connect` has. `cmd /s /c "…"` strips only the outer quotes,
+ * so the arguments go verbatim (see `windowsVerbatimArguments` in runCapture).
  */
-const taskXmlCommand = (path: string): string[] => {
-  const split = path.lastIndexOf('\\') + 1;
-  const where = `-TaskPath ${psQuoted(path.slice(0, split))} -TaskName ${psQuoted(path.slice(split))}`;
-  return [
-    'powershell.exe',
-    '-NoProfile',
-    '-NonInteractive',
-    '-Command',
-    `[Console]::OutputEncoding=[Text.Encoding]::UTF8; $t = Get-ScheduledTask ${where} -ErrorAction SilentlyContinue; ` +
-      `if ($null -eq $t) { exit ${TASK_NOT_FOUND} } else { Export-ScheduledTask ${where} }`,
-  ];
-};
+const taskXmlCommand = (path: string): string[] => [
+  'cmd.exe',
+  '/d',
+  '/s',
+  '/c',
+  `"chcp 65001 >nul & schtasks /Query /XML /TN "${path}" /HRESULT"`,
+];
 
 export async function queryTaskXml(capture: Capture, path: string): Promise<TaskQuery> {
   const { code, stdout } = await capture(taskXmlCommand(path));
   if (code === 0) return { kind: 'found', xml: stdout };
-  return code === TASK_NOT_FOUND ? { kind: 'missing' } : { kind: 'failed', code };
+  return isTaskNotFound(code) ? { kind: 'missing' } : { kind: 'failed', code };
 }
 
 /**

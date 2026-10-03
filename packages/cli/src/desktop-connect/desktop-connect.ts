@@ -267,6 +267,7 @@ export async function runWithin(
     timeout: remaining,
     killSignal: 'SIGKILL',
     windowsHide: true,
+    windowsVerbatimArguments: cmd[0] === 'cmd.exe',
   });
   // Windows tools may write UTF-16LE to a pipe.
   const stdout = decodeOutput(await new Response(proc.stdout).bytes());
