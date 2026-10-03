@@ -82,6 +82,7 @@ jobs:
     outputs:
       rust: ${{ steps.diff.outputs.rust }}
       bundle: ${{ steps.diff.outputs.bundle }}
+      service: ${{ steps.diff.outputs.service }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -103,6 +104,8 @@ jobs:
           # Server and dashboard changes are left out to spare macOS minutes; the release desktop job
           # always runs the full runtime smoke before signing (spec "CI").
           echo "bundle=$(changed desktop packages/cli/scripts packages/brand/src/app-icon.icon .github/workflows bun.lock .bun-version)" >> "$GITHUB_OUTPUT"
+          # The service smoke exercises the CLI's service and discovery code, which `bundle` leaves out.
+          echo "service=$(changed desktop packages/cli/src packages/core/src/desktop-token packages/core/src/paths .github/workflows bun.lock .bun-version)" >> "$GITHUB_OUTPUT"
 
   rust:
     needs: desktop-changes
@@ -193,7 +196,7 @@ jobs:
 
   service-smoke:
     needs: desktop-changes
-    if: needs.desktop-changes.outputs.bundle == 'true'
+    if: needs.desktop-changes.outputs.service == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -245,6 +248,11 @@ jobs:
           echo "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus" >> "$GITHUB_ENV"
 
       - run: bun desktop/scripts/smoke/cli.ts --service "$RUNNER_TEMP/sidecar/${{ matrix.exec }}"
+
+      # A killed or timed-out smoke skips its own cleanup; leave no task or unit behind.
+      - name: Remove the service
+        if: always()
+        run: '"$RUNNER_TEMP/sidecar/${{ matrix.exec }}" service uninstall || true'
 
   desktop-package:
     needs: desktop-changes

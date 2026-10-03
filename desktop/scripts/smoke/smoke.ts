@@ -108,6 +108,8 @@ export type ServiceSmokeDeps = {
 
 const SERVICE_WAIT_MS = 30_000;
 
+const redactToken = (key: string, value: unknown): unknown => (key === 'token' ? '[redacted]' : value);
+
 /**
  * Drives the real service manager (systemd --user or Task Scheduler) through the app's lifecycle and
  * checks, through the same discovery the app runs, that each state holds: a stop and an uninstall must
@@ -120,7 +122,8 @@ export async function serviceSmoke(exec: string, deps: ServiceSmokeDeps): Promis
     for (;;) {
       const value = await probe();
       if (ok(value)) return value;
-      if (deps.now() >= deadline) throw new Error(`${label} never held; last saw ${JSON.stringify(value)}`);
+      if (deps.now() >= deadline)
+        throw new Error(`${label} never held; last saw ${JSON.stringify(value, redactToken)}`);
       await deps.sleep(500);
     }
   };

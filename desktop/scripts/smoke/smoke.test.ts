@@ -21,6 +21,8 @@ type FakeConnect = { job: { disabled: boolean }; instance: { reachable: boolean;
 
 async function runServiceSmokeWithFakes() {
   const commands: string[][] = [];
+  // Lifecycle commands and process checks in the order they ran.
+  const events: string[] = [];
   const connects: FakeConnect[] = [];
   let clock = 0;
   const service = { enabled: false, running: false, uninstalled: false };
@@ -42,24 +44,33 @@ async function runServiceSmokeWithFakes() {
         return JSON.stringify(connect);
       }
       commands.push(args);
+      events.push(args.join(' '));
       lifecycle[args[1] ?? '']?.();
       return '';
     },
     httpChecks: async () => {},
-    processRemains: async () => service.running,
+    processRemains: async () => {
+      events.push('processRemains');
+      return service.running;
+    },
     sleep: async () => {},
     // Advancing time lets a wrong expectation time out instead of hanging the test.
     now: () => (clock += 1_000),
   });
-  return { commands, connects };
+  return { commands, events, connects };
 }
 
 test('service smoke checks that a stop and an uninstall stay put', async () => {
   const seen = await runServiceSmokeWithFakes();
-  expect(seen.commands.slice(0, 2)).toEqual([
+  expect(seen.commands).toEqual([
     ['service', 'install'],
     ['service', 'start'],
+    ['service', 'stop'],
+    ['service', 'start'],
+    ['service', 'restart'],
+    ['service', 'uninstall'],
   ]);
+  expect(seen.events.slice(-2)).toEqual(['service uninstall', 'processRemains']);
   expect(seen.connects.map((c) => [c.job.disabled, c.instance.reachable])).toEqual([
     [false, true],
     [true, false],

@@ -10,12 +10,17 @@ import { parseArgs } from 'node:util';
 import { readDesktopToken } from '../../../packages/core/src/desktop-token';
 import { freePort, httpChecks, serviceSmoke, type ServiceSmokeDeps } from './smoke';
 
+// A hung service manager or helper is killed well before the job timeout, so the smoke fails with
+// the command that hung instead of a cancelled job.
+const SPAWN_LIMITS = { timeout: 60_000, killSignal: 'SIGKILL', windowsHide: true } as const;
+
 async function run(cmd: readonly string[]): Promise<string> {
-  const proc = Bun.spawn([...cmd], { stdout: 'pipe', stderr: 'inherit', windowsHide: true });
+  const proc = Bun.spawn([...cmd], { ...SPAWN_LIMITS, stdout: 'pipe', stderr: 'inherit' });
   const stdout = await new Response(proc.stdout).text();
   const code = await proc.exited;
   if (code !== 0) throw new Error(`${cmd.join(' ')} exited ${code}\n${stdout}`);
-  process.stderr.write(stdout);
+  // Discovery's report carries the desktop token; serviceSmoke shows it, redacted, only when a wait fails.
+  if (!cmd.includes('__desktop-connect')) process.stderr.write(stdout);
   return stdout;
 }
 
@@ -29,7 +34,7 @@ async function processRemains(): Promise<boolean> {
           'if (Get-Process aio-proxy -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }',
         ]
       : ['pgrep', '-x', 'aio-proxy'];
-  return (await Bun.spawn(cmd, { stdout: 'ignore', stderr: 'ignore', windowsHide: true }).exited) === 0;
+  return (await Bun.spawn(cmd, { ...SPAWN_LIMITS, stdout: 'ignore', stderr: 'ignore' }).exited) === 0;
 }
 
 const { values } = parseArgs({ options: { service: { type: 'string' } } });
@@ -68,5 +73,10 @@ try {
   await run([exec, 'service', 'uninstall']).catch(() => {});
   throw error;
 } finally {
-  rmSync(home, { recursive: true, force: true });
+  // A file the stopped service still holds (EBUSY on Windows) must not replace the smoke's own result.
+  try {
+    rmSync(home, { recursive: true, force: true, maxRetries: 5 });
+  } catch (error) {
+    console.warn(`could not remove ${home}: ${String(error)}`);
+  }
 }
