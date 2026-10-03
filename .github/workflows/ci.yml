@@ -337,9 +337,14 @@ jobs:
         if: runner.os == 'Linux'
         working-directory: desktop/target/package
         run: |
+          file ./${{ matrix.asset }}
           ./${{ matrix.asset }} --appimage-extract > /dev/null
-          test "$(squashfs-root/usr/bin/aio-proxy --version)" = 0.0.1
-          test "$(squashfs-root/usr/bin/aio-proxy-desktop --version)" = 0.0.1
+          file squashfs-root/usr/bin/aio-proxy squashfs-root/usr/bin/aio-proxy-desktop
+          cli="$(squashfs-root/usr/bin/aio-proxy --version)"
+          app="$(squashfs-root/usr/bin/aio-proxy-desktop --version)"
+          echo "cli: $cli / app: $app"
+          test "$cli" = 0.0.1
+          test "$app" = 0.0.1
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
