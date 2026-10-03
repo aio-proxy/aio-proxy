@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -8,6 +8,11 @@ const BUN_TEST_FILE = /[._](test|spec)\.[cm]?[jt]sx?$/;
 
 function isTestRun(nodeEnv: string | undefined): boolean {
   return nodeEnv === 'test' || BUN_TEST_FILE.test(globalThis.Bun?.main ?? '');
+}
+
+// Symlinks and `..` segments can alias the real home, so compare canonical paths.
+function canonical(path: string): string {
+  return existsSync(path) ? realpathSync(path) : resolve(path);
 }
 
 const CONFIG_FILE_NAMES = ['config.yml', 'config.yaml', 'config.jsonc', 'config.json'] as const;
@@ -29,7 +34,7 @@ export function aioHome(): string {
   const env = process.env as { readonly AIO_PROXY_HOME?: string; readonly NODE_ENV?: string };
   const realHome = join(homedir(), '.aio-proxy');
   const home = env.AIO_PROXY_HOME === undefined || env.AIO_PROXY_HOME === '' ? realHome : env.AIO_PROXY_HOME;
-  if (isTestRun(env.NODE_ENV) && resolve(home) === realHome) {
+  if (isTestRun(env.NODE_ENV) && canonical(home) === canonical(realHome)) {
     throw new Error(
       `Refusing to use the real aio-proxy home (${realHome}) under test. Run the package's test:unit script or set AIO_PROXY_HOME to a temp dir.`,
     );

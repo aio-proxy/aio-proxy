@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -72,6 +72,23 @@ describe('paths', () => {
           expect(() => tmpDir()).toThrow('Refusing to use the real aio-proxy home');
         }
       });
+    }
+  });
+
+  // homedir() ignores later HOME changes, so alias a throwaway home from a child.
+  test('refuses a symlink that aliases the real home under test', () => {
+    const home = mkdtempSync(join(tmpdir(), 'aio-proxy-paths-symlink-'));
+    try {
+      mkdirSync(join(home, '.aio-proxy'));
+      symlinkSync(join(home, '.aio-proxy'), join(home, 'alias'));
+      const result = Bun.spawnSync(
+        [process.execPath, '-e', `const p = await import(${JSON.stringify(import.meta.resolve('.'))}); p.aioHome();`],
+        { env: { ...process.env, HOME: home, NODE_ENV: 'test', AIO_PROXY_HOME: join(home, 'alias') } },
+      );
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr.toString()).toContain('Refusing to use the real aio-proxy home');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
     }
   });
 
