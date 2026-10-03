@@ -262,8 +262,10 @@ export async function schtasksStop(io: SchtasksIo): Promise<void> {
 export async function schtasksRestart(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   const specPath = serviceSpecPath(io.localAppData);
-  await ownTaskExists(io, path);
-  const previousSpec = io.readFile(specPath);
+  // The task may still name an older spec path (LOCALAPPDATA or the profile moved): a rollback restores that one.
+  const previousSpecPath = (await ownTask(io, path))?.action?.specPath ?? specPath;
+  const previousSpec = io.readFile(previousSpecPath);
+  const previousAtSpecPath = io.readFile(specPath);
   // Stage both files first, so a failed write leaves the running task untouched.
   const { spec, xml } = await renderUnit(io);
   const staged = `${specPath}.new`;
@@ -284,14 +286,18 @@ export async function schtasksRestart(io: SchtasksIo): Promise<void> {
     await runTask(io, path);
   } catch (error) {
     io.remove(staged);
-    // Bring the previous definition back rather than leave the proxy offline. It is rendered from the
-    // spec we wrote, which names the same exec and spec path the previous task XML did.
+    // Bring the previous definition back rather than leave the proxy offline. It is rendered from the spec the
+    // previous task named (never from the queried XML), at the path that task named.
     try {
-      if (previousSpec === undefined) io.remove(specPath);
-      else io.writeFile(specPath, previousSpec);
+      if (previousAtSpecPath === undefined) io.remove(specPath);
+      else io.writeFile(specPath, previousAtSpecPath);
       const previousExec = previousSpec === undefined ? undefined : parseServiceSpec(previousSpec)?.exec;
       if (previousExec === undefined) throw new Error('no readable previous service spec');
-      await createTask(io, path, stageTaskXml(io, renderTaskXml({ sid: io.sid, exec: previousExec, specPath })));
+      await createTask(
+        io,
+        path,
+        stageTaskXml(io, renderTaskXml({ sid: io.sid, exec: previousExec, specPath: previousSpecPath })),
+      );
       await runTask(io, path);
     } catch {
       io.warn(`${createStyle(process.stderr).mark('warn')} ${m['cli.service.restore_failed']()}`);

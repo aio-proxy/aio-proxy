@@ -514,6 +514,17 @@ test('a failed run after the new spec moved in puts the old spec and task back',
   expect(lastWarnings).toEqual([]);
 });
 
+test('a failed restart restores a task that named an older spec path from that path', async () => {
+  const movedSpec = 'C:\\Users\\old\\AppData\\Local\\aio-proxy\\service.json';
+  const fs = fakeFs({ [movedSpec]: oldSpec });
+  const task = renderTaskXml({ sid, exec: oldExec, specPath: movedSpec });
+  await expect(schtasksRestart(io({ fs, task, failOn: '/Run' }))).rejects.toThrow('/Run failed');
+  expect(fs.lastXmlCreated()).toBe(task);
+  expect(fs.read(movedSpec)).toBe(oldSpec);
+  expect(fs.exists(specPath)).toBe(false);
+  expect(lastWarnings).toEqual([]);
+});
+
 test('a rollback that cannot bring the old task back says so and still reports the original failure', async () => {
   for (const options of [
     { fs: fakeFs({ [specPath]: oldSpec }), failOn: '/Create', failAlways: true },

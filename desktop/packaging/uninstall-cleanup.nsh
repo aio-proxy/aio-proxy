@@ -58,22 +58,14 @@ Section un.AioProxyCleanup
     DetailPrint "cannot tell who owns the AIO Proxy scheduled task ($R0); keeping ${AIOP_SUPPORT}, which it may run"
   ${EndIf}
 
-  ; Drop the shims entry from the user Path; every other entry stays byte for byte.
-  ; ponytail: the wrapped ";Path;" plus its terminator must fit NSIS_MAX_STRLEN (1024 in a stock
-  ; build), so a Path longer than NSIS_MAX_STRLEN - 4 is left alone (the entry stays) rather than
-  ; written back truncated; edit it from PowerShell if that ever matters.
-  ClearErrors
-  ReadRegStr $R0 HKCU "Environment" "Path"
-  StrLen $R1 $R0
-  IntOp $R2 ${NSIS_MAX_STRLEN} - 3
-  ${IfNot} ${Errors}
-  ${AndIf} $R1 < $R2
-    ${WordReplace} ";$R0;" ";${AIOP_SHIMS};" ";" "+" $R1
-    StrCpy $R1 $R1 -1 1
-    ${If} $R1 != $R0
-      WriteRegExpandStr HKCU "Environment" "Path" $R1
-      SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
-    ${EndIf}
+  ; Drop the shims entry from the user Path; every other entry stays byte for byte, and the value keeps its
+  ; registry type (rewriting a REG_SZ Path as REG_EXPAND_SZ would start expanding unrelated %VAR% entries).
+  ; PowerShell reads the raw value (no expansion) with no NSIS_MAX_STRLEN ceiling. Exit 0: the Path changed.
+  System::Call 'kernel32::SetEnvironmentVariable(t "AIO_PROXY_SHIMS", t "${AIOP_SHIMS}")'
+  nsExec::ExecToLog `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "$$k = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $$true); if ($$k -eq $$null) { exit 1 }; $$v = $$k.GetValue('Path', $$null, 'DoNotExpandEnvironmentNames'); if ($$v -eq $$null) { exit 1 }; $$parts = $$v -split ';'; $$kept = @($$parts | Where-Object { $$_ -ne $$env:AIO_PROXY_SHIMS }); if ($$kept.Count -eq $$parts.Count) { exit 1 }; $$k.SetValue('Path', ($$kept -join ';'), $$k.GetValueKind('Path')); exit 0"`
+  Pop $R0
+  ${If} $R0 == 0
+    SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
   ${EndIf}
 
   ; The login item, only when it is this install's (the app writes the quoted exe path).
