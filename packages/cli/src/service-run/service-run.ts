@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, statSync, writeFileSync } from 'node:fs';
 
 import { EXIT } from '../exit';
 import { parseServiceSpec, serviceStatePathBeside, type ServiceSpec } from '../service/schtasks-unit';
@@ -55,7 +55,8 @@ export function defaultSupervisorDeps(specPath: string): SupervisorDeps {
         return undefined;
       }
     },
-    exists: existsSync,
+    // A directory (or anything but a regular file) at the exec path can never run: treat it as gone.
+    exists: (path) => statSync(path, { throwIfNoEntry: false })?.isFile() === true,
     spawnChild: async (exec, env) => {
       const child = Bun.spawn([exec, 'run'], {
         env: { ...process.env, ...env },
