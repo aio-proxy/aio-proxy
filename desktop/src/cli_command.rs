@@ -197,6 +197,20 @@ pub fn install(target: &Path, alias: bool) -> Result<bool, String> {
     install_links(&dir, target, probe).map(|_| true).map_err(|error| error.to_string())
 }
 
+/// The confirmation line. The session's PATH predates the link directory when the app's own PATH,
+/// inherited from that session, lacks it: ~/.profile adds it only at the next login (the probe's
+/// login shell already saw it), so terminals opened before then do not find `aiop`.
+#[cfg(unix)]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn installed_notice(aiop: &Path, session_path: Option<&std::ffi::OsStr>) -> String {
+    let dir = aiop.parent().unwrap_or(aiop);
+    if session_path.is_some_and(|path| std::env::split_paths(path).any(|entry| entry == dir)) {
+        format!("Installed aiop at {}.", aiop.display())
+    } else {
+        format!("Installed aiop at {}. It works after you log out and back in.", aiop.display())
+    }
+}
+
 /// Where `install` puts `aiop`, for the confirmation line.
 #[cfg(target_os = "linux")]
 pub fn aiop_path() -> PathBuf {

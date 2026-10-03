@@ -15,6 +15,15 @@ fn only_marker_lines_answer_the_probe() {
     assert_eq!(parse_probe(&format!("zsh: bad option: -i\n{MARK}aiop\n")), None);
 }
 
+#[test]
+fn a_link_dir_the_session_lacks_works_only_after_the_next_login() {
+    let aiop = Path::new("/home/me/.local/bin/aiop");
+    let on = std::ffi::OsString::from("/usr/bin:/home/me/.local/bin");
+    assert_eq!(installed_notice(aiop, Some(&on)), "Installed aiop at /home/me/.local/bin/aiop.");
+    let off = std::ffi::OsString::from("/usr/bin:/bin");
+    assert!(installed_notice(aiop, Some(&off)).ends_with("It works after you log out and back in."));
+}
+
 // Exercises the macOS /usr/local/bin install.
 #[cfg(target_os = "macos")]
 #[test]

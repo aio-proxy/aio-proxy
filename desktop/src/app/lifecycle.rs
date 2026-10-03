@@ -94,7 +94,7 @@ pub fn install_cli(cx: &mut App) {
             // The service-action state machine owns `action` while it runs.
             if !model.action.is_busy() {
                 match result {
-                    Ok(true) => model.action = ActionState::Done(format!("Installed aiop at {}.", aiop.display())),
+                    Ok(true) => model.action = ActionState::Done(installed_notice(&aiop)),
                     Ok(false) => {}
                     Err(error) => model.action = ActionState::Failed(format!("Install aiop failed: {error}")),
                 }
@@ -104,6 +104,16 @@ pub fn install_cli(cx: &mut App) {
         });
     })
     .detach();
+}
+
+#[cfg(target_os = "linux")]
+fn installed_notice(aiop: &Path) -> String {
+    crate::cli_command::installed_notice(aiop, std::env::var_os("PATH").as_deref())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn installed_notice(aiop: &Path) -> String {
+    format!("Installed aiop at {}.", aiop.display())
 }
 
 fn prepare_install(paths: &Paths, bundle: Option<&Path>) -> InstallState {
