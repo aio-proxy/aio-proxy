@@ -90,7 +90,8 @@ fn a_failing_discovery_is_an_error_even_when_stdout_is_valid_json() {
 
 #[cfg(unix)]
 #[test]
-fn a_stable_copy_that_cannot_run_falls_back_to_the_bundled_sidecar() {
+fn only_a_stable_copy_that_preparation_ran_and_can_still_run_is_used_over_the_bundled_sidecar() {
+    use crate::install::{InstallState, ReadOnlyReason};
     use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
     let bundle = dir.path().join("bundle");
@@ -108,7 +109,14 @@ fn a_stable_copy_that_cannot_run_falls_back_to_the_bundled_sidecar() {
         lock: dir.path().join("lock"),
         logs: dir.path().join("logs"),
     };
-    assert_eq!(SystemHost::new(&paths, Some(&bundle)).unwrap().exec, sidecar);
+    let exec = |install: Option<InstallState>| SystemHost::new(&paths, Some(&bundle), install.as_ref()).unwrap().exec;
+    assert_eq!(exec(Some(InstallState::Persistent)), sidecar);
     std::fs::set_permissions(&stable, std::fs::Permissions::from_mode(0o755)).unwrap();
-    assert_eq!(SystemHost::new(&paths, Some(&bundle)).unwrap().exec, stable);
+    assert_eq!(exec(Some(InstallState::Persistent)), stable);
+    let newer = ReadOnlyReason::NewerCopy { app: stable.clone(), version: "99.0.0".into() };
+    assert_eq!(exec(Some(InstallState::ReadOnly(newer))), stable);
+    // Executable bits, yet its `--version` probe failed at startup (noexec mount, corrupt bytes).
+    let unreadable = ReadOnlyReason::UnreadableCopy { app: stable.clone() };
+    assert_eq!(exec(Some(InstallState::ReadOnly(unreadable))), sidecar);
+    assert_eq!(exec(None), sidecar);
 }

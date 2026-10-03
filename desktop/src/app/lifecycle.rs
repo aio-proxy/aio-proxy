@@ -131,7 +131,7 @@ fn prepare_install(paths: &Paths, bundle: Option<&Path>) -> InstallState {
 }
 
 fn host(model: &AppModel) -> Option<SystemHost> {
-    SystemHost::new(&model.paths, model.bundle.as_deref())
+    SystemHost::new(&model.paths, model.bundle.as_deref(), model.install.as_ref())
 }
 
 pub fn rediscover(cx: &mut App) {

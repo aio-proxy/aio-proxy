@@ -11,7 +11,7 @@ use super::policy::{Mutation, ReloadOutcome, parse_reload};
 use super::run::Host;
 use crate::client::health::{HEALTH_TIMEOUT, parse_health};
 use crate::client::transport::{Cancel, Limits, LocalUrl, Method, Request, send};
-use crate::install::{Paths, sidecar_of};
+use crate::install::{InstallState, Paths, ReadOnlyReason, sidecar_of};
 use crate::process::{run_with_timeout, tail};
 
 /// The CLI bounds `__desktop-connect` at 10 s; this only catches a wedged process.
@@ -29,11 +29,17 @@ pub struct SystemHost {
 }
 
 impl SystemHost {
-    pub fn new(paths: &Paths, bundle: Option<&Path>) -> Option<Self> {
-        // A stable copy that cannot run (execute bit lost, a directory in its place) would fail every spawn; the
-        // bundled sidecar still works.
+    /// `install` is startup's install preparation: the stable exec is used only when it ran there (ours, or a newer
+    /// one we must not downgrade), and is still a runnable file.
+    pub fn new(paths: &Paths, bundle: Option<&Path>, install: Option<&InstallState>) -> Option<Self> {
+        // A stable copy that cannot run (noexec mount, ACL, corrupt bytes, execute bit lost, a directory in its
+        // place) would fail every spawn; the bundled sidecar still works.
+        let proven = matches!(
+            install,
+            Some(InstallState::Persistent | InstallState::ReadOnly(ReadOnlyReason::NewerCopy { .. }))
+        );
         let runnable = crate::install::copy::executable;
-        let exec = if runnable(&paths.stable) { paths.stable.clone() } else { sidecar_of(bundle?) };
+        let exec = if proven && runnable(&paths.stable) { paths.stable.clone() } else { sidecar_of(bundle?) };
         runnable(&exec).then(|| Self {
             exec,
             desktop_exec: paths.stable.clone(),
