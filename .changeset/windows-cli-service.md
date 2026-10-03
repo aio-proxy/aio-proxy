@@ -5,4 +5,4 @@
 '@aio-proxy/core': minor
 ---
 
-The CLI now ships for Windows x64, and `aio-proxy service` there is backed by a per-user scheduled task. The AIO Proxy desktop app now runs on Linux and Windows too, with a tray menu, launch at login, the `aiop` command and signed in-app updates. On Linux and Windows, a service you stopped or uninstalled now stays stopped.
+The AIO Proxy desktop app is now available for Linux (AppImage, x86_64 and arm64) and Windows (x64 installer), with a tray menu, launch at login, the `aiop` command and signed in-app updates. The CLI now ships for Windows, where `aio-proxy service` is backed by a per-user scheduled task. On Linux and Windows, a service you stopped or uninstalled now stays stopped.

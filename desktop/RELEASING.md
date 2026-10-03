@@ -1,9 +1,20 @@
-# Releasing the macOS app
+# Releasing the desktop app
 
 The app ships from CI. After Changesets publishes a release, `release.yml` dispatches
-`desktop-release.yml`, which builds, signs, notarizes and uploads
-`aio-proxy-<version>-arm64.dmg` to the `v<version>` Release, then replaces the Sparkle feed
-`appcast.xml` on the `desktop-feed` prerelease. Canary releases never ship the app.
+`desktop-release.yml`, which runs two independent paths. Canary releases never ship the app.
+
+- macOS: builds, signs, notarizes and uploads `aio-proxy-<version>-arm64.dmg` to the
+  `v<version>` Release, then replaces the Sparkle feed `appcast.xml` on the `desktop-feed`
+  prerelease.
+- Linux and Windows: `verify` checks the tag, then `build-linux` (x86_64 on `ubuntu-22.04`,
+  aarch64 on `ubuntu-22.04-arm`) and `build-windows` build unsigned bytes with no secrets.
+  `publish-assets` (environment `desktop-release`) signs them with minisign and uploads
+  `aio-proxy-<version>-x86_64.AppImage`, `aio-proxy-<version>-aarch64.AppImage` and
+  `aio-proxy-<version>-x64-setup.exe`, each with a `.minisig`, to the `v<version>` Release. `feed`
+  then points `latest.json` on `desktop-feed` at the highest version whose three assets all verify.
+
+The Linux/Windows build jobs use no caches on purpose: bytes that get signed must not come from a
+cache. Cold builds are slow (90 minute timeout).
 
 ## One-time setup
 
@@ -44,6 +55,11 @@ them to the names the scripts read (the same names a local release sets).
    (`bun run desktop:bundle --unsigned` downloads `desktop/vendor` first.)
    - Repository variable `SPARKLE_PUBLIC_ED_KEY`: the printed public key.
    - Repository secret `SPARKLE_ED_PRIVATE_KEY`: the contents of `sparkle-private.key`. Delete the file afterwards.
+
+   The same key signs the Linux and Windows assets. `publish-assets` wraps the Sparkle Ed25519 key
+   as a minisign key (prehashed `ED` signatures, trusted comment `<version> <target> <asset>`), so
+   there is one update root of trust and no second secret. The Linux/Windows updater embeds the
+   matching public key.
 
    CI passes the key to `generate_appcast` only on stdin. Do not use `--account` in automation:
    it blocks on a Keychain prompt.
@@ -89,3 +105,46 @@ derived from `SPARKLE_ED_PRIVATE_KEY`, `SPARKLE_PUBLIC_ED_KEY` and the DMG's `SU
 all be equal. It also refuses to upload when the feed already lists the version but the DMG is not
 on the Release, and to replace the feed when the new item has no valid EdDSA signature
 (`generate_appcast` itself only warns when the key does not match).
+
+## Windows code signing (optional)
+
+Without signing, the installer triggers SmartScreen ("More info" then "Run anyway"); the README
+says so. To sign, set `WINDOWS_SIGN_COMMAND` in the environment of the `build-windows` packaging
+step. cargo-packager runs it per file with `%1` as the path, split on spaces, so the command
+cannot contain quoted arguments with spaces. Either of these works:
+
+- Azure Artifact Signing: `signtool sign /dlib <Azure.CodeSigning.Dlib.dll> /dmdf <metadata.json> /fd SHA256 /tr <timestamp-url> /td SHA256 %1`
+- A certificate in the runner's store: `signtool sign /sha1 <thumbprint> /fd SHA256 /tr <timestamp-url> /td SHA256 %1`
+
+cargo-packager signs the app, the installer and the uninstaller, but NOT the sidecar
+`aio-proxy.exe` inside the install directory. The build job has no secrets today, so adding signing
+means giving it the credentials (or moving the Windows package step behind the `desktop-release`
+environment) deliberately.
+
+## Resuming a failed Linux/Windows publish
+
+Re-dispatch the tag the same way (`gh workflow run desktop-release.yml -f tag=v<version>`). A
+dispatch runs that tag's copy of the workflow and scripts, so a fix on `main` does not reach an
+older tag. `publish-assets` is resumable and never replaces a published asset: for each asset it
+signs and uploads (`.minisig` first), or re-verifies a pair already on the Release, or, when only
+the asset exists with a signature that does not verify against this run's bytes, stops. If a run
+died between the two uploads and left an orphan `.minisig` (no asset), delete it and re-dispatch:
+
+```bash
+gh release delete-asset v<version> aio-proxy-<version>-x86_64.AppImage.minisig --repo aio-proxy/aio-proxy --yes
+```
+
+`feed` never creates `desktop-feed` (create it once as a prerelease) and never moves the feed down;
+a `latest.json` that does not parse fails the job. A failed or incomplete newer version leaves the
+feed on the previous complete one.
+
+A fork rehearsal must change the hard-coded `REPO` in `publish-assets.ts`, `publish-latest.ts` and
+`publish.ts`; the `v<version>` Release and the `desktop-feed` prerelease must exist in the fork.
+
+## Platform notes
+
+- Windows installs per user to `%LOCALAPPDATA%\AIO Proxy`. A user uninstall removes the desktop-owned
+  service, the `aiop` shims and the launch-at-login value; an upgrade (passive, silent or the
+  interactive "uninstall before installing") keeps them.
+- Linux has no uninstaller: run `aio-proxy service uninstall` before deleting the AppImage,
+  otherwise the managed service keeps pointing at a file that is gone.

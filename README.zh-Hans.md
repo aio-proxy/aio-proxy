@@ -73,6 +73,13 @@ bun add -g aio-proxy
 curl -fsSL https://aioproxy.dev/install.sh | sh
 ```
 
+### 桌面应用（macOS、Linux、Windows）
+
+从 [GitHub Releases](https://github.com/aio-proxy/aio-proxy/releases/latest) 下载：
+`aio-proxy-<version>-arm64.dmg`（macOS）、`aio-proxy-<version>-x86_64.AppImage` 或
+`aio-proxy-<version>-aarch64.AppImage`（Linux，`chmod +x` 后运行）、
+`aio-proxy-<version>-x64-setup.exe`（Windows）。应用内可自动更新。Windows 安装包暂未代码签名，SmartScreen 可能弹出警告：点击“更多信息”，再选“仍要运行”。
+
 ## 快速开始
 
 ```bash
