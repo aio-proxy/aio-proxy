@@ -110,20 +110,23 @@ mod imp {
         std::thread::spawn(|| check(true));
     }
 
+    /// Drops an offer the feed no longer makes, so the button cannot install it.
+    fn withdraw_offer() -> Option<Update> {
+        if PENDING.lock().unwrap_or_else(|e| e.into_inner()).take().is_some() {
+            send(AppEvent::UpdateAttended);
+        }
+        None
+    }
+
     fn check(interactive: bool) {
         let update = match updater().and_then(|updater| updater.check()) {
             // Nothing newer: an offer from an earlier check was withdrawn (a feed rollback).
-            Ok(None) => {
-                if PENDING.lock().unwrap_or_else(|e| e.into_inner()).take().is_some() {
-                    send(AppEvent::UpdateAttended);
-                }
-                None
-            }
+            Ok(None) => withdraw_offer(),
             Ok(update) => update,
-            // Only raised for a newer version: the feed has not shipped this target yet.
+            // Only raised for a newer version the feed has no `target` entry for: not offered to us either.
             Err(Error::TargetNotFound(target)) => {
                 log::info(format!("updater: the feed has no `{target}` entry"));
-                None
+                withdraw_offer()
             }
             // Offline is not the user's problem until they ask.
             Err(error) => {
