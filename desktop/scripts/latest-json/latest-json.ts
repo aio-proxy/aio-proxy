@@ -48,3 +48,14 @@ export function pickFeedVersion(
   }
   return picked;
 }
+
+/**
+ * Stable `vX.Y.Z` tags above `current`, highest first: the only Releases that can move the feed, in the
+ * order to check them, so checking stops at the first complete one instead of downloading every build.
+ */
+export function feedCandidates(current: string | undefined, tags: readonly string[]): string[] {
+  return tags
+    .flatMap((tag) => /^v(\d+\.\d+\.\d+)$/u.exec(tag)?.[1] ?? [])
+    .filter((version) => current === undefined || Bun.semver.order(version, current) > 0)
+    .sort((a, b) => Bun.semver.order(b, a));
+}

@@ -1,1 +1,8 @@
-export { buildLatestJson, parseLatestJson, pickFeedVersion, TARGETS, type UpdateTarget } from './latest-json';
+export {
+  buildLatestJson,
+  feedCandidates,
+  parseLatestJson,
+  pickFeedVersion,
+  TARGETS,
+  type UpdateTarget,
+} from './latest-json';

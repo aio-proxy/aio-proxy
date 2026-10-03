@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { buildLatestJson, parseLatestJson, pickFeedVersion, TARGETS } from './latest-json';
+import { buildLatestJson, feedCandidates, parseLatestJson, pickFeedVersion, TARGETS } from './latest-json';
 
 const minisig = 'untrusted comment: signature\nabc\ntrusted comment: t\ndef\n';
 const entry = (t: string) => ({ url: `https://example.com/${t}`, minisig });
@@ -38,4 +38,11 @@ test('the feed takes the highest complete version, whatever run executes last', 
   expect(pickFeedVersion('0.41.0', releases)).toBeUndefined();
   expect(pickFeedVersion('0.43.0', releases)).toBeUndefined();
   expect(pickFeedVersion(undefined, releases)).toBe('0.41.0');
+});
+
+test('candidates are the stable tags above the feed, highest first', () => {
+  const tags = ['v0.39.0', 'v0.41.0', 'desktop-feed', 'v0.42.0-beta.1', 'v0.40.0', 'v0.40.1'];
+  expect(feedCandidates('0.40.0', tags)).toEqual(['0.41.0', '0.40.1']);
+  expect(feedCandidates(undefined, tags)).toEqual(['0.41.0', '0.40.1', '0.40.0', '0.39.0']);
+  expect(feedCandidates('0.41.0', tags)).toEqual([]);
 });
