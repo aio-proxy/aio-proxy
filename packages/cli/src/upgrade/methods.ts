@@ -38,11 +38,31 @@ export const interpreterSafePath = (
   return parts.filter((part) => part !== undefined && part !== '').join(win ? ';' : ':');
 };
 
+// Inside cmd's quotes `%` still expands variables and `"` would end the quoting; neither has a safe spelling there.
+const quoteForCmd = (arg: string): string => {
+  if (/["%]/u.test(arg)) throw new Error(`cannot pass ${arg} through cmd.exe`);
+  return arg === '' || /[\s&|<>^(),;=!]/u.test(arg) ? `"${arg}"` : arg;
+};
+
+/**
+ * CreateProcess cannot run a `.cmd`/`.bat` (npm.cmd, pnpm.cmd) itself, so cmd.exe runs it. `/s /c "…"` strips only the
+ * outer quotes, so the line must reach cmd verbatim (`windowsVerbatimArguments`).
+ */
+export const batchFileCommand = (cmd: readonly string[]): string[] => [
+  'cmd.exe',
+  '/d',
+  '/s',
+  '/c',
+  `"${cmd.map(quoteForCmd).join(' ')}"`,
+];
+
 const exec = async (cmd: string[], platform: NodeJS.Platform): Promise<void> => {
-  const proc = Bun.spawn(cmd, {
+  const batch = platform === 'win32' && /\.(?:cmd|bat)$/iu.test(cmd[0] ?? '');
+  const proc = Bun.spawn(batch ? batchFileCommand(cmd) : cmd, {
     stdout: 'inherit',
     stderr: 'inherit',
     env: { ...process.env, PATH: interpreterSafePath(cmd[0] ?? '', platform) },
+    windowsVerbatimArguments: batch,
   });
   const code = await proc.exited;
   if (code !== 0) throw new Error(`${cmd[0]} exited with ${code}`);

@@ -44,6 +44,7 @@ test('resolveUpgradeMethod: priority brew > bun > npm > pnpm', () => {
 
 import { NPM_REGISTRY } from './constants';
 import {
+  batchFileCommand,
   buildBunInstallArgs,
   buildHomebrewUpdateArgs,
   buildNpmInstallArgs,
@@ -81,6 +82,19 @@ test('interpreterSafePath builds a `;` PATH on Windows and the POSIX fallbacks e
   expect(interpreterSafePath('/opt/bin/npm', 'linux', { PATH: '/usr/local/bin' })).toBe(
     '/opt/bin:/usr/bin:/bin:/usr/local/bin',
   );
+});
+
+test('a batch-file package manager runs through one verbatim cmd.exe line, quoted where cmd would split it', () => {
+  const npm = 'C:\\Program Files\\nodejs\\npm.cmd';
+  expect(batchFileCommand([npm, ...buildNpmInstallArgs('1.2.3', NPM_REGISTRY)])).toEqual([
+    'cmd.exe',
+    '/d',
+    '/s',
+    '/c',
+    `""C:\\Program Files\\nodejs\\npm.cmd" install -g "--registry=${NPM_REGISTRY}" aio-proxy@1.2.3"`,
+  ]);
+  expect(() => batchFileCommand([npm, 'a"b'])).toThrow();
+  expect(() => batchFileCommand([npm, '%PATH%'])).toThrow();
 });
 
 test('buildHomebrewUpdateArgs switches on force', () => {
