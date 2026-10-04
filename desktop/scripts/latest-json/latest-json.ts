@@ -1,6 +1,31 @@
-import { TARGETS, type UpdateTarget, updaterSignature } from '../minisign';
+import { TARGETS, trustedComment, type UpdateTarget, updaterSignature } from '../minisign';
+import { assetName } from '../package/index';
 
 export { TARGETS, type UpdateTarget };
+
+export const REPO = 'aio-proxy/aio-proxy';
+
+/** Where a target's build for `version` is downloaded from: the feed points at exactly this URL. */
+export const assetUrl = (version: string, target: UpdateTarget): string =>
+  `https://github.com/${REPO}/releases/download/v${version}/${assetName(target, version)}`;
+
+/** Whether `signature` is the base64 of a four-line .minisig text carrying the trusted comment this entry needs. */
+function signsEntry(signature: string, version: string, target: UpdateTarget): boolean {
+  try {
+    const text = Buffer.from(signature, 'base64').toString();
+    const lines = (text.endsWith('\n') ? text.slice(0, -1) : text).split('\n');
+    return (
+      lines.length === 4 &&
+      lines[0]!.startsWith('untrusted comment: ') &&
+      lines[1] !== '' &&
+      lines[2] === `trusted comment: ${trustedComment(version, target, assetName(target, version))}` &&
+      lines[3] !== ''
+    );
+  } catch {
+    // trustedComment refuses a version that is not plain semver: no entry of such a feed is usable.
+    return false;
+  }
+}
 
 /** Builds the feed the cargo-packager updater reads (`notes` and `pub_date` are optional there, so omitted). */
 export function buildLatestJson(
@@ -21,8 +46,9 @@ export function buildLatestJson(
 }
 
 /**
- * The published feed's version, and whether every target has a usable entry (url, signature, the right format);
- * `undefined` when the text is not a feed. An incomplete feed may be rewritten at its own version.
+ * The published feed's version, and whether every target has the entry publish-latest would write for it (the
+ * Release asset's URL, a signature carrying its trusted comment, the right format); `undefined` when the text is not
+ * a feed. An incomplete feed may be rewritten at its own version.
  */
 export function parseLatestJson(text: string): { version: string; complete: boolean } | undefined {
   try {
@@ -32,10 +58,9 @@ export function parseLatestJson(text: string): { version: string; complete: bool
     const complete = TARGETS.every((target) => {
       const entry = json?.platforms?.[target] as { url?: unknown; signature?: unknown; format?: unknown } | undefined;
       return (
-        typeof entry?.url === 'string' &&
-        entry.url !== '' &&
+        entry?.url === assetUrl(version, target) &&
         typeof entry.signature === 'string' &&
-        entry.signature !== '' &&
+        signsEntry(entry.signature, version, target) &&
         entry.format === (target.startsWith('windows-') ? 'nsis' : 'appimage')
       );
     });

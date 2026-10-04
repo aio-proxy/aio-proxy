@@ -10,13 +10,20 @@ import { join } from 'node:path';
 
 import { $ } from 'bun';
 
-import { buildLatestJson, feedCandidates, parseLatestJson, pickFeedVersion, TARGETS } from './latest-json/index';
+import {
+  assetUrl,
+  buildLatestJson,
+  feedCandidates,
+  parseLatestJson,
+  pickFeedVersion,
+  REPO,
+  TARGETS,
+} from './latest-json/index';
 import type { UpdateTarget } from './latest-json/index';
 import { trustedComment } from './minisign';
 import { assetName } from './package/index';
 import { verifyPair } from './publish-assets/index';
 
-const REPO = 'aio-proxy/aio-proxy';
 const FEED_TAG = 'desktop-feed';
 const FEED = 'latest.json';
 
@@ -93,7 +100,7 @@ try {
         console.error(`${name} on ${tag} does not verify against the update key and its trusted comment`);
         break;
       }
-      entries.set(target, { url: `https://github.com/${REPO}/releases/download/${tag}/${name}`, minisig });
+      entries.set(target, { url: assetUrl(version, target), minisig });
     }
     rmSync(dir, { recursive: true, force: true });
     const complete = entries.size === TARGETS.length;

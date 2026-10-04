@@ -1,10 +1,14 @@
 import { expect, test } from 'bun:test';
 
-import { buildLatestJson, feedCandidates, parseLatestJson, pickFeedVersion, TARGETS } from './latest-json';
+import { trustedComment, type UpdateTarget } from '../minisign';
+import { assetName } from '../package/index';
+import { assetUrl, buildLatestJson, feedCandidates, parseLatestJson, pickFeedVersion, TARGETS } from './latest-json';
 
-const minisig = 'untrusted comment: signature\nabc\ntrusted comment: t\ndef\n';
-const entry = (t: string) => ({ url: `https://example.com/${t}`, minisig });
-const allThree = new Map(TARGETS.map((t) => [t, entry(t)]));
+const minisig = (version: string, target: UpdateTarget) =>
+  `untrusted comment: signature\nabc\ntrusted comment: ${trustedComment(version, target, assetName(target, version))}\ndef\n`;
+const feed = (version: string) =>
+  new Map(TARGETS.map((t) => [t, { url: assetUrl(version, t), minisig: minisig(version, t) }]));
+const allThree = feed('0.40.0');
 
 test('latest.json lists every target in the updater format', () => {
   const json = JSON.parse(buildLatestJson('0.40.0', allThree));
@@ -63,4 +67,25 @@ test('a current feed missing a target is incomplete, and may be rewritten at its
   expect(pickFeedVersion('0.40.0', releases, true)).toBe('0.40.0');
   expect(pickFeedVersion('0.41.0', releases, true)).toBeUndefined();
   expect(feedCandidates('0.40.0', ['v0.40.0', 'v0.39.0'], true)).toEqual(['0.40.0']);
+});
+
+test('a current feed entry that publish-latest would not write is incomplete', () => {
+  const full = JSON.parse(buildLatestJson('0.40.0', allThree));
+  const withEntry = (patch: Record<string, unknown>) =>
+    JSON.stringify({
+      ...full,
+      platforms: { ...full.platforms, 'windows-x86_64': { ...full.platforms['windows-x86_64'], ...patch } },
+    });
+  const signature: string = full.platforms['windows-x86_64'].signature;
+  const otherVersion = buildLatestJson('0.40.0', feed('0.39.0'));
+  for (const text of [
+    withEntry({ url: 'https://example.com/aio-proxy-0.40.0-x64-setup.exe' }),
+    withEntry({ url: assetUrl('0.39.0', 'windows-x86_64') }),
+    withEntry({ signature: signature.slice(0, signature.length / 2) }),
+    withEntry({ signature: Buffer.from('untrusted comment: x\nabc\n').toString('base64') }),
+    withEntry({ signature: JSON.parse(otherVersion).platforms['windows-x86_64'].signature }),
+  ]) {
+    expect(parseLatestJson(text)).toEqual({ version: '0.40.0', complete: false });
+  }
+  expect(parseLatestJson(otherVersion)).toEqual({ version: '0.40.0', complete: false });
 });
