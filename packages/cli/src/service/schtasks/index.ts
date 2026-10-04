@@ -1,9 +1,6 @@
+export { defaultSchtasksIo, type SchtasksIo, windowsLocalAppData } from './io';
 export {
-  currentUser,
-  currentUserSid,
-  defaultSchtasksIo,
   exitProcessLater,
-  queryTaskXml,
   schtasksInstall,
   schtasksRestart,
   schtasksRestartInService,
@@ -11,7 +8,5 @@ export {
   schtasksStatus,
   schtasksStop,
   schtasksUninstall,
-  windowsLocalAppData,
-  type SchtasksIo,
-  type TaskQuery,
 } from './schtasks';
+export { currentUser, currentUserSid, queryTaskXml, type TaskQuery } from './task-query';

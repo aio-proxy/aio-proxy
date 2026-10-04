@@ -15,10 +15,8 @@ import {
   taskPath,
 } from '../schtasks-unit';
 import { uninstallMarkerPath } from '../uninstall-marker';
+import type { SchtasksIo } from './io';
 import {
-  currentUser,
-  queryTaskXml,
-  type SchtasksIo,
   schtasksInstall,
   schtasksRestart,
   schtasksRestartInService,
@@ -27,6 +25,7 @@ import {
   schtasksStop,
   schtasksUninstall,
 } from './schtasks';
+import { currentUser, queryTaskXml } from './task-query';
 
 const sid = 'S-1-5-21-1-2-3-1001';
 const localAppData = 'C:\\Users\\Zoë\\AppData\\Local';
