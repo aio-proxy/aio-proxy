@@ -10,7 +10,11 @@ use crate::client::transport::{self, Limits, LocalUrl, Method, Request};
 pub fn start_timer(cx: &mut App) {
     cx.spawn(async move |cx| {
         loop {
-            cx.update(check_now);
+            cx.update(|cx| {
+                // The login item can change outside the app (Startup apps / Login Items); the menu shows it.
+                super::lifecycle::refresh_login_item(cx);
+                check_now(cx);
+            });
             cx.background_executor().timer(HEALTH_INTERVAL).await;
         }
     })

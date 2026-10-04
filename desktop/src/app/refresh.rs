@@ -31,9 +31,8 @@ pub(crate) fn summary_path(range: UsageRange, refresh_quota: bool) -> String {
 }
 
 pub fn panel_opened(cx: &mut App) {
-    let model = cx.global_mut::<AppModel>();
-    model.login_item = crate::platform::login_item::status();
-    let order = model.scheduler.open(Instant::now());
+    super::lifecycle::refresh_login_item(cx);
+    let order = cx.global_mut::<AppModel>().scheduler.open(Instant::now());
     dispatch(cx, order);
     super::check_health(cx);
     super::rediscover(cx);

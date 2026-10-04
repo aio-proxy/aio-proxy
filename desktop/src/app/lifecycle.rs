@@ -371,6 +371,19 @@ pub fn set_login_item(cx: &mut App, enabled: bool) {
     changed(cx);
 }
 
+/// Re-reads the login item and, when the OS changed it behind the app's back (Windows Settings → Startup apps,
+/// System Settings → Login Items), updates the model and rebuilds the tray menu, whose check mark is otherwise
+/// only rebuilt on the app's own changes.
+pub fn refresh_login_item(cx: &mut App) {
+    let status = crate::platform::login_item::status();
+    if cx.global::<AppModel>().login_item == status {
+        return;
+    }
+    cx.global_mut::<AppModel>().login_item = status;
+    crate::tray::invalidate_menu(cx);
+    changed(cx);
+}
+
 /// The menu's check item. Approval pending → System Settings; otherwise flip the registration.
 pub fn toggle_login_item(cx: &mut App) {
     let status = cx.global::<AppModel>().login_item;
