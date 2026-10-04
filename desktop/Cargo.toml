@@ -26,6 +26,7 @@ libc = "0.2.189"
 windows-registry = "0.6.1"
 windows-sys = { version = "0.61.2", features = [
   "Win32_Foundation",
+  "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
   "Win32_Security",
   "Win32_Security_Authorization",
@@ -33,9 +34,12 @@ windows-sys = { version = "0.61.2", features = [
   "Win32_System_Threading",
   "Win32_NetworkManagement_IpHelper",
   "Win32_Networking_WinSock",
+  "Win32_UI_Controls",
   "Win32_UI_HiDpi",
   "Win32_UI_WindowsAndMessaging",
 ] }
+# Already in the tree through GPUI (same version); only for the DXGI adapter query, which is COM.
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Dxgi"] }
 
 # The Linux and Windows in-app updater; minisign-verify is its verifier (same version), used to read
 # the signed trusted comment.
@@ -83,6 +87,9 @@ objc2-foundation = { version = "0.3.2", features = [
   "block2",
 ] }
 block2 = "0.6.2"
+
+# The panel's native window (NSWindow, HWND) from GPUI's public handle.
+[target.'cfg(any(target_os = "macos", windows))'.dependencies]
 raw-window-handle = "0.6.2"
 
 [dev-dependencies]

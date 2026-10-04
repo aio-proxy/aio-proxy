@@ -1,6 +1,8 @@
 //! The anchored panel: placement, the PopUp window lifecycle, and its views.
 
 mod activity;
+/// The Windows backdrop decision; pure, so its tests run on every platform.
+pub mod backdrop;
 mod degraded;
 mod footer;
 mod format;
