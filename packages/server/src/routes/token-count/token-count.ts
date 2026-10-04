@@ -48,7 +48,17 @@ export async function handleTokenCount<TRequest, TContext>(
 ): Promise<Response> {
   const snapshot = options.source.currentProviderSnapshot();
   const maxBytes = snapshot.config?.server.requestBody.maxBytes ?? REQUEST_BODY_LIMITS.encoded;
-  return withRequestBodyLimits({ encoded: maxBytes, decoded: maxBytes }, () => handleTokenCountObserved(options));
+  return withRequestBodyLimits({ encoded: maxBytes, decoded: maxBytes }, () =>
+    withRequestLogContext(
+      {
+        requestId: '',
+        debug: options.source.debugLogging === true,
+        logger: options.source.logger,
+        captureMaxBytes: snapshot.config?.server.logging?.captureMaxBytes ?? 67108864,
+      },
+      () => handleTokenCountObserved(options),
+    ),
+  );
 }
 
 async function handleTokenCountObserved<TRequest, TContext>(

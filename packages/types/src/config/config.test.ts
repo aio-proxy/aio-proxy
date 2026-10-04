@@ -497,3 +497,12 @@ test('router selection defaults to the weighted draw and accepts quota-reset', (
   );
   expect(ConfigSchema.safeParse({ providers: {}, router: { selection: 'soonest' } }).success).toBe(false);
 });
+
+test.each([0, 16, 67108864])('accepts an independent logging capture budget %i', (captureMaxBytes) => {
+  const input = { providers: {}, server: { logging: { captureMaxBytes } } };
+  expect(ConfigSchema.parse(input).server.logging?.captureMaxBytes).toBe(captureMaxBytes);
+  expect(ConfigAuthoringSchema.parse(input).server.logging?.captureMaxBytes).toBe(captureMaxBytes);
+});
+test.each([-1, 1.5, 67108865, Infinity])('rejects invalid logging capture budget %s', (captureMaxBytes) => {
+  expect(ConfigSchema.safeParse({ providers: {}, server: { logging: { captureMaxBytes } } }).success).toBeFalse();
+});

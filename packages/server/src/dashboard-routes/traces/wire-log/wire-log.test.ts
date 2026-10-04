@@ -930,3 +930,32 @@ test('redacts credentials that older log files recorded in plaintext', () => {
   // 普通头照常可见，别把脱敏写成全抹。
   expect(serialized).toContain('visible-header');
 });
+
+test('reconstructs writer capture limits and fixed omission reasons while old events remain readable', () => {
+  const drafts = createHopDrafts();
+  applyWireEvent(drafts, { event: 'request.body_chunk', direction: 'inbound', sequence: 0, text: 'prefix' });
+  applyWireEvent(drafts, {
+    event: 'request.body_terminal',
+    direction: 'inbound',
+    outcome: 'complete',
+    byteLength: 128,
+    truncated: true,
+    captureLimitBytes: 16,
+  });
+  applyWireEvent(drafts, {
+    event: 'request.body_terminal',
+    direction: 'upstream_request',
+    attemptIndex: 0,
+    outcome: 'complete',
+    omitted: true,
+    omissionReason: 'privacy_policy',
+  });
+  const hops = DashboardTraceWireResponseSchema.parse({ available: true, hops: finalizeHops(drafts) }).hops;
+  expect(hops[0]?.request?.body).toMatchObject({
+    text: 'prefix',
+    byteLength: 128,
+    truncated: true,
+    captureLimitBytes: 16,
+  });
+  expect(hops[1]?.request?.body).toMatchObject({ omitted: true, omissionReason: 'privacy_policy' });
+});

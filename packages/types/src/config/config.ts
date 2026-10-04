@@ -49,6 +49,7 @@ const ApiKeyAuthoringSchema = z.object({
 });
 
 export const ServerLoggingSchema = z.object({
+  captureMaxBytes: z.number().int().min(0).max(67108864).default(67108864),
   enabled: z.boolean().default(false),
   dir: z.string().min(1).optional(),
   retentionDays: z.number().int().min(1).max(365).default(3),

@@ -250,7 +250,7 @@ export type ProviderRouteSource = {
     request: Request,
     snapshot: ProviderRouteSnapshot,
     maxBytes: number,
-  ) => Promise<{ readonly capturePayload: boolean }>;
+  ) => Promise<{ readonly capturePayload: boolean; readonly omissionReason?: 'privacy_policy' }>;
   readonly acquireProviderSnapshot: () => ProviderSnapshotLease;
   readonly cooldown: ProviderCooldownStore;
   readonly currentProviderSnapshot: () => ProviderRouteSnapshot;

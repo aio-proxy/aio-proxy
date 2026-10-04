@@ -24,6 +24,7 @@ export async function withProtocolRequestObservation<TRequest, TContext>(
     inboundProtocol === ProviderProtocol.OpenAIResponse ? options.source.acquireProviderSnapshot() : undefined;
   const snapshot = lease?.snapshot ?? options.source.currentProviderSnapshot();
   const maxBytes = snapshot.config?.server.requestBody.maxBytes ?? REQUEST_BODY_LIMITS.encoded;
+  const captureMaxBytes = snapshot.config?.server.logging?.captureMaxBytes ?? 67108864;
   return withRequestBodyLimits({ encoded: maxBytes, decoded: maxBytes }, async () => {
     let transferred = false;
     try {
@@ -40,6 +41,7 @@ export async function withProtocolRequestObservation<TRequest, TContext>(
       return await withRequestLogContext(
         {
           requestId: '',
+          captureMaxBytes,
           debug: options.source.debugLogging === true,
           logger: options.source.logger,
           ...(policy === undefined ? {} : policy),

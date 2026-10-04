@@ -70,13 +70,15 @@ const localFields = new Set([
 ]);
 
 const bodyEnums = new Map<string, ReadonlySet<string>>([
+  ['omissionReason', new Set(['privacy_policy', 'media_payload', 'capture_limit'])],
   ['bodyLimitStage', new Set(['encoded', 'decoded'])],
   ['bodyMeasurement', new Set(['declared', 'observed_lower_bound', 'unknown'])],
   ['bodyRejectReason', new Set(['invalid_content_length'])],
   ['bodyContentEncoding', new Set(['identity', 'gzip', 'x-gzip', 'zstd', 'deflate', 'br', 'unsupported'])],
 ]);
 for (const [key, values] of [...bodyEnums]) {
-  bodyEnums.set(attributeName[key as keyof typeof attributeName], values);
+  const attribute = attributeName[key as keyof typeof attributeName];
+  if (attribute !== undefined) bodyEnums.set(attribute, values);
 }
 
 const bodySizes = new Set(['bodyBytes', 'bodyLimitBytes', attributeName.bodyBytes, attributeName.bodyLimitBytes]);
