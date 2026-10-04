@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { REQUEST_BODY_LIMITS } from '../request';
+import { REQUEST_BODY_LIMITS } from '../request/index';
 import { defineEvaluationProtocolAdapter, isEvaluationProtocolAdapter, type EvaluationResult } from './adapter';
 
 type EvalRequest = { readonly model: string };

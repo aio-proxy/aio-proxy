@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { stat } from 'node:fs/promises';
 
-import { RequestBodyTooLargeError, UnsupportedContentEncodingError } from '../../protocol/request';
+import { RequestBodyTooLargeError, UnsupportedContentEncodingError } from '../../protocol/request/index';
 import { type MultipartStreamSpec, multipartSpoolPath, parseMultipartStream } from '../multipart';
 import { parseOpenAIImageEditsMultipart, releaseMultipartSpool } from './multipart';
 import {

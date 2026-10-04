@@ -5,7 +5,7 @@ import {
   InvalidCompressedRequestBodyError,
   RequestBodyTooLargeError,
   UnsupportedContentEncodingError,
-} from '../request';
+} from '../request/index';
 import { SystemOneParseError } from './parse';
 
 // System One's own client parses `{ message, error_type }`, so none of the shared

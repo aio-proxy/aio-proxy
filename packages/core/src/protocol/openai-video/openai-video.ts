@@ -14,7 +14,7 @@ import {
   type OpenAIVideoRequest,
 } from '../../ingress/openai-video';
 import { stripHopHeaders } from '../headers';
-import { readJsonRequest, readRequestText, REQUEST_BODY_LIMITS } from '../request';
+import { readJsonRequest, readRequestText, REQUEST_BODY_LIMITS } from '../request/index';
 import { defineVideoProtocolAdapter } from '../video-adapter';
 import { openAIVideosErrors } from './errors';
 

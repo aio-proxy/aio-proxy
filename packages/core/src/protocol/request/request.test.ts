@@ -9,7 +9,7 @@ import {
   readJsonRequest,
   rewriteJsonRequestModel,
   UnsupportedContentEncodingError,
-} from './request';
+} from './index';
 
 const jsonBytes = new TextEncoder().encode(JSON.stringify({ ok: true }));
 

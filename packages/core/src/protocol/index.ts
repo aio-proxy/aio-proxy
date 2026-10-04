@@ -16,7 +16,7 @@ export * from './openai-video';
 export * from './openai-responses';
 export * from './video-adapter';
 export * from './openai-responses/encrypted-content-retry';
-export * from './request';
+export * from './request/index';
 export * from './session';
 export * from './tools';
 export * from './typesafe-systemone/index';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { UnsupportedContentEncodingError } from '../request';
+import { UnsupportedContentEncodingError } from '../request/index';
 import { parseSystemOneBody, SystemOneParseError } from './parse';
 
 const post = (body: string, contentType: string | undefined = 'application/json') =>

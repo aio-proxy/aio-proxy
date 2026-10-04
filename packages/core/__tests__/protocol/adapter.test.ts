@@ -72,8 +72,8 @@ describe('defineProtocolAdapter', () => {
     expect(Object.isFrozen(adapter)).toBe(true);
     expect(adapter.capability).toBe('language');
     expect(adapter.bodyLimits(new Request('https://x'), { stream: false })).toEqual({
-      encoded: 64 * 1_024 * 1_024,
-      decoded: 128 * 1_024 * 1_024,
+      encoded: 256 * 1_024 * 1_024,
+      decoded: 256 * 1_024 * 1_024,
     });
     const typed: ProtocolAdapter<RequestValue, RouteContext> = adapter;
     expect(typed.protocol).toBe(ProviderProtocol.OpenAICompatible);

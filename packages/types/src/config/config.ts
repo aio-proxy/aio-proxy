@@ -25,6 +25,7 @@ import {
 } from '../provider';
 import { validateSyncModels } from '../provider-sync-models/index';
 import { ServerOtelAuthoringSchema, ServerOtelSchema, type OtelDestination } from './otel';
+import { ServerRequestBodySchema } from './request-body';
 
 export { ServerOtelAuthoringSchema, ServerOtelSchema, type OtelDestination };
 
@@ -80,6 +81,7 @@ export const ServerConfigSchema = z.object({
   password: z.string().min(1).optional().describe('Dashboard password or Argon2id PHC hash.'),
   logging: ServerLoggingSchema.prefault({}).optional(),
   retry: ServerRetrySchema.prefault({}),
+  requestBody: ServerRequestBodySchema.prefault({}),
   otel: ServerOtelSchema.prefault({}),
 });
 

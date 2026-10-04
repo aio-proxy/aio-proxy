@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { REQUEST_BODY_LIMITS } from '../request';
+import { REQUEST_BODY_LIMITS } from '../request/index';
 import { defineVideoProtocolAdapter } from './video-adapter';
 
 describe('defineVideoProtocolAdapter', () => {

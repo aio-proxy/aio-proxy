@@ -6,7 +6,7 @@ import {
   REQUEST_BODY_LIMITS,
   type RequestBodyLimits,
   UnsupportedContentEncodingError,
-} from '../request';
+} from '../request/index';
 
 const NOUL_CRITERIA_KEYS = ['true', 'false'] as const;
 const MAX_CHOICE_OPTIONS = 255;

@@ -25,7 +25,7 @@ import {
   ProviderNotInstalledError,
 } from '../error';
 import type { ProtocolErrorMapper } from './adapter';
-import { InvalidCompressedRequestBodyError, RequestBodyIdleTimeoutError } from './request';
+import { InvalidCompressedRequestBodyError, RequestBodyIdleTimeoutError } from './request/index';
 
 const PREVIOUS_RESPONSE_CONFLICT_MESSAGE = 'previous_response_id matches multiple providers';
 

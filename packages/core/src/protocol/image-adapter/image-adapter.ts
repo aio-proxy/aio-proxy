@@ -7,7 +7,7 @@ import type {
   ProtocolRequestDiagnostic,
   SharedProtocolAdapter,
 } from '../adapter';
-import { REQUEST_BODY_LIMITS, type RequestBodyLimits } from '../request';
+import { REQUEST_BODY_LIMITS, type RequestBodyLimits } from '../request/index';
 
 export type ImageBytesRef = {
   readonly type: 'bytes';

@@ -1,8 +1,11 @@
 import { expect, test } from 'bun:test';
 
+import { z } from 'zod';
+
 import {
   ConfigAuthoringSchema,
   ConfigSchema,
+  buildConfigJsonSchema,
   DashboardOAuthProviderPatchSchema,
   ProviderKind,
   ProviderMutationAuthoringBodySchema,
@@ -12,6 +15,36 @@ import {
 const transforms = {
   request: [{ update: [{ $unset: 'request.body.store' }] }],
 };
+
+test('defaults the runtime request capacity when server settings are omitted', () => {
+  expect(ConfigSchema.parse({ providers: {} }).server.requestBody.maxBytes).toBe(268435456);
+});
+
+test.each([1048576, 536870912])('accepts request capacity %i in runtime and authoring schemas', (maxBytes) => {
+  const input = { providers: {}, server: { requestBody: { maxBytes } } };
+  expect(ConfigSchema.parse(input).server.requestBody.maxBytes).toBe(maxBytes);
+  expect(ConfigAuthoringSchema.parse(input).server.requestBody.maxBytes).toBe(maxBytes);
+});
+
+test.each([0, -1, 1.5, 1048575, 536870913, Infinity])(
+  'rejects invalid request capacity %s rather than silently clamping it',
+  (maxBytes) => {
+    const input = { providers: {}, server: { requestBody: { maxBytes } } };
+    expect(ConfigSchema.safeParse(input).success).toBe(false);
+    expect(ConfigAuthoringSchema.safeParse(input).success).toBe(false);
+  },
+);
+
+test('emits the same request capacity contract for JSON-schema authoring tools', () => {
+  const json = buildConfigJsonSchema() as {
+    properties: { server: { properties: { requestBody: z.core.JSONSchema.BaseSchema } } };
+  };
+  const requestBody = z.fromJSONSchema(json.properties.server.properties.requestBody);
+  expect(requestBody.safeParse({ maxBytes: 536870912 }).success).toBe(true);
+  for (const maxBytes of [0, -1, 1.5, 1048575, 536870913]) {
+    expect(requestBody.safeParse({ maxBytes }).success).toBe(false);
+  }
+});
 
 test('preserves an exact non-empty dashboard password', () => {
   expect(ConfigSchema.parse({ server: { password: '  ' }, providers: {} }).server.password).toBe('  ');

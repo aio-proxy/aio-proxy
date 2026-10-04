@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { gzipSync } from 'node:zlib';
 
 import { OpenAIImagesInvalidRequestError } from '../../error';
-import { REQUEST_BODY_LIMITS } from '../request';
+import { REQUEST_BODY_LIMITS } from '../request/index';
 import {
   CPA_DEFAULT_IMAGE_MODEL,
   imageConvertSkipReason,

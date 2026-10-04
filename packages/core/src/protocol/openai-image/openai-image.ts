@@ -18,7 +18,7 @@ import {
   type ImageInvocation,
   type ImageTransportResult,
 } from '../image-adapter';
-import { REQUEST_BODY_LIMITS, type RequestBodyLimits, readJsonRequest, readRequestText } from '../request';
+import { REQUEST_BODY_LIMITS, type RequestBodyLimits, readJsonRequest, readRequestText } from '../request/index';
 import { assertConvertMask, decodeImageBytes } from './mask';
 
 export { CPA_DEFAULT_IMAGE_MODEL, type OpenAIImageRequest } from '../../ingress/openai-image';

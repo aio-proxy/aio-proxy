@@ -8,6 +8,7 @@ export const defaultServer = {
   logging: { enabled: false, retentionDays: 3, level: 'info' },
   otel: { destinations: [] },
   retry: { retryAfterCapMs: 30_000 },
+  requestBody: { maxBytes: 268435456 },
 } as const;
 
 export const defaultRouter = { modelContextAggregation: 'min', selection: 'weighted', models: {} } as const;

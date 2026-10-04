@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { finished } from 'node:stream/promises';
 
-import { abortError, RequestBodyTooLargeError, withAbortAndIdle } from '../../protocol/request';
+import { abortError, RequestBodyTooLargeError, withAbortAndIdle } from '../../protocol/request/index';
 import { MULTIPART_ENCODED_LIMIT } from './multipart-limits';
 
 export type MultipartSpool = {

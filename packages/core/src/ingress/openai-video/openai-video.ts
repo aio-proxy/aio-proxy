@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { OpenAIVideosInvalidRequestError } from '../../error';
-import { decodedRequestStream, REQUEST_BODY_LIMITS } from '../../protocol/request';
+import { decodedRequestStream, REQUEST_BODY_LIMITS } from '../../protocol/request/index';
 import {
   acquireMultipartSlot,
   multipartBoundary,
