@@ -48,7 +48,12 @@ export async function readRequestText(
     branches.push(branch);
     const encoded = await readRequestBytes(branch.body, limits.encoded);
     if (encoding === undefined && encoded.byteLength > limits.decoded) {
-      throw new RequestBodyTooLargeError('Request body too large');
+      throw new RequestBodyTooLargeError('Request body too large', {
+        stage: 'decoded',
+        limitBytes: limits.decoded,
+        measurement: 'observed_lower_bound',
+        bytes: encoded.byteLength,
+      });
     }
     const bytes = encoding === undefined ? encoded : await decodeRequestBytes(encoded, encoding, limits.decoded);
     return new TextDecoder().decode(bytes);

@@ -2,6 +2,7 @@ export { readJsonRequest, readRequestText, decodedRequestStream, rewriteJsonRequ
 export { currentRequestBodyLimits, withRequestBodyLimits, REQUEST_BODY_LIMITS, type RequestBodyLimits } from './limits';
 export {
   RequestBodyTooLargeError,
+  type RequestBodyLimitDiagnostic,
   RequestBodyIdleTimeoutError,
   InvalidCompressedRequestBodyError,
   UnsupportedContentEncodingError,

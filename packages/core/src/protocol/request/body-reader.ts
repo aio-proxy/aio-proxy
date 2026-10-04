@@ -25,7 +25,12 @@ export async function readRequestBytes(
       if (next.done) break;
       total += next.value.byteLength;
       if (total > maxBytes) {
-        const error = new RequestBodyTooLargeError('Request body too large');
+        const error = new RequestBodyTooLargeError('Request body too large', {
+          stage: 'encoded',
+          limitBytes: maxBytes,
+          measurement: 'observed_lower_bound',
+          bytes: total,
+        });
         void reader.cancel(error).catch(() => undefined);
         throw error;
       }
@@ -72,7 +77,13 @@ export function boundedRequestStream(
         }
         total += next.value.byteLength;
         if (total > limits.encoded || total > limits.decoded) {
-          throw new RequestBodyTooLargeError('Request body too large');
+          const stage = total > limits.encoded ? 'encoded' : 'decoded';
+          throw new RequestBodyTooLargeError('Request body too large', {
+            stage,
+            limitBytes: limits[stage],
+            measurement: 'observed_lower_bound',
+            bytes: total,
+          });
         }
         controller.enqueue(next.value);
       } catch (error) {

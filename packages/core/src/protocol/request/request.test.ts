@@ -65,7 +65,7 @@ test.each(['compress', 'gzip, br'])('readJsonRequest rejects unsupported coding 
       UnsupportedContentEncodingError,
     );
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(warn.mock.calls)).toContain(encoding.toLowerCase());
+    expect(warn.mock.calls).toEqual([['request.content_encoding.unsupported', { encoding: 'unsupported' }]]);
   } finally {
     warn.mockRestore();
   }
@@ -340,3 +340,65 @@ async function settleWithin<T>(promise: Promise<T>, timeoutMs: number): Promise<
     clearTimeout(timeout);
   }
 }
+
+test.each(['gzip', 'zstd'])(
+  'reports native %s expansion rejection without inventing a byte count',
+  async (encoding) => {
+    const plain = Buffer.from(JSON.stringify({ input: 'private-input'.repeat(100) }));
+    const encoded = encoding === 'gzip' ? Bun.gzipSync(plain) : Bun.zstdCompressSync(plain);
+    const error = await readJsonRequest(encodedRequest(encoding, encoded), {
+      encoded: encoded.byteLength,
+      decoded: 32,
+    }).catch((failure) => failure);
+    expect(error).toBeInstanceOf(RequestBodyTooLargeError);
+    expect(error.diagnostic).toEqual({ stage: 'decoded', limitBytes: 32, measurement: 'unknown' });
+    expect(error.message).toBe('Request body too large');
+  },
+);
+
+test('reports the observed encoded lower bound and accepts exactly equal byte limits', async () => {
+  const raw = () => new Request('https://proxy.test/v1/responses', { method: 'POST', body: jsonBytes });
+  expect(await readJsonRequest(raw(), { encoded: jsonBytes.byteLength, decoded: jsonBytes.byteLength })).toEqual({
+    ok: true,
+  });
+  const error = await readJsonRequest(raw(), {
+    encoded: jsonBytes.byteLength - 1,
+    decoded: jsonBytes.byteLength,
+  }).catch((failure) => failure);
+  expect(error.diagnostic).toEqual({
+    stage: 'encoded',
+    limitBytes: jsonBytes.byteLength - 1,
+    measurement: 'observed_lower_bound',
+    bytes: jsonBytes.byteLength,
+  });
+});
+
+test('reports the decoded lower bound for uncompressed bodies and streaming decode', async () => {
+  const raw = () => new Request('https://proxy.test/v1/responses', { method: 'POST', body: jsonBytes });
+  const limits = { encoded: jsonBytes.byteLength, decoded: jsonBytes.byteLength - 1 };
+  for (const read of [
+    () => readJsonRequest(raw(), limits),
+    async () => readDecodedLength(await decodedRequestStream(raw(), limits)),
+  ]) {
+    const error = await read().catch((failure) => failure);
+    expect(error.diagnostic).toEqual({
+      stage: 'decoded',
+      limitBytes: limits.decoded,
+      measurement: 'observed_lower_bound',
+      bytes: jsonBytes.byteLength,
+    });
+  }
+});
+
+test('unsupported encoding warnings never include arbitrary request header values', async () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    await expect(readJsonRequest(encodedRequest('private-input', jsonBytes))).rejects.toBeInstanceOf(
+      UnsupportedContentEncodingError,
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('private-input');
+    expect(warn.mock.calls).toEqual([['request.content_encoding.unsupported', { encoding: 'unsupported' }]]);
+  } finally {
+    warn.mockRestore();
+  }
+});

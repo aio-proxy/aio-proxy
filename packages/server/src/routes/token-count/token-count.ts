@@ -17,12 +17,13 @@ import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } f
 import { attributeName, requestAsksFastMode, type RequestTraceSession } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
-import { hasInvalidOrOversizedContentLength, resolveSupportedEffortsForDimensions } from '../pipeline';
+import { inspectRequestContentLength, resolveSupportedEffortsForDimensions } from '../pipeline';
 import { prioritizeAffinity } from '../pipeline/affinity';
 import { candidateSelectionSource } from '../pipeline/attempt-base';
 import { failureTerminal } from '../pipeline/failure';
+import { logRequestRejected } from '../pipeline/logging';
 import { applySelectionPolicy } from '../pipeline/quota-order';
-import { cancelRetainedRequestBody } from '../pipeline/request';
+import { cancelRetainedRequestBody, InvalidContentLengthError, recordRequestBodyRejection } from '../pipeline/request';
 import { estimateInputTokens } from './estimate';
 import { attemptRawCount } from './raw';
 import {
@@ -99,9 +100,29 @@ async function handleTokenCountInContext<TRequest, TContext>(
     await cancelRetainedRequestBody(rawRequest, error);
     throw error;
   }
-  if (hasInvalidOrOversizedContentLength(rawRequest, adapter.bodyLimits(rawRequest, context))) {
-    await cancelRetainedRequestBody(rawRequest, new RequestBodyTooLargeError('Request body too large'));
-    return finishRejected(session, adapter.errors.tooLarge(), 'request_too_large');
+  const rejectBody = (response: Response, errorCode: string, error: unknown) => {
+    recordRequestBodyRejection(session, rawRequest, error);
+    logRequestRejected({
+      source,
+      rawRequest,
+      inboundProtocol: adapter.protocol,
+      requestId: session.requestId,
+      statusCode: response.status,
+      errorCode,
+      error,
+    });
+    return finishRejected(session, response, errorCode);
+  };
+  const inspection = inspectRequestContentLength(rawRequest, adapter.bodyLimits(rawRequest, context));
+  if (inspection !== undefined) {
+    const error =
+      inspection.kind === 'invalid'
+        ? new InvalidContentLengthError()
+        : new RequestBodyTooLargeError('Request body too large', inspection.diagnostic);
+    await cancelRetainedRequestBody(rawRequest, error);
+    const response = inspection.kind === 'invalid' ? adapter.errors.requestError(error) : adapter.errors.tooLarge();
+    if (response === undefined) throw error;
+    return rejectBody(response, inspection.kind === 'invalid' ? 'invalid_request' : 'request_too_large', error);
   }
 
   let request: TRequest;
@@ -112,7 +133,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
   } catch (error) {
     await cancelRetainedRequestBody(rawRequest, error);
     if (error instanceof RequestBodyTooLargeError) {
-      return finishRejected(session, adapter.errors.tooLarge(), 'request_too_large');
+      return rejectBody(adapter.errors.tooLarge(), 'request_too_large', error);
     }
     if (error instanceof UnsupportedContentEncodingError) {
       return finishRejected(session, adapter.errors.unsupportedContentEncoding(), 'unsupported_content_encoding');

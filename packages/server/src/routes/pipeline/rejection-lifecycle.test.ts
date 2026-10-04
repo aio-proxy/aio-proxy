@@ -28,6 +28,11 @@ describe('shared protocol pipeline rejection lifecycle', () => {
         statusCode: 413,
         errorCode: 'request_too_large',
         errorType: 'RequestBodyTooLargeError',
+        bodyLimitStage: 'encoded',
+        bodyLimitBytes: MAX_BODY_BYTES,
+        bodyMeasurement: 'declared',
+        bodyBytes: MAX_BODY_BYTES + 1,
+        bodyContentEncoding: 'identity',
       },
     ]);
     expect(provider.calls.raw).toEqual([]);

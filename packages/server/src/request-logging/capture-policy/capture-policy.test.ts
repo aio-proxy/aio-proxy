@@ -21,3 +21,55 @@ test('drops the skipped-candidate list when an entry does not match the shape', 
 test('drops arrays under any other key', () => {
   expect(safeDiagnosticFields({ [attributeName.providerId]: ['sub-a:cooldown'] })).toEqual({});
 });
+
+test('retains fixed body rejection diagnostics while removing sensitive values', () => {
+  const safe = {
+    bodyLimitStage: 'encoded',
+    bodyLimitBytes: 8,
+    bodyMeasurement: 'observed_lower_bound',
+    bodyBytes: 9,
+    bodyRejectReason: 'invalid_content_length',
+    bodyContentEncoding: 'unsupported',
+  };
+  expect(
+    safeDiagnosticFields({
+      ...safe,
+      body: 'private-input',
+      headers: 'private-input',
+      errorMessage: 'private-input native zlib error',
+      url: 'https://private-input',
+      [attributeName.bodyLimitStage]: 'decoded',
+      [attributeName.bodyMeasurement]: 'unknown',
+      [attributeName.bodyLimitBytes]: 8,
+    }),
+  ).toEqual({
+    ...safe,
+    [attributeName.bodyLimitStage]: 'decoded',
+    [attributeName.bodyMeasurement]: 'unknown',
+    [attributeName.bodyLimitBytes]: 8,
+  });
+  expect(
+    safeDiagnosticFields({
+      bodyLimitStage: 'private-input',
+      bodyMeasurement: 'private-input',
+      bodyContentEncoding: 'gzip, private-input',
+      bodyRejectReason: 'private-input',
+      bodyLimitBytes: Infinity,
+      bodyBytes: NaN,
+    }),
+  ).toEqual({});
+});
+
+test('rejects wrong types for body enum and size diagnostics', () => {
+  expect(
+    safeDiagnosticFields({
+      bodyLimitStage: 1,
+      bodyMeasurement: true,
+      bodyContentEncoding: false,
+      bodyRejectReason: 2,
+      bodyBytes: true,
+      bodyLimitBytes: '8',
+      [attributeName.bodyBytes]: false,
+    }),
+  ).toEqual({});
+});

@@ -11,7 +11,7 @@ export function requestContentEncoding(header: string | null): ContentEncoding |
   if (first === undefined) return undefined;
   const encoding = encodings.join(', ');
   if (encodings.length > 1 || !isContentEncoding(first)) {
-    console.warn('request.content_encoding.unsupported', { encoding });
+    console.warn('request.content_encoding.unsupported', { encoding: 'unsupported' });
     throw new UnsupportedContentEncodingError(encoding);
   }
   return first;

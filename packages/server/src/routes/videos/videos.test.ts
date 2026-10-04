@@ -352,3 +352,18 @@ test.each(['/v1/videos', '/v1/videos/edits', '/v1/videos/extensions', '/v1/video
     expect(await response.json()).toMatchObject({ error: { code: 'request_too_large' } });
   },
 );
+
+test.each(['/v1/videos', '/v1/videos/edits', '/v1/videos/extensions', '/v1/videos/job_1/remix'])(
+  'video route %s rejects invalid lengths with its existing error envelope',
+  async (path) => {
+    const response = await videosApp(0).request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': 'private-input' },
+      body: '{}',
+    });
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(payload).toMatchObject({ error: { code: 'invalid_request', type: 'invalid_request_error' } });
+    expect(JSON.stringify(payload)).not.toContain('private-input');
+  },
+);

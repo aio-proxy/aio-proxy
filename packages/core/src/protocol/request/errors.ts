@@ -1,4 +1,18 @@
-export class RequestBodyTooLargeError extends Error {}
+export type RequestBodyLimitDiagnostic = {
+  readonly stage: 'encoded' | 'decoded';
+  readonly limitBytes: number;
+  readonly measurement: 'declared' | 'observed_lower_bound' | 'unknown';
+  readonly bytes?: number;
+};
+
+export class RequestBodyTooLargeError extends Error {
+  constructor(
+    message?: string,
+    readonly diagnostic?: RequestBodyLimitDiagnostic,
+  ) {
+    super(message);
+  }
+}
 export class RequestBodyIdleTimeoutError extends Error {
   constructor() {
     super('Request body timed out');
@@ -13,9 +27,14 @@ export class UnsupportedContentEncodingError extends Error {
   }
 }
 
-export function mapDecodeError(error: unknown): unknown {
+export function mapDecodeError(error: unknown, decodedLimit: number): unknown {
   if (error instanceof RequestBodyTooLargeError || error instanceof RequestBodyIdleTimeoutError) return error;
-  if (errorCode(error) === 'ERR_BUFFER_TOO_LARGE') return new RequestBodyTooLargeError('Request body too large');
+  if (errorCode(error) === 'ERR_BUFFER_TOO_LARGE')
+    return new RequestBodyTooLargeError('Request body too large', {
+      stage: 'decoded',
+      limitBytes: decodedLimit,
+      measurement: 'unknown',
+    });
   if (isCompressedDataError(error)) return new InvalidCompressedRequestBodyError('Invalid compressed request body');
   return error;
 }

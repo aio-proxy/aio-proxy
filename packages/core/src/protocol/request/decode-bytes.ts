@@ -34,7 +34,11 @@ export async function decodeRequestBytes(
     }
   } catch (error) {
     if (errorCode(error) === 'ERR_BUFFER_TOO_LARGE') {
-      throw new RequestBodyTooLargeError('Request body too large');
+      throw new RequestBodyTooLargeError('Request body too large', {
+        stage: 'decoded',
+        limitBytes: maxOutputLength,
+        measurement: 'unknown',
+      });
     }
     if (isCompressedDataError(error)) {
       throw new InvalidCompressedRequestBodyError('Invalid compressed request body');

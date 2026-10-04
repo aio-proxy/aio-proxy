@@ -53,14 +53,20 @@ export function streamDecodeRequestBody(
 
   const writeEncoded = async (chunk: Uint8Array): Promise<void> => {
     encoded += chunk.byteLength;
-    if (encoded > limits.encoded) throw new RequestBodyTooLargeError('Request body too large');
+    if (encoded > limits.encoded)
+      throw new RequestBodyTooLargeError('Request body too large', {
+        stage: 'encoded',
+        limitBytes: limits.encoded,
+        measurement: 'observed_lower_bound',
+        bytes: encoded,
+      });
     if (encoding === 'deflate' && !deflateFallbackUsed) deflatePrefix.push(chunk.slice());
     try {
       await awaitDecoder(writeDecoder(session, chunk));
       if (session.decoded > 0) deflatePrefix.length = 0;
     } catch (error) {
       if (encoding !== 'deflate' || deflateFallbackUsed || session.decoded > 0 || errorCode(error) !== 'Z_DATA_ERROR') {
-        throw mapDecodeError(error);
+        throw mapDecodeError(error, limits.decoded);
       }
       deflateFallbackUsed = true;
       rebindDecoder(session, createInflateRaw({ maxOutputLength: limits.decoded }), limits);
@@ -86,7 +92,7 @@ export function streamDecodeRequestBody(
               session.decoded > 0 ||
               errorCode(error) !== 'Z_DATA_ERROR'
             ) {
-              throw mapDecodeError(error);
+              throw mapDecodeError(error, limits.decoded);
             }
             deflateFallbackUsed = true;
             rebindDecoder(session, createInflateRaw({ maxOutputLength: limits.decoded }), limits);
@@ -100,7 +106,7 @@ export function streamDecodeRequestBody(
         await writeEncoded(next.value);
       }
     } catch (error) {
-      pumpError = mapDecodeError(error);
+      pumpError = mapDecodeError(error, limits.decoded);
       session.decoder.destroy();
       wakeDecoder(session);
     }
@@ -121,7 +127,7 @@ export function streamDecodeRequestBody(
         }
         controller.close();
       } catch (error) {
-        const mapped = mapDecodeError(error);
+        const mapped = mapDecodeError(error, limits.decoded);
         void reader.cancel(mapped).catch(() => undefined);
         session.decoder.destroy();
         controller.error(mapped);
@@ -168,7 +174,12 @@ function attachDecoderListeners(session: DecoderSession, limits: RequestBodyLimi
   session.decoder.on('data', (chunk: Buffer) => {
     session.decoded += chunk.byteLength;
     if (session.decoded > limits.decoded) {
-      session.error = new RequestBodyTooLargeError('Request body too large');
+      session.error = new RequestBodyTooLargeError('Request body too large', {
+        stage: 'decoded',
+        limitBytes: limits.decoded,
+        measurement: 'observed_lower_bound',
+        bytes: session.decoded,
+      });
       session.decoder.destroy();
       wakeDecoder(session);
       return;
@@ -251,7 +262,7 @@ function awaitDecoderCallback(
         return;
       }
       if (error !== undefined && error !== null) {
-        reject(mapDecodeError(error));
+        reject(error);
         return;
       }
       resolve();

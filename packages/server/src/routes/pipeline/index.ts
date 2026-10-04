@@ -19,7 +19,12 @@ import { startInferenceSpan } from './inference-span';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
 import { withProtocolRequestObservation } from './observation';
 import { completePreRouteResponse, invokeResponsesPreRoute } from './pre-route';
-import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
+import {
+  cancelRetainedRequestBody,
+  inspectRequestContentLength,
+  InvalidContentLengthError,
+  recordRequestBodyRejection,
+} from './request';
 import { startPipelineSpan } from './tracing';
 
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
@@ -65,16 +70,22 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       throw error;
     }
     const limits = adapter.bodyLimits(rawRequest, context);
-    if (hasInvalidOrOversizedContentLength(rawRequest, limits)) {
-      const error = new RequestBodyTooLargeError('Request body too large');
+    const inspection = inspectRequestContentLength(rawRequest, limits);
+    if (inspection !== undefined) {
+      const error =
+        inspection.kind === 'invalid'
+          ? new InvalidContentLengthError()
+          : new RequestBodyTooLargeError('Request body too large', inspection.diagnostic);
+      const response = inspection.kind === 'invalid' ? adapter.errors.requestError(error) : adapter.errors.tooLarge();
+      if (response === undefined) throw error;
       await cancelRetainedRequestBody(rawRequest, error);
       return rejectRequest({
         source,
         session,
         rawRequest,
         inboundProtocol,
-        response: adapter.errors.tooLarge(),
-        errorCode: 'request_too_large',
+        response,
+        errorCode: inspection.kind === 'invalid' ? 'invalid_request' : 'request_too_large',
         error,
       });
     }
@@ -425,6 +436,7 @@ function rejectRequest(options: {
   readonly error: unknown;
 }): Response {
   const { response, session, ...rejection } = options;
+  recordRequestBodyRejection(session, rejection.rawRequest, rejection.error);
   session.finish({
     outcome: 'failure',
     finalHttpStatus: response.status,
@@ -436,4 +448,4 @@ function rejectRequest(options: {
 }
 
 export { resolveSupportedEfforts, resolveSupportedEffortsForDimensions } from './attempt/effort-capability';
-export { hasInvalidOrOversizedContentLength } from './request';
+export { inspectRequestContentLength } from './request';
