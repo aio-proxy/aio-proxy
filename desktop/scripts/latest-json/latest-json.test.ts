@@ -24,7 +24,7 @@ test('a missing platform refuses to build the feed', () => {
 test('malformed feed text parses to undefined', () => {
   expect(parseLatestJson('{nope')).toBeUndefined();
   expect(parseLatestJson('[]')).toBeUndefined();
-  expect(parseLatestJson(buildLatestJson('0.40.0', allThree))).toEqual({ version: '0.40.0' });
+  expect(parseLatestJson(buildLatestJson('0.40.0', allThree))).toEqual({ version: '0.40.0', complete: true });
 });
 
 test('the feed takes the highest complete version, whatever run executes last', () => {
@@ -45,4 +45,22 @@ test('candidates are the stable tags above the feed, highest first', () => {
   expect(feedCandidates('0.40.0', tags)).toEqual(['0.41.0', '0.40.1']);
   expect(feedCandidates(undefined, tags)).toEqual(['0.41.0', '0.40.1', '0.40.0', '0.39.0']);
   expect(feedCandidates('0.41.0', tags)).toEqual([]);
+});
+
+test('a current feed missing a target is incomplete, and may be rewritten at its own version but not below', () => {
+  const full = buildLatestJson('0.40.0', allThree);
+  expect(parseLatestJson(full)).toEqual({ version: '0.40.0', complete: true });
+  const broken = JSON.stringify({
+    version: '0.40.0',
+    platforms: { 'linux-x86_64': JSON.parse(full).platforms['linux-x86_64'] },
+  });
+  expect(parseLatestJson(broken)).toEqual({ version: '0.40.0', complete: false });
+  const releases = [
+    { version: '0.40.0', complete: true },
+    { version: '0.39.0', complete: true },
+  ];
+  expect(pickFeedVersion('0.40.0', releases)).toBeUndefined();
+  expect(pickFeedVersion('0.40.0', releases, true)).toBe('0.40.0');
+  expect(pickFeedVersion('0.41.0', releases, true)).toBeUndefined();
+  expect(feedCandidates('0.40.0', ['v0.40.0', 'v0.39.0'], true)).toEqual(['0.40.0']);
 });

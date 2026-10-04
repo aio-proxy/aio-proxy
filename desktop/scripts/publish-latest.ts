@@ -37,13 +37,18 @@ try {
     throw new Error(`cannot read the ${FEED_TAG} Release (the macOS release job creates it)`, { cause: error });
   });
   let current: string | undefined;
+  // A current feed missing a target's entry may be rewritten at its own version, so redispatching repairs it.
+  let repair = false;
   if (feedAssets.has(FEED)) {
     await $`gh release download ${FEED_TAG} --repo ${REPO} --pattern ${FEED} --dir ${work}`.quiet();
     // An unreadable feed is not "no feed": treating it as absent could move the feed down.
-    current = parseLatestJson(await Bun.file(join(work, FEED)).text())?.version;
+    const parsed = parseLatestJson(await Bun.file(join(work, FEED)).text());
+    current = parsed?.version;
     if (current === undefined || !/^\d+\.\d+\.\d+$/u.test(current)) {
       throw new Error(`${FEED} on ${FEED_TAG} is not a stable X.Y.Z feed; fix or delete it by hand`);
     }
+    repair = parsed?.complete === false;
+    if (repair) console.error(`${FEED} lacks a usable entry for some target; it may be rewritten at ${current}`);
   }
   console.error(`feed version: ${current ?? '(none)'}`);
 
@@ -53,6 +58,7 @@ try {
   const candidates = feedCandidates(
     current,
     (JSON.parse(list.stdout.toString()) as { tagName: string }[]).map((release) => release.tagName),
+    repair,
   );
 
   // Highest first, so the first complete Release is the pick and older builds are never downloaded.
@@ -95,7 +101,7 @@ try {
     if (complete) break;
   }
 
-  const picked = pickFeedVersion(current, checked);
+  const picked = pickFeedVersion(current, checked, repair);
   if (picked === undefined) {
     console.error(`\nno complete stable Release above ${current ?? '(none)'}; ${FEED} unchanged`);
   } else {
