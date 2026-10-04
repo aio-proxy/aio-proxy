@@ -190,6 +190,25 @@ async function endTask(io: SchtasksIo, path: string, task: ParsedTask | undefine
 }
 const runTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/Run', '/TN', path]);
 
+async function replaceSpecAndTask(io: SchtasksIo, path: string, specPath: string, spec: string, xml: string) {
+  const previous = io.readFile(specPath);
+  const staged = `${specPath}.new`;
+  io.writeFile(staged, spec);
+  try {
+    io.rename(staged, specPath);
+  } catch (error) {
+    io.remove(staged);
+    throw error;
+  }
+  try {
+    await createTask(io, path, stageTaskXml(io, xml));
+  } catch (error) {
+    if (previous === undefined) io.remove(specPath);
+    else io.writeFile(specPath, previous);
+    throw error;
+  }
+}
+
 export async function schtasksInstall(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
   const existing = await ownTask(io, path);
@@ -206,20 +225,12 @@ export async function schtasksInstall(io: SchtasksIo): Promise<void> {
     wasRunning = supervisorAlive(state, io.imagePath, io.creationTime);
     await endTask(io, path, existing);
   }
-  const previous = io.readFile(specPath);
-  const staged = `${specPath}.new`;
-  io.writeFile(staged, spec);
   try {
-    io.rename(staged, specPath);
+    await replaceSpecAndTask(io, path, specPath, spec, xml);
   } catch (error) {
-    io.remove(staged);
-    throw error;
-  }
-  try {
-    await createTask(io, path, stageTaskXml(io, xml));
-  } catch (error) {
-    if (previous === undefined) io.remove(specPath);
-    else io.writeFile(specPath, previous);
+    // The old task and its spec are back as they were: relaunch the supervisor ended above rather than leave the proxy
+    // offline, and still report the failure.
+    if (wasRunning) await io.run(['schtasks', '/Run', '/TN', path], true).catch(() => {});
     throw error;
   }
   io.remove(uninstallMarkerPath('win32', { LOCALAPPDATA: io.localAppData })!);
