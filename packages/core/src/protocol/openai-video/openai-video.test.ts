@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import { releaseMultipartSpool } from '../../ingress/openai-video';
+import { withRequestBodyLimits } from '../request/index';
 import { openAIVideosAdapter } from './openai-video';
 
 describe('openAIVideosAdapter', () => {
@@ -141,3 +142,28 @@ function videoMultipart(fields: readonly (readonly [string, string])[]): Request
     body: new TextEncoder().encode(text),
   });
 }
+
+test('video JSON and multipart replay keep media budgets under a tiny injected generic limit', async () => {
+  await withRequestBodyLimits({ encoded: 8, decoded: 8 }, async () => {
+    const json = new Request('http://x/v1/videos', {
+      method: 'POST',
+      body: JSON.stringify({ prompt: 'cat' }),
+      headers: { 'content-type': 'application/json' },
+    });
+    const parsedJson = await openAIVideosAdapter.parse(json, { operation: 'create' });
+    const rewrittenJson = await openAIVideosAdapter.rawRequest(json, parsedJson, 'sora-wire', new Set(), {
+      operation: 'create',
+    });
+    expect(await rewrittenJson.json()).toEqual({ prompt: 'cat', model: 'sora-wire' });
+    const multipart = videoMultipart([['prompt', 'cat']]);
+    try {
+      const parsed = await openAIVideosAdapter.parse(multipart, { operation: 'create' });
+      const replay = await openAIVideosAdapter.rawRequest(multipart, parsed, 'sora-wire', new Set(), {
+        operation: 'create',
+      });
+      expect((await replay.formData()).get('model')).toBe('sora-wire');
+    } finally {
+      await releaseMultipartSpool(multipart);
+    }
+  });
+});

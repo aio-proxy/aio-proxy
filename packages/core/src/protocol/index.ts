@@ -13,7 +13,7 @@ export * from './openai-completions';
 export * from './openai-embeddings';
 export * from './openai-image';
 export * from './openai-video';
-export * from './openai-responses';
+export * from './openai-responses/index';
 export * from './video-adapter';
 export * from './openai-responses/encrypted-content-retry';
 export * from './request/index';

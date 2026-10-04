@@ -7,6 +7,7 @@ import {
   type RouterCandidate,
   RouterModelNotFoundError,
   UnsupportedContentEncodingError,
+  withRequestBodyLimits,
 } from '@aio-proxy/core';
 import type { LogicalRequestContext, ProtocolId, TokenCountInput } from '@aio-proxy/plugin-sdk';
 import { context } from '@opentelemetry/api';
@@ -42,6 +43,14 @@ export type HandleTokenCountOptions<TRequest, TContext> = {
 };
 
 export async function handleTokenCount<TRequest, TContext>(
+  options: HandleTokenCountOptions<TRequest, TContext>,
+): Promise<Response> {
+  const snapshot = options.source.currentProviderSnapshot();
+  const maxBytes = snapshot.config?.server.requestBody.maxBytes ?? REQUEST_BODY_LIMITS.encoded;
+  return withRequestBodyLimits({ encoded: maxBytes, decoded: maxBytes }, () => handleTokenCountObserved(options));
+}
+
+async function handleTokenCountObserved<TRequest, TContext>(
   options: HandleTokenCountOptions<TRequest, TContext>,
 ): Promise<Response> {
   const { adapter, rawRequest, source } = options;
@@ -90,7 +99,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
     await cancelRetainedRequestBody(rawRequest, error);
     throw error;
   }
-  if (hasInvalidOrOversizedContentLength(rawRequest, REQUEST_BODY_LIMITS)) {
+  if (hasInvalidOrOversizedContentLength(rawRequest, adapter.bodyLimits(rawRequest, context))) {
     await cancelRetainedRequestBody(rawRequest, new RequestBodyTooLargeError('Request body too large'));
     return finishRejected(session, adapter.errors.tooLarge(), 'request_too_large');
   }

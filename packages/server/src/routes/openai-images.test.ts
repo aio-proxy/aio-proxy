@@ -88,3 +88,32 @@ function imageConvertOnly(modelId: string): RuntimeProviderInstance {
     models: [modelId],
   };
 }
+
+test('image generations keep the 64 MiB encoded preflight boundary', async () => {
+  const app = await createServer({ config: { server: { requestBody: { maxBytes: 536_870_912 } }, providers: {} } });
+  const response = await app.request('/v1/images/generations', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'content-length': '67108865' },
+    body: JSON.stringify({ model: 'gpt-image-2', prompt: 'cat' }),
+  });
+  expect(response.status).toBe(413);
+});
+
+test('image edits JSON is not narrowed by a 1 MiB model request budget', async () => {
+  const app = await createServer({
+    config: { server: { requestBody: { maxBytes: 1_048_576 } }, providers: {} },
+    providerInstances: [imageConvertOnly('gpt-image-2')],
+  });
+  const response = await app.request('/v1/images/edits', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-image-2',
+      prompt: 'cat',
+      images: [{ image_url: 'https://example.com/cat.png' }],
+      padding: 'x'.repeat(1_048_576),
+    }),
+  });
+  expect(response.status).toBe(501);
+  expect(await response.json()).toMatchObject({ error: { code: 'unsupported_feature' } });
+});

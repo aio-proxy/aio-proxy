@@ -3,8 +3,8 @@ import { describe, expect, spyOn, test } from 'bun:test';
 import { ProviderProtocol } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { aiSdkPartStream } from '../egress/openai-responses-test-support';
-import { openAIResponsesAdapter, writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../index';
+import { aiSdkPartStream } from '../../egress/openai-responses-test-support';
+import { openAIResponsesAdapter, writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../../index';
 
 describe('openAIResponsesAdapter', () => {
   test('defaults to non-stream and exposes routing, tools, and current writers', async () => {
@@ -312,7 +312,7 @@ describe('openAIResponsesAdapter', () => {
     expect(await forwarded.json()).toEqual({ model: 'same', input: 'hello', beta_field: true });
   });
 
-  test('normalizes a compressed same-model request before raw forwarding', async () => {
+  test('preserves compressed same-model bytes before raw forwarding', async () => {
     const body = Bun.zstdCompressSync(
       new TextEncoder().encode(JSON.stringify({ model: 'same', input: 'hello', beta_field: true })),
     );
@@ -330,10 +330,10 @@ describe('openAIResponsesAdapter', () => {
 
     const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'same', new Set(), {});
 
-    expect(forwarded.headers.get('content-encoding')).toBeNull();
-    expect(forwarded.headers.get('content-length')).toBeNull();
+    expect(forwarded.headers.get('content-encoding')).toBe('zstd');
+    expect(forwarded.headers.get('content-length')).toBe(String(body.byteLength));
     expect(forwarded.headers.get('x-sentinel')).toBe('preserved');
-    expect(await forwarded.json()).toEqual({ model: 'same', input: 'hello', beta_field: true });
+    expect(new Uint8Array(await forwarded.arrayBuffer())).toEqual(body);
   });
 
   test('preserves an encrypted function call output part through parse and raw forwarding', async () => {

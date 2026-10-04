@@ -3,7 +3,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import type { EvaluationQuestion } from '../adapter';
 import {
   readRequestText,
-  REQUEST_BODY_LIMITS,
+  currentRequestBodyLimits,
   type RequestBodyLimits,
   UnsupportedContentEncodingError,
 } from '../request/index';
@@ -155,7 +155,7 @@ const parseQuestion = (id: string, value: unknown): EvaluationQuestion => {
 
 export async function parseSystemOneBody(
   raw: Request,
-  limits: RequestBodyLimits = REQUEST_BODY_LIMITS,
+  limits: RequestBodyLimits = currentRequestBodyLimits(),
 ): Promise<SystemOneRequest> {
   assertMediaType(raw);
 

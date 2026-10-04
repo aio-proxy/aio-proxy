@@ -2,7 +2,12 @@ import { describe, expect, it } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { REQUEST_BODY_LIMITS } from '../request/index';
+import {
+  REQUEST_BODY_LIMITS,
+  readJsonRequest,
+  RequestBodyTooLargeError,
+  withRequestBodyLimits,
+} from '../request/index';
 import { defineEvaluationProtocolAdapter, isEvaluationProtocolAdapter, type EvaluationResult } from './adapter';
 
 type EvalRequest = { readonly model: string };
@@ -28,7 +33,7 @@ const request = { model: 'm' };
 const context = {};
 
 describe('defineEvaluationProtocolAdapter', () => {
-  it('ignores a wantsStream override but honors a bodyLimits override', () => {
+  it('ignores a wantsStream override but honors a bodyLimits override', async () => {
     // Evaluation is non-streaming by contract, so unlike the embedding factory it
     // must drop a wantsStream override even when one sneaks past the type boundary.
     expect(define({ wantsStream: () => true }).wantsStream(request, context)).toBe(false);
@@ -38,6 +43,12 @@ describe('defineEvaluationProtocolAdapter', () => {
     // a dead spread would leave the wantsStream assertion passing vacuously on the default.
     expect(define({ bodyLimits: () => bodyLimits }).bodyLimits(new Request('https://x'), context)).toBe(bodyLimits);
 
+    await withRequestBodyLimits({ encoded: 8, decoded: 8 }, async () => {
+      const raw = new Request('https://proxy.test', { method: 'POST', body: '{"model":"too-long"}' });
+      await expect(readJsonRequest(raw, adapter.bodyLimits(raw, context))).rejects.toBeInstanceOf(
+        RequestBodyTooLargeError,
+      );
+    });
     expect(adapter.bodyLimits(new Request('https://x'), context)).toBe(REQUEST_BODY_LIMITS);
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { UnsupportedContentEncodingError } from '../request/index';
+import { RequestBodyTooLargeError, withRequestBodyLimits, UnsupportedContentEncodingError } from '../request/index';
 import { parseSystemOneBody, SystemOneParseError } from './parse';
 
 const post = (body: string, contentType: string | undefined = 'application/json') =>
@@ -279,5 +279,14 @@ describe('parseSystemOneBody nesting depth', () => {
     const wide = `[${new Array(2_000_000).fill('0').join(',')}]`;
     const raw = post(`{"model":"m","state":"s","questions":{"q":{"type":"noul","instructions":"i"}},"wide":${wide}}`);
     expect((await parseSystemOneBody(raw)).model).toBe('m');
+  });
+});
+
+it('applies the scoped default without Content-Length while explicit reader budgets take precedence', async () => {
+  await withRequestBodyLimits({ encoded: 8, decoded: 8 }, async () => {
+    await expect(parseSystemOneBody(post(JSON.stringify(valid)))).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+    expect((await parseSystemOneBody(post(JSON.stringify(valid)), { encoded: 1_024, decoded: 1_024 })).model).toBe(
+      'jev-latest',
+    );
   });
 });

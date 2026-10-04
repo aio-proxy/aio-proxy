@@ -7,7 +7,7 @@ import {
   parseOpenAIVideoRemix,
   readJsonRequest,
   releaseMultipartSpool,
-  REQUEST_BODY_LIMITS,
+  VIDEO_REQUEST_BODY_LIMITS,
   stripHopHeaders,
 } from '@aio-proxy/core';
 import { isPlainObject } from 'es-toolkit/predicate';
@@ -50,7 +50,7 @@ export function createOpenAIVideosRoutes(source: VideosRouteSource) {
 
 async function handleVideoCreate(context: Context<CallerPrincipalEnv>, source: VideosRouteSource) {
   const raw = context.req.raw;
-  if (hasInvalidOrOversizedContentLength(raw, REQUEST_BODY_LIMITS)) {
+  if (hasInvalidOrOversizedContentLength(raw, VIDEO_REQUEST_BODY_LIMITS)) {
     return await rejectFollowUp(raw, openAIVideosAdapter.errors.tooLarge());
   }
   const parsed = await videosTryParseAsync(() => openAIVideosAdapter.parse(raw, { operation: 'create' }));
@@ -148,12 +148,12 @@ type FollowUpPeek =
   | { readonly kind: 'unparsed' };
 
 async function peekFollowUpBody(raw: Request): Promise<FollowUpPeek> {
-  if (hasInvalidOrOversizedContentLength(raw, REQUEST_BODY_LIMITS)) {
+  if (hasInvalidOrOversizedContentLength(raw, VIDEO_REQUEST_BODY_LIMITS)) {
     return { kind: 'reject', response: openAIVideosAdapter.errors.tooLarge() };
   }
   if (isMultipartRequest(raw) || !isJsonRequest(raw)) return { kind: 'unparsed' };
   try {
-    return { kind: 'json', body: await readJsonRequest(raw, REQUEST_BODY_LIMITS) };
+    return { kind: 'json', body: await readJsonRequest(raw, VIDEO_REQUEST_BODY_LIMITS) };
   } catch (error) {
     return { kind: 'reject', response: videosRequestError(error) };
   }
