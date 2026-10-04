@@ -223,6 +223,9 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
   // A spec without its task (a failed `/Create`, or the task deleted by hand) can only be fixed by creating it again.
   const task = await ownTask(io, path);
   const refresh = task ? await refreshesStaleTask(io, task) : 'reinstall';
+  // A stale task may still have a supervisor on its old spec; `/Run` would be ignored next to it (IgnoreNew), and
+  // stop/status would follow the new task and miss it. End it before the task is replaced.
+  if (refresh === 'reinstall' && task) await endTask(io, path, task);
   if (refresh === 'reinstall') await schtasksInstall(io);
   else if (refresh === 'repair-action') await repairAction(io, path, ownedSpecPath(io, task));
   else await io.run(['schtasks', '/Change', '/TN', path, '/ENABLE']);

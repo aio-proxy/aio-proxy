@@ -290,7 +290,11 @@ test('start keeps a task whose recorded exec is still on disk without resolving 
 
 test('start re-creates a task whose recorded exec is gone before running it', async () => {
   const stale = renderTaskXml({ sid, exec: 'C:\\gone\\cli-1.0.0.exe', specPath });
-  expect((await recordCalls((io) => schtasksStart(io), { task: stale })).map((c) => c[1])).toEqual(['/Create', '/Run']);
+  expect((await recordCalls((io) => schtasksStart(io), { task: stale })).map((c) => c[1])).toEqual([
+    '/End',
+    '/Create',
+    '/Run',
+  ]);
 });
 
 test('start re-creates a task whose spec path moved or whose spec is gone or malformed, though its exec is on disk', async () => {
@@ -299,15 +303,16 @@ test('start re-creates a task whose spec path moved or whose spec is gone or mal
     (
       await recordCalls((io) => schtasksStart(io), { fs: fakeFs({ [specPath]: oldSpec, [oldExec]: '' }), task: moved })
     ).map((c) => c[1]),
-  ).toEqual(['/Create', '/Run']);
+  ).toEqual(['/End', '/Create', '/Run']);
   expect(
     (await recordCalls((io) => schtasksStart(io), { fs: fakeFs({ [oldExec]: '' }), task: oldTaskXml })).map(
       (c) => c[1],
     ),
-  ).toEqual(['/Create', '/Run']);
+  ).toEqual(['/End', '/Create', '/Run']);
   const truncated = fakeFs({ [specPath]: oldSpec.slice(0, 10), [oldExec]: '' });
   const emptyExec = fakeFs({ [specPath]: '{"exec":"","env":{}}', [oldExec]: '' });
   expect((await recordCalls((io) => schtasksStart(io), { fs: emptyExec, task: oldTaskXml })).map((c) => c[1])).toEqual([
+    '/End',
     '/Create',
     '/Run',
   ]);
@@ -316,10 +321,12 @@ test('start re-creates a task whose spec path moved or whose spec is gone or mal
     [oldExec]: '',
   });
   expect((await recordCalls((io) => schtasksStart(io), { fs: goneExec, task: oldTaskXml })).map((c) => c[1])).toEqual([
+    '/End',
     '/Create',
     '/Run',
   ]);
   expect((await recordCalls((io) => schtasksStart(io), { fs: truncated, task: oldTaskXml })).map((c) => c[1])).toEqual([
+    '/End',
     '/Create',
     '/Run',
   ]);
@@ -330,7 +337,7 @@ test('start repairs a missing or malformed spec when the desktop app starts the 
   for (const files of [{ [oldExec]: '' }, { [specPath]: '{"exec":', [oldExec]: '' }]) {
     const fs = fakeFs(files);
     await schtasksStart({ ...io({ fs, task: oldTaskXml }), unit: desktopUnit });
-    expect(recorded().map((c) => c[1])).toEqual(['/Create', '/Run']);
+    expect(recorded().map((c) => c[1])).toEqual(['/End', '/Create', '/Run']);
     expect(parseServiceSpec(fs.read(specPath) ?? '')?.exec).toBe(exec);
   }
 });
@@ -394,7 +401,7 @@ test('start re-creates a stale desktop-owned task', async () => {
   const fs = fakeFs({ [specPath]: owned });
   const desktopUnit = async () => ({ exec, configPath: 'C:\\Users\\Zoë\\.aio-proxy\\config.jsonc', desktopExec: exec });
   await schtasksStart({ ...io({ fs, task: oldTaskXml }), unit: desktopUnit });
-  expect(recorded().map((c) => c[1])).toEqual(['/Create', '/Run']);
+  expect(recorded().map((c) => c[1])).toEqual(['/End', '/Create', '/Run']);
 });
 
 test('start re-creates a task that is missing while the spec is still there, then runs it', async () => {
