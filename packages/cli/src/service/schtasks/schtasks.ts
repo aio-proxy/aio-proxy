@@ -143,8 +143,6 @@ async function ownTask(io: SchtasksIo, path: string): Promise<ParsedTask | undef
   return task;
 }
 
-const ownTaskExists = async (io: SchtasksIo, path: string): Promise<boolean> => (await ownTask(io, path)) !== undefined;
-
 // schtasks reads the XML file in the encoding its declaration names, and renderTaskXml declares UTF-16.
 function stageTaskXml(io: SchtasksIo, xml: string): string {
   const file = win32.join(io.tempDir, `aio-proxy-task-${randomUUID()}.xml`);
@@ -194,11 +192,20 @@ const runTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/Run', '/
 
 export async function schtasksInstall(io: SchtasksIo): Promise<void> {
   const path = taskPath(io.sid);
-  await ownTaskExists(io, path);
+  const existing = await ownTask(io, path);
   const { spec, xml } = await renderUnit(io);
   // Spec and task change together: the spec moves in first (an atomic rename, so the task is never left without one),
   // and a failed `/Create` puts the previous spec back, since a running task re-reads it on its next relaunch.
   const specPath = serviceSpecPath(io.localAppData);
+  // A task on an older LOCALAPPDATA or profile path has a supervisor watching that old spec: replacing the task
+  // would orphan it (status and stop follow the new task). It is ended first and, if it was running, restarted below.
+  const migrating = existing?.action !== undefined && existing.action.specPath.toLowerCase() !== specPath.toLowerCase();
+  let wasRunning = false;
+  if (migrating) {
+    const state = parseSupervisorState(io.readFile(supervisorStatePath(io, existing)));
+    wasRunning = supervisorAlive(state, io.imagePath, io.creationTime);
+    await endTask(io, path, existing);
+  }
   const previous = io.readFile(specPath);
   const staged = `${specPath}.new`;
   io.writeFile(staged, spec);
@@ -216,6 +223,7 @@ export async function schtasksInstall(io: SchtasksIo): Promise<void> {
     throw error;
   }
   io.remove(uninstallMarkerPath('win32', { LOCALAPPDATA: io.localAppData })!);
+  if (wasRunning) await runTask(io, path);
 }
 
 export async function schtasksStart(io: SchtasksIo): Promise<void> {
@@ -225,7 +233,13 @@ export async function schtasksStart(io: SchtasksIo): Promise<void> {
   const refresh = task ? await refreshesStaleTask(io, task) : 'reinstall';
   // A stale task may still have a supervisor on its old spec; `/Run` would be ignored next to it (IgnoreNew), and
   // stop/status would follow the new task and miss it. End it before the task is replaced.
-  if (refresh === 'reinstall' && task) await endTask(io, path, task);
+  // (install ends a task on an older spec path itself, so only a same-path stale task is ended here).
+  if (
+    refresh === 'reinstall' &&
+    task &&
+    task.action?.specPath.toLowerCase() === serviceSpecPath(io.localAppData).toLowerCase()
+  )
+    await endTask(io, path, task);
   if (refresh === 'reinstall') await schtasksInstall(io);
   else if (refresh === 'repair-action') await repairAction(io, path, ownedSpecPath(io, task));
   else await io.run(['schtasks', '/Change', '/TN', path, '/ENABLE']);

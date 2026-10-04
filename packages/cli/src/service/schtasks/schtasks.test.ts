@@ -461,6 +461,30 @@ test('a spec that cannot move in fails the install before any task is created', 
   expect(fs.exists(`${specPath}.new`)).toBe(false);
 });
 
+test('install migrating a task from an older spec path ends its running supervisor and starts the new task', async () => {
+  const movedSpec = 'C:\\Users\\old\\AppData\\Local\\aio-proxy\\service.json';
+  const movedState = 'C:\\Users\\old\\AppData\\Local\\aio-proxy\\service.state.json';
+  let running = true;
+  const killed: number[] = [];
+  const { calls } = await recordRun(
+    (io) =>
+      schtasksInstall({
+        ...io,
+        imagePath: () => (running ? oldExec : undefined),
+        kill: (pid) => {
+          killed.push(pid);
+          running = false;
+        },
+      }),
+    {
+      fs: fakeFs({ [movedSpec]: oldSpec, [movedState]: supervisorState }),
+      task: renderTaskXml({ sid, exec: oldExec, specPath: movedSpec }),
+    },
+  );
+  expect(killed).toEqual([4242]);
+  expect(calls.map((c) => c[1])).toEqual(['/End', '/Create', '/Run']);
+});
+
 test('install replaces a task that already runs as the current user', async () => {
   const calls = await recordCalls((io) => schtasksInstall(io));
   expect(calls.map((c) => c[1])).toEqual(['/Create']);
