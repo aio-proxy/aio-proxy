@@ -2,6 +2,7 @@ export {
   assetUrl,
   buildLatestJson,
   feedCandidates,
+  feedSignaturesVerify,
   parseLatestJson,
   pickFeedVersion,
   REPO,

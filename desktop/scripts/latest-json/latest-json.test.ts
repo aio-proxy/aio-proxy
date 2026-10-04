@@ -1,11 +1,22 @@
 import { expect, test } from 'bun:test';
 
-import { trustedComment, type UpdateTarget } from '../minisign';
+import { KEY_ID, publicKeyFromPrivate, signMinisign, trustedComment, type UpdateTarget } from '../minisign';
 import { assetName } from '../package/index';
-import { assetUrl, buildLatestJson, feedCandidates, parseLatestJson, pickFeedVersion, TARGETS } from './latest-json';
+import {
+  assetUrl,
+  buildLatestJson,
+  feedCandidates,
+  feedSignaturesVerify,
+  parseLatestJson,
+  pickFeedVersion,
+  TARGETS,
+} from './latest-json';
 
+// Shaped like a real .minisig (`ED` + key id + 64 bytes, a 64-byte global signature); not verifiable against a key.
+const sigLine = Buffer.concat([Buffer.from('ED'), Buffer.from(KEY_ID), Buffer.alloc(64, 1)]).toString('base64');
+const globalLine = Buffer.alloc(64, 2).toString('base64');
 const minisig = (version: string, target: UpdateTarget) =>
-  `untrusted comment: signature\nabc\ntrusted comment: ${trustedComment(version, target, assetName(target, version))}\ndef\n`;
+  `untrusted comment: signature\n${sigLine}\ntrusted comment: ${trustedComment(version, target, assetName(target, version))}\n${globalLine}\n`;
 const feed = (version: string) =>
   new Map(TARGETS.map((t) => [t, { url: assetUrl(version, t), minisig: minisig(version, t) }]));
 const allThree = feed('0.40.0');
@@ -88,4 +99,30 @@ test('a current feed entry that publish-latest would not write is incomplete', (
     expect(parseLatestJson(text)).toEqual({ version: '0.40.0', complete: false });
   }
   expect(parseLatestJson(otherVersion)).toEqual({ version: '0.40.0', complete: false });
+});
+
+test('feed signatures verify only against the key that made them, and junk signature lines are not complete', async () => {
+  const seed = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64');
+  const other = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64');
+  const signed = new Map(
+    await Promise.all(
+      TARGETS.map(async (target) => {
+        const name = assetName(target, '0.40.0');
+        const minisig = await signMinisign(new Uint8Array([1]), seed, trustedComment('0.40.0', target, name));
+        return [target, { url: assetUrl('0.40.0', target), minisig }] as const;
+      }),
+    ),
+  );
+  const feed = buildLatestJson('0.40.0', signed);
+  expect(parseLatestJson(feed)?.complete).toBe(true);
+  expect(await feedSignaturesVerify(feed, await publicKeyFromPrivate(seed))).toBe(true);
+  expect(await feedSignaturesVerify(feed, await publicKeyFromPrivate(other))).toBe(false);
+  // The right trusted comment around junk signature lines is not an entry the updater can use.
+  const [first] = TARGETS;
+  const junk = Buffer.from(
+    `untrusted comment: x\nAAAA\ntrusted comment: ${trustedComment('0.40.0', first, assetName(first, '0.40.0'))}\nAAAA\n`,
+  ).toString('base64');
+  const json = JSON.parse(feed);
+  json.platforms[first].signature = junk;
+  expect(parseLatestJson(JSON.stringify(json))?.complete).toBe(false);
 });

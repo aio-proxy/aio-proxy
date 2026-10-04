@@ -14,6 +14,7 @@ import {
   assetUrl,
   buildLatestJson,
   feedCandidates,
+  feedSignaturesVerify,
   parseLatestJson,
   pickFeedVersion,
   REPO,
@@ -49,12 +50,13 @@ try {
   if (feedAssets.has(FEED)) {
     await $`gh release download ${FEED_TAG} --repo ${REPO} --pattern ${FEED} --dir ${work}`.quiet();
     // An unreadable feed is not "no feed": treating it as absent could move the feed down.
-    const parsed = parseLatestJson(await Bun.file(join(work, FEED)).text());
+    const currentText = await Bun.file(join(work, FEED)).text();
+    const parsed = parseLatestJson(currentText);
     current = parsed?.version;
     if (current === undefined || !/^\d+\.\d+\.\d+$/u.test(current)) {
       throw new Error(`${FEED} on ${FEED_TAG} is not a stable X.Y.Z feed; fix or delete it by hand`);
     }
-    repair = parsed?.complete === false;
+    repair = parsed?.complete === false || !(await feedSignaturesVerify(currentText, publicKey));
     if (repair) console.error(`${FEED} lacks a usable entry for some target; it may be rewritten at ${current}`);
   }
   console.error(`feed version: ${current ?? '(none)'}`);
