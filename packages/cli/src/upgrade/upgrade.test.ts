@@ -51,6 +51,7 @@ import {
   buildPnpmInstallArgs,
   interpreterSafePath,
   runPackageManagerUpgrade,
+  spawnableCommand,
 } from './methods';
 
 test('buildBunInstallArgs pins registry and version', () => {
@@ -95,6 +96,23 @@ test('a batch-file package manager runs through one verbatim cmd.exe line, quote
   ]);
   expect(() => batchFileCommand([npm, 'a"b'])).toThrow();
   expect(() => batchFileCommand([npm, '%PATH%'])).toThrow();
+});
+
+test('only a Windows batch-file launcher is spawned through cmd.exe verbatim', () => {
+  const shim = 'C:\\Users\\Zoë\\AppData\\Roaming\\npm\\aio-proxy.CMD';
+  expect(spawnableCommand([shim, '--version'], 'win32')).toEqual({
+    cmd: batchFileCommand([shim, '--version']),
+    windowsVerbatimArguments: true,
+  });
+  for (const [command, platform] of [
+    ['C:\\bin\\aio-proxy.exe', 'win32'],
+    ['/npm/bin/aio-proxy.cmd', 'linux'],
+  ] as const) {
+    expect(spawnableCommand([command, '--version'], platform)).toEqual({
+      cmd: [command, '--version'],
+      windowsVerbatimArguments: false,
+    });
+  }
 });
 
 test('buildHomebrewUpdateArgs switches on force', () => {

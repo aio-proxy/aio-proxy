@@ -56,13 +56,22 @@ export const batchFileCommand = (cmd: readonly string[]): string[] => [
   `"${cmd.map(quoteForCmd).join(' ')}"`,
 ];
 
-const exec = async (cmd: string[], platform: NodeJS.Platform): Promise<void> => {
+/** The argv and spawn option that run `cmd`, going through cmd.exe when it names a Windows batch file. */
+export const spawnableCommand = (
+  cmd: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): { readonly cmd: string[]; readonly windowsVerbatimArguments: boolean } => {
   const batch = platform === 'win32' && /\.(?:cmd|bat)$/iu.test(cmd[0] ?? '');
-  const proc = Bun.spawn(batch ? batchFileCommand(cmd) : cmd, {
+  return { cmd: batch ? batchFileCommand(cmd) : [...cmd], windowsVerbatimArguments: batch };
+};
+
+const exec = async (cmd: string[], platform: NodeJS.Platform): Promise<void> => {
+  const spawnable = spawnableCommand(cmd, platform);
+  const proc = Bun.spawn(spawnable.cmd, {
     stdout: 'inherit',
     stderr: 'inherit',
     env: { ...process.env, PATH: interpreterSafePath(cmd[0] ?? '', platform) },
-    windowsVerbatimArguments: batch,
+    windowsVerbatimArguments: spawnable.windowsVerbatimArguments,
   });
   const code = await proc.exited;
   if (code !== 0) throw new Error(`${cmd[0]} exited with ${code}`);
