@@ -1,3 +1,9 @@
+export class InvalidContentLengthError extends SyntaxError {
+  constructor() {
+    super('Invalid Content-Length');
+  }
+}
+
 export type RequestBodyLimitDiagnostic = {
   readonly stage: 'encoded' | 'decoded';
   readonly limitBytes: number;

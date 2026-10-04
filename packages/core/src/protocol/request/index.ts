@@ -1,6 +1,7 @@
 export { readJsonRequest, readRequestText, decodedRequestStream, rewriteJsonRequestModel } from './request';
 export { currentRequestBodyLimits, withRequestBodyLimits, REQUEST_BODY_LIMITS, type RequestBodyLimits } from './limits';
 export {
+  InvalidContentLengthError,
   RequestBodyTooLargeError,
   type RequestBodyLimitDiagnostic,
   RequestBodyIdleTimeoutError,

@@ -3,6 +3,7 @@ import { Experimental_EvaluationUnsupportedQuestionTypeError } from 'ai';
 import type { ProtocolErrorMapper } from '../adapter';
 import {
   InvalidCompressedRequestBodyError,
+  InvalidContentLengthError,
   RequestBodyTooLargeError,
   UnsupportedContentEncodingError,
 } from '../request/index';
@@ -24,13 +25,15 @@ const unsupportedFeature = (feature: string): Response => json(`Unsupported: ${f
 export const systemOneErrors: ProtocolErrorMapper = {
   // Selective by design: the caller's fault arrives as `SystemOneParseError` (bad
   // media type, schema violations) or `InvalidCompressedRequestBodyError` (a body
-  // whose bytes are not the encoding it declared), and both answer 400 here.
+  // whose bytes are not the encoding it declared). InvalidContentLengthError is
+  // also a specific client fault; arbitrary SyntaxError must still escape.
   // `UnsupportedContentEncodingError` and `RequestBodyTooLargeError` deliberately
   // escape unwrapped so the pipeline can answer 415 and 413 instead. Anything else
   // reaching here is an egress failure or a bug of ours, so it must fall through
   // to its own handler instead of becoming a 400 that blames the caller and
   // echoes an internal message back to them.
   requestError: (error) => {
+    if (error instanceof InvalidContentLengthError) return json('Invalid Content-Length', 'invalid_request_error', 400);
     if (error instanceof SystemOneParseError) return json(error.message, 'invalid_request_error', 400);
     return error instanceof InvalidCompressedRequestBodyError
       ? json('Invalid compressed request body', 'invalid_request_error', 400)

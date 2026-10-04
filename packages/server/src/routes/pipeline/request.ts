@@ -1,14 +1,13 @@
-import { RequestBodyTooLargeError, type RequestBodyLimitDiagnostic, type RequestBodyLimits } from '@aio-proxy/core';
+import {
+  InvalidContentLengthError,
+  RequestBodyTooLargeError,
+  type RequestBodyLimitDiagnostic,
+  type RequestBodyLimits,
+} from '@aio-proxy/core';
 import { trace, type Attributes } from '@opentelemetry/api';
 
 import { safeDiagnosticFields } from '../../request-logging/capture-policy';
 import { attributeName, type RequestTraceSession } from '../../request-tracing';
-
-export class InvalidContentLengthError extends SyntaxError {
-  constructor() {
-    super('Invalid Content-Length');
-  }
-}
 
 export function inspectRequestContentLength(
   request: Request,

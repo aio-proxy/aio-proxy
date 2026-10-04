@@ -1,4 +1,5 @@
 import {
+  InvalidContentLengthError,
   assertImageInputSupported,
   type ModelInvocation,
   type ProtocolAdapter,
@@ -23,7 +24,7 @@ import { candidateSelectionSource } from '../pipeline/attempt-base';
 import { failureTerminal } from '../pipeline/failure';
 import { logRequestRejected } from '../pipeline/logging';
 import { applySelectionPolicy } from '../pipeline/quota-order';
-import { cancelRetainedRequestBody, InvalidContentLengthError, recordRequestBodyRejection } from '../pipeline/request';
+import { cancelRetainedRequestBody, recordRequestBodyRejection } from '../pipeline/request';
 import { estimateInputTokens } from './estimate';
 import { attemptRawCount } from './raw';
 import {

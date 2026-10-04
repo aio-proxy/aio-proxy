@@ -1,5 +1,6 @@
 import {
   type InboundCapability,
+  InvalidContentLengthError,
   RequestBodyTooLargeError,
   releaseMultipartSpool,
   RouterModelNotFoundError,
@@ -19,12 +20,7 @@ import { startInferenceSpan } from './inference-span';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
 import { withProtocolRequestObservation } from './observation';
 import { completePreRouteResponse, invokeResponsesPreRoute } from './pre-route';
-import {
-  cancelRetainedRequestBody,
-  inspectRequestContentLength,
-  InvalidContentLengthError,
-  recordRequestBodyRejection,
-} from './request';
+import { cancelRetainedRequestBody, inspectRequestContentLength, recordRequestBodyRejection } from './request';
 import { startPipelineSpan } from './tracing';
 
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
