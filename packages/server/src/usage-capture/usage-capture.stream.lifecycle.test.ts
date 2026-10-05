@@ -110,17 +110,25 @@ describe('usage capture stream lifecycle', () => {
     expect(ttftMs).toBeGreaterThanOrEqual(0);
   });
 
-  test('records ttft for a tool-call-only stream', async () => {
-    const captured = createUsageCapture().stream({
-      providerId: 'provider',
-      modelId: 'model',
-      startedAt: performance.now(),
-      stream: textStream([{ type: 'tool-input-delta', id: 'call-1', delta: '{}' }, finishPart()]),
-    });
+  test('records ttft for a tool-call-only stream, ignoring empty input deltas', async () => {
+    const stream = (deltas: string[]) =>
+      createUsageCapture().stream({
+        providerId: 'provider',
+        modelId: 'model',
+        startedAt: performance.now(),
+        stream: textStream([
+          ...deltas.map((delta) => ({ type: 'tool-input-delta' as const, id: 'call-1', delta })),
+          finishPart(),
+        ]),
+      });
+    const ttftOf = async (captured: ReturnType<typeof stream>) => {
+      await drain(captured.value);
+      const completion = await captured.completion;
+      return 'ttftMs' in completion ? completion.ttftMs : undefined;
+    };
 
-    await drain(captured.value);
-    const completion = await captured.completion;
-    expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
+    expect(await ttftOf(stream(['']))).toBeUndefined();
+    expect(await ttftOf(stream(['', '{}']))).toEqual(expect.any(Number));
   });
 
   test('omits ttft when startedAt is not provided', async () => {

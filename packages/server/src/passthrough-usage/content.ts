@@ -64,19 +64,25 @@ function openAICompatibleContent(value: unknown): boolean {
       nonEmptyString(delta['content']) ||
       nonEmptyString(delta['reasoning_content']) ||
       nonEmptyString(delta['reasoning']) ||
-      (Array.isArray(delta['tool_calls']) && delta['tool_calls'].length > 0)
+      // The opener frame carries id/name with empty arguments; wait for real output.
+      (Array.isArray(delta['tool_calls']) &&
+        delta['tool_calls'].some(
+          (call) =>
+            isPlainObject(call) && isPlainObject(call['function']) && nonEmptyString(call['function']['arguments']),
+        ))
     );
   });
 }
 
 function openAIResponsesContent(eventType: string | undefined, value: unknown): boolean {
   const type = eventType ?? (isPlainObject(value) ? value['type'] : undefined);
+  if (type === 'response.function_call_arguments.delta' || type === 'response.custom_tool_call_input.delta') {
+    return isPlainObject(value) && nonEmptyString(value['delta']);
+  }
   return (
     type === 'response.output_text.delta' ||
     type === 'response.reasoning_text.delta' ||
-    type === 'response.reasoning_summary_text.delta' ||
-    type === 'response.function_call_arguments.delta' ||
-    type === 'response.custom_tool_call_input.delta'
+    type === 'response.reasoning_summary_text.delta'
   );
 }
 

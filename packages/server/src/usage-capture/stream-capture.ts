@@ -132,7 +132,7 @@ export function streamCapture(
         } else if (
           next.value.type === 'text-delta' ||
           next.value.type === 'reasoning-delta' ||
-          next.value.type === 'tool-input-delta'
+          (next.value.type === 'tool-input-delta' && next.value.delta !== '')
         ) {
           const contentAt = observeContentAt(observation);
           firstTokenAt ??= contentAt;

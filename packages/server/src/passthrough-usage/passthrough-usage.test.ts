@@ -258,6 +258,8 @@ describe('passthrough usage extraction', () => {
           content += 1;
         },
       });
+      observer.feed(`event: ${type}\ndata: {"type":"${type}","delta":""}\n\n`);
+      expect(content).toBe(0);
       observer.feed(`event: ${type}\ndata: {"type":"${type}","delta":"x"}\n\n`);
       expect(content).toBe(1);
     }

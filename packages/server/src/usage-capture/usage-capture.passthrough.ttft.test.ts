@@ -178,6 +178,22 @@ describe('usage capture passthrough ttft', () => {
     expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
   });
 
+  test('ignores an OpenAI-compatible tool-call opener and records ttft on argument output', async () => {
+    const opener =
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"ls","arguments":""}}]}}]}\n\n';
+    const openerOnly = ssePassthrough(opener);
+    await drain(openerOnly.value);
+    const openerCompletion = await openerOnly.completion;
+    expect('ttftMs' in openerCompletion ? openerCompletion.ttftMs : undefined).toBeUndefined();
+
+    const withArgs = ssePassthrough(
+      opener + 'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}}]}\n\n',
+    );
+    await drain(withArgs.value);
+    const completion = await withArgs.completion;
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
+  });
+
   test('omits ttft when the stream carries no content delta', async () => {
     const captured = ssePassthrough(
       'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n' +
