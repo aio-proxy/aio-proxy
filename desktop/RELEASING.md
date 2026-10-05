@@ -12,7 +12,10 @@ The app ships from CI. After Changesets publishes a release, `release.yml` dispa
   `publish-assets` (environment `desktop-release`) signs them with minisign and uploads
   `aio-proxy-<version>-x86_64.AppImage`, `aio-proxy-<version>-aarch64.AppImage` and
   `aio-proxy-<version>-x64-setup.exe`, each with a `.minisig`, to the `v<version>` Release. `feed`
-  then points `latest.json` on `desktop-feed` at the highest version whose three assets all verify.
+  then points `latest.json` on `desktop-feed` at the highest version whose three assets all verify,
+  first uploading that version's three builds there under unversioned names
+  (`aio-proxy-x86_64.AppImage`, `aio-proxy-aarch64.AppImage`, `aio-proxy-x64-setup.exe`) for the
+  website's download buttons.
 
 The Linux/Windows build jobs use no caches on purpose: bytes that get signed must not come from a
 cache. Cold builds are slow (90 minute timeout).

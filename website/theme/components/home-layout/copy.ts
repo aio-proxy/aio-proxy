@@ -1,3 +1,5 @@
+import type { DesktopPlatform } from './desktop-download/detect-platform';
+
 export interface HomeCopy {
   readonly hero: {
     readonly eyebrow: string;
@@ -6,8 +8,8 @@ export interface HomeCopy {
     readonly tagline: string;
     readonly primary: string;
     readonly secondary: string;
-    readonly download: string;
-    readonly downloadRequirement: string;
+    readonly downloads: Record<DesktopPlatform, { readonly label: string; readonly note: string }>;
+    readonly otherDownloads: string;
     readonly copy: string;
     readonly copied: string;
   };
@@ -79,8 +81,13 @@ const en: HomeCopy = {
       'AIO Proxy sits between your tools and your model providers. Keep the SDKs and coding agents you already use, plug in API keys or the subscriptions you already pay for, and get routing, failover, and full request traces from one local binary.',
     primary: 'Get started',
     secondary: 'Star on GitHub',
-    download: 'Download for macOS',
-    downloadRequirement: 'Apple Silicon · macOS 13+',
+    downloads: {
+      macos: { label: 'Download for macOS', note: 'Apple Silicon · macOS 13+' },
+      windows: { label: 'Download for Windows', note: 'x64 installer' },
+      'linux-x86_64': { label: 'Download for Linux', note: 'AppImage · x86_64' },
+      'linux-aarch64': { label: 'Download for Linux', note: 'AppImage · arm64' },
+    },
+    otherDownloads: 'Other platforms',
     copy: 'Copy',
     copied: 'Copied',
   },
@@ -181,8 +188,13 @@ const zh: HomeCopy = {
       'AIO Proxy 位于你的工具与模型提供商之间。继续使用现有的 SDK 和编程 Agent，接入 API Key 或你已经订阅的服务，一个本地二进制即可获得智能路由、自动故障转移与完整请求链路。',
     primary: '开始使用',
     secondary: '在 GitHub 上 Star',
-    download: '下载 macOS 版',
-    downloadRequirement: 'Apple Silicon · macOS 13+',
+    downloads: {
+      macos: { label: '下载 macOS 版', note: 'Apple Silicon · macOS 13+' },
+      windows: { label: '下载 Windows 版', note: 'x64 安装程序' },
+      'linux-x86_64': { label: '下载 Linux 版', note: 'AppImage · x86_64' },
+      'linux-aarch64': { label: '下载 Linux 版', note: 'AppImage · arm64' },
+    },
+    otherDownloads: '其他平台',
     copy: '复制',
     copied: '已复制',
   },
