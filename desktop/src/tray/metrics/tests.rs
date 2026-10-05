@@ -146,6 +146,18 @@ fn schedule_recovers_immediately_but_never_polls_empty_metrics() {
 }
 
 #[test]
+fn schedule_polls_immediately_when_the_same_selection_is_re_enabled() {
+    let now = Instant::now();
+    let selected = LiveKey { metrics: vec![TrayMetric::TodayTokens], epoch: 1 };
+    let none = LiveKey { metrics: Vec::new(), epoch: 1 };
+    let mut schedule = LiveSchedule::default();
+    assert!(schedule.due(now, &selected, true));
+    schedule.finished();
+    assert!(!schedule.due(now + Duration::from_secs(1), &none, true));
+    assert!(schedule.due(now + Duration::from_secs(2), &selected, true));
+}
+
+#[test]
 fn display_transitions_from_fresh_to_stale_to_unavailable_and_recovers() {
     let mut display = LiveDisplay::default();
     assert!(matches!(display.view(), LiveView::Unavailable));

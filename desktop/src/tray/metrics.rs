@@ -167,6 +167,8 @@ impl LiveSchedule {
             return false;
         }
         let Some(interval) = poll_interval(&key.metrics) else {
+            // Re-enabling the same selection later must fetch at once, not wait out the old interval.
+            self.last = None;
             return false;
         };
         if self.in_flight {
