@@ -167,7 +167,11 @@ pub fn rediscover(cx: &mut App) {
 
 /// An action's own post-mutation discovery: newer than any discovery still running.
 fn apply_after(cx: &mut App, after: Discovery) {
-    let seq = cx.global_mut::<AppModel>().discovery_order.issue();
+    let model = cx.global_mut::<AppModel>();
+    if after.instance.reachable {
+        model.health.mark_up();
+    }
+    let seq = model.discovery_order.issue();
     apply_discovery(cx, seq, Ok(after));
 }
 

@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 
 use super::discovery::{Discovery, Owner};
 use super::policy::{
-    AutoAction, AutoAttempts, Mutation, ReloadOutcome, UserAction, auto_mutations, automatic_action, offered_actions,
-    restart_complete, stop_complete, unchanged, user_mutations,
+    AutoAction, AutoAttempts, Mutation, ReloadOutcome, UserAction, auto_mutations, offered_actions, restart_complete,
+    stop_complete, unchanged, user_mutations,
 };
 
 pub const RESTART_WAIT: Duration = Duration::from_secs(30);
@@ -68,17 +68,15 @@ pub fn run_auto(
     if attempts.used(action) {
         return Err(RunError::NotOffered);
     }
-    let now = fresh(host, decided_on)?;
-    // The three-field check misses e.g. a hand-started instance appearing before a fresh install.
-    if automatic_action(&now, true, attempts) != Some(action) {
-        return Err(RunError::Changed);
-    }
+    // No second discovery first: the app decides an automatic action the moment a discovery lands, so
+    // `decided_on` is as fresh as a re-check would be, and a re-check costs a CLI spawn (seconds on a
+    // slow Windows machine) without narrowing the race against an outside change.
     attempts.mark(action);
     let wait = match action {
-        AutoAction::RestartForVersion => restart_wait(&now, Some(now.bundled_version.clone())),
-        AutoAction::InstallAndStart | AutoAction::StartNotLoaded | AutoAction::StartNoProcess => start_wait(&now),
+        AutoAction::RestartForVersion => restart_wait(decided_on, Some(decided_on.bundled_version.clone())),
+        AutoAction::InstallAndStart | AutoAction::StartNotLoaded | AutoAction::StartNoProcess => start_wait(decided_on),
     };
-    execute(host, &now, auto_mutations(action), wait)
+    execute(host, decided_on, auto_mutations(action), wait)
 }
 
 pub fn run_user(host: &impl Host, rendered: &Discovery, action: UserAction) -> Result<Discovery, RunError> {
