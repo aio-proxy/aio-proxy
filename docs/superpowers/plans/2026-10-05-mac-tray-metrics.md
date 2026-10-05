@@ -144,7 +144,9 @@
   - `finishFrom` 的 Promise resolve 后回到 0；reject 后同样回到 0。
   - 先 `finish` 再 `finishFrom`，或者 `finish` 两次，都只减一次。
   - `operation: 'token_count'` 的请求不计数。
-  - **pipeline 集成**：在 `routes/pipeline/model-stream.lifecycle.test.ts` 和 `raw-fallback.test.ts` 的现有 setup 上追加用例，断言 `state.liveMetrics.snapshot().inFlight`：
+  - **测试装配**：`packages/server/__tests__/pipeline-helpers/recording.ts:42` 的 `createRecording` 增加可选参数 `liveMetrics`，转交给其中的真实 `createRequestTraceRecorder`，并把它暴露在返回值上；`defineProviderRouteSource`（`providers.ts:126`）把它一路透传下去。
+  - **生产装配**：在 `server-state/lifecycle.test.ts` 用真实的 `createServerState` 创建 state，然后调用 `state.requestRecorder.begin(...)`，断言 `state.liveMetrics.snapshot().inFlight === 1`。这证明 recorder 和 state 拿到的是同一个实例。
+  - **pipeline 集成**：在 `routes/pipeline/model-stream.lifecycle.test.ts` 和 `raw-fallback.test.ts` 的现有 setup 上追加用例，向 recording 注入 `createLiveMetrics()`，断言 `snapshot().inFlight`：
     - 客户端在流中途取消后回到 0。
     - 上游空闲超时后回到 0。
     - 第一个候选失败、fallback 到第二个候选期间始终为 1（同一请求只计一次），结束后回到 0。
@@ -188,7 +190,8 @@
   - 透传 SSE（OpenAI-compatible，`live: true`）：两个 content chunk 共 7 个字符，`recordContent` 总和为 7；最终 usage 为 `outputTokens: 2` 时调用 `calibrate('p/m', 7, 2)`。
   - 失败、取消、空闲超时时不调用 `calibrate`。
   - 在上游 finish 之前取消，不校准；在上游 finish 之后、向客户端转发时才取消，仍然校准（这是 spec 规定的时机）。
-  - **pipeline 接线**：在 `routes/pipeline/model-stream.test.ts` 和 `raw-session.test.ts` 的现有 setup 上，组合 model / raw × `stream: true` / `stream: false` 四种情况。流式时 `snapshot().outputTokensPerSecond` 在推进时钟后大于 0；非流式时为 0。这样两个调用点漏传 `live` 都会让测试失败。
+  - **pipeline 接线**：`defineProviderRouteSource` 已经把每次 capture 的 options 记录在 `usage.stream` 和 `usage.passthrough` 里（`providers.ts:133-140`）。在 `routes/pipeline/model-stream.test.ts` 和 `raw-session.test.ts` 的现有 setup 上，组合 model / raw × `stream: true` / `stream: false` 四种情况，断言记录下来的 `live` 等于请求的 stream 标志。这样两个调用点漏传 `live` 都会让测试失败，而且不需要可控时钟。
+  - **生产装配**：在 `server-state/lifecycle.test.ts` 用真实的 `createServerState` 创建 state，调用 `state.usageCapture.stream({ …, live: true })` 先 `spyOn(state.liveMetrics, 'recordContent')`（bun:test），再喂入一个 `'hello'` 的 `text-delta` 和 finish，断言它被以 `('p/m', 5)` 调用。这证明 capture 和 state 拿到的是同一个实例，而且不需要可控时钟。
 - [ ] **Step 2: 运行**：`bun run --cwd packages/server test:unit -- src/passthrough-usage src/usage-capture src/routes/pipeline`，预期 FAIL。
 - [ ] **Step 3: 实现**：按上面 Files 的说明改。
 - [ ] **Step 4: 运行**：再跑一遍 `bun run --cwd packages/server test:unit`（整包）。预期全部 PASS，现有的 ttft 测试不改动也能通过。
@@ -405,23 +408,28 @@
   - `desktop/src/main.rs:63`：在 `app::start_health_timer(cx);` 之后调用 `app::start_live_timer(cx);`。
 
 **Interfaces:**
-- Consumes: `LiveSchedule`、`LiveDisplay`、`live::parse`、`transport::spawn`、`refresh::rediscovers_after`、`super::check_health`、`super::rediscover`；discovery 和 token 的取法与 `app/refresh.rs::summary_request` 相同。
+- Consumes: `LiveSchedule`、`LiveDisplay`、`live::parse`、`transport::spawn`、`refresh::rediscovers_after`、`super::rediscover`；discovery 和 token 的取法与 `app/refresh.rs::summary_request` 相同。
 - Produces: `pub fn start(cx: &mut App)`，与 `health::start_timer` 同构，是一个 detached 循环，每 1 s 执行一拍：
   1. 取 `epoch = model.instance_epoch`。如果 `model.live` 记录的 epoch 与它不同，就调用 `set_epoch(epoch)`。
   2. 用 `LiveKey { metrics: prefs.tray_metrics.clone(), epoch }` 判断 `due(now, &key, eligible)`，其中 `eligible = model.health.state() == HealthState::Up && 有 reachable 的 control_url && 有 token`。
-  3. 如果 `due(...)` 为 true，就 spawn 一个 `GET /dashboard/api/desktop-live`，请求带上发出时的 `epoch`。结果按以下方式处理，最后都调用 `finished()` 和 `crate::tray::sync(cx)`：
-     - 200：`accept(epoch, …)`。
-     - 401：如果 `unauthorized(epoch)` 返回 true，调用 `super::rediscover(cx)`。
-     - `HttpError::Connect` 或 `UntrustedListener`：`fail(epoch)`。另外，只要 `rediscovers_after(&error, model.gone_rediscovered_at, now)` 为真，就记下时间，再调用 `super::check_health(cx)` 和 `super::rediscover(cx)`。这和 summary 轮询发现服务消失时的处理方式相同，有 5 s 节流。
-     - 其他错误：`fail(epoch)`。
-  4. 如果 `eligible` 为 false，且显示的不是 `Unavailable`，就调用 `crate::tray::sync(cx)`，让菜单栏立即反映服务停止。
+  3. 如果 `due(...)` 为 true，就 spawn 一个 `GET /dashboard/api/desktop-live`，请求带上发出时的 `epoch`。响应回来后：
+     - **先**比较这个 `epoch` 与**当前**的 `model.instance_epoch`。如果不同，说明请求发出后实例已被替换，只调用 `finished()` 释放调度状态，不调用 `accept`、`fail`、`rediscover` 中的任何一个。
+     - epoch 一致时，按结果处理：
+       - 200：`accept(epoch, …)`。
+       - 401：如果 `unauthorized(epoch)` 返回 true，调用 `super::rediscover(cx)`。
+       - `HttpError::Connect` 或 `UntrustedListener`：`fail(epoch)`。另外，只要 `rediscovers_after(&error, model.gone_rediscovered_at, now)` 为真，就记下当前时间并调用 `super::rediscover(cx)`。这与 summary 轮询发现服务消失时的处理相同，有 5 s 节流。
+       - 其他错误：`fail(epoch)`。
+     - 最后调用 `finished()` 和 `crate::tray::sync(cx)`。
+  4. 每一拍末尾都调用 `crate::tray::sync(cx)`。它本身很便宜，而且 `Shown` 没变化时不会重绘。这样 discovery 或健康状态的变化在 1 s 内就能反映到菜单栏上。
 
-  有了这个循环，健康状态变化、实例替换、Stop/Start、面板开关、偏好修改都不需要单独接线，下一拍会自动按最新状态拉取；旧实例的迟到响应会被 epoch 挡掉。
+  有了这个循环，健康状态变化、实例替换、Stop/Start、面板开关、偏好修改都不需要单独接线，下一拍会自动按最新状态拉取。
 
-  **服务停止的检测时限**：
-  - 选了 1 s 指标时，连接失败会立刻触发健康检查（节流 5 s），健康检查需要连续两次失败才判定 Down。所以菜单栏约 1 s 后变暗，约 5–10 s 后文字消失。
-  - 只选今日类指标时，每 15 s 才拉一次，最长约 30 s 后文字消失。
-  - 不改动健康检查本身的 60 s 周期。
+  **服务停止的检测**：不依赖健康检查要连续失败两次才判定 Down 的机制，也不新增额外的探测调度。
+  - Task 12 的 `shown_for` 把「`discovery` 不存在，或 `!discovery.instance.reachable`」和健康状态 Down 同等对待：文字隐藏、图标变暗。
+  - 一次连接失败就会触发 rediscovery。rediscovery 回报不可达后，下一拍菜单栏就隐藏文字。
+  - 如果 rediscovery 仍然回报可达，live 会继续每拍失败，3 次之后显示 `—`。
+  - 时限：选了 1 s 指标时，约等于一次 rediscovery 的耗时加 1 s；只选今日类指标时，最长约 15 s 加一次 rediscovery。
+  - 健康检查的 60 s 周期不改。
 
 - [ ] **Step 1: 实现**：规则已由 Task 9 的纯函数测试覆盖，这里只写胶水代码。
 - [ ] **Step 2: 验证**：`cargo test --manifest-path desktop/Cargo.toml` 全绿；`cargo clippy --manifest-path desktop/Cargo.toml -- -D warnings` 无告警。
@@ -476,7 +484,8 @@
       }
       ```
     - 新增纯函数 `pub fn shown_for(model: &AppModel, color: [u8; 3]) -> Shown`，规则如下：
-      - 服务 Down：没有 lines，与现状一致。
+      - 下列任一情况都视为停止：健康状态 Down，没有 `discovery`，或 `!discovery.instance.reachable`。此时没有 lines，图标变暗，与现状一致。
+      - `model.live` 记录的 epoch 与 `model.instance_epoch` 不同（实例刚被替换、下一拍还没到）：按 `Unavailable` 处理，不显示旧实例的数字。
       - `Unavailable`：每行为 `—`。
       - `Stale`：`dimmed = true`。
     - `sync()` 在 `Shown` 变化时重绘：有 lines 时调用 `metrics_image::render`，否则调用 `icon_rgba`。
@@ -494,7 +503,9 @@
   - Fresh → Stale，数值不变：两次的 `Shown` 不相等（只有 `dimmed` 不同），保证一定会重绘。
   - Stale → Fresh 时同样不相等。
   - 服务 Down 时 `lines` 为空。
+  - 健康状态仍为 Up 但 `discovery.instance.reachable == false` 时，`lines` 为空且图标变暗。
   - 连续失败 3 次后 `lines` 全为 `—`。
+  - 已 accept 过数据后，只把 `model.instance_epoch` 加一（还没走到下一拍的 `set_epoch`），`lines` 全为 `—`，不出现旧数字。
 - [ ] **Step 2: 运行**：`cargo test --manifest-path desktop/Cargo.toml tray::`，预期 FAIL。
 - [ ] **Step 3: 实现 `shown_for` 和 `render`**：
   - 用 `NSBitmapImageRep::initWithBitmapDataPlanes…` 创建 RGBA 8 bit 位图。
@@ -508,7 +519,7 @@
   - 切换 Labels：`TOK 1.23M` 与 `1.23M tok` 互换。
   - 关掉 Show Icon：只剩文字。
   - 亮色和暗色菜单栏下都能看清。
-  - 勾选 tok/s 时执行 `aiop stop`：约 1 s 后变暗，约 10 s 内文字消失；`aiop start` 后自动恢复。
+  - 勾选 tok/s 时执行 `aiop stop`：数秒内文字消失、图标变暗；只勾今日类指标时，约 15 s 内文字消失。`aiop start` 后自动恢复。
   - 在面板打开期间执行 `aiop restart` 替换实例：旧实例的数字不会闪回。
   - 关闭面板后数字照常更新。
   - 重启 app 后偏好保留。
