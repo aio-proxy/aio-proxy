@@ -10,9 +10,11 @@ use crate::app::{AppEvent, AppModel};
 use crate::client::health::HealthState;
 
 mod menu;
+mod metrics;
 mod mode;
 
 pub use menu::{CliOffer, MenuCommand, MenuEntry, menu_entries};
+pub use metrics::*;
 pub use mode::{CloseAction, TrayMode, close_action, next_mode};
 
 /// macOS: 18 pt tall at 2x. Elsewhere the icon is square, as the status-notifier hosts and the
