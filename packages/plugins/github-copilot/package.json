@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/plugin-github-copilot",
-  "version": "0.37.0",
+  "version": "0.39.1",
   "private": true,
   "files": [
     "dist"
@@ -16,7 +16,7 @@
     "build": "rslib",
     "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
-    "test:unit": "bun test --preload=./test/setup.ts",
+    "test:unit": "bun test",
     "test:artifact": "bun test ./oauth.smoke.ts"
   },
   "dependencies": {

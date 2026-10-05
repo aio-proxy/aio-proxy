@@ -158,8 +158,9 @@ pub fn offered_actions(d: &Discovery, persistent: bool) -> Offered {
 pub enum Mutation {
     /// `aio-proxy service <verb>`, always with `AIO_PROXY_DESKTOP_EXEC` set.
     Service(&'static str),
-    /// `launchctl kickstart -k gui/<uid>/com.aio-proxy.agent`: restarts an external service without
-    /// rewriting its plist (`service restart` would rewrite it to the invoking binary).
+    /// Restarts an external service without rewriting its unit (`service restart` would rewrite it to the
+    /// invoking binary): `launchctl kickstart -k` on macOS, `systemctl --user restart` on Linux, and
+    /// `service stop` then `service start` through the stable CLI on Windows.
     Kickstart,
 }
 

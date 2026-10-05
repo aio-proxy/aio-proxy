@@ -5,6 +5,7 @@ import {
   AgentRevokeResponseSchema,
   type AgentAdminSnapshot,
   type AgentInstallationSummary,
+  type ClaudeCodeSetupPlan,
   type AgentPluginTarget,
   type AgentRevokeStatus,
   type AgentTarget,
@@ -14,6 +15,18 @@ import packageJson from '../../package.json' with { type: 'json' };
 import { defaultCliDeps, type CliDeps } from '../dashboard-assets';
 import { resolveGrokExecutable } from '../executable';
 import { agentFiles } from './assets';
+import {
+  buildClaudeCodeSetupPlan,
+  configureClaudeCode,
+  configureClaudeCodeAgent,
+  listClaudeCode,
+  removeClaudeCode,
+  resolveClaudeCodeExecutable,
+  type ClaudeCodeConfigureResult,
+  type ClaudeCodeKeySelector,
+  type ClaudeCodeListResult,
+  type ClaudeCodeRemoveResult,
+} from './claude-code';
 import {
   configureCodexAgent,
   listCodexAgent,
@@ -70,6 +83,14 @@ export type AgentCommandDeps = {
     readonly list: (check: boolean) => Promise<CodexListResult>;
     readonly remove: () => Promise<CodexRemoveResult>;
   };
+  readonly claudeCode: {
+    readonly detected: () => boolean;
+    /** Without a selector the key is chosen in the terminal. */
+    readonly configure: (selectKey?: ClaudeCodeKeySelector) => Promise<ClaudeCodeConfigureResult>;
+    readonly plan: () => Promise<ClaudeCodeSetupPlan>;
+    readonly list: (check: boolean, configuredEndpoint: string | undefined) => Promise<ClaudeCodeListResult>;
+    readonly remove: () => Promise<ClaudeCodeRemoveResult>;
+  };
   readonly grok: {
     readonly configure: typeof configureGrok;
     readonly inspect: typeof inspectGrok;
@@ -121,6 +142,7 @@ export type AgentListResult = {
   readonly catalogSchemaVersions?: readonly number[];
   readonly authorizations?: readonly AgentAuthorizationListItem[];
   readonly codex: CodexListResult;
+  readonly claudeCode: ClaudeCodeListResult;
 };
 
 export type PluginAgentConfigureResult = {
@@ -159,8 +181,16 @@ export type GrokAgentRemoveResult = {
   readonly retainedFiles?: readonly string[];
 };
 
-export type AgentConfigureResult = PluginAgentConfigureResult | CodexConfigureResult | GrokAgentConfigureResult;
-export type AgentRemoveResult = PluginAgentRemoveResult | CodexRemoveResult | GrokAgentRemoveResult;
+export type AgentConfigureResult =
+  | PluginAgentConfigureResult
+  | CodexConfigureResult
+  | GrokAgentConfigureResult
+  | ClaudeCodeConfigureResult;
+export type AgentRemoveResult =
+  | PluginAgentRemoveResult
+  | CodexRemoveResult
+  | GrokAgentRemoveResult
+  | ClaudeCodeRemoveResult;
 
 export type AgentRevokeResult = {
   readonly installationId: string;
@@ -194,6 +224,13 @@ export const createAgentCommandDeps = (cliDeps: CliDeps): AgentCommandDeps => {
       configure: configureCodexAgent,
       list: listCodexAgent,
       remove: removeCodexAgent,
+    },
+    claudeCode: {
+      detected: () => resolveClaudeCodeExecutable() !== undefined,
+      configure: (selectKey) => (selectKey === undefined ? configureClaudeCodeAgent() : configureClaudeCode(selectKey)),
+      plan: buildClaudeCodeSetupPlan,
+      list: listClaudeCode,
+      remove: removeClaudeCode,
     },
     grok: {
       configure: configureGrok,
@@ -237,6 +274,7 @@ export async function agentConfigure(
   const resolved = commandDeps(deps);
   if (target === 'codex') return resolved.codex.configure(options);
   if (options.restoreMigration !== undefined) throw new Error('--restore-migration is only supported for codex');
+  if (target === 'claude-code') return resolved.claudeCode.configure();
   if (target === 'grok') {
     const host = await requireDetectedHost('grok', resolved);
     const location = await resolved.resolveLocation('grok');
@@ -304,6 +342,7 @@ export async function agentConfigure(
 export async function agentRemove(target: string, deps?: AgentCommandDeps): Promise<AgentRemoveResult> {
   const resolved = commandDeps(deps);
   if (target === 'codex') return resolved.codex.remove();
+  if (target === 'claude-code') return resolved.claudeCode.remove();
   if (target === 'grok') {
     const location = await resolved.resolveLocation('grok');
     const removed = await resolved.grok.remove(location.hostRoot, resolved.adapterVersion, resolved.grok.deps);

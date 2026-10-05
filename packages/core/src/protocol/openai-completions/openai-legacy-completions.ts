@@ -8,7 +8,7 @@ import {
 } from '../../ingress/openai-legacy-completions';
 import { defineProtocolAdapter, type EmptyProtocolContext } from '../adapter';
 import { openAICompletionsErrors } from '../errors';
-import { readJsonRequest } from '../request';
+import { readJsonRequest } from '../request/index';
 import type { SessionCandidate } from '../session';
 import { rewriteOpenAICompletionsRaw } from './completions-raw';
 

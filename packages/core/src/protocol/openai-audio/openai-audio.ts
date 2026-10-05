@@ -12,7 +12,7 @@ import {
 import { type AudioInvocation, type AudioResult, defineAudioProtocolAdapter } from '../audio-adapter';
 import { openAIAudioErrors } from '../errors';
 import { stripHopHeaders } from '../headers';
-import { readJsonRequest, readRequestText, type RequestBodyLimits } from '../request';
+import { readJsonRequest, readRequestText, type RequestBodyLimits } from '../request/index';
 import { renderTranscription, RENDERABLE_TRANSCRIPTION_FORMATS } from './transcription-egress';
 
 export type OpenAIAudioOperation = 'speech' | 'transcriptions' | 'translations';

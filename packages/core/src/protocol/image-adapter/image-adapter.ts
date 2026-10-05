@@ -7,7 +7,7 @@ import type {
   ProtocolRequestDiagnostic,
   SharedProtocolAdapter,
 } from '../adapter';
-import { REQUEST_BODY_LIMITS, type RequestBodyLimits } from '../request';
+import { currentRequestBodyLimits, type RequestBodyLimits } from '../request/index';
 
 export type ImageBytesRef = {
   readonly type: 'bytes';
@@ -97,7 +97,7 @@ export type ImageProtocolAdapterDefinition<TRequest, TContext> = Omit<
 
 const noDimensions = (): AliasDimensions => ({});
 const noRequestDiagnostics = (): readonly ProtocolRequestDiagnostic[] => [];
-const defaultBodyLimits = (): RequestBodyLimits => REQUEST_BODY_LIMITS;
+const defaultBodyLimits = (): RequestBodyLimits => currentRequestBodyLimits();
 
 export function defineImageProtocolAdapter<TRequest, TContext>(
   definition: ImageProtocolAdapterDefinition<TRequest, TContext>,

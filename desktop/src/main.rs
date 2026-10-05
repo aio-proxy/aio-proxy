@@ -1,33 +1,38 @@
-//! The menu-bar app: GPUI application, single-instance lock, tray, wake notification, `--version`.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+//! The menu-bar app: GPUI application, single-instance lock, tray, `--version`.
 
-use std::path::PathBuf;
-use std::ptr::NonNull;
-
-use aio_proxy_desktop::app::{self, AppEvent, AppModel, changed};
-use aio_proxy_desktop::install::{self, Paths};
+use aio_proxy_desktop::app::{self, ActionState, AppEvent, AppModel, changed};
+use aio_proxy_desktop::install;
 use aio_proxy_desktop::panel::{self, PanelWindow};
 use aio_proxy_desktop::version::APP_VERSION;
-use aio_proxy_desktop::{http, log, theme, tray, updater};
-use block2::RcBlock;
+use aio_proxy_desktop::{log, platform, theme, tray};
 use futures::StreamExt;
-use futures::channel::mpsc::{self, UnboundedSender};
+use futures::channel::mpsc;
 use gpui_kit::App;
-use objc2::MainThreadMarker;
-use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSWorkspace, NSWorkspaceDidWakeNotification};
-use objc2_foundation::{NSNotification, NSOperationQueue};
 
 fn main() {
+    // cargo-packager-updater's Linux `check()` sets these when unset, from its own thread, while
+    // GPUI's C libraries read the environment: setenv racing getenv. Set the same defaults first,
+    // so the library never writes.
+    #[cfg(target_os = "linux")]
+    for (name, default) in [("SSL_CERT_FILE", "/etc/ssl/certs/ca-certificates.crt"), ("SSL_CERT_DIR", "/etc/ssl/certs")]
+    {
+        if std::env::var_os(name).is_none() {
+            // SAFETY: no other thread exists yet.
+            unsafe { std::env::set_var(name, default) };
+        }
+    }
     if std::env::args().nth(1).as_deref() == Some("--version") {
         println!("{APP_VERSION}");
         return;
     }
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
-        eprintln!("aio-proxy-desktop: HOME is not set");
+    let Some(home) = std::env::home_dir() else {
+        eprintln!("aio-proxy-desktop: cannot find the home directory");
         std::process::exit(1);
     };
-    let paths = Paths::for_home(&home);
+    let paths = platform::paths(&home);
     log::init(&paths.logs);
-    // Held until the process exits; the kernel drops the flock then.
+    // Held until the process exits; the OS drops the lock then.
     let _lock = match install::acquire_instance_lock(&paths.lock) {
         Ok(Some(lock)) => lock,
         Ok(None) => {
@@ -43,32 +48,29 @@ fn main() {
         std::env::current_exe().ok().and_then(|exe| exe.canonicalize().ok()).and_then(|exe| install::bundle_of(&exe));
     log::info(format!("aio-proxy-desktop {APP_VERSION} starting from {bundle:?}"));
 
-    gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(move |cx| {
+    gpui_kit::application().with_assets(aio_proxy_desktop::assets::AppAssets).run(move |cx| {
         gpui_kit::init(cx);
         theme::apply(cx.window_appearance(), cx);
-        cx.set_http_client(std::sync::Arc::new(http::UrlSession));
-        // GPUI forces the Regular policy in applicationDidFinishLaunching; LSUIElement covers launch.
-        let mtm = MainThreadMarker::new().expect("GPUI runs this callback on the main thread");
-        NSApplication::sharedApplication(mtm).setActivationPolicy(NSApplicationActivationPolicy::Accessory);
-
+        cx.set_http_client(std::sync::Arc::new(reqwest_client::ReqwestClient::new()));
         let (events, mut inbox) = mpsc::unbounded::<AppEvent>();
+        platform::on_launch(cx, events.clone());
+
         cx.set_global(AppModel::new(paths, bundle));
         cx.set_global(PanelWindow::default());
-        cx.set_global(tray::build(events.clone()).expect("create the menu-bar icon"));
-        updater::start(events.clone());
-        observe_wake(events);
+        tray::install(cx, events.clone());
+        platform::updater::start(events.clone());
         app::start(cx);
         app::start_health_timer(cx);
         cx.spawn(async move |cx| {
             while let Some(event) = inbox.next().await {
-                cx.update(|cx| handle(cx, event));
+                cx.update(|cx| handle(cx, event, &events));
             }
         })
         .detach();
     });
 }
 
-fn handle(cx: &mut App, event: AppEvent) {
+fn handle(cx: &mut App, event: AppEvent, events: &mpsc::UnboundedSender<AppEvent>) {
     match event {
         AppEvent::TogglePanel => panel::toggle(cx),
         AppEvent::ClosePanel => panel::close_open(cx),
@@ -82,23 +84,37 @@ fn handle(cx: &mut App, event: AppEvent) {
             cx.global_mut::<AppModel>().update_pending = None;
             changed(cx);
         }
+        AppEvent::UpToDate => {
+            cx.global_mut::<AppModel>().show_update_outcome(ActionState::Done("AIO Proxy is up to date.".into()));
+            changed(cx);
+        }
+        AppEvent::UpdateProgress(text) => {
+            cx.global_mut::<AppModel>().show_update_outcome(ActionState::Done(text));
+            changed(cx);
+        }
+        AppEvent::UpdateFailed(error) => {
+            cx.global_mut::<AppModel>().show_update_outcome(ActionState::Failed(error));
+            changed(cx);
+        }
+        AppEvent::OpenUrl(url) => cx.open_url(&url),
+        #[cfg(target_os = "linux")]
+        AppEvent::RelaunchInto(appimage) => {
+            use std::os::unix::process::CommandExt;
+            // The instance lock is close-on-exec (std opens files O_CLOEXEC), so the new image takes it.
+            let error = std::process::Command::new(&appimage).exec();
+            log::info(format!("updater: cannot relaunch {}: {error}", appimage.display()));
+            let message = format!("Updated, but could not relaunch: {error}. Quit and reopen AIO Proxy.");
+            cx.global_mut::<AppModel>().show_update_outcome(ActionState::Failed(message));
+            changed(cx);
+        }
+        AppEvent::TrayHost(owned) => {
+            // A watcher with no host registered yet (KDE login, a just-enabled GNOME extension) still
+            // refuses the icon, so the mode follows the icon, not the watcher.
+            let shown = owned && {
+                tray::install(cx, events.clone());
+                cx.has_global::<tray::Tray>()
+            };
+            panel::tray_host_changed(cx, shown);
+        }
     }
-}
-
-/// `NSWorkspaceDidWakeNotification` on the main queue, for the life of the app.
-fn observe_wake(events: UnboundedSender<AppEvent>) {
-    let block = RcBlock::new(move |_: NonNull<NSNotification>| {
-        let _ = events.unbounded_send(AppEvent::Wake);
-    });
-    let center = NSWorkspace::sharedWorkspace().notificationCenter();
-    // SAFETY: AppKit's static notification name; the main queue runs the block on the main thread.
-    let observer = unsafe {
-        center.addObserverForName_object_queue_usingBlock(
-            Some(NSWorkspaceDidWakeNotification),
-            None,
-            Some(&NSOperationQueue::mainQueue()),
-            &block,
-        )
-    };
-    std::mem::forget(observer);
 }

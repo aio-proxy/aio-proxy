@@ -40,8 +40,10 @@
       "title_plugin_prune": "aio-proxy · プラグインを整理",
       "title_provider_login": "aio-proxy · Provider にログイン",
       "title_codex_configure": "aio-proxy · Codex を設定",
+      "title_claude_code_configure": "aio-proxy · Claude Code を設定",
       "outro_provider_login": "ログインしました",
       "outro_codex_configure": "Codex の設定が完了しました",
+      "outro_claude_code_configure": "Claude Code の設定が完了しました",
       "provider_list_empty": "Provider はありません",
       "status_deep_unexpected": "Provider の健全性データを表示できません",
       "header_name": "名前",
@@ -71,6 +73,16 @@
     "dashboard": {
       "description": "AIO Proxy ダッシュボードを開きます",
       "opened": "既定のブラウザーでダッシュボードを開きました"
+    },
+    "provider_login": {
+      "method_prompt": "どの方法でログインしますか？",
+      "method_local": "このマシンの {source} のログインを使用",
+      "method_browser": "ブラウザーでログイン",
+      "option_local_sign_in_description": "このマシンのツールに保存されているログインを使用",
+      "error_local_sign_in_unavailable": "このマシンに {source} のログイン情報が見つかりませんでした。",
+      "error_local_sign_in_unavailable_generic": "このマシンにログイン情報が見つかりませんでした。",
+      "error_local_sign_in_invalid": "このマシンのログイン情報は無効または不完全です。ツールで再度ログインしてから、もう一度お試しください。",
+      "error_local_sign_in_stale": "aio-proxy はこの Provider の新しいログイン情報をすでに保持しています。次回の更新時にツールのログイン情報を更新します。"
     },
     "provider": {
       "description": "プロバイダーパッケージを管理します",
@@ -215,6 +227,7 @@
       "diagnostic_credential_refresh_failed": "プロバイダー {provider} の認証情報の更新に失敗しました",
       "diagnostic_authorization_failed": "プロバイダー {provider} の認可に失敗しました",
       "diagnostic_catalog_unavailable": "プロバイダー {provider} のモデルカタログが利用できません",
+      "diagnostic_catalog_unsupported": "プロバイダー {provider} は上流のモデル一覧を取得できないため、syncModels を使用できません",
       "diagnostic_proxy_unsupported": "プロバイダー {provider} は設定されたプロキシをサポートしていません",
       "diagnostic_runtime_create_failed": "プロバイダー {provider} のランタイムを作成できませんでした",
       "state_failed": "読み込み失敗"
@@ -266,8 +279,15 @@
       "auto_install_failed": "サービスの自動インストールまたは起動に失敗しました: {reason}。エラーを解決してから `aio-proxy service install --user`、`aio-proxy service start` を実行してください。",
       "command_failed": "サービスコマンドが失敗しました: {command} (終了コード {code})",
       "bootout_timeout": "`launchctl bootout {target}` から {seconds} 秒経ってもサービスがまだロードされています。再起動は行いません",
+      "task_owned_by_other_user": "スケジュールされたタスク {path} は別のユーザーとして実行されます。置き換えは行いません",
+      "external_task_unusable": "{path} のサービスは別のインストーラーが管理しており、そのプログラムが見つかりません。元のツールで再インストールしてください",
+      "supervisor_timeout": "`schtasks /End` から {seconds} 秒経ってもサービスのスーパーバイザーがまだ実行中です。タスクは削除しません",
+      "local_app_data_missing": "LOCALAPPDATA が設定されていないため、Windows サービスのファイルの場所を特定できません",
+      "restore_failed": "以前のサービス定義を復元できませんでした。`aio-proxy service install` を実行して修復してください",
       "unsupported_platform": "service コマンドはこのプラットフォームをサポートしていません: {platform}",
       "system_unsupported": "システムスコープのインストールは現在未対応です。代わりにユーザーごとのサービスとしてインストールしてください",
+      "systemctl_missing": "systemctl が見つかりません。Linux のバックグラウンドサービスには systemd が必要です",
+      "systemd_user_unavailable": "systemd ユーザーマネージャーに接続できません (`systemctl --user` が失敗しました)。バックグラウンドサービスには systemd のログインセッションが必要です",
       "exec_not_found": "PATH 上に \"aio-proxy\" 実行ファイルが見つかりません。サービスをインストールする前に aio-proxy をグローバルにインストールしてください (例: `npm i -g aio-proxy`)",
       "env_hint": "設定内の env テンプレートで参照されるプロバイダー環境変数は {path} から読み取られます。`KEY=value` 形式で 1 行ずつ記述して作成してください。マネージドサービスはシェル環境を継承しません"
     },
@@ -433,6 +453,19 @@
         "restore_option": "操作 UUID で Codex 移行を復元",
         "pending_recovery": "前回の Codex 設定操作が保留中です。続行する前に復元しますか？",
         "not_installed": "Codex CLI が見つかりません。"
+      },
+      "claude_code": {
+        "configured": "claude-code: 設定を {configPath} に {status} しました。",
+        "credential_placeholder": "AIO Proxy では API キー認証が有効でないため、秘密ではないプレースホルダートークンを書き込みました。これがないと Claude Code は claude.ai ログインを使い続けます。",
+        "credential_existing": "選択した AIO Proxy API キーを ANTHROPIC_AUTH_TOKEN に書き込みました。",
+        "offline": "Claude Code の設定を保存しましたが、プロキシを確認できませんでした。",
+        "restart": "変更を反映するには Claude Code を再起動してください。",
+        "key_required": "AIO Proxy で API キーが有効なため、キーを選択する必要があります。対話型ターミナルでこのコマンドを実行するか、ダッシュボードの Agents ページを使用してください。ファイルは変更されていません。",
+        "credential_failed": "AIO Proxy の API キーを確定できませんでした（{code}）。ファイルは変更されていません。",
+        "endpoint_changed": "Claude Code の設定中に aio-proxy のアドレスが変わりました。ファイルは変更されていません。もう一度コマンドを実行してください。",
+        "modified": "AIO Proxy が管理する Claude Code 設定が変更されています: {fields}。aiop agent remove claude-code を実行してから再設定してください。ファイルは変更されていません。",
+        "removed": "Claude Code の管理設定を {configPath} から {status} しました。",
+        "preserved": "編集済みのフィールドは保持しました: {fields}。"
       },
       "grok_login": "次のコマンドでサインインします: grok login",
       "grok_models": "grok models でモデルを一覧し、grok -m <model-id> でセッションを開始します。",
@@ -737,6 +770,8 @@
       "load_failed": "ルーティングを読み込めませんでした。もう一度お試しください。",
       "retry": "再試行",
       "read_only": "このサーバーには書き込み可能な設定ファイルがありません。ルーティングは確認できますが保存できません。",
+      "selection_quota_reset": "リセットが最も早いサブスクリプションから消費する",
+      "selection_quota_reset_description": "同じ priority 層の中で、重み付き抽選の前にクォータのリセットが最も早いサブスクリプションを試します。セッションアフィニティは引き続き優先されます。",
       "table": {
         "label": "モデルルート",
         "filter": "モデルを絞り込み",
@@ -1060,7 +1095,13 @@
         "reauthorize_helper": "アカウント設定の変更は認可が成功した後にのみ保存されます",
         "copied_device_code": "デバイスコードをクリップボードにコピーしました",
         "open_authorization_aria": "認可ページを開く",
-        "start_failed": "認可を開始できませんでした。サーバーを確認して再試行してください。"
+        "start_failed": "認可を開始できませんでした。サーバーを確認して再試行してください。",
+        "use_local_sign_in": "{source} のログインを使用",
+        "local_sign_in_confirm_title": "このマシンの {source} のログインを使用しますか？",
+        "local_sign_in_confirm_description": "aio-proxy は、{source} がこのマシンに保存しているログイン情報を読み取り、トークンの更新時に同期します。この Provider を削除しても、{source} からはログアウトされません。",
+        "local_sign_in_unavailable": "このマシンのログイン情報は利用できなくなりました。ツールでログインしてから、もう一度お試しください。",
+        "local_sign_in_invalid": "このマシンのログイン情報を使用できませんでした。ツールで再度ログインしてから、もう一度お試しください。",
+        "local_sign_in_stale": "aio-proxy はすでに新しいログイン情報を保持しています。このマシンのログイン情報は、トークンの更新時に更新されます。"
       },
       "transforms": {
         "description": "上流に送信する前に適用するリクエストの書き換えをカスタマイズします。一致条件と更新アクションはルールの順に実行されるため、後のルールは前のルールの結果を参照します。",
@@ -1375,6 +1416,11 @@
         "models_empty_title": "モデルがまだありません",
         "models_empty_description": "上流カタログを取得するか、モデル ID を直接入力してください。",
         "models_filter_no_matches": "この絞り込みに一致するモデルはありません",
+        "models_manual_label": "手動",
+        "models_sync_label": "上流と同期",
+        "models_sync_hint": "上流の新しいモデルは自動で追加されます。不要なモデルは非表示にできます。",
+        "models_sync_refreshed_at": "最終更新：{time}",
+        "models_sync_never": "まだ更新されていません",
         "models_upstream_heading": "上流モデル",
         "models_upstream_hint": "有効にしたモデルだけが、直接呼び出すモデル、エイリアスの対象、テスト用モデルになれます。",
         "manual_models": "モデルを手動で追加",
@@ -1462,7 +1508,9 @@
       "new_title": "新規プロバイダー",
       "edit_title": "プロバイダーを編集",
       "aliases_title": "プロバイダーのエイリアス",
-      "kind_not_supported": "プロバイダーの種類 \"{kind}\" は UI からの作成に対応していません"
+      "kind_not_supported": "プロバイダーの種類 \"{kind}\" は UI からの作成に対応していません",
+      "local_sign_in_badge": "このマシンの {source} のログインに連携済み",
+      "local_sign_in_delete_note": "この Provider は、このマシンの {source} のログインを使用しています。削除しても、{source} からはログアウトされません。"
     },
     "usage": {
       "range_label": "時間範囲",
@@ -1702,7 +1750,7 @@
         "not_installed": "このマシンに {target} が見つかりません。",
         "conflict": "{target} のファイルは完全な AIO Proxy 管理の連携ではありません。CLI で解決してください。",
         "recovery_required": "中断したセットアップを先に復旧する必要があります。ターミナルで configure コマンドを実行してください。",
-        "modified": "AIO Proxy が管理する一部のフィールドが編集されています。修復すると元に戻します。",
+        "modified": "AIO Proxy が管理する一部のフィールドが編集されています。連携を削除（編集内容は保持されます）してから、もう一度設定してください。",
         "missing": "一部の管理ファイルがありません。修復すると再インストールします。",
         "outdated": "この AIO Proxy には新しいアダプターが含まれています。"
       },
@@ -1753,10 +1801,11 @@
         "invalid_provider_id": "プロバイダー ID が空か予約済みです。",
         "occupied_provider_id": "そのプロバイダー ID は config.toml で使用中です。",
         "endpoint_changed": "セットアップ中に AIO Proxy のアドレスが変わりました。再試行してください。",
+        "configuration_modified": "AIO Proxy が管理するフィールドが編集されているため、上書きしません。連携を削除（編集内容は保持されます）してから、もう一度設定してください。",
         "authorization_denied": "デバイスは拒否されました。",
         "authorization_expired": "承認リクエストの期限が切れました。",
         "recovery_required": "中断したセットアップを CLI で先に復旧してください。",
-        "plan_stale": "入力中に Codex の状態が変わりました。確認してもう一度保存してください。",
+        "plan_stale": "入力中に設定の状態が変わりました。確認してもう一度保存してください。",
         "cancelled": "キャンセルしました。",
         "operation_in_progress": "この Agent の操作はすでに実行中です。",
         "unknown": "問題が発生しました。AIO Proxy のログを確認してください。",
@@ -1795,6 +1844,7 @@
         "actions": "操作",
         "empty": "認可はまだありません。",
         "codex_keep": "ChatGPT ログイン維持モードは API キーで AIO Proxy に接続するため、ここに認可はありません。",
+        "claude_code_static": "Claude Code は API キーまたはプレースホルダートークンで AIO Proxy に接続するため、ここに認可はありません。",
         "filter": "認可を絞り込む",
         "filter_placeholder": "Installation ID またはバージョンで検索"
       },
@@ -1840,6 +1890,11 @@
         "conflict": "config.toml の AIO Proxy エントリーがあなたの編集と競合しています。CLI で解決してください。",
         "submit": "保存",
         "current": "プロバイダー {providerId}、{mode}"
+      },
+      "claude_code": {
+        "key_help": "Claude Code の settings.json の ANTHROPIC_AUTH_TOKEN に書き込まれます。",
+        "key_placeholder": "API キーを選択",
+        "key_required": "Claude Code が使う API キーを選択してください。"
       },
       "card": {
         "via": {

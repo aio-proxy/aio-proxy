@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { ModelInvocation } from '../adapter';
 import { normalizeEffort } from '../reasoning-effort/index';
-import { readRequestText } from '../request';
+import { readRequestText } from '../request/index';
 
 const bodySchema = z.object({}).catchall(z.unknown());
 

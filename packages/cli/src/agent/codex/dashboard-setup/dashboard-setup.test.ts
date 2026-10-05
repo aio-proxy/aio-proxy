@@ -210,7 +210,7 @@ for (const failure of [false, true]) {
     const root = await mkdtemp(join(tmpdir(), 'aio-codex-dashboard-catalog-'));
     const location = resolveCodexLocation(root, {});
     const fixture = setupFixture();
-    const catalog = { models: [] };
+    const catalog = { models: [{ slug: 'test-model' }] };
     const deps: CodexDashboardDeps = {
       ...fixture.deps,
       location,

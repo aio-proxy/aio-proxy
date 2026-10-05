@@ -10,6 +10,7 @@ import {
 
 import { CHATGPT_CATALOG_TTL_MS, CHATGPT_IMAGE_MODELS, discoverOpenAIChatGPTModels } from '../catalog';
 import { extractAccountId, extractEmail, normalizeChatGPTEmail } from '../jwt';
+import { createCodexLocalSignIn } from '../local-sign-in';
 import {
   ChatGPTAccountIdMissingError,
   CHATGPT_CLIENT_ID,
@@ -59,12 +60,14 @@ export type OpenAIChatGPTPresentationText = Partial<ChatGPTPluginOptionsText> & 
   readonly pluginLabel?: LocalizedText;
   readonly pluginDescription?: LocalizedText;
   readonly adapterLabel: LocalizedText;
+  readonly source?: LocalizedText;
 };
 
 export const englishPresentationText: OpenAIChatGPTPresentationText = {
   pluginLabel: 'OpenAI ChatGPT',
   pluginDescription: 'Use a ChatGPT Plus or Pro account to access models',
   adapterLabel: 'Login with ChatGPT (Plus/Pro)',
+  source: 'Codex',
   ...englishPluginOptionsText,
 };
 
@@ -85,7 +88,9 @@ export function createOpenAIChatGPTPlugin(
       expiresAt: zod.number(),
       refreshToken: zod.string(),
       email: zod.string().optional(),
+      idToken: zod.string().optional(),
     }),
+    localSignIn: { ...createCodexLocalSignIn(), source: presentationText.source ?? 'Codex' },
     login: async (context, options) => {
       await accountOptions.schema.parseAsync(options);
       const pkce = await generatePKCE();
@@ -159,6 +164,7 @@ export function createOpenAIChatGPTPlugin(
         ...(fetch === undefined ? {} : { fetch }),
         signal,
         ...(credential.email === undefined ? {} : { email: credential.email }),
+        ...(credential.idToken === undefined ? {} : { idToken: credential.idToken }),
       });
       return {
         value: refreshed,
@@ -201,10 +207,10 @@ export function createOpenAIChatGPTPlugin(
             })
           : undefined;
       register?.('openai-response', 'wrap', ({ original, evaluate }) =>
-        createGuardianRawInvoke({ pluginOptions: parsed, original, evaluate }),
+        createGuardianRawInvoke({ pluginOptions: parsed, original, evaluate, logger: api.logger }),
       );
       register?.('openai-response', 'pre-route', ({ evaluate }) =>
-        createGuardianPreRouteInvoke({ pluginOptions: parsed, evaluate }),
+        createGuardianPreRouteInvoke({ pluginOptions: parsed, evaluate, logger: api.logger }),
       );
       /*
        * The built-in API is injected by the host and is intentionally absent

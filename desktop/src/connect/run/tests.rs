@@ -74,20 +74,6 @@ fn stopped(v: &mut Value) {
 }
 
 #[test]
-fn a_user_stop_between_discovery_and_an_automatic_start_wins() {
-    let decided = discovery(stopped);
-    let host = Fake::new(vec![discovery(|v| {
-        stopped(v);
-        v["job"]["disabled"] = json!(true);
-    })]);
-    assert_eq!(
-        run_auto(&host, &decided, AutoAction::StartNoProcess, &mut AutoAttempts::default()).unwrap_err(),
-        RunError::Changed
-    );
-    assert!(host.mutations().is_empty());
-}
-
-#[test]
 fn a_click_is_refused_when_the_service_changed_owner() {
     let rendered = discovery(|_| {});
     let host = Fake::new(vec![discovery(|v| v["unit"]["owner"] = json!("external"))]);
@@ -169,16 +155,13 @@ fn no_plist(v: &mut Value) {
 }
 
 #[test]
-fn a_hand_started_instance_appearing_before_a_fresh_install_aborts_it() {
-    let host = Fake::new(vec![discovery(|v| {
-        no_plist(v);
-        v["instance"]["reachable"] = json!(true);
-    })]);
-    let mut attempts = AutoAttempts::default();
-    let error = run_auto(&host, &discovery(no_plist), AutoAction::InstallAndStart, &mut attempts).unwrap_err();
-    assert_eq!(error, RunError::Changed);
-    assert!(host.mutations().is_empty());
-    assert!(!attempts.used(AutoAction::InstallAndStart), "nothing ran, so the attempt is not spent");
+fn an_automatic_action_runs_on_its_deciding_discovery_without_rediscovering_first() {
+    // The only scripted discovery is the one after the start; a re-check before mutating would read it
+    // as "an instance appeared" and abort the install.
+    let host = Fake::new(vec![discovery(|_| {})]);
+    let after = run_auto(&host, &discovery(no_plist), AutoAction::InstallAndStart, &mut AutoAttempts::default());
+    assert!(after.unwrap().instance.reachable);
+    assert_eq!(host.mutations(), vec![Mutation::Service("install"), Mutation::Service("start")]);
 }
 
 #[test]

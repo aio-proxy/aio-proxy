@@ -6,6 +6,9 @@ export { resolveStableManagedExec } from './detect';
 
 const STABLE_NAMES = new Set(['aio-proxy', 'aio-proxy.exe']);
 
+/** Whether a file name is the aio-proxy binary itself (`aio-proxy.exe` on Windows), not a shim or interpreter. */
+export const isStableLauncherName = (name: string): boolean => STABLE_NAMES.has(name);
+
 export async function resolveInstalledLauncher(executable: string, probe?: LauncherProbeBudget): Promise<string> {
   const target = await resolveUpgradeTargetFrom(executable, process.env, probe);
   const launcher = target.method === 'binary' ? target.path : target.bin;

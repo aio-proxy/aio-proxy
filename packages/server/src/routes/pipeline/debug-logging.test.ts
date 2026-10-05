@@ -1,7 +1,7 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
 import { openAIResponsesAdapter } from '@aio-proxy/core';
-import { ProviderProtocol } from '@aio-proxy/types';
+import { ConfigSchema, ProviderProtocol } from '@aio-proxy/types';
 
 import { guardianPayloadHint } from '../../../../plugins/openai-chatgpt/src/runtime/guardian/request';
 import { defineProtocolAdapter, jsonRequest, rawProvider, REQUESTED_MODEL } from '../../../__tests__/pipeline-helpers';
@@ -459,4 +459,46 @@ test('aborting sensitive preflight releases the lease once and invokes no Provid
   await pending.catch(() => undefined);
   expect(releases).toBe(1);
   expect(provider.calls.raw).toHaveLength(0);
+});
+
+test('keeps the entry logging budget through a policy-time config replacement', async () => {
+  const fetcher = createObservedFetch((async (request: Request) => {
+    await request.text();
+    return new Response('response'.repeat(16));
+  }) as typeof globalThis.fetch);
+  const provider = rawProvider({
+    id: 'provider',
+    protocol: ProviderProtocol.OpenAIResponse,
+    invoke: (request) => fetcher(request),
+  });
+  const config = (captureMaxBytes: number) =>
+    ConfigSchema.parse({ providers: {}, server: { logging: { captureMaxBytes } } });
+  const h = pipeline([provider], {
+    debugLogging: true,
+    adapter: defineProtocolAdapter(ProviderProtocol.OpenAIResponse),
+    config: config(16),
+  });
+  const next = { ...h.source.currentProviderSnapshot(), config: config(0) };
+  let current = h.source.currentProviderSnapshot();
+  Object.assign(h.source, {
+    currentProviderSnapshot: () => current,
+    acquireProviderSnapshot: () => ({ snapshot: current, release() {} }),
+    preObservationCapturePolicy: async () => {
+      current = next;
+      return { capturePayload: true };
+    },
+  });
+  expect(await (await h.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'hello'.repeat(32) }))).text()).toBe(
+    'response'.repeat(16),
+  );
+  expect(reconstructed(h.logs, 'inbound')).toHaveLength(16);
+  for (const direction of ['inbound', 'upstream_request', 'upstream_response'] as const) {
+    expect(terminals(h.logs, direction)[0]).toMatchObject({ captureLimitBytes: 16, truncated: true });
+  }
+  h.logs.length = 0;
+  expect(await (await h.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'hello'.repeat(32) }))).text()).toBe(
+    'response'.repeat(16),
+  );
+  expect(h.logs.filter((entry) => entry.event === 'request.body_chunk')).toHaveLength(0);
+  expect(terminals(h.logs, 'inbound')[0]).toMatchObject({ captureLimitBytes: 0, omissionReason: 'capture_limit' });
 });

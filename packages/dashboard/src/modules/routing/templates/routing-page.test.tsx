@@ -106,8 +106,10 @@ const model = (
 const modelFixture = (modelId: string, catalog?: DashboardRoutingModel['catalog']) =>
   model({ modelId, ...(catalog === undefined ? {} : { catalog }) });
 
-const mockRoutingModels = (data: DashboardRoutingModelsResponse) => {
-  mocks.query.data = data;
+const mockRoutingModels = (
+  data: Omit<DashboardRoutingModelsResponse, 'selection'> & Partial<Pick<DashboardRoutingModelsResponse, 'selection'>>,
+) => {
+  mocks.query.data = { selection: 'weighted', ...data };
 };
 
 const mockRoutingTrafficPending = () => {
@@ -259,4 +261,15 @@ test('shows Retry when the routing query fails', () => {
   expect(screen.getByRole('alert')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /Retry|再試|다시|重试|重試/u }));
   expect(mocks.query.refetch).toHaveBeenCalled();
+});
+
+test('shows the reset-ordering switch with the server policy, disabled for a read-only config', () => {
+  mockRoutingModels({ writable: false, selection: 'quota-reset', models: [modelFixture('gpt-5')] });
+  mockRoutingTrafficPending();
+
+  render(<RoutingPage {...routingPageProps} />);
+
+  const toggle = screen.getByRole('switch', { name: m['dashboard.routing.selection_quota_reset']() });
+  expect(toggle).toBeChecked();
+  expect(toggle).toHaveAttribute('aria-disabled', 'true');
 });

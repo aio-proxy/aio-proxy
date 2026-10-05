@@ -7,6 +7,7 @@ export {
   oauthRefreshLease,
   pluginSecret,
 } from './plugin-oauth';
+export { providerModelCatalog } from './provider-model-catalog';
 export { sessionAffinity } from './session-affinity';
 export { sessionResponse } from './session-response';
 export { type SpanAttributesJson, type SpanEventJson, type SpanLinkJson, traceSpan } from './trace-span';

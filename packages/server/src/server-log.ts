@@ -1,7 +1,7 @@
 import type { DesktopTokenRejection } from '@aio-proxy/core';
 
 import { safeDiagnosticFields } from './request-logging/capture-policy';
-import { capturesRequestPayload } from './request-logging/context';
+import { capturesRequestPayload, type BodyCaptureReason } from './request-logging/context';
 import type { HttpRequestMetadata } from './request-logging/request-metadata';
 
 export type CodexCatalogSyncFailedLog = {
@@ -238,6 +238,9 @@ export type RequestBodyTerminalLog = RequestBodyIdentity & {
   readonly outcome: 'complete' | 'cancelled' | 'error';
   readonly errorType?: string;
   readonly omitted?: boolean;
+  readonly truncated?: boolean;
+  readonly captureLimitBytes?: number;
+  readonly omissionReason?: BodyCaptureReason;
 };
 
 export type RealtimeCallCreatedLog = {

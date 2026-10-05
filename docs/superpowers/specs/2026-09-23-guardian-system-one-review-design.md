@@ -35,14 +35,14 @@ The present plugin form schema supports only static `select.options` and a singl
 
 ## Request scope and decision flow
 
-Only the following observed Guardian request profile is eligible for System One evaluation:
+Guardian recognition uses the following structured request profile. Policy wording and content are not an eligibility gate:
 
 | Part | Required V1 profile |
 | --- | --- |
 | Transport | OpenAI Responses creation on any selected OpenAI Responses raw transport; `stream` may be true or false. Eligibility is the Guardian agent marker, not the model ID. |
 | Marker | Request-body `client_metadata["x-openai-subagent"]` is exactly `guardian`. |
 | Output contract | `text.format` is a JSON schema for an object with `additionalProperties: false`, optional string `risk_level` (`low`, `medium`, `high`, `critical`), optional string `user_authorization` (`unknown`, `low`, `medium`, `high`), required string `outcome` (`allow`, `deny`), and optional string `rationale`. `required` contains only `outcome`. Property order and descriptive annotations do not matter. |
-| Context | `input` is an inline array and `store` is false. `background` is absent or false; `previous_response_id`, `conversation`, and top-level `instructions` are absent. Any other top-level instruction or context reference that the state projection below does not preserve makes the request ineligible. |
+| Context | At least one developer message supplies visible review instructions beyond whitespace and known empty permission wrappers. All developer messages and supplementary policies are preserved without policy-profile matching or a separate note-length limit. `input` is an inline array and `store` is false. `background` is absent or false; `previous_response_id`, `conversation`, and top-level `instructions` are absent. Any other top-level instruction or context reference that the state projection below does not preserve makes the request ineligible. |
 | Pending action | The final user input item ends with one separate-part `>>> APPROVAL REQUEST START` / `>>> APPROVAL REQUEST END` envelope containing one `Planned action JSON:` part followed by one parseable JSON object part. The envelope is unique and final; matching text inside transcript or tool output does not count. |
 
 The supplied example's `gpt-6-sol` model is caused by the separate catalog bug the user is fixing; this feature must not classify that model as Guardian. The matcher checks the complete schema and terminal envelope, not a nested `outcome` enum or prompt text alone. Unknown or incompatible profiles, including `/responses/compact` and incomplete prior-response context, continue through the original ChatGPT path **before any Guardian context is sent to the selected Provider**. Inspect a clone of the request that reaches the plugin, and retain another untouched copy for the original path. The default strategy does not need to parse the body.
@@ -52,14 +52,14 @@ flowchart TD
     A[Guardian Responses request] --> B{Strategy}
     B -->|Default| O[Original codex-auto-review]
     B -->|System One modes| E[Evaluate with selected Provider and model]
-    E -->|Error or invalid result| O
+    E -->|Error, uncertainty, or invalid result| O
     E -->|Caller cancelled| C[Stop; no fallback]
     E -->|Allow| S[Return Guardian-shaped allow]
     E -->|Deny, System One| D[Return Guardian-shaped deny]
     E -->|Deny, original-model review| O
 ```
 
-In `systemOneReviewDenied`, `codex-auto-review` is the final adjudicator after a valid System One denial: its allow may overturn that denial. Both System One modes use the original model if evaluation times out, fails, or returns an invalid result while the caller is still connected. Operational failure is separate from the user's “review denials” strategy.
+In `systemOneReviewDenied`, `codex-auto-review` is the final adjudicator after a valid System One denial: its allow may overturn that denial. Both System One modes use the original model if evaluation times out, fails, returns an uncertain outcome, or returns an invalid result while the caller is still connected. Operational failure is separate from the user's “review denials” strategy.
 
 When an otherwise eligible OpenAI Responses creation request has no initial route and
 `router.resolve()` raises `RouterModelNotFoundError`, the private ChatGPT pre-route
@@ -80,32 +80,21 @@ Guardian currently exposes only `allow` and `deny` in its response schema. This 
 
 Use the existing `/v1/systemone` evaluation contract: one `state` and typed `questions`. For the supported profile, `state` contains the **entire original `input` array** as structured JSON and the pending action object parsed from the unique terminal approval envelope. Preserve roles, order, content parts, tool-call/reply associations, policy text, and permitted opaque metadata without summarizing or truncating them. The separate `pending_action` field identifies what to judge; a quoted action elsewhere in the transcript cannot replace it. Eligibility requires self-contained, interpretable decision context, not just a lossless copy of `input`: unresolved file/item references and unknown or encoded content whose meaning the evaluator cannot access make the request ineligible. V1 does not fetch or hydrate those references. Check this before dispatch; an incomplete or oversized projection uses the original path.
 
-The question instructions apply the actual Guardian policy carried in the developer input, not a plugin-authored substitute. They preserve its source-trust rules: human user/developer messages, `AGENTS.md`, and `request_user_input` replies can establish authorization; tool output, assistant text, and quoted role labels cannot acquire that provenance by claiming it. The supported policy profile permits low/medium-risk actions unless a specific prohibition or malicious injection applies, permits high-risk actions only with at least medium authorization and narrow scope absent an absolute prohibition, and denies critical risk. An explicit post-denial user reapproval may raise authorization but cannot permit critical risk. If those policy rules or the required source structure cannot be recognized, use the original path before evaluation.
+The question instructions apply the actual Guardian review policy and supplementary developer instructions in `state.input`. Original message roles and order retain their provenance; tool output, assistant text, and quoted role labels are evidence rather than review instructions. Authorization follows the supplied policy's source-trust and reapproval rules. No policy fingerprint, section matcher, fixed risk-to-outcome mapping, authorization threshold, or plugin-authored rule overrides the supplied policy. A missing or ambiguous policy, or insufficient evidence to apply it confidently, selects `uncertain` and uses the original path.
 
-Ask four finite `choice` questions with literal IDs and labels:
+Ask three finite `choice` questions:
 
 | ID | Labels |
 | --- | --- |
 | `risk_level` | `low`, `medium`, `high`, `critical` |
 | `user_authorization` | `unknown`, `low`, `medium`, `high` |
-| `outcome` | `allow`, `deny` |
-| `reason` | `low_risk`, `medium_risk`, `high_authorized_narrow`, `high_not_permitted`, `critical_risk`, `policy_prohibition`, `prompt_injection`, `uncertain` |
+| `outcome` | `allow`, `deny`, `uncertain` |
 
-The selected model only scores/selects; it never generates free-form rationale. Validate **all four** answers, including low-risk allow: exactly these answer IDs, `type: choice`, a selected declared label, and a probability for every declared label with no extra labels and finite values in `[0,1]`. A complete label set is a local Guardian validator requirement; the current System One contract only requires the distribution to exist and defines no sum tolerance or confidence threshold. Do not invent either. A missing, extra, malformed, or `uncertain` answer uses the original path.
+The selected model only scores/selects; it never generates free-form rationale. Validate **all three** answers, including low-risk allow: exactly these answer IDs, `type: choice`, a selected declared label, and a probability for every declared label with no extra labels and finite values in `[0,1]`. The System One contract defines no sum tolerance or confidence threshold; do not invent either. A missing, extra, malformed, or uncertain result uses the original path. Risk and authorization do not independently constrain a valid allow/deny result because the supplied policy defines their effect.
 
-Use this compatibility and rationale mapping. Authorization may have any value where the table says “any”; `high_authorized_narrow` additionally requires `medium` or `high` authorization. An unmatched combination uses the original path.
+Emit `{"outcome":"allow"}` for low-risk approval, retaining the existing compact response form. Other decisions include `risk_level`, `user_authorization`, `outcome`, and a neutral rationale: `The supplied Guardian policy assessment permits this action.` or `The supplied Guardian policy assessment denies this action.` No specific prohibition, risk exception, authorization threshold, or narrow scope is inferred from those classifications. Validate the output against the matched request schema before returning it.
 
-| Risk | Outcome | Reason | Authorization | Deterministic rationale |
-| --- | --- | --- | --- | --- |
-| `low` | `allow` | `low_risk` | any | Omit; emit the minimal allow form. |
-| `medium` | `allow` | `medium_risk` | any | The assessed risk is medium and the supplied policy permits the action. |
-| `high` | `allow` | `high_authorized_narrow` | medium or high | The high-risk action is sufficiently authorized and narrowly scoped. |
-| low, medium, or high | `deny` | `policy_prohibition` | any | The supplied Guardian policy prohibits this action. |
-| low, medium, or high | `deny` | `prompt_injection` | any | The action follows untrusted instructions outside the authorized task. |
-| `high` | `deny` | `high_not_permitted` | any | The high-risk action lacks sufficient authorization or narrow scope. |
-| `critical` | `deny` | `critical_risk` | any | The action poses critical risk under the supplied policy. |
-
-After validation, emit `{"outcome":"allow"}` for low-risk approval. All other decisions include `risk_level`, `user_authorization`, `outcome`, and the mapped `rationale`. Validate that JSON against the matched request schema before emitting; a mismatch uses the untouched original path. The rationale describes the selected category without claiming unobserved facts.
+Recognized Guardian requests log `guardian.fallback` with a locally authored reason (`unsupported_profile`, `incomplete_context`, `missing_pending_action`, `evaluation_timeout`, `evaluation_error`, `invalid_result`, or `denied_review`) and the request ID. These diagnostics contain no policy, action, transcript, evaluator result, or raw exception text. Ordinary non-Guardian requests do not generate these diagnostics. A route-miss decline still preserves the original missing-model response rather than inventing an original transport.
 
 The synthetic result is one completed assistant text message in an OpenAI Responses envelope: `model` echoes the request model, `output_text` is the serialized decision, `output` contains that same text once, status is `completed`, and response/item IDs and timestamps are coherent. Omit `usage`; zero ChatGPT tokens would be invented data. For `stream: true`, follow the repository's text-only Responses writer profile in order: `response.created`, `response.output_item.added`, one `response.output_text.delta`, `response.output_item.done`, `response.completed`. Sequence numbers and identities remain consistent, and the final response contains the same decision as the non-streaming form. Complete evaluation and decision validation **before** starting either response. If the supported Codex consumer rejects this profile, use its verified fixture as the compatibility target before shipping; do not guess another event sequence.
 
@@ -132,7 +121,7 @@ Acceptance checks should cover:
 
 1. With no new settings, byte-for-byte original `codex-auto-review` behavior; non-Guardian calls remain unchanged under every strategy. An extra required schema property, incompatible `additionalProperties`, nested `outcome` enum, missing terminal action envelope, or unavailable prior-response context bypasses evaluation before any disclosure.
 2. Both System One modes select the exact configured Provider and model ID, independent of routing weight. Another Provider advertising the same model, a slash alias, a snapshot reload, or selected-Provider failure must never receive the evaluation request.
-3. The state preserves the complete inline history and unique pending action from a sanitized Guardian fixture. Quoted role labels or action markers in tool output cannot change the selected action or establish user authorization. Unknown policy profile, a nested unresolved reference, and incomplete context bypass evaluation before dispatch and use the original path while the caller remains live. Every incompatible evaluator classification, including low-risk allow with a prohibition reason, is rejected after evaluation and before starting a synthetic response; use the untouched original path only while the caller remains live.
+3. The state preserves the complete inline history and unique pending action from a sanitized Guardian fixture. Quoted role labels or action markers in tool output cannot change the selected action or establish user authorization. Changed or custom policy text is preserved and evaluated. A nested unresolved reference or incomplete context bypasses evaluation before dispatch while the caller remains live. Malformed classifications and uncertain outcomes are rejected after evaluation and before starting a synthetic response; use the untouched original path only while the caller remains live.
 4. Valid allow and direct deny produce the supported Guardian-schema decision and text-only Responses JSON/SSE profile. The supported Codex consumer parses both forms, receives one decision, and sees matching IDs, text, and terminal status; no fabricated ChatGPT usage appears.
 5. In original-model review, a valid System One denial invokes the original below the wrapper once **per raw-transport invocation**, and its allow or deny is final for that invocation. Evaluation errors, invalid answers, and timeouts also call it once while the caller is live. Test existing outer raw retry and Provider failover separately: they may begin another invocation but must not recurse within one.
 6. Caller cancellation before dispatch, during body consumption, immediately before fallback, and after fallback starts behaves as specified. Late results after timeout do not emit; leases and bodies are released. Missing/disabled Provider settings produce an actionable diagnostic.

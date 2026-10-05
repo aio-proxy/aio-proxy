@@ -3,7 +3,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import type { OpenAIResponsesCompactRequest } from '../../../ingress/openai-responses/compact';
 import type { OpenAIResponsesRequest } from '../../../ingress/openai-responses/index';
 import type { RawRetryFrame, RawRetryHook, RawRetryVerdict } from '../../adapter';
-import { readRequestText } from '../../request';
+import { readRequestText } from '../../request/index';
 import { parseErrorPayload, responsesErrorCode, responsesErrorMessage } from '../error-payload';
 import { isToolPairingRejection, repairOpenAIResponsesToolPairing } from '../tool-pairing-retry';
 

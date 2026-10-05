@@ -28,7 +28,8 @@ fn closing_the_panel_clears_done_and_failed_but_not_work_in_flight() {
 #[test]
 fn a_failed_fetch_is_reported_only_for_the_window_it_was_for() {
     use crate::summary::UsageRange;
-    let mut model = super::AppModel::new(crate::install::Paths::for_home(std::path::Path::new("/Users/me")), None);
+    let mut model =
+        super::AppModel::new(crate::platform::paths_from(std::path::Path::new("/Users/me"), |_| None), None);
     model.summary_error = Some((UsageRange::H24, "timed out".into()));
     assert_eq!(model.usage_error(), Some("timed out"));
     model.usage_range = UsageRange::D7;
@@ -47,7 +48,8 @@ fn golden_7d() -> Box<crate::summary::SummaryV1> {
 #[test]
 fn a_summary_for_another_window_is_cached_under_its_own_range() {
     use crate::summary::UsageRange;
-    let mut model = super::AppModel::new(crate::install::Paths::for_home(std::path::Path::new("/Users/me")), None);
+    let mut model =
+        super::AppModel::new(crate::platform::paths_from(std::path::Path::new("/Users/me"), |_| None), None);
     model.summary_error = Some((UsageRange::D7, "timed out".into()));
     // The 24h window is on screen while a 7d response lands.
     model.accept_summary(golden_7d());
@@ -57,4 +59,29 @@ fn a_summary_for_another_window_is_cached_under_its_own_range() {
     assert!(model.summary_error.is_none());
     model.forget_usage();
     assert!(model.usage_for(UsageRange::D7).is_none());
+}
+
+#[test]
+fn only_macos_needs_an_applications_bundle_to_offer_aiop() {
+    let mut model = super::AppModel::new(
+        crate::platform::paths_from(std::path::Path::new("/Users/me"), |_| None),
+        Some("/Users/me/Apps/AIO Proxy.AppImage".into()),
+    );
+    model.install = Some(crate::install::InstallState::Persistent);
+    assert_eq!(model.can_link_cli(), !cfg!(target_os = "macos"));
+}
+
+#[test]
+fn an_up_to_date_check_only_sets_the_action_line_and_never_interrupts_a_service_action() {
+    use crate::connect::policy::UserAction;
+    let mut model =
+        super::AppModel::new(crate::platform::paths_from(std::path::Path::new("/Users/me"), |_| None), None);
+    model.update_pending = Some("0.41.0".into());
+    let up_to_date = ActionState::Done("AIO Proxy is up to date.".into());
+    model.show_update_outcome(up_to_date.clone());
+    assert_eq!(model.action, up_to_date);
+    assert_eq!(model.update_pending.as_deref(), Some("0.41.0"));
+    model.action = ActionState::Running(UserAction::Restart);
+    model.show_update_outcome(up_to_date);
+    assert_eq!(model.action, ActionState::Running(UserAction::Restart));
 }

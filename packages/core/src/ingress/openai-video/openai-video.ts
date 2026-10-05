@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { OpenAIVideosInvalidRequestError } from '../../error';
-import { decodedRequestStream, REQUEST_BODY_LIMITS } from '../../protocol/request';
+import { decodedRequestStream } from '../../protocol/request/index';
 import {
   acquireMultipartSlot,
   multipartBoundary,
@@ -11,6 +11,9 @@ import {
   retainMultipartSpool,
   spoolMultipartBody,
 } from '../multipart';
+
+// Video envelopes retain their media limits regardless of model-request configuration.
+export const VIDEO_REQUEST_BODY_LIMITS = Object.freeze({ encoded: 64 * 1_024 * 1_024, decoded: 128 * 1_024 * 1_024 });
 
 export const OFFICIAL_DEFAULT_VIDEO_MODEL = 'sora-2';
 export const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/u;
@@ -171,7 +174,7 @@ async function formDataFromSpoolPath(raw: Request, path: string): Promise<FormDa
     body: await Bun.file(path).bytes(),
     signal: raw.signal,
   });
-  const stream = await decodedRequestStream(replay, REQUEST_BODY_LIMITS, { signal: raw.signal });
+  const stream = await decodedRequestStream(replay, VIDEO_REQUEST_BODY_LIMITS, { signal: raw.signal });
   const bytes = stream === null ? new Uint8Array() : new Uint8Array(await new Response(stream).arrayBuffer());
   const headers = new Headers(raw.headers);
   headers.delete('content-encoding');

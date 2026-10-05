@@ -4,8 +4,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { LAUNCHD_EXEC_WRAPPER } from '../service';
-import { desktopConnect, listensAt, printDesktopConnect, runWithin, type DesktopConnectDeps } from './desktop-connect';
-import { parseSockets } from './verified-get';
+import { renderServiceSpec, renderTaskXml, serviceSpecPath, serviceStatePath } from '../service/schtasks-unit';
+import { renderSystemdUnit } from '../service/unit-templates';
+import {
+  defaultDesktopConnectDeps,
+  desktopConnect,
+  listensAt,
+  printDesktopConnect,
+  runWithin,
+  type DesktopConnectDeps,
+} from './desktop-connect';
+import { parseSockets } from './sockets';
 
 let root: string;
 beforeEach(() => {
@@ -51,12 +60,19 @@ const deps = (scenario: Scenario, requests: Array<{ url: string; auth: string | 
     platform: 'darwin',
     env: { AIO_PROXY_DESKTOP_EXEC: link },
     bundledVersion: '0.37.0',
-    plistPath: '/tmp/com.aio-proxy.agent.plist',
+    unitPath: '/tmp/com.aio-proxy.agent.plist',
     defaultHome: () => join(root, 'default-home'),
-    plistExists: () => scenario.plist !== undefined,
+    unitExists: () => scenario.plist !== undefined,
+    imagePath: () => undefined,
+    creationTime: () => undefined,
+    userSid: () => undefined,
+    sidForAccount: () => undefined,
     targetRunnable: () => true,
     readToken: () => scenario.token,
-    uid: 501,
+    owner: '501',
+    readFile: async () => {
+      throw new Error('no /proc on darwin');
+    },
     run: async (cmd) => {
       if (cmd[0] === 'plutil') return { code: 0, stdout: JSON.stringify(scenario.plist) };
       if (cmd[0] === '/usr/sbin/lsof') {
@@ -223,7 +239,7 @@ test('a discovery step that throws still prints one JSON object, and it permits 
   let output = '';
   const throwing: DesktopConnectDeps = {
     ...deps({ plist: desktopPlist() }),
-    plistExists: () => {
+    unitExists: () => {
       throw new Error('EACCES: permission denied');
     },
   };
@@ -248,6 +264,31 @@ test('a discovery step that throws still prints one JSON object, and it permits 
     },
     token: null,
   });
+});
+
+test('an unreadable account still prints one JSON line, and the token is withheld', async () => {
+  const saved = { NO_PROXY: process.env['NO_PROXY'], no_proxy: process.env['no_proxy'] };
+  let owner: string;
+  try {
+    owner = (
+      await defaultDesktopConnectDeps('0.37.0', Date.now() + 1_000, () => {
+        throw new Error('no SID');
+      })
+    ).owner;
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+  writeConfig(home(), '127.0.0.1', 9317);
+  const lines: string[] = [];
+  await printDesktopConnect(
+    { ...deps({ plist: desktopPlist(), token: 'T'.repeat(43), summaryPid: 4312 }), owner },
+    (text) => void lines.push(text),
+  );
+  expect(lines).toHaveLength(1);
+  expect(JSON.parse(lines[0] ?? '')).toMatchObject({ instance: { reachable: true }, token: null });
 });
 
 test('a helper that outlives the command budget is killed instead of hanging discovery', async () => {
@@ -280,7 +321,7 @@ test('discovery probes never route the desktop token through an environment prox
   try {
     const script = `
       import { defaultDesktopConnectDeps } from ${JSON.stringify(join(import.meta.dir, 'desktop-connect.ts'))};
-      const deps = defaultDesktopConnectDeps('0.0.0');
+      const deps = await defaultDesktopConnectDeps('0.0.0');
       const res = await deps.fetch(${JSON.stringify(`http://127.0.0.1:${target.port}/`)}, { headers: { authorization: 'Bearer secret' } });
       console.log(await res.text());
     `;
@@ -325,14 +366,127 @@ test("the listener must be at the probed address or its family's wildcard", () =
     'p1\nu501\nf12\ntIPv4\nn127.0.0.1:9317\nf13\ntIPv6\nn*:9418\np2\nu502\nf3\ntIPv6\nn[::1]:9317\n',
   );
   expect(listeners).toEqual([
-    { uid: 501, family: 'IPv4', address: '127.0.0.1:9317' },
-    { uid: 501, family: 'IPv6', address: '*:9418' },
-    { uid: 502, family: 'IPv6', address: '[::1]:9317' },
+    { owner: '501', family: 'IPv4', address: '127.0.0.1:9317' },
+    { owner: '501', family: 'IPv6', address: '*:9418' },
+    { owner: '502', family: 'IPv6', address: '[::1]:9317' },
   ]);
-  expect(listensAt(listeners, 501, '127.0.0.1', '9317')).toBe(true);
+  expect(listensAt(listeners, '501', '127.0.0.1', '9317')).toBe(true);
   // Our IPv4 listener says nothing about ::1, where another user listens on the same port.
-  expect(listensAt(listeners, 501, '::1', '9317')).toBe(false);
-  expect(listensAt(listeners, 501, '::1', '9418')).toBe(true);
+  expect(listensAt(listeners, '501', '::1', '9317')).toBe(false);
+  expect(listensAt(listeners, '501', '::1', '9418')).toBe(true);
   // An IPv6 wildcard does not vouch for an IPv4 probe.
-  expect(listensAt(listeners, 501, '127.0.0.1', '9418')).toBe(false);
+  expect(listensAt(listeners, '501', '127.0.0.1', '9418')).toBe(false);
+});
+
+// /proc/net/tcp row: 127.0.0.1:<port> listening (state 0A), owned by uid 1000.
+const procListener = (port: number) =>
+  `  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n` +
+  `   0: 0100007F:${port.toString(16).toUpperCase().padStart(4, '0')} 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 1 1 0 100 0 0 10 0\n`;
+
+// systemd's MainPID is the proxy itself (`<exec> run`), so the instance's own pid matches the job.
+test('linux: a desktop-owned running unit is identified end to end through MainPID', async () => {
+  writeConfig(home(), '127.0.0.1', 19317);
+  const linuxLink = '/home/u/.local/share/aio-proxy-desktop/bin/aio-proxy';
+  const unitPath = join(root, 'aio-proxy.service');
+  writeFileSync(
+    unitPath,
+    renderSystemdUnit({ exec: linuxLink, configPath: join(home(), 'config.jsonc'), desktopExec: linuxLink }),
+  );
+  const result = await desktopConnect({
+    ...deps({ token: 'T'.repeat(43), summaryPid: 812, summaryPpid: 1 }),
+    platform: 'linux',
+    env: { AIO_PROXY_DESKTOP_EXEC: linuxLink, XDG_CONFIG_HOME: join(root, 'xdg') },
+    owner: '1000',
+    unitPath,
+    unitExists: () => true,
+    readFile: async (path) => {
+      if (path === unitPath) return Bun.file(path).text();
+      if (path === '/proc/net/tcp') return procListener(19317);
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    },
+    run: async (cmd) =>
+      cmd[0] === 'systemctl'
+        ? { code: 0, stdout: 'LoadState=loaded\nActiveState=active\nUnitFileState=enabled\nMainPID=812\n' }
+        : { code: 1, stdout: '' },
+  });
+  expect(result.unit).toEqual({ present: true, wrapperValid: true, target: linuxLink, home: home(), owner: 'desktop' });
+  expect(result.job).toEqual({ loaded: true, disabled: false, pid: 812 });
+  expect(result.instance).toMatchObject({ reachable: true, pid: 812, matchesJob: true });
+  expect(result.token).toBe('T'.repeat(43));
+});
+
+// The task runs the supervisor (state-file pid 4310); the proxy (4312) is its child, so its ppid matches.
+test('win32: a desktop-owned running task is identified end to end through the supervisor pid', async () => {
+  writeConfig(home(), '127.0.0.1', 19317);
+  const winLink = 'C:\\Users\\Ada\\AppData\\Local\\aio-proxy-desktop\\bin\\aio-proxy.exe';
+  const sid = 'S-1-5-21-1-2-3-1001';
+  const localAppData = 'C:\\Users\\Ada\\AppData\\Local';
+  const specPath = serviceSpecPath(localAppData);
+  const files: Record<string, string> = {
+    [specPath]: JSON.stringify(
+      renderServiceSpec({ exec: winLink, configPath: join(home(), 'config.jsonc'), desktopExec: winLink }),
+    ),
+    [serviceStatePath(localAppData)]: JSON.stringify({ pid: 4310, exec: winLink, created: '133000000000000000' }),
+  };
+  const result = await desktopConnect({
+    ...deps({ token: 'T'.repeat(43), summaryPid: 4312, summaryPpid: 4310 }),
+    platform: 'win32',
+    env: { AIO_PROXY_DESKTOP_EXEC: winLink, LOCALAPPDATA: localAppData },
+    owner: sid,
+    unitPath: specPath,
+    imagePath: (pid) => (pid === 4310 ? winLink : undefined),
+    creationTime: (pid) => (pid === 4310 ? '133000000000000000' : undefined),
+    userSid: (pid) => (pid === 4312 ? sid : undefined),
+    readFile: async (path) => {
+      const text = files[path];
+      if (text === undefined) throw new Error(`ENOENT ${path}`);
+      return text;
+    },
+    run: async (cmd) => {
+      if (cmd[0] === 'cmd.exe') return { code: 0, stdout: renderTaskXml({ sid, exec: winLink, specPath }) };
+      if (cmd.join(' ') === 'netstat -ano -p TCP') {
+        return { code: 0, stdout: '  TCP    127.0.0.1:19317        0.0.0.0:0              LISTENING       4312\r\n' };
+      }
+      if (cmd[0] === 'netstat') return { code: 0, stdout: '' };
+      return { code: 1, stdout: '' };
+    },
+  });
+  expect(result.unit).toEqual({ present: true, wrapperValid: true, target: winLink, home: home(), owner: 'desktop' });
+  expect(result.job).toEqual({ loaded: true, disabled: false, pid: 4310 });
+  expect(result.instance).toMatchObject({ reachable: true, pid: 4312, ppid: 4310, matchesJob: true });
+  expect(result.token).toBe('T'.repeat(43));
+});
+
+// Windows retries a SYN to a loopback port without a listener for ~2 s instead of refusing it, so the
+// socket listing decides first whether the HTTP probes can reach anything at all.
+const win32Probe = async (netstat: { code: number; stdout: string }) => {
+  writeConfig(home(), '127.0.0.1', 19317);
+  const requests: Array<{ url: string; auth: string | null }> = [];
+  const result = await desktopConnect({
+    ...deps({ token: 'T'.repeat(43), summaryPid: 4312 }, requests),
+    platform: 'win32',
+    env: { LOCALAPPDATA: join(root, 'local') },
+    owner: 'S-1-5-21-1-2-3-1001',
+    // No process SID is readable: a listener whose account is unknown still counts as a listener.
+    userSid: () => undefined,
+    defaultHome: home,
+    run: async (cmd) => (cmd.join(' ') === 'netstat -ano -p TCP' ? netstat : { code: 0, stdout: '' }),
+  });
+  return { result, requests };
+};
+
+test('win32: no process listening on the control port is reported unreachable without an HTTP probe', async () => {
+  const { result, requests } = await win32Probe({ code: 0, stdout: '' });
+  expect(requests).toEqual([]);
+  expect(result.instance).toMatchObject({ controlUrl: 'http://127.0.0.1:19317', reachable: false, version: null });
+});
+
+test('win32: a listener of any account, or an unreadable listing, still gets probed', async () => {
+  const listening = { code: 0, stdout: '  TCP    0.0.0.0:19317    0.0.0.0:0    LISTENING    4312\r\n' };
+  for (const netstat of [listening, { code: 1, stdout: '' }]) {
+    const { result, requests } = await win32Probe(netstat);
+    expect(requests.map((r) => r.url)).toEqual(['http://127.0.0.1:19317/health']);
+    expect(result.instance.reachable).toBe(true);
+    expect(result.token).toBeNull();
+  }
 });

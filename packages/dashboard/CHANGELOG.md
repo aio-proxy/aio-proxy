@@ -1,5 +1,56 @@
 # @aio-proxy/dashboard
 
+## 0.39.1
+
+### Patch Changes
+
+- [#487](https://github.com/aio-proxy/aio-proxy/pull/487) [`7ba11b2`](https://github.com/aio-proxy/aio-proxy/commit/7ba11b2ef78af331754be0e94bda7bc19de19312) Thanks @baranwang - Align desktop usage trend colors with the Dashboard: higher-usage series appear first in lighter colors, while lower-usage series use darker colors. Hide zero-valued entries in Dashboard model trend hover tooltips.
+- Updated dependencies [[`d5218bf`](https://github.com/aio-proxy/aio-proxy/commit/d5218bfaf68e0af8d9b97cc09ac90b3ebe2f8593)]:
+  - @aio-proxy/server@0.39.1
+  - @aio-proxy/types@0.39.1
+  - @aio-proxy/plugin-sdk@0.39.1
+  - @aio-proxy/brand@0.39.1
+  - @aio-proxy/i18n@0.39.1
+  - @aio-proxy/ui@0.39.1
+
+## 0.39.0
+
+### Minor Changes
+
+- [#477](https://github.com/aio-proxy/aio-proxy/pull/477) [`94024af`](https://github.com/aio-proxy/aio-proxy/commit/94024af667f4b691cef234a3f305d6561c5a9192) Thanks @baranwang - `aiop agent configure claude-code` points Claude Code at aio-proxy by merging `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` into the global `~/.claude/settings.json`, leaving every other setting in place. Without proxy API keys it writes a placeholder token so Claude Code stops using its claude.ai login; with keys you choose one, in the terminal or on the Dashboard's Agents page. `agent list` shows the integration, and `agent remove claude-code` restores only those two keys.
+
+- [#486](https://github.com/aio-proxy/aio-proxy/pull/486) [`a59559d`](https://github.com/aio-proxy/aio-proxy/commit/a59559db8ba07d62f1f2b8dab50a77b5fba272b8) Thanks @baranwang - ChatGPT and GitHub Copilot Providers can use the sign-in Codex or Copilot already keeps on this machine instead of a browser login; aio-proxy keeps Codex signed in when it refreshes, and removing the Provider never signs the tool out.
+
+- [#483](https://github.com/aio-proxy/aio-proxy/pull/483) [`13ff41d`](https://github.com/aio-proxy/aio-proxy/commit/13ff41dba0d21ef4ec79589e0598d1973fb72f64) Thanks @baranwang - New opt-in `router.selection: quota-reset` (also a switch on the Dashboard Routing page): within each Provider priority tier, the subscription whose quota allowance expires soonest is tried first instead of the weighted draw, so allowance is not left to lapse on one subscription while another is drained. Session affinity still takes precedence, Providers without quota data follow in their weighted order, and the routing list and model details show measured traffic shares without deviation warnings. Nothing changes while the setting stays `weighted`.
+
+- [#484](https://github.com/aio-proxy/aio-proxy/pull/484) [`b2e7941`](https://github.com/aio-proxy/aio-proxy/commit/b2e7941313846cea0c6e179f64c73cc137565e13) Thanks @baranwang - API and discoverable AI SDK Providers can set `syncModels: true` to follow upstream model lists without editing the config: models refresh every hour or on demand in the Dashboard, upstream outages and empty responses keep the last good list, and `excludedModels` hides exact model IDs while aliases can still target them. The Dashboard supports switching between manual and synced models, hiding models, and viewing the last refreshed time; hand-written `models` lists work as before.
+
+### Patch Changes
+
+- [#479](https://github.com/aio-proxy/aio-proxy/pull/479) [`1c501d4`](https://github.com/aio-proxy/aio-proxy/commit/1c501d4dfe3e5a84f1c170891b02c8cd460b5608) Thanks @baranwang - The dashboard protocol pickers now offer OpenAI Images, Audio, and Videos endpoints, so media providers can be configured and their traces filtered without editing the config file. Protocols are also labelled by their official API name (OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, Gemini generateContent, Gemini Interactions) instead of the ambiguous "Gemini" and "OpenAI Compatible".
+
+- [#478](https://github.com/aio-proxy/aio-proxy/pull/478) [`dd47aa2`](https://github.com/aio-proxy/aio-proxy/commit/dd47aa2333b53934df5b65deec9d72894c629bfa) Thanks @baranwang - The dashboard no longer offers Repair for a Codex or Grok Build integration whose managed fields you edited. Setup deliberately does not overwrite your edits, so Repair always failed with "Something went wrong". The card now tells you to remove the integration (your edits are kept) and configure it again, and setup that hits edited fields reports exactly that instead of an unknown error.
+- Updated dependencies [[`94024af`](https://github.com/aio-proxy/aio-proxy/commit/94024af667f4b691cef234a3f305d6561c5a9192), [`a59559d`](https://github.com/aio-proxy/aio-proxy/commit/a59559db8ba07d62f1f2b8dab50a77b5fba272b8), [`2763925`](https://github.com/aio-proxy/aio-proxy/commit/27639251609ad47a3d5265815c2a27bd7bc0abb9), [`dd47aa2`](https://github.com/aio-proxy/aio-proxy/commit/dd47aa2333b53934df5b65deec9d72894c629bfa), [`4a26f10`](https://github.com/aio-proxy/aio-proxy/commit/4a26f10bde2ee22dccd0312c484327bc92bf1578), [`946073c`](https://github.com/aio-proxy/aio-proxy/commit/946073caf8219dd6309498aba893b77993193ef1), [`13ff41d`](https://github.com/aio-proxy/aio-proxy/commit/13ff41dba0d21ef4ec79589e0598d1973fb72f64), [`b2e7941`](https://github.com/aio-proxy/aio-proxy/commit/b2e7941313846cea0c6e179f64c73cc137565e13)]:
+  - @aio-proxy/server@0.39.0
+  - @aio-proxy/types@0.39.0
+  - @aio-proxy/i18n@0.39.0
+  - @aio-proxy/plugin-sdk@0.39.0
+  - @aio-proxy/brand@0.39.0
+  - @aio-proxy/ui@0.39.0
+
+## 0.38.0
+
+### Patch Changes
+
+- [#468](https://github.com/aio-proxy/aio-proxy/pull/468) [`24d77d0`](https://github.com/aio-proxy/aio-proxy/commit/24d77d05fd4e27bfa918a568d904e71ce3593f3b) Thanks @baranwang - Preserve transport timings, retry failure reasons, and response attribution for each upstream HTTP send. Trace details now show send counts and indices, so retries with multiple responses no longer appear to be missing timing data.
+- Updated dependencies [[`24d77d0`](https://github.com/aio-proxy/aio-proxy/commit/24d77d05fd4e27bfa918a568d904e71ce3593f3b)]:
+  - @aio-proxy/server@0.38.0
+  - @aio-proxy/plugin-sdk@0.38.0
+  - @aio-proxy/i18n@0.38.0
+  - @aio-proxy/brand@0.38.0
+  - @aio-proxy/types@0.38.0
+  - @aio-proxy/ui@0.38.0
+
 ## 0.37.0
 
 ### Patch Changes

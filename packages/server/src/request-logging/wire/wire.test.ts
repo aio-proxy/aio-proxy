@@ -904,3 +904,83 @@ test('a successful tool-only response can identify its send without a text TTFT 
   expect(observation.snapshot().responseSendIndex).toBe(0);
   expect(observation.snapshot().firstContentMs).toBeUndefined();
 });
+
+test.each([0, 16])('capture budget %i preserves full request and response forwarding', async (captureMaxBytes) => {
+  const logs: ServerLog[] = [];
+  const original = new TextEncoder().encode('a'.repeat(14) + '🙂' + 'x'.repeat(110));
+  let forwarded: Uint8Array | undefined;
+  const fetcher = createObservedFetch(async (input) => {
+    forwarded = new Uint8Array(await (input as Request).arrayBuffer());
+    return new Response(original);
+  });
+  await withRequestLogContext(
+    { requestId: 'budget', debug: true, captureMaxBytes, logger: (entry) => logs.push(entry) },
+    () =>
+      withAttemptLogContext({ attemptIndex: 0, providerId: 'p', modelId: 'm' }, async () => {
+        const request = observeInboundRequest(
+          new Request('https://proxy.test', { method: 'POST', body: original }),
+          'openai-response',
+        );
+        expect(new Uint8Array(await (await fetcher(request)).arrayBuffer())).toEqual(original);
+      }),
+  );
+  expect(forwarded).toEqual(original);
+  for (const direction of ['inbound', 'upstream_request', 'upstream_response'] as const) {
+    const text = reconstructed(logs, direction);
+    expect(new TextEncoder().encode(text).byteLength).toBeLessThanOrEqual(captureMaxBytes);
+    expect(text).not.toContain('\uFFFD');
+    expect(terminals(logs, direction)).toHaveLength(1);
+    expect(terminals(logs, direction)[0]).toMatchObject({
+      byteLength: 128,
+      truncated: true,
+      captureLimitBytes: captureMaxBytes,
+    });
+    if (captureMaxBytes === 0) expect(terminals(logs, direction)[0]?.omissionReason).toBe('capture_limit');
+  }
+});
+
+test('privacy omission remains fail-closed inside a nested budget scope', async () => {
+  const logs: ServerLog[] = [];
+  await withRequestLogContext(
+    {
+      requestId: 'private',
+      debug: true,
+      capturePayload: false,
+      captureMaxBytes: 16,
+      logger: (entry) => logs.push(entry),
+    },
+    () =>
+      withRequestLogContext({ requestId: 'private', debug: true, logger: (entry) => logs.push(entry) }, async () => {
+        const request = observeInboundRequest(
+          new Request('https://proxy.test', { method: 'POST', body: 'private-input' }),
+          'openai-response',
+        );
+        expect(await request.text()).toBe('private-input');
+      }),
+  );
+  expect(terminals(logs, 'inbound')[0]?.omissionReason).toBe('privacy_policy');
+  expect(JSON.stringify(logs)).not.toContain('private-input');
+});
+
+test('SSE business observation counts complete events after diagnostic capture stops', async () => {
+  const logs: ServerLog[] = [];
+  const observation = createAttemptResponseObservation({ startedAt: performance.now() });
+  const text = 'data: ' + 'x'.repeat(128) + '\n\ndata: usage\n\n';
+  const fetcher = createObservedFetch(
+    async () => new Response(text, { headers: { 'content-type': 'text/event-stream' } }),
+  );
+  await withRequestLogContext(
+    { requestId: 'sse-budget', debug: true, captureMaxBytes: 16, logger: (entry) => logs.push(entry) },
+    () =>
+      withAttemptLogContext({ attemptIndex: 0, providerId: 'p', modelId: 'm' }, () =>
+        withAttemptResponseObservation(observation, async () => {
+          const response = await fetcher('https://upstream.test', { decompress: false });
+          expect(await response.text()).toBe(text);
+        }),
+      ),
+  );
+  expect(reconstructed(logs, 'upstream_response')).toBe(text.slice(0, 16));
+  expect(observation.snapshot().maxSseFramesPerRead).toBe(2);
+  expect(observation.snapshot().firstSseEventMs).toEqual(expect.any(Number));
+  expect(terminals(logs, 'upstream_response')).toHaveLength(1);
+});

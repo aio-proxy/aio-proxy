@@ -1,5 +1,7 @@
 # Guardian System One Review Implementation Plan
 
+> Historical implementation plan. The request-matching and four-question policy profile below was superseded on 2026-10-02 by the policy-driven three-question contract in [the current design](../specs/2026-09-23-guardian-system-one-review-design.md#evaluation-and-response-contract).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let the ChatGPT OAuth plugin optionally use one configured System One evaluation Provider for eligible Codex Guardian approvals, with a direct-decision mode and a mode that sends valid denials to `codex-auto-review` for final review.

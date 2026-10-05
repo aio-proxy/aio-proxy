@@ -4,6 +4,7 @@ import type {
   PendingAccountOperation,
   PluginLogSink,
   PluginRepository,
+  ProviderModelCatalogRepository,
 } from '@aio-proxy/core';
 import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
 import type { DatabaseOwnershipLock, OpenDbHandle } from '@aio-proxy/core/db';
@@ -23,6 +24,7 @@ import { findPluginEntry } from '../plugin-control-plane/plugin-config';
 import type { OAuthQuotaCache } from '../plugin-quota';
 import { createRuntimeFetch } from '../plugin-runtime';
 import type { SnapshotManager } from '../plugin-snapshot';
+import { isSyncedProvider, modelSourceDigest } from '../provider-model-sync';
 import { effectiveProxy, providerDiff } from '../provider-runtime';
 import { stopOtelExport, syncOtelDestinations } from '../request-tracing';
 import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
@@ -45,6 +47,7 @@ export type ServerRuntime = {
   readonly options: ServerStateOptions;
   readonly internalOptions: InternalServerStateOptions;
   readonly repository: PluginRepository;
+  readonly providerModels: ProviderModelCatalogRepository;
   readonly diagnostics: DiagnosticFactory;
   readonly pluginLogger: PluginLogSink;
   readonly logger: ServerLogSink;
@@ -98,6 +101,7 @@ export async function commitConfig(
     previous,
     runtime.options,
     runtime.repository,
+    runtime.providerModels,
     runtime.diagnostics,
     runtime.pluginLogger,
     () => queueRebuild(runtime),
@@ -182,9 +186,10 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     async preObservationCapturePolicy(request, snapshot, maxBytes) {
       for (const hint of snapshot.payloadCaptureHints ?? []) {
         try {
-          if ((await hint(request, { maxBytes })) === 'sensitive') return { capturePayload: false };
+          if ((await hint(request, { maxBytes })) === 'sensitive')
+            return { capturePayload: false, omissionReason: 'privacy_policy' };
         } catch {
-          return { capturePayload: false };
+          return { capturePayload: false, omissionReason: 'privacy_policy' };
         }
       }
       return { capturePayload: true };
@@ -225,6 +230,24 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     modelRouting: parts.modelRouting,
     oauthCapabilities: () => oauthCapabilities(manager),
     oauthProviderEditView: (providerId) => oauthProviderEditView(manager, repository, providerId),
+    syncedProviderEditView(providerId) {
+      const provider = (manager.current() as Snapshot).config.providers.find(({ id }) => id === providerId);
+      if (provider === undefined || !isSyncedProvider(provider)) return undefined;
+      try {
+        const stored = runtime.providerModels.read(providerId);
+        if (stored === null || stored.sourceDigest !== modelSourceDigest(provider) || stored.models === null) {
+          return { models: [] };
+        }
+        // The editor must retain hidden models so users can un-hide them.
+        return {
+          models: stored.models,
+          ...(stored.refreshedAt === null ? {} : { refreshedAt: new Date(stored.refreshedAt).toISOString() }),
+        };
+      } catch {
+        // A corrupt stored row must leave the editor usable.
+        return { models: [] };
+      }
+    },
     oauthLoginSessions: parts.oauthLoginSessions,
     pluginControlPlane: parts.pluginControlPlane,
     providerSummaries: parts.providerSummaries,
@@ -236,6 +259,8 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     realtimeCalls: parts.realtimeCalls,
     videoJobs: parts.videoJobs,
     warmProviderQuota: (providerId) => parts.quotaCache.warm(providerId),
+    quotaStatus: (providerId) => parts.quotaCache.status(providerId),
+    refreshProviderQuota: (providerId) => parts.quotaCache.refresh(providerId),
     reload: parts.reload,
     traceStore: parts.traceStore,
     logger,

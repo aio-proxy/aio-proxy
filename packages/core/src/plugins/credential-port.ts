@@ -265,6 +265,10 @@ export function createCredentialPort<Credential>(
             secretValues = [...secretValues, ...collectSecretStrings(exchanged.value)];
             const validated = await guard.race(parsePluginSchema(options.schema, exchanged.value));
             if (!validated.ok) throw new CredentialValidationError(validated.issues);
+            // This field belongs to core's linked-account wrapper, not the SDK exchange contract.
+            const metadata = exchanged.metadata as
+              | (typeof exchanged.metadata & { readonly localSignInConsumed?: string })
+              | undefined;
             const updated = options.repository.compareAndSwapCredential(
               options.providerId,
               expectedRevision,
@@ -273,6 +277,9 @@ export function createCredentialPort<Credential>(
               {
                 ...(exchanged.metadata?.accountLabel === undefined ? {} : { label: exchanged.metadata.accountLabel }),
                 ...(exchanged.metadata?.expiresAt === undefined ? {} : { expiresAt: exchanged.metadata.expiresAt }),
+                ...(metadata?.localSignInConsumed === undefined
+                  ? {}
+                  : { localSignInConsumed: metadata.localSignInConsumed }),
               },
             );
             if (updated === null) {

@@ -39,6 +39,12 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
       failedMessage = m['dashboard.providers.oauth.session_unavailable']();
     else if (session.code === 'PROVIDER_FINGERPRINT_MISMATCH') {
       failedMessage = m['dashboard.providers.oauth.fingerprint_mismatch']();
+    } else if (session.code === 'OAUTH_LOCAL_SIGN_IN_UNAVAILABLE') {
+      failedMessage = m['dashboard.providers.oauth.local_sign_in_unavailable']();
+    } else if (session.code === 'OAUTH_LOCAL_SIGN_IN_INVALID') {
+      failedMessage = m['dashboard.providers.oauth.local_sign_in_invalid']();
+    } else if (session.code === 'OAUTH_LOCAL_SIGN_IN_STALE') {
+      failedMessage = m['dashboard.providers.oauth.local_sign_in_stale']();
     } else {
       failedMessage = m['dashboard.providers.oauth.failed']({ code: session.code });
     }

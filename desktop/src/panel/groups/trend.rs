@@ -31,8 +31,8 @@ pub fn series(view: &PanelView, usage: &Usage, providers: &[Provider], cx: &App)
         .into_iter()
         .enumerate()
         .map(|(i, s)| {
-            // The largest series, at the bottom, takes the darkest color; Other the lightest.
-            let color = if s.other { theme.chart[0] } else { theme.chart[4 - i.min(3)] };
+            // Match the Dashboard: largest first and lightest, with Other darkest.
+            let color = if s.other { theme.chart[4] } else { theme.chart[i.min(3)] };
             (s, color)
         })
         .collect()
@@ -177,10 +177,9 @@ impl Plot for TrendChart {
             .gap(px(8.))
             .cross_line(CrossLine::new(state.cross_line).height(Self::plot_height(&bounds)).band(px(band)))
             .title(title.clone());
-        // Top first, as the stack reads; a series with nothing in this bucket draws no segment, so
-        // it gets no row either.
+        // Follow the legend's descending window usage; omit series with no segment in this bucket.
         let mut total = 0;
-        for (series, color) in self.series.iter().rev() {
+        for (series, color) in &self.series {
             let value = series.values[state.index];
             if value == 0 {
                 continue;

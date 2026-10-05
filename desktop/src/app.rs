@@ -27,7 +27,7 @@ use crate::connect::discovery::Discovery;
 use crate::connect::policy::{AutoAction, AutoAttempts, UserAction};
 use crate::connect::run::RunError;
 use crate::install::{InstallState, Paths};
-use crate::login_item::LoginItemStatus;
+use crate::platform::LoginItemStatus;
 use crate::summary::{DegradedReason, SummaryV1, Usage, UsageRange};
 
 /// Everything that reaches the GPUI loop from AppKit callbacks, delivered over one channel.
@@ -39,6 +39,19 @@ pub enum AppEvent {
     Wake,
     UpdateAvailable(String),
     UpdateAttended,
+    /// A manual check found nothing newer (Linux, Windows).
+    UpToDate,
+    /// An install in progress, for the action line (Linux, Windows).
+    UpdateProgress(String),
+    /// A manual check or an install failed (Linux, Windows).
+    UpdateFailed(String),
+    /// An update this AppImage cannot install in place: its Release page.
+    OpenUrl(String),
+    /// The AppImage at this path was replaced: exec it on the main thread.
+    #[cfg(target_os = "linux")]
+    RelaunchInto(PathBuf),
+    /// Linux: whether a StatusNotifierWatcher owns its D-Bus name, so a tray icon can show.
+    TrayHost(bool),
 }
 
 pub enum SummaryState {
@@ -113,6 +126,8 @@ pub struct AppModel {
     rediscover_again: bool,
     auth_retry_used: bool,
     refetch_after_discovery: bool,
+    /// When a refused summary fetch last rediscovered, for [`refresh::rediscovers_after`].
+    gone_rediscovered_at: Option<Instant>,
     scheduler: Scheduler,
     instance: Option<(String, Option<u32>)>,
     instance_epoch: u64,
@@ -148,6 +163,7 @@ impl AppModel {
             rediscover_again: false,
             auth_retry_used: false,
             refetch_after_discovery: false,
+            gone_rediscovered_at: None,
             scheduler: Scheduler::default(),
             instance: None,
             instance_epoch: 0,
@@ -190,8 +206,19 @@ impl AppModel {
 
     /// `/usr/local/bin/aiop` serves every account, so it may only point into the shared /Applications,
     /// never into one user's ~/Applications.
+    /// Off macOS the link is per-user, so only a persistent install is needed.
     pub fn can_link_cli(&self) -> bool {
+        if !cfg!(target_os = "macos") {
+            return self.persistent();
+        }
         self.persistent() && self.bundle.as_deref().is_some_and(|bundle| bundle.starts_with("/Applications"))
+    }
+
+    /// An updater result for the action line; it never replaces a service action in flight.
+    pub fn show_update_outcome(&mut self, outcome: ActionState) {
+        if !self.action.is_busy() {
+            self.action = outcome;
+        }
     }
 
     pub fn persistent(&self) -> bool {

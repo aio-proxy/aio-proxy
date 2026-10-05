@@ -11,6 +11,8 @@ export type UnitInspection = {
   readonly home: string | null;
 };
 
+export type JobState = { readonly loaded: boolean; readonly disabled: boolean; readonly pid: number | null };
+
 const KNOWN_WRAPPERS = new Set([LAUNCHD_EXEC_WRAPPER, ...LEGACY_LAUNCHD_EXEC_WRAPPERS]);
 
 /** `plist` is `plutil -convert json` output. ProgramArguments[0] is /bin/sh; the aio-proxy path is the fourth element. */
@@ -51,10 +53,14 @@ export function unitOwner(
   unit: UnitInspection,
   desktopExec: string | undefined,
   targetRunnable: (path: string) => boolean,
+  platform: NodeJS.Platform = process.platform,
 ): UnitOwner {
   if (!unit.present) return null;
   if (!unit.wrapperValid || unit.target === null) return 'unknown';
-  if (desktopExec !== undefined && desktopExec !== '' && unit.target === desktopExec) return 'desktop';
+  // Windows paths are case-insensitive: `C:\Users\…` and `C:\USERS\…` name the same file.
+  const same =
+    platform === 'win32' ? unit.target.toLowerCase() === desktopExec?.toLowerCase() : unit.target === desktopExec;
+  if (desktopExec !== undefined && desktopExec !== '' && same) return 'desktop';
   return targetRunnable(unit.target) ? 'external' : 'orphaned';
 }
 

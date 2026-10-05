@@ -10,6 +10,7 @@ import { PageContainer } from '@/components/page-container';
 import { ProviderCatalogProvider, useProviderCatalog } from '@/hooks/use-provider-catalog';
 
 import { RoutingLabFilter } from '../components/routing-lab-filter';
+import { RoutingSelectionPolicy } from '../components/routing-selection-policy';
 import { RoutingTable } from '../components/routing-table';
 import { RoutingTrafficRefreshNotice } from '../components/routing-traffic-refresh-notice';
 import { useRoutingQuery } from '../hooks/use-routing-query';
@@ -82,6 +83,7 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
         models={visible}
         vendorModels={models}
         traffic={index}
+        selection={query.data?.selection}
         lab={search.lab}
         onLabChange={(lab) => onSearchChange(withRoutingFilters(search, { lab }))}
       />
@@ -101,6 +103,14 @@ export const RoutingPage: React.FC<RoutingPageProps> = ({ search, onSearchChange
       ) : null}
       <Card>
         <CardContent className="space-y-4">
+          {/* Keyed by the server value so a change saved elsewhere resets the switch's form state. */}
+          {query.data === undefined ? null : (
+            <RoutingSelectionPolicy
+              key={query.data.selection}
+              selection={query.data.selection}
+              writable={query.data.writable}
+            />
+          )}
           {/* Outside `content` on purpose: a filter that matches nothing must still be adjustable,
               otherwise the only way out of an empty result is to clear every filter. */}
           {query.data !== undefined && models.length > 0 && visible.length === 0 ? (

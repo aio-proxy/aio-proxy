@@ -57,7 +57,7 @@ test('local Dashboard setup installs Pi and OMP from the injected adapter assets
       });
       if (setup === undefined) throw new Error('local Dashboard setup was not enabled');
       for (const target of ['pi', 'omp']) {
-        await setup.agentHost.configure(target, undefined, {
+        await setup.agentHost.configure(target, {}, {
           signal: new AbortController().signal,
           onDevice: () => {},
         });
@@ -282,4 +282,48 @@ test('a clean shutdown exits at once instead of waiting for the deadline', async
   const { code, elapsedMs } = await stopWithSigterm(true, 10_000);
   expect(code).toBe(0);
   expect(elapsedMs).toBeLessThan(3_000);
+});
+
+test('the real proxy listener admits a declared body above 128 MiB into the app', async () => {
+  let declared: string | null = null;
+  const app = {
+    fetch: (request: Request) => {
+      declared = request.headers.get('content-length');
+      return new Response('APP_ADMITTED', { status: 422 });
+    },
+  };
+  const server = Bun.serve(proxyServeOptions(app as never, '127.0.0.1', 0));
+  const wire = Promise.withResolvers<string>();
+  let received = '';
+  const timer = setTimeout(() => wire.reject(new Error('listener did not dispatch into the app')), 5_000);
+  let client: Awaited<ReturnType<typeof Bun.connect>> | undefined;
+  try {
+    client = await Bun.connect({
+      hostname: '127.0.0.1',
+      port: server.port!,
+      socket: {
+        open(socket) {
+          socket.write(
+            'POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 135266304\r\nConnection: close\r\n\r\n{}',
+          );
+        },
+        data(_socket, data) {
+          received += new TextDecoder().decode(data);
+          if (received.includes('APP_ADMITTED')) wire.resolve(received);
+        },
+        error(_socket, error) {
+          wire.reject(error);
+        },
+        close() {
+          if (!received.includes('APP_ADMITTED')) wire.reject(new Error(received));
+        },
+      },
+    });
+    expect(await wire.promise).toContain('422');
+    expect(declared).toBe('135266304');
+  } finally {
+    clearTimeout(timer);
+    client?.terminate();
+    server.stop(true);
+  }
 });

@@ -175,4 +175,33 @@ describe('validateOAuthQuotaSnapshot', () => {
   test('rejects a non-text plan', () => {
     expectInvalid({ ...validSnapshot(), plan: 42 }, ['plan']);
   });
+
+  // The scope is what routing reads to decide which models an exhausted window blocks, so it must
+  // survive validation exactly as the plugin wrote it.
+  test('keeps an account scope and a model-pattern scope', () => {
+    const snapshot = validateOAuthQuotaSnapshot({
+      items: [
+        { id: 'a', displayName: 'A', scope: 'account' },
+        { id: 'b', displayName: 'B', scope: { models: ['gpt-*', '!gpt-reserve'] } },
+        { id: 'c', displayName: 'C' },
+      ],
+    });
+    expect(snapshot.items.map((item) => item.scope)).toEqual([
+      'account',
+      { models: ['gpt-*', '!gpt-reserve'] },
+      undefined,
+    ]);
+    expect(snapshot.items[2]).not.toHaveProperty('scope');
+  });
+
+  test.each([
+    ['an unknown scope string', 'model', ['items', 0, 'scope']],
+    ['an empty pattern list', { models: [] }, ['items', 0, 'scope', 'models']],
+    ['an empty pattern', { models: [''] }, ['items', 0, 'scope', 'models', 0]],
+    ['a bare exclusion', { models: ['!'] }, ['items', 0, 'scope', 'models', 0]],
+    ['a non-string pattern', { models: [1] }, ['items', 0, 'scope', 'models', 0]],
+    ['an unknown scope field', { models: ['a'], extra: 1 }, ['items', 0, 'scope', 'extra']],
+  ] as const)('rejects %s', (_name, scope, path) => {
+    expectInvalid({ items: [{ id: 'a', displayName: 'A', scope }] }, path);
+  });
 });

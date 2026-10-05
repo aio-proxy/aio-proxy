@@ -49,9 +49,21 @@ flowchart LR
 - **复用 AI SDK 生态**：任意 [Vercel AI SDK](https://ai-sdk.dev) Provider 包（官方或社区）都能以 `kind: "ai-sdk"` 直接作为 Provider 加载，并享有同样的协议转换、路由与计费。AI SDK 支持的厂商，AIO Proxy 就能接。
 - **插件可扩展**：上面所有内置订阅本身就是基于公开的 [`@aio-proxy/plugin-sdk`](https://www.npmjs.com/package/@aio-proxy/plugin-sdk) 编写的插件。官方尚未支持的服务或公司内部网关，可以自己写插件接入——OAuth 登录、模型目录、元数据与价格一应俱全——再用 `aio-proxy plugin add` 安装。
 - **扛得住故障的路由**：Provider priority 决定先试哪一层，Provider weight 在同层内分摊流量，会话亲和保持 Prompt 缓存命中，上游失败时自动切到下一个候选。priority、weight、价格与上下文上限都能按模型单独覆盖，并可用别名统一模型名。
-- **一条命令接好 Agent**：`aiop agent configure` 可直接配置 Codex、Grok Build、OpenCode、Pi 与 oh-my-pi，通过设备授权登录而不是粘贴密钥；其他工具只需修改 Base URL。
+- **一条命令接好 Agent**：`aiop agent configure` 可直接配置 Codex、Claude Code、Grok Build、OpenCode、Pi 与 oh-my-pi，Agent 支持时通过设备授权登录而不是粘贴密钥；其他工具只需修改 Base URL。
 - **请求全程可见**：内置 Dashboard 记录每一次请求与每一次 Provider 尝试的状态、延迟、Token 与费用，完整链路可导出到 OpenTelemetry。
 - **本地优先，按需配置**：默认只监听 `127.0.0.1`，对外暴露时再加上调用方 API Key 与 Dashboard 密码。每个 Provider 都可以声明多个协议端点、自定义请求头，以及支持备用切换的 HTTP(S)/SOCKS5 代理。既可以在 Dashboard 里配置，也可以写带 schema 校验的 JSONC 文件，用 `{{env.NAME}}` 引用密钥并热加载。
+
+### 复用本机已有登录
+
+ChatGPT 和 GitHub Copilot Provider 可以复用对应工具保存在本机上的登录。在 Dashboard 的浏览器授权按钮旁，选择 **使用本机上的 Codex 登录** 或 **使用本机上的 GitHub Copilot 登录**。只有在运行服务器的机器上检测到登录时才显示此选项；没有该登录的容器或无头服务器不会显示。Codex 配置为 `cli_auth_credentials_store = "keyring"` 时没有登录文件，也不会显示此选项。
+
+命令行运行 `aio-proxy provider login --local-sign-in`，或在 `aio-proxy provider login` 的交互提示中选择本机登录。只有明确选择后才会读取凭据。aio-proxy 刷新时会将轮换后的令牌写回，让 Codex 保持登录；Copilot 令牌仅在关联时读取一次，不会轮换。
+
+关联的 Provider 会显示 **已关联本机上的 {source} 登录** 徽标。移除 Provider 永远不会使工具退出登录。恢复方式：
+
+- Provider 已禁用但工具仍可用：在该 Provider 上再次使用本机登录。
+- 两边都已退出登录：先在工具中重新登录，再次使用本机登录。
+- 工具切换到了其他账号：切回原账号，或添加新的 Provider。
 
 ## 安装
 
@@ -72,6 +84,13 @@ bun add -g aio-proxy
 ```bash
 curl -fsSL https://aioproxy.dev/install.sh | sh
 ```
+
+### 桌面应用（macOS、Linux、Windows）
+
+从 [GitHub Releases](https://github.com/aio-proxy/aio-proxy/releases/latest) 下载：
+`aio-proxy-<version>-arm64.dmg`（macOS）、`aio-proxy-<version>-x86_64.AppImage` 或
+`aio-proxy-<version>-aarch64.AppImage`（Linux，`chmod +x` 后运行）、
+`aio-proxy-<version>-x64-setup.exe`（Windows）。应用内可自动更新。Windows 安装包暂未代码签名，SmartScreen 可能弹出警告：点击“更多信息”，再选“仍要运行”。
 
 ## 快速开始
 
@@ -119,6 +138,29 @@ aio-proxy reload
 
 支持 `$schema` 的编辑器可以为配置提供补全和校验。`{{env.NAME}}` 用于读取环境变量。
 
+### 与上游同步模型
+
+API 和 AI SDK Provider 可设置 `syncModels: true`，代替手动维护 `models`。同步默认关闭；启用后不能同时配置非空的 `models`，否则校验失败。`excludedModels` 仅在 `syncModels: true` 时有效，按精确模型 ID 隐藏模型，不支持 glob 匹配。别名仍可指向被隐藏的模型。手动 `models` 列表保持原有行为。
+
+```jsonc
+{
+  "providers": {
+    "relay": {
+      "kind": "api",
+      "protocol": "openai-compatible",
+      "baseURL": "https://relay.example.com",
+      "apiKey": "{{env.RELAY_API_KEY}}",
+      "syncModels": true,
+      "excludedModels": ["gpt-3.5-turbo"],
+    },
+  },
+}
+```
+
+启动和配置变更后会立即发现模型，之后每小时刷新。刷新失败后，在列表过期时每隔 5 分钟重试；上游故障或返回空列表时保留上次成功的列表。首次发现成功前，仅别名可路由。更改 API 主端点的 `baseURL`、`protocol` 或端点配置形式，或 AI SDK 的 `packageName`、`options.baseURL`，会丢弃旧列表。API 仅查询主端点，模型发现不会改写配置文件。
+
+AI SDK 同步需要包实例提供 `listModels` 方法，或通过 `options.baseURL` 提供 OpenAI 兼容的 `/models` 接口；否则 Provider 会报告 `CATALOG_UNSUPPORTED`。Dashboard 的模型区域提供**手动 / 与上游同步（Manual / Sync with upstream）**切换、逐个隐藏模型、上次刷新时间和刷新按钮。
+
 ### 多协议端点
 
 部分上游原生支持多种协议。可以用 `endpoints` 声明这些额外的端点；当请求的入站协议命中任意一个已声明的端点时，请求会被原样转发（原始透传），而不会经过协议转换：
@@ -157,7 +199,7 @@ aio-proxy reload
 
 ### 模型元数据与计费
 
-客户端可见的模型元数据统一配置在 `router.models.<slug>.metadata`，键是客户端请求的公开 slug，而不是上游模型 id。该 slug 必须已由某个 Provider 的 `models` 或 `alias` 配置公开；`router.models` 只会定制已有路由，不会创建路由。已删除的 `providers.<id>.metadata` 字段会被静默忽略。
+客户端可见的模型元数据统一配置在 `router.models.<slug>.metadata`，键是客户端请求的公开 slug，而不是上游模型 id。该 slug 必须已由某个 Provider 的 `models`、同步目录或 `alias` 配置公开；`router.models` 只会定制已有路由，不会创建路由。已删除的 `providers.<id>.metadata` 字段会被静默忽略。
 
 每个字段按以下优先级解析：所选 Provider 的路由覆盖（仅 `cost` 或 `limit`）> slug 元数据（含 `extend`）> 插件上报的上游元数据 > [models.dev](https://models.dev) 回退 > 协议默认值。Provider 覆盖会整体替换 slug 的 `cost` 或 `limit` 对象，而不是深度合并；其他元数据由服务该 slug 的所有 Provider 共用。未知元数据字段会被保留并产生警告，负价格、非正数上下文限制等无效值则会导致清晰的校验错误。
 
@@ -231,11 +273,12 @@ router:
 1. 先将完整请求模型字符串作为精确的 Provider-qualified 路由匹配。若匹配，直接选择该 Provider，并绕过 Provider priority 和 Provider weight（包括有效 weight 为零）。`enabled: false` 仍会拦截该 Provider，因为已禁用的 Provider 不在路由表中。
 2. 否则将同一完整字符串作为精确的普通客户端模型 ID 匹配，包括包含 `/` 的字符串。
 3. 将 Provider 默认值与该精确模型的稀疏 `providers` 覆盖合并。丢弃 `enabled: false` 或有效 weight 为零的普通候选。
-4. 剩余候选按 Provider priority 从高到低，再在同一 priority 层级内按 Provider weight 排序。配置顺序是目录表示和诊断的确定性平局规则，不再是同一层级中正数 weight 候选的请求顺序。
+4. 剩余候选按 Provider priority 从高到低，再在同一 priority 层级内按 Provider weight 排序。开启可选的 `router.selection: "quota-reset"`（也可在 Dashboard 的 Routing 页打开开关）后，同一层内配额重置时间已知的订阅排在前面，覆盖该模型的最长窗口最先重置的那个最先尝试；没有配额数据的 Provider 按原来的加权顺序排在其后。配置顺序是目录表示和诊断的确定性平局规则，不再是同一层级中正数 weight 候选的请求顺序。
 5. 稳定（非 generated）逻辑会话使用确定性加权抽取，因此在路由快照未变时，token-count 与生成共用同一预先尝试顺序。generated 会话每次独立随机抽取。
 6. 响应 owner，然后是会话亲和，可将合格的普通候选提前到队首。它们不会复活已禁用或 weight 为零的 Provider。会话亲和仍会覆盖 priority，使会话可以粘在此前成功的 Provider 上（例如 prompt-cache 连续性）。
-7. 同协议的 `api` Provider 使用原始透传，其他组合通过 AI SDK 转换。
-8. 当前 Provider 失败后尝试下一个候选；全部失败时返回最后一次失败。
+7. 移除当前无法服务的候选，即使响应 owner 或会话亲和把它排在了队首：因带 `Retry-After` 的 429 而处于冷却中的 Provider，以及缓存的配额快照显示覆盖该模型的窗口已用尽、且重置时间已知的订阅 Provider（Kimi Code、Muse Code、ChatGPT 和 Cursor 会声明每个窗口覆盖哪些模型）。配额未知、读取失败或快照超过 10 分钟时，永远不会移除候选。若全部候选都被移除，客户端会收到 429，`Retry-After` 为最早的重置时间。请求 trace 会在 `aio_proxy.route.skipped_candidates` 中列出被移除的候选。
+8. 同协议的 `api` Provider 使用原始透传，其他组合通过 AI SDK 转换。
+9. 当前 Provider 失败后尝试下一个候选；全部失败时返回最后一次失败。
 
 在上述示例策略中，priority 30 时 `provider-a` 大约 60% 排在第一、`provider-b` 大约 40%。若选中的 Provider 失败，会先尝试同一 priority-30 的另一个 Provider，再尝试 `provider-c`。
 

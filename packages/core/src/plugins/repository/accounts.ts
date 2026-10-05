@@ -22,8 +22,8 @@ export function createAccountRows(sqlite: Database) {
       .query(
         `INSERT INTO oauth_account (
            provider_id, plugin, capability, fingerprint, options_json, secret_json, credential_json,
-           revision, runtime_revision, label, expires_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           revision, runtime_revision, label, expires_at, local_sign_in, local_sign_in_consumed, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         value.providerId,
@@ -37,6 +37,8 @@ export function createAccountRows(sqlite: Database) {
         runtimeRevision,
         value.label ?? null,
         value.expiresAt ?? null,
+        value.localSignIn === undefined ? 0 : 1,
+        value.localSignIn?.consumed ?? null,
         updatedAt,
       );
   }
@@ -45,7 +47,7 @@ export function createAccountRows(sqlite: Database) {
       .query(
         `UPDATE oauth_account SET plugin = ?, capability = ?, fingerprint = ?, options_json = ?,
            secret_json = ?, credential_json = ?, revision = ?, runtime_revision = ?, label = ?, expires_at = ?,
-           updated_at = ? WHERE provider_id = ?`,
+           local_sign_in = ?, local_sign_in_consumed = ?, updated_at = ? WHERE provider_id = ?`,
       )
       .run(
         value.plugin,
@@ -58,6 +60,8 @@ export function createAccountRows(sqlite: Database) {
         runtimeRevision,
         value.label ?? null,
         value.expiresAt ?? null,
+        value.localSignIn === undefined ? 0 : 1,
+        value.localSignIn?.consumed ?? null,
         updatedAt,
         value.providerId,
       );
@@ -103,7 +107,7 @@ export function createAccountRepository(
           const result = sqlite
             .query(
               `UPDATE oauth_account SET credential_json = ?, revision = revision + 1, label = ?, expires_at = ?,
-               updated_at = ? WHERE provider_id = ? AND revision = ? AND EXISTS (
+               local_sign_in_consumed = ?, updated_at = ? WHERE provider_id = ? AND revision = ? AND EXISTS (
                  SELECT 1 FROM oauth_refresh_lease WHERE provider_id = ? AND owner = ? AND expires_at > ?
                )`,
             )
@@ -111,6 +115,7 @@ export function createAccountRepository(
               encoded,
               metadata?.label ?? current.label,
               metadata?.expiresAt ?? current.expires_at,
+              metadata?.localSignInConsumed ?? current.local_sign_in_consumed,
               Date.now(),
               providerId,
               expectedRevision,

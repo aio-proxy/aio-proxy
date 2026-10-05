@@ -2,7 +2,7 @@ import { expect, spyOn, test } from 'bun:test';
 
 import { anthropicMessagesAdapter, REQUEST_BODY_LIMITS, Router } from '@aio-proxy/core';
 import type { TokenCountCapability } from '@aio-proxy/plugin-sdk';
-import { ProviderKind } from '@aio-proxy/types';
+import { ConfigSchema, type Config, ProviderKind } from '@aio-proxy/types';
 
 import { createRecording } from '../../../__tests__/pipeline-helpers/recording';
 import { LogicalSessionStore } from '../../logical-session-store';
@@ -102,18 +102,47 @@ test('releases the retained count body after returning an estimate', async () =>
   expect(request.bodyUsed).toBe(true);
 });
 
-function countFixture(providers: readonly RuntimeProviderInstance[]) {
+test.each([false, true])('uses the configured budget for %s token-count bodies', async (compressed) => {
+  const config = ConfigSchema.parse({ server: { requestBody: { maxBytes: 1_048_576 } }, providers: {} });
+  let calls = 0;
+  const fixture = countFixture(
+    [
+      countProvider(async () => {
+        calls += 1;
+        return { inputTokens: 5 };
+      }),
+    ],
+    config,
+  );
+  const text = JSON.stringify({
+    model: 'count-model',
+    max_tokens: 16,
+    messages: [{ role: 'user', content: 'x'.repeat(1_048_576) }],
+  });
+  const response = await runCount(
+    fixture.source,
+    new Request('https://proxy.test/v1/messages/count_tokens', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(compressed ? { 'content-encoding': 'gzip' } : {}) },
+      body: compressed ? Bun.gzipSync(Buffer.from(text)) : text,
+    }),
+  );
+  expect(response.status).toBe(413);
+  expect(calls).toBe(0);
+});
+
+function countFixture(providers: readonly RuntimeProviderInstance[], config?: Config) {
   const router = new Router(providers);
   const recording = createRecording();
   let releaseCount = 0;
   const source = {
     acquireProviderSnapshot: () => ({
-      snapshot: { providers, router },
+      snapshot: { providers, router, ...(config === undefined ? {} : { config }) },
       release: () => {
         releaseCount += 1;
       },
     }),
-    currentProviderSnapshot: () => ({ providers, router }),
+    currentProviderSnapshot: () => ({ providers, router, ...(config === undefined ? {} : { config }) }),
     logger() {},
     logicalSessionStore: new LogicalSessionStore(),
     requestRecorder: recording.recorder,
@@ -167,3 +196,12 @@ function anthropicRequest(): Request {
     }),
   });
 }
+
+test('token-count preflight honors the configured declared-size limit', async () => {
+  const config = ConfigSchema.parse({ server: { requestBody: { maxBytes: 1_048_576 } }, providers: {} });
+  const fixture = countFixture([], config);
+  const raw = anthropicRequest();
+  raw.headers.set('content-length', '1048577');
+  expect((await runCount(fixture.source, raw)).status).toBe(413);
+  expect(fixture.releases()).toBe(0);
+});

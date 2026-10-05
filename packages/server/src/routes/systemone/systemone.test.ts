@@ -1,11 +1,14 @@
 import { expect, test } from 'bun:test';
 
-import type { EvaluationResult } from '@aio-proxy/core';
+import { type EvaluationResult, typeSafeSystemOneAdapter } from '@aio-proxy/core';
 import { ProviderKind } from '@aio-proxy/types';
 
 import { createServer } from '#server-test-lifecycle';
 
+import { attributeName } from '../../request-tracing';
 import type { RuntimeProviderInstance } from '../../runtime';
+import { pipeline } from '../pipeline/test-support';
+import { createSystemOneRoutes } from './systemone';
 
 const MODEL_ID = 'jev-latest';
 
@@ -124,3 +127,63 @@ function evaluationProvider(onEvaluate: () => void = () => undefined): RuntimePr
     models: [MODEL_ID],
   };
 }
+
+test('System One rejects malformed Content-Length with its 400 envelope, safe diagnosis and body cancellation', async () => {
+  let cancelled = false;
+  let pulled = false;
+  const harness = pipeline([]);
+  const app = createSystemOneRoutes({
+    ...harness.source,
+    preObservationCapturePolicy: async () => ({ capturePayload: false }),
+  });
+  const response = await app.fetch(
+    new Request('https://proxy.test/v1/systemone?private-input', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': 'private-input' },
+      body: new ReadableStream<Uint8Array>(
+        {
+          pull() {
+            pulled = true;
+          },
+          cancel() {
+            cancelled = true;
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+    }),
+  );
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({ message: 'Invalid Content-Length', error_type: 'invalid_request_error' });
+  expect(cancelled).toBe(true);
+  expect(pulled).toBe(false);
+  expect(harness.recording.attempts).toEqual([]);
+  expect(harness.recording.finals).toEqual([
+    { outcome: 'failure', finalStatusCode: 400, errorCode: 'invalid_request' },
+  ]);
+  expect(harness.logs).toContainEqual(
+    expect.objectContaining({
+      event: 'request.rejected',
+      errorCode: 'invalid_request',
+      bodyRejectReason: 'invalid_content_length',
+    }),
+  );
+  const root = harness.recording.spans.find((span) => span.parentSpanId == null);
+  expect(root?.attributes[attributeName.bodyRejectReason]).toBe('invalid_content_length');
+  expect(JSON.stringify({ logs: harness.logs, spans: harness.recording.spans })).not.toContain('private-input');
+});
+
+test('System One keeps arbitrary internal SyntaxError fatal', async () => {
+  const failure = new SyntaxError('internal-private-input');
+  const adapter = {
+    ...typeSafeSystemOneAdapter,
+    parse: async () => {
+      throw failure;
+    },
+  };
+  const harness = pipeline([], { adapter });
+  await expect(
+    harness.run(new Request('https://proxy.test/v1/systemone', { method: 'POST', body: '{}' })),
+  ).rejects.toBe(failure);
+  expect(harness.recording.finals).toEqual([{ outcome: 'failure', errorCode: 'internal_error' }]);
+});

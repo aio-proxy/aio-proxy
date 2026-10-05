@@ -1,0 +1,22 @@
+{
+  "name": "@aio-proxy/cli-win32-x64",
+  "version": "0.38.0",
+  "description": "AIO Proxy binary for win32-x64",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aio-proxy/aio-proxy.git",
+    "directory": "npm/cli-win32-x64"
+  },
+  "files": [
+    "bin"
+  ],
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

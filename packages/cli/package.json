@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/cli",
-  "version": "0.37.0",
+  "version": "0.39.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -9,7 +9,7 @@
   "scripts": {
     "build:binary": "bun run --filter @aio-proxy/opencode-provider build && bun run --filter @aio-proxy/pi-provider build && bun scripts/build-binary.ts",
     "test": "bun run test:unit",
-    "test:unit": "bun test --preload=./__tests__/setup.ts --timeout 20000",
+    "test:unit": "bun test --timeout 20000",
     "test:compat:grok": "bun src/agent/grok-compat/grok-compat.ts",
     "serve:dev": "AIO_PROXY_HOME=../../.aio-proxy-dev bun --watch src/main.dev.ts run --port $AIO_PROXY_PORT",
     "start": "bun src/main.ts run"

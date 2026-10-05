@@ -40,8 +40,10 @@
       "title_plugin_prune": "aio-proxy · Prune plugins",
       "title_provider_login": "aio-proxy · Provider login",
       "title_codex_configure": "aio-proxy · Configure Codex",
+      "title_claude_code_configure": "aio-proxy · Configure Claude Code",
       "outro_provider_login": "Signed in",
       "outro_codex_configure": "Codex configuration finished",
+      "outro_claude_code_configure": "Claude Code configuration finished",
       "provider_list_empty": "No providers",
       "status_deep_unexpected": "Provider health data could not be displayed",
       "header_name": "name",
@@ -71,6 +73,16 @@
     "dashboard": {
       "description": "Open the AIO Proxy dashboard",
       "opened": "Opened the dashboard in your default browser"
+    },
+    "provider_login": {
+      "method_prompt": "How do you want to sign in?",
+      "method_local": "Use the {source} sign-in on this machine",
+      "method_browser": "Sign in with the browser",
+      "option_local_sign_in_description": "Use an existing local sign-in from the vendor tool",
+      "error_local_sign_in_unavailable": "No {source} sign-in was found on this machine.",
+      "error_local_sign_in_unavailable_generic": "No local sign-in was found on this machine.",
+      "error_local_sign_in_invalid": "The sign-in on this machine is invalid or incomplete. Sign in again in the vendor tool, then retry.",
+      "error_local_sign_in_stale": "aio-proxy already holds a newer sign-in for this Provider; it will update the vendor tool on its next refresh."
     },
     "provider": {
       "description": "Manage provider packages",
@@ -215,6 +227,7 @@
       "diagnostic_credential_refresh_failed": "Credential refresh failed for provider {provider}",
       "diagnostic_authorization_failed": "Authorization failed for provider {provider}",
       "diagnostic_catalog_unavailable": "The model catalog is unavailable for provider {provider}",
+      "diagnostic_catalog_unsupported": "Provider {provider} cannot list its upstream models, so syncModels cannot be used",
       "diagnostic_proxy_unsupported": "Provider {provider} does not support the configured proxy",
       "diagnostic_runtime_create_failed": "The runtime could not be created for provider {provider}",
       "state_failed": "failed"
@@ -266,8 +279,15 @@
       "auto_install_failed": "Automatic service installation or startup failed: {reason}. Run `aio-proxy service install --user`, then `aio-proxy service start` after resolving the error.",
       "command_failed": "Service command failed: {command} (exit {code})",
       "bootout_timeout": "Service still loaded {seconds}s after `launchctl bootout {target}`; not starting it again",
+      "task_owned_by_other_user": "Scheduled task {path} runs as another user; not replacing it",
+      "external_task_unusable": "The service at {path} belongs to another installer and its program is gone; reinstall it with that tool",
+      "supervisor_timeout": "Service supervisor still running {seconds}s after `schtasks /End`; not deleting the task",
+      "local_app_data_missing": "LOCALAPPDATA is not set, so the Windows service files cannot be located",
+      "restore_failed": "Could not restore the previous service definition; run `aio-proxy service install` to repair it",
       "unsupported_platform": "The service command does not support this platform: {platform}",
       "system_unsupported": "System-scope install is not yet supported; install as a per-user service instead",
+      "systemctl_missing": "systemctl was not found; the background service on Linux needs systemd",
+      "systemd_user_unavailable": "No systemd user manager is reachable (`systemctl --user` failed); the background service needs a systemd login session",
       "exec_not_found": "Cannot find the \"aio-proxy\" executable on PATH. Install aio-proxy globally (e.g. `npm i -g aio-proxy`) before installing the service",
       "env_hint": "Provider env vars referenced by env templates in your config are read from {path}. Create it with `KEY=value` lines; a managed service does not inherit your shell environment"
     },
@@ -433,6 +453,19 @@
         "restore_option": "Restore a Codex migration by operation UUID",
         "pending_recovery": "A previous Codex configuration operation is pending. Recover it before continuing?",
         "not_installed": "Codex CLI was not found."
+      },
+      "claude_code": {
+        "configured": "claude-code: configuration {status} at {configPath}.",
+        "credential_placeholder": "AIO Proxy has no API key authentication enabled, so a non-secret placeholder token was written; without one, Claude Code keeps using its claude.ai login.",
+        "credential_existing": "The selected AIO Proxy API key was written to ANTHROPIC_AUTH_TOKEN.",
+        "offline": "Claude Code configuration saved, but the proxy could not be verified.",
+        "restart": "Restart Claude Code for the change to take effect.",
+        "key_required": "AIO Proxy API keys are enabled, so one must be chosen. Run this command in an interactive terminal or use the Dashboard Agents page; no files were changed.",
+        "credential_failed": "The AIO Proxy API key could not be resolved ({code}); no files were changed.",
+        "endpoint_changed": "The aio-proxy address changed while Claude Code was being configured; no files were changed. Run the command again.",
+        "modified": "Claude Code settings managed by AIO Proxy were edited: {fields}. Run aiop agent remove claude-code, then configure again; no files were changed.",
+        "removed": "Claude Code managed settings {status} at {configPath}.",
+        "preserved": "Kept fields you edited: {fields}."
       },
       "grok_login": "Sign in with: grok login",
       "grok_models": "List models with grok models, then start a session with grok -m <model-id>.",
@@ -737,6 +770,8 @@
       "load_failed": "Routing could not be loaded. Try again.",
       "retry": "Retry",
       "read_only": "This server has no writable config file. Routing can be inspected but not saved.",
+      "selection_quota_reset": "Spend the subscription that resets soonest first",
+      "selection_quota_reset_description": "Within each priority tier, try the subscription whose quota resets soonest before the weighted draw. Session affinity still takes precedence.",
       "table": {
         "label": "Model routes",
         "filter": "Filter models",
@@ -1060,7 +1095,13 @@
         "reauthorize_helper": "Account setting changes are saved only after authorization succeeds",
         "copied_device_code": "Copied the device code to the clipboard",
         "open_authorization_aria": "Open authorization page",
-        "start_failed": "Authorization could not be started. Check the server and try again."
+        "start_failed": "Authorization could not be started. Check the server and try again.",
+        "use_local_sign_in": "Use {source} sign-in",
+        "local_sign_in_confirm_title": "Use the {source} sign-in on this machine?",
+        "local_sign_in_confirm_description": "aio-proxy will read the sign-in {source} keeps on this machine and keep it in sync when tokens refresh. Removing this Provider will not sign {source} out.",
+        "local_sign_in_unavailable": "The sign-in on this machine is no longer available. Sign in with the tool, then try again.",
+        "local_sign_in_invalid": "The sign-in on this machine could not be used. Sign in again with the tool, then try again.",
+        "local_sign_in_stale": "aio-proxy already has a newer sign-in. The sign-in on this machine will be updated when tokens refresh."
       },
       "transforms": {
         "description": "Customize the request rewrites applied before the request goes upstream. Match conditions and update actions run in rule order, so later rules see the results of earlier ones.",
@@ -1375,6 +1416,11 @@
         "models_empty_title": "No models yet",
         "models_empty_description": "Pull the upstream catalog, or type a model ID directly.",
         "models_filter_no_matches": "No models match this filter",
+        "models_manual_label": "Manual",
+        "models_sync_label": "Sync with upstream",
+        "models_sync_hint": "New upstream models are added automatically; hide the ones you don't want.",
+        "models_sync_refreshed_at": "Last refreshed {time}",
+        "models_sync_never": "Not refreshed yet",
         "models_upstream_heading": "Upstream models",
         "models_upstream_hint": "Only enabled models can be a direct model, an alias target, or the test model.",
         "manual_models": "Add models manually",
@@ -1462,7 +1508,9 @@
       "new_title": "New Provider",
       "edit_title": "Edit Provider",
       "aliases_title": "Provider Aliases",
-      "kind_not_supported": "Provider kind \"{kind}\" is not supported for creation via the UI"
+      "kind_not_supported": "Provider kind \"{kind}\" is not supported for creation via the UI",
+      "local_sign_in_badge": "Linked to {source} on this machine",
+      "local_sign_in_delete_note": "This Provider uses the {source} sign-in on this machine. Removing it will not sign {source} out."
     },
     "usage": {
       "range_label": "Time range",
@@ -1702,7 +1750,7 @@
         "not_installed": "{target} was not found on this machine.",
         "conflict": "The {target} files are not an intact integration managed by AIO Proxy. Resolve it with the CLI.",
         "recovery_required": "An interrupted setup must be recovered first. Run the configure command in a terminal.",
-        "modified": "Some fields AIO Proxy manages were edited. Repair restores them.",
+        "modified": "Some fields AIO Proxy manages were edited. Remove the integration (your edits are kept), then configure it again.",
         "missing": "Some managed files are missing. Repair reinstalls them.",
         "outdated": "A newer adapter ships with this AIO Proxy version."
       },
@@ -1753,10 +1801,11 @@
         "invalid_provider_id": "That provider ID is empty or reserved.",
         "occupied_provider_id": "That provider ID is already used in config.toml.",
         "endpoint_changed": "The AIO Proxy address changed during setup. Try again.",
+        "configuration_modified": "Fields AIO Proxy manages were edited, so setup will not overwrite them. Remove the integration (your edits are kept), then configure it again.",
         "authorization_denied": "The device was denied.",
         "authorization_expired": "The approval request expired.",
         "recovery_required": "An interrupted setup must be recovered with the CLI first.",
-        "plan_stale": "Codex changed while you were filling in the form. Review it and save again.",
+        "plan_stale": "The setup changed while you were filling in the form. Review it and save again.",
         "cancelled": "Cancelled.",
         "operation_in_progress": "An operation for this Agent is already running.",
         "unknown": "Something went wrong. Check the AIO Proxy logs.",
@@ -1795,6 +1844,7 @@
         "actions": "Actions",
         "empty": "No authorizations yet.",
         "codex_keep": "Keep-ChatGPT mode reaches AIO Proxy with an API key, so it has no authorization here.",
+        "claude_code_static": "Claude Code reaches AIO Proxy with an API key or a placeholder token, so it has no authorization here.",
         "filter": "Filter authorizations",
         "filter_placeholder": "Search installation ID or version"
       },
@@ -1840,6 +1890,11 @@
         "conflict": "config.toml has AIO Proxy entries that conflict with your edits. Resolve them with the CLI.",
         "submit": "Save",
         "current": "Provider {providerId}, {mode}"
+      },
+      "claude_code": {
+        "key_help": "Written to ANTHROPIC_AUTH_TOKEN in Claude Code's settings.json.",
+        "key_placeholder": "Choose an API key",
+        "key_required": "Choose the API key Claude Code should use."
       },
       "card": {
         "via": {

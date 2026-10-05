@@ -10,6 +10,7 @@ export const queryKeys = {
   // Prefix of every Agents key, so invalidating it refreshes local state and authorizations together.
   agents: ['agents'],
   agentCodexPlan: ['agents', 'codex', 'plan'],
+  agentClaudeCodePlan: ['agents', 'claude-code', 'plan'],
   agentOperation: (operationId: string) => ['agents', 'operations', operationId],
   agentPendingLogin: (installationId: string) => ['agents', 'installations', installationId, 'pending'],
   auth: ['dashboard-auth'],

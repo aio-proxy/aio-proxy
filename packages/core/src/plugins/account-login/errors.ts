@@ -43,6 +43,24 @@ export class OAuthLoginResultValidationError extends Error {
     super('OAUTH_LOGIN_RESULT_INVALID');
   }
 }
+export class OAuthLocalSignInUnavailableError extends Error {
+  override readonly name = 'OAuthLocalSignInUnavailableError';
+  constructor() {
+    super('OAUTH_LOCAL_SIGN_IN_UNAVAILABLE');
+  }
+}
+export class OAuthLocalSignInInvalidError extends Error {
+  override readonly name = 'OAuthLocalSignInInvalidError';
+  constructor() {
+    super('OAUTH_LOCAL_SIGN_IN_INVALID');
+  }
+}
+export class OAuthLocalSignInStaleError extends Error {
+  override readonly name = 'OAuthLocalSignInStaleError';
+  constructor() {
+    super('OAUTH_LOCAL_SIGN_IN_STALE');
+  }
+}
 export class AccountOptionsValidationError extends Error {
   override readonly name = 'AccountOptionsValidationError';
   constructor() {

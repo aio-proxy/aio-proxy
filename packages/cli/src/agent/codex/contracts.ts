@@ -162,4 +162,4 @@ export type CodexRemoveResult = {
 };
 
 export type PreparedCodexCatalog = { readonly path: string; readonly digest: string };
-export type CodexCatalogUpdateResult = 'updated' | 'unchanged' | 'skipped';
+export type CodexCatalogUpdateResult = 'updated' | 'unchanged' | 'skipped' | 'empty';

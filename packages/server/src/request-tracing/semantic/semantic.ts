@@ -119,6 +119,12 @@ export const attributeName = {
   genAiOperationName: 'gen_ai.operation.name',
   stream: 'aio_proxy.request.stream',
   fast: 'aio_proxy.request.fast',
+  bodyLimitStage: 'aio_proxy.request.body.limit_stage',
+  bodyLimitBytes: 'aio_proxy.request.body.limit_bytes',
+  bodyMeasurement: 'aio_proxy.request.body.measurement',
+  bodyBytes: 'aio_proxy.request.body.bytes',
+  bodyRejectReason: 'aio_proxy.request.body.reject_reason',
+  bodyContentEncoding: 'aio_proxy.request.body.content_encoding',
   ttftMs: 'aio_proxy.response.ttft_ms',
   transportObservation: 'aio_proxy.upstream.transport_observation',
   upstreamHeadersMs: 'aio_proxy.upstream.headers_ms',
@@ -138,6 +144,9 @@ export const attributeName = {
   sessionResolvedBy: 'aio_proxy.session.resolved_by',
   finalProviderId: 'aio_proxy.route.final_provider_id',
   routeCandidateCount: 'aio_proxy.route.candidate_count',
+  // `<providerId>:<reason>` for each candidate selection removed before any attempt (cooldown or
+  // known-exhausted quota), in candidate order. Absent when nothing was removed.
+  routeSkippedCandidates: 'aio_proxy.route.skipped_candidates',
   attemptIndex: 'aio_proxy.attempt.index',
   // attempt span 现在就是 inference span，带标准 gen_ai.*。这几个 aio_proxy.attempt.* 与它们
   // 并存不重复：model_id 是我们配置里的模型、ttft_ms 是不含转移的毫秒值、http_sends 数的是

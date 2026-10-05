@@ -13,7 +13,7 @@ import {
 import { defineProtocolAdapter, type EmptyProtocolContext } from '../adapter';
 import { geminiInteractionsErrors } from '../errors';
 import { clampSdkReasoning } from '../reasoning-effort/index';
-import { readJsonRequest, readRequestText } from '../request';
+import { readJsonRequest, readRequestText } from '../request/index';
 import { functionToolSet } from '../tools';
 
 const rawBodySchema = z.object({}).catchall(z.unknown());

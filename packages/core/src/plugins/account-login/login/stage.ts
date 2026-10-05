@@ -34,6 +34,7 @@ export type StageContext = {
   readonly fingerprint: string;
   readonly suggestedKey: string;
   readonly metadata: { accountLabel?: string; expiresAt?: number };
+  readonly localSignIn?: StoredAccount['localSignIn'];
   readonly diagnostics: DiagnosticFactory;
   readonly signal: AbortSignal;
 };
@@ -152,6 +153,7 @@ function buildAccountWrite(ctx: StageContext, providerId: string, currentAccount
     options: ctx.publicValues,
     secrets: ctx.secrets,
     credential: ctx.currentCredential(),
+    ...(ctx.localSignIn === undefined ? {} : { localSignIn: ctx.localSignIn }),
     ...(metadata.accountLabel === undefined ? {} : { label: metadata.accountLabel }),
     ...(metadata.expiresAt === undefined ? {} : { expiresAt: metadata.expiresAt }),
     catalog:

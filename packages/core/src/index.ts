@@ -1,6 +1,15 @@
 import type { ProviderProtocol } from '@aio-proxy/types';
 
 export {
+  linkLocalSignInCredentials,
+  LocalSignInAccountChangedError,
+  localSignInDigest,
+  type LocalSignInLink,
+  LocalSignInSupersededError,
+  LocalSignInUnavailableError,
+} from './plugins/local-sign-in';
+
+export {
   AgentInstallationTargetMismatchError,
   createAgentIdentityService,
   type AgentAccessAuthentication,
@@ -174,6 +183,7 @@ export {
   OpenAIVideoCreateInputSchema,
   OpenAIVideoEditInputSchema,
   OpenAIVideoRemixInputSchema,
+  VIDEO_REQUEST_BODY_LIMITS,
 } from './ingress/openai-video';
 export { OpenAIResponsesCompactRequestSchema } from './ingress/openai-responses';
 export {
@@ -246,6 +256,7 @@ export {
   DESKTOP_TOKEN_FILE,
   DesktopTokenRejectedError,
   type DesktopTokenRejection,
+  desktopTokenPath,
   ensureDesktopToken,
   readDesktopToken,
 } from './desktop-token/index';
@@ -315,6 +326,12 @@ export {
   createProxyFetch,
   type ProviderFetch,
 } from './provider/proxy-fetch';
+export {
+  createProviderModelCatalogRepository,
+  type ProviderModelCatalogFailureCode,
+  type ProviderModelCatalogRepository,
+  type StoredProviderModels,
+} from './provider-model-catalog';
 export {
   type EffectiveCandidateRouting,
   type ModelRoute,

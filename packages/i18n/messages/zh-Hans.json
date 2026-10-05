@@ -40,8 +40,10 @@
       "title_plugin_prune": "aio-proxy · 清理插件",
       "title_provider_login": "aio-proxy · 登录 Provider",
       "title_codex_configure": "aio-proxy · 配置 Codex",
+      "title_claude_code_configure": "aio-proxy · 配置 Claude Code",
       "outro_provider_login": "登录完成",
       "outro_codex_configure": "Codex 配置完成",
+      "outro_claude_code_configure": "Claude Code 配置完成",
       "provider_list_empty": "没有 Provider",
       "status_deep_unexpected": "无法显示 Provider 健康数据",
       "header_name": "名称",
@@ -71,6 +73,16 @@
     "dashboard": {
       "description": "打开 AIO Proxy 控制台",
       "opened": "已在默认浏览器中打开控制台"
+    },
+    "provider_login": {
+      "method_prompt": "你想如何登录？",
+      "method_local": "使用本机上的 {source} 登录",
+      "method_browser": "通过浏览器登录",
+      "option_local_sign_in_description": "使用厂商工具在本机上已有的登录",
+      "error_local_sign_in_unavailable": "未在本机上找到 {source} 登录。",
+      "error_local_sign_in_unavailable_generic": "未在本机上找到已有登录。",
+      "error_local_sign_in_invalid": "本机上的登录无效或不完整。请在厂商工具中重新登录，然后重试。",
+      "error_local_sign_in_stale": "aio-proxy 已持有此 Provider 的更新登录；下次刷新时将更新厂商工具中的登录。"
     },
     "provider": {
       "description": "管理提供商包",
@@ -215,6 +227,7 @@
       "diagnostic_credential_refresh_failed": "提供商 {provider} 的凭据刷新失败",
       "diagnostic_authorization_failed": "提供商 {provider} 授权失败",
       "diagnostic_catalog_unavailable": "提供商 {provider} 的模型目录不可用",
+      "diagnostic_catalog_unsupported": "提供商 {provider} 无法列出上游模型，因此无法使用 syncModels",
       "diagnostic_proxy_unsupported": "提供商 {provider} 不支持当前配置的代理",
       "diagnostic_runtime_create_failed": "无法为提供商 {provider} 创建运行时",
       "state_failed": "加载失败"
@@ -266,8 +279,15 @@
       "auto_install_failed": "自动安装或启动后台服务失败：{reason}。解决上述错误后，请运行 `aio-proxy service install --user`，再运行 `aio-proxy service start`。",
       "command_failed": "服务命令执行失败：{command}（退出码 {code}）",
       "bootout_timeout": "`launchctl bootout {target}` 执行 {seconds} 秒后服务仍处于已加载状态，未再次启动",
+      "task_owned_by_other_user": "计划任务 {path} 以其他用户身份运行，未替换",
+      "external_task_unusable": "{path} 的服务由其他安装方式管理，且其程序已不存在；请用原安装工具重新安装",
+      "supervisor_timeout": "执行 `schtasks /End` {seconds} 秒后服务监护进程仍在运行，未删除该任务",
+      "local_app_data_missing": "未设置 LOCALAPPDATA，无法定位 Windows 服务文件",
+      "restore_failed": "无法恢复之前的服务定义，请运行 `aio-proxy service install` 进行修复",
       "unsupported_platform": "service 命令不支持当前平台：{platform}",
       "system_unsupported": "暂不支持系统级安装，请改用用户级服务安装",
+      "systemctl_missing": "未找到 systemctl；Linux 上的后台服务需要 systemd",
+      "systemd_user_unavailable": "无法连接 systemd 用户管理器（`systemctl --user` 失败）；后台服务需要 systemd 登录会话",
       "exec_not_found": "在 PATH 中找不到 “aio-proxy” 可执行文件。请先全局安装 aio-proxy（例如 `npm i -g aio-proxy`）再安装服务",
       "env_hint": "配置中通过 env 模板引用的 provider 环境变量将从 {path} 读取。请在其中按 `KEY=value` 逐行填写；托管服务不会继承你的 shell 环境"
     },
@@ -433,6 +453,19 @@
         "restore_option": "按操作 UUID 恢复 Codex 迁移",
         "pending_recovery": "之前的 Codex 配置操作仍在等待处理。是否在继续前恢复？",
         "not_installed": "未找到 Codex CLI。"
+      },
+      "claude_code": {
+        "configured": "claude-code：已在 {configPath} 完成配置（{status}）。",
+        "credential_placeholder": "AIO Proxy 未启用 API Key 认证，已写入非秘密的占位 token；没有它，Claude Code 会继续使用 claude.ai 登录。",
+        "credential_existing": "已将所选的 AIO Proxy API Key 写入 ANTHROPIC_AUTH_TOKEN。",
+        "offline": "已保存 Claude Code 配置，但无法验证代理。",
+        "restart": "请重启 Claude Code 使配置生效。",
+        "key_required": "AIO Proxy 已启用 API Key，必须选择一把 Key。请在交互式终端运行此命令，或使用 Dashboard 的 Agents 页面；未修改文件。",
+        "credential_failed": "无法确定要使用的 AIO Proxy API Key（{code}）；未修改文件。",
+        "endpoint_changed": "配置 Claude Code 期间 aio-proxy 地址发生了变化；未修改文件。请重新运行此命令。",
+        "modified": "AIO Proxy 管理的 Claude Code 设置已被修改：{fields}。请先运行 aiop agent remove claude-code，再重新配置；未修改文件。",
+        "removed": "已从 {configPath} {status} Claude Code 受管设置。",
+        "preserved": "保留了你修改过的字段：{fields}。"
       },
       "grok_login": "使用以下命令登录：grok login",
       "grok_models": "使用 grok models 列出模型，然后用 grok -m <model-id> 开始会话。",
@@ -737,6 +770,8 @@
       "load_failed": "无法加载路由。请重试。",
       "retry": "重试",
       "read_only": "此服务器没有可写配置文件。可以查看路由，但无法保存。",
+      "selection_quota_reset": "优先消耗最快重置的订阅",
+      "selection_quota_reset_description": "在同一 priority 层内，先尝试配额最快重置的订阅，再按权重抽取；会话亲和仍然优先。",
       "table": {
         "label": "模型路由",
         "filter": "筛选模型",
@@ -1060,7 +1095,13 @@
         "reauthorize_helper": "账户设置变更只会在授权成功后保存",
         "copied_device_code": "已将设备码复制到剪贴板",
         "open_authorization_aria": "打开授权页面",
-        "start_failed": "无法开始授权。请检查服务端后重试。"
+        "start_failed": "无法开始授权。请检查服务端后重试。",
+        "use_local_sign_in": "使用 {source} 登录",
+        "local_sign_in_confirm_title": "使用本机上的 {source} 登录？",
+        "local_sign_in_confirm_description": "aio-proxy 将读取 {source} 保存在本机上的登录信息，并在令牌刷新时保持同步。移除此 Provider 不会使 {source} 退出登录。",
+        "local_sign_in_unavailable": "本机上的登录信息已不可用。请先在该工具中登录，然后重试。",
+        "local_sign_in_invalid": "无法使用本机上的登录信息。请在该工具中重新登录，然后重试。",
+        "local_sign_in_stale": "aio-proxy 已持有更新的登录信息。本机上的登录信息将在令牌刷新时更新。"
       },
       "transforms": {
         "description": "自定义发往上游前的请求改写。匹配条件与更新动作按规则顺序执行，后面的规则会看到前面规则的结果。",
@@ -1375,6 +1416,11 @@
         "models_empty_title": "还没有模型",
         "models_empty_description": "拉取上游目录，或直接输入一个模型 ID。",
         "models_filter_no_matches": "没有模型匹配当前筛选",
+        "models_manual_label": "手动",
+        "models_sync_label": "与上游同步",
+        "models_sync_hint": "自动添加上游的新模型；可隐藏不需要的模型。",
+        "models_sync_refreshed_at": "上次刷新于 {time}",
+        "models_sync_never": "尚未刷新",
         "models_upstream_heading": "上游模型",
         "models_upstream_hint": "启用后才可作为直连模型、别名目标或测试模型。",
         "manual_models": "手动添加模型",
@@ -1462,7 +1508,9 @@
       "new_title": "新建提供商",
       "edit_title": "编辑提供商",
       "aliases_title": "提供商别名",
-      "kind_not_supported": "不支持通过 UI 创建 \"{kind}\" 类型的提供商"
+      "kind_not_supported": "不支持通过 UI 创建 \"{kind}\" 类型的提供商",
+      "local_sign_in_badge": "已关联本机上的 {source} 登录",
+      "local_sign_in_delete_note": "此 Provider 使用本机上的 {source} 登录。移除它不会使 {source} 退出登录。"
     },
     "usage": {
       "range_label": "时间范围",
@@ -1702,7 +1750,7 @@
         "not_installed": "本机未找到 {target}。",
         "conflict": "{target} 的文件不是完整的 AIO Proxy 托管集成，请用 CLI 处理。",
         "recovery_required": "有中断的配置需要先恢复，请在终端运行配置命令。",
-        "modified": "AIO Proxy 管理的部分字段被改动过，修复会还原它们。",
+        "modified": "AIO Proxy 管理的部分字段被改动过。请先移除集成（会保留你的改动），再重新配置。",
         "missing": "部分托管文件缺失，修复会重新安装。",
         "outdated": "当前 AIO Proxy 版本带有更新的适配器。"
       },
@@ -1753,10 +1801,11 @@
         "invalid_provider_id": "Provider ID 为空或是保留值。",
         "occupied_provider_id": "该 Provider ID 已在 config.toml 中使用。",
         "endpoint_changed": "配置过程中 AIO Proxy 地址发生了变化，请重试。",
+        "configuration_modified": "AIO Proxy 管理的字段被改动过，因此不会覆盖它们。请先移除集成（会保留你的改动），再重新配置。",
         "authorization_denied": "设备已被拒绝。",
         "authorization_expired": "授权请求已过期。",
         "recovery_required": "有中断的配置需要先用 CLI 恢复。",
-        "plan_stale": "填写表单期间 Codex 状态发生了变化，请检查后重新保存。",
+        "plan_stale": "填写表单期间配置状态发生了变化，请检查后重新保存。",
         "cancelled": "已取消。",
         "operation_in_progress": "该 Agent 已有操作在进行中。",
         "unknown": "出现错误，请查看 AIO Proxy 日志。",
@@ -1795,6 +1844,7 @@
         "actions": "操作",
         "empty": "暂无授权。",
         "codex_keep": "保留 ChatGPT 登录模式通过 API Key 访问 AIO Proxy，因此这里没有授权记录。",
+        "claude_code_static": "Claude Code 通过 API Key 或占位 token 访问 AIO Proxy，因此这里没有授权记录。",
         "filter": "筛选授权",
         "filter_placeholder": "搜索 Installation ID 或版本"
       },
@@ -1840,6 +1890,11 @@
         "conflict": "config.toml 中的 AIO Proxy 条目与你的修改冲突，请用 CLI 处理。",
         "submit": "保存",
         "current": "Provider {providerId}，{mode}"
+      },
+      "claude_code": {
+        "key_help": "将写入 Claude Code settings.json 的 ANTHROPIC_AUTH_TOKEN。",
+        "key_placeholder": "选择 API Key",
+        "key_required": "请选择 Claude Code 要使用的 API Key。"
       },
       "card": {
         "via": {

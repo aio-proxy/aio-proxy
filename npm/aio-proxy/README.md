@@ -49,9 +49,21 @@ flowchart LR
 - **The whole AI SDK ecosystem**: Any [Vercel AI SDK](https://ai-sdk.dev) provider package — official or community — loads as a Provider with `kind: "ai-sdk"` and gets the same conversion, routing, and billing as everything else. If the AI SDK supports a vendor, so does AIO Proxy.
 - **Extend it with plugins**: Every built-in subscription above is a plugin built on the public [`@aio-proxy/plugin-sdk`](https://www.npmjs.com/package/@aio-proxy/plugin-sdk). Write your own for an unsupported service or an internal gateway — OAuth login, model catalog, metadata and pricing included — and install it with `aio-proxy plugin add`.
 - **Routing that survives outages**: Provider priority tiers decide who is tried first, Provider weight splits traffic within a tier, session affinity keeps prompt caches warm, and a failed upstream falls through to the next candidate. Priority, weight, price, and context limits can all be overridden per model, with aliases to unify names.
-- **Coding agents in one command**: `aiop agent configure` wires up Codex, Grok Build, OpenCode, Pi, and oh-my-pi with device approval instead of pasted keys; anything else only needs a base URL.
+- **Coding agents in one command**: `aiop agent configure` wires up Codex, Claude Code, Grok Build, OpenCode, Pi, and oh-my-pi, with device approval instead of pasted keys where the Agent supports it; anything else only needs a base URL.
 - **Requests you can see**: The built-in Dashboard records every request and every Provider attempt with status, latency, tokens, and cost, with full traces exportable to OpenTelemetry.
 - **Local-first, configured your way**: Binds to `127.0.0.1` by default; add caller API keys and a Dashboard password when you expose it. Each Provider can declare multiple protocol endpoints, custom headers, and its own HTTP(S)/SOCKS5 proxy with fallback. Configure in the Dashboard or in a schema-checked JSONC file with `{{env.NAME}}` secrets and hot reload.
+
+### Reuse a sign-in already on this machine
+
+ChatGPT and GitHub Copilot Providers can reuse the sign-in their tools already keep on this machine. In the Dashboard, choose **Use the Codex sign-in on this machine** or **Use the GitHub Copilot sign-in on this machine** beside the browser authorize button. The option appears only when a sign-in is detected on the machine running the server; containers and headless servers without that sign-in show no option. Codex with `cli_auth_credentials_store = "keyring"` also shows no option because it has no sign-in file.
+
+From the CLI, run `aio-proxy provider login --local-sign-in`, or choose the local sign-in in the interactive `aio-proxy provider login` prompt. Credentials are read only after you choose this option. aio-proxy writes rotated tokens back to keep Codex signed in when it refreshes; the Copilot token is read once at link time and does not rotate.
+
+Linked Providers show a **Linked to {source} on this machine** badge. Removing the Provider never signs the tool out. To recover:
+
+- If the Provider is disabled while the tool still works, use the local sign-in again on that Provider.
+- If both are signed out, sign in again in the tool, then use the local sign-in again.
+- If the tool is on a different account, switch it back or add a new Provider.
 
 ## Install
 
@@ -72,6 +84,14 @@ bun add -g aio-proxy
 ```bash
 curl -fsSL https://aioproxy.dev/install.sh | sh
 ```
+
+### Desktop app (macOS, Linux, Windows)
+
+Download from [GitHub Releases](https://github.com/aio-proxy/aio-proxy/releases/latest):
+`aio-proxy-<version>-arm64.dmg` (macOS), `aio-proxy-<version>-x86_64.AppImage` or
+`aio-proxy-<version>-aarch64.AppImage` (Linux, `chmod +x` then run), and
+`aio-proxy-<version>-x64-setup.exe` (Windows). Each updates itself in the app. The Windows installer is not
+code-signed yet, so SmartScreen may warn: choose "More info" then "Run anyway".
 
 ## Quick start
 
@@ -119,6 +139,29 @@ aio-proxy reload
 
 Editors that support `$schema` can provide completion and validation. Use `{{env.NAME}}` to read environment variables.
 
+### Sync models with upstream
+
+API and AI SDK Providers can opt into `syncModels: true` instead of maintaining `models`. Sync is off by default; enabling it together with a non-empty `models` list fails validation. `excludedModels` is only valid with `syncModels: true` and hides exact model IDs (no glob matching). Aliases can still target hidden models. A manual `models` list works as before.
+
+```jsonc
+{
+  "providers": {
+    "relay": {
+      "kind": "api",
+      "protocol": "openai-compatible",
+      "baseURL": "https://relay.example.com",
+      "apiKey": "{{env.RELAY_API_KEY}}",
+      "syncModels": true,
+      "excludedModels": ["gpt-3.5-turbo"],
+    },
+  },
+}
+```
+
+Discovery runs immediately on startup and after config changes, then every hour. Failed refreshes retry after 5 minutes once the list is stale; an outage or empty response keeps the last good list. Before the first successful discovery, only aliases route. Changing the API primary endpoint's `baseURL`, `protocol`, or endpoint form, or the AI SDK `packageName` or `options.baseURL`, discards the old list. Only the primary API endpoint is queried, and discovery never rewrites the config file.
+
+AI SDK sync requires the package instance's `listModels` method or `options.baseURL` serving an OpenAI-compatible `/models` endpoint; otherwise the Provider reports `CATALOG_UNSUPPORTED`. In the Dashboard models section, choose **Manual / Sync with upstream**, hide individual models, check the last refreshed time, or use the refresh button.
+
 ### Multi-protocol endpoints
 
 Some upstreams natively serve more than one protocol. Declare the extra endpoints with `endpoints`; a request whose inbound protocol matches any declared endpoint is forwarded verbatim (raw passthrough) instead of being converted:
@@ -161,7 +204,7 @@ See the [Command Code integration guide](https://github.com/aio-proxy/aio-proxy/
 
 ### Model metadata and pricing
 
-Configure client-facing metadata once per exposed model under `router.models.<slug>.metadata`, keyed by the exact slug clients request rather than by an upstream model id. The slug must already be exposed by a Provider's `models` or `alias` configuration: a `router.models` entry only customizes an existing route and never creates one. The removed `providers.<id>.metadata` field is silently ignored.
+Configure client-facing metadata once per exposed model under `router.models.<slug>.metadata`, keyed by the exact slug clients request rather than by an upstream model id. The slug must already be exposed by a Provider's `models`, synced catalog, or `alias` configuration: a `router.models` entry only customizes an existing route and never creates one. The removed `providers.<id>.metadata` field is silently ignored.
 
 Metadata is resolved per field in this order: the selected Provider's router override (for `cost` or `limit`) > slug metadata (including `extend`) > plugin-reported upstream metadata > [models.dev](https://models.dev) fallback > protocol default. A Provider override replaces the slug's entire `cost` or `limit` object rather than deep-merging it; other metadata is shared by every Provider serving that slug. Aliases only auto-discover catalog fallback by their public slug. Unknown metadata fields are preserved and warned about rather than rejected, while invalid values (for example a negative price or a non-positive context limit) fail validation with a clear error.
 
@@ -287,11 +330,12 @@ A request is handled as follows:
 1. Try the complete request model string as an exact Provider-qualified route first. If it matches, select that Provider directly and bypass Provider priority and Provider weight, including effective weight zero. `enabled: false` still blocks the Provider because disabled Providers are not in the route map.
 2. Otherwise try the same complete string as an exact normal client model ID, including strings containing `/`.
 3. Merge Provider defaults with the exact model's sparse `providers` overrides. Discard normal candidates with `enabled: false` or effective weight zero.
-4. Order remaining candidates by descending Provider priority, then by Provider weight within the same priority tier. Configuration order is a deterministic tie-breaker for catalog representation and diagnostics, not the request order for positive-weight candidates in the same tier.
+4. Order remaining candidates by descending Provider priority, then by Provider weight within the same priority tier. With the opt-in `router.selection: "quota-reset"` (also a switch on the Dashboard Routing page), subscriptions with a known quota reset go first within their tier, the one whose longest covering window resets soonest leading; Providers without quota data follow in their weighted order. Configuration order is a deterministic tie-breaker for catalog representation and diagnostics, not the request order for positive-weight candidates in the same tier.
 5. Stable (non-generated) logical sessions use a deterministic weighted draw so token-count and generation share the same pre-attempt order when the routing snapshot is unchanged. Generated sessions use independent random draws.
 6. Response owner, then session affinity, may move an eligible normal candidate to the front. They never resurrect a disabled or zero-weight Provider. Session affinity still overrides priority so a session can stick to a previously successful Provider (for example, prompt-cache continuity).
-7. Use raw passthrough for a same-protocol `api` Provider; use AI SDK conversion for other supported combinations.
-8. Try the next candidate after a Provider failure; return the final failure if every candidate fails.
+7. Remove candidates that cannot serve right now, even when response owner or session affinity put them first: a Provider cooling down after a 429 with `Retry-After`, and a subscription Provider whose cached quota snapshot shows the window covering this model exhausted with a known reset (Kimi Code, Muse Code, ChatGPT, and Cursor report which models each window covers). Quota that is unknown, failed to read, or older than 10 minutes never removes a candidate. If every candidate is removed, the client gets a 429 whose `Retry-After` is the earliest reset. The request trace lists removed candidates in `aio_proxy.route.skipped_candidates`.
+8. Use raw passthrough for a same-protocol `api` Provider; use AI SDK conversion for other supported combinations.
+9. Try the next candidate after a Provider failure; return the final failure if every candidate fails.
 
 On the example policy, `provider-a` is first about 60% of the time and `provider-b` about 40% at priority 30. If the selected Provider fails, the other priority-30 Provider is tried before `provider-c`.
 
@@ -442,13 +486,14 @@ Each `label` is optional and only helps identify a key. With at least one key co
 
 ## Agent integrations
 
-aio-proxy supports two integration types: managed plugins for OpenCode, Pi, and oh-my-pi, and a Codex global configuration integration with two authentication modes. Plugin integrations install or update an adapter and keep the Agent's native login flow. The Codex integration edits the global `config.toml`; it does not install a plugin or replace native Codex login. Integrations are global to the current user and do not write project-local Agent config.
+aio-proxy supports two integration types: managed plugins for OpenCode, Pi, and oh-my-pi, and a Codex global configuration integration with two authentication modes. Plugin integrations install or update an adapter and keep the Agent's native login flow. The Codex integration edits the global `config.toml`; it does not install a plugin or replace native Codex login. Claude Code is connected the same way, through two keys in its global `settings.json`. Integrations are global to the current user and do not write project-local Agent config.
 
 ```bash
 aio-proxy agent configure opencode
 aio-proxy agent configure pi
 aio-proxy agent configure omp
 aiop agent configure codex
+aiop agent configure claude-code
 aio-proxy agent list --check
 aio-proxy agent list --authorizations
 aiop agent list --check
@@ -461,6 +506,12 @@ The Dashboard's **Agents** page shows the same state and, when opened on the mac
 Supported floors are OpenCode 1.17.10, Pi 0.84.2, and oh-my-pi 17.3.7. After configure, sign in with `opencode auth login --provider aio-proxy` or `/login aio-proxy` in Pi and oh-my-pi. Reload or restart the Agent so it loads the updated adapter. `aio-proxy upgrade` refreshes managed adapters the same way and also requires a reload.
 
 When caller keys are enforced, set `server.password` so Device Approval can authorize the Agent. `aio-proxy agent remove` revokes the installation and deletes aio-proxy's managed files; it does not log the Agent out of its own host account. If the local control plane is offline, remove refuses and leaves files in place.
+
+### Claude Code configuration
+
+`aiop agent configure claude-code` merges two keys into the `env` block of the global `~/.claude/settings.json`, or of the directory selected by `CLAUDE_CONFIG_DIR`: `ANTHROPIC_BASE_URL`, set to the proxy's loopback address, and `ANTHROPIC_AUTH_TOKEN`. The token is required, because with a base URL alone Claude Code keeps using its saved claude.ai login. When `server.apiKeys` is empty, the command writes the non-secret `aio-proxy-local` placeholder and asks nothing. When keys exist, you choose one in the terminal or on the Dashboard's Agents page; it is checked against the proxy and stored as plain text in `settings.json`, which is then restricted to your user. A non-interactive run with keys configured fails without writing anything. Restart Claude Code for the change to take effect.
+
+Every other setting and `env` entry is left as it is, and a symlinked or unparseable `settings.json` is refused. Ownership is recorded in `~/.claude/.aio-proxy/claude-code-config.json`, outside the file Claude Code rewrites. `aiop agent list` reports the integration as `managed`, or as `modified` with the fields you edited, and `--check` probes the proxy with the configured token. `aiop agent remove claude-code` works offline and puts the two keys back to what they were, skipping any you have edited since; proxy keys are retained. Project-level `.claude/settings.json` files are never touched.
 
 ### Codex configuration
 

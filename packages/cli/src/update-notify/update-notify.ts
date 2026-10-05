@@ -52,6 +52,8 @@ const defaultSpawn: NotifySpawn = async (command) => {
 export const notifyUpdateAvailable = async (
   latest: string,
   spawn: NotifySpawn = defaultSpawn,
+  // Deliberately per user, not per AIO_PROXY_HOME: every instance shares one
+  // record so a release notifies the desktop once.
   notificationPath: string = join(homedir(), '.aio-proxy', 'update-notify.json'),
 ): Promise<void> => {
   if (process.platform !== 'darwin' && process.platform !== 'linux') return;

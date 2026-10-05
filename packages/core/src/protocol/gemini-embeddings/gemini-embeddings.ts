@@ -10,7 +10,7 @@ import {
 } from '../../ingress/gemini-embeddings';
 import { defineEmbeddingProtocolAdapter, type EmbeddingProviderOptions, type EmbeddingValue } from '../adapter';
 import { geminiEmbeddingsErrors } from '../errors';
-import { readJsonRequest } from '../request';
+import { readJsonRequest } from '../request/index';
 
 export type GeminiEmbeddingsRequest = GeminiEmbedContentRequest | GeminiBatchEmbedContentsRequest;
 

@@ -8,6 +8,7 @@ export type UnmanagedRelaunchIo = {
   readonly exitDelayMs?: number;
   readonly spawn?: typeof Bun.spawn;
   readonly exit?: (code: number) => void;
+  readonly platform?: NodeJS.Platform;
 };
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
@@ -21,8 +22,10 @@ export const userCliArgs = (argv: readonly string[] = process.argv): readonly st
 // Dashboard apply runs inside the process being replaced. A managed unit is
 // bounced by `runUpgradeCommand`; a foreground `aio-proxy run` has no manager,
 // so a detached helper waits for this PID to release the port and execs the
-// newly installed launcher with the same user argv.
+// newly installed launcher with the same user argv. Windows has no `/bin/sh` for that helper, so there it
+// throws before spawning or exiting: the caller's failed-relaunch path leaves the restart to the user.
 export const scheduleUnmanagedRelaunch = (io: UnmanagedRelaunchIo = {}): void => {
+  if ((io.platform ?? process.platform) === 'win32') throw new Error('no unmanaged relaunch helper on Windows');
   const exec = io.exec ?? resolveExec();
   const args = io.args ?? userCliArgs(io.argv);
   const helperDelayMs = io.helperDelayMs ?? 1_000;

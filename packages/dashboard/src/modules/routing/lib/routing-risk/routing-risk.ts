@@ -1,4 +1,4 @@
-import type { DashboardRoutingModel } from '@aio-proxy/types';
+import type { DashboardRoutingModel, RouterSelection } from '@aio-proxy/types';
 
 import type { RoutingTrafficProviderTotals } from '../../services/routing-traffic-service';
 import { tierActualShares } from '../routing-traffic';
@@ -27,9 +27,12 @@ export const configuredRisks = (model: DashboardRoutingModel): readonly RoutingR
 export const tierDeviations = (
   tier: DashboardRoutingModel['tiers'][number],
   totals: readonly RoutingTrafficProviderTotals[] | undefined,
+  selection: RouterSelection = 'weighted',
 ): ReadonlyMap<string, number> => {
   const deviations = new Map<string, number>();
-  if (totals === undefined) return deviations;
+  // Quota-reset ordering lets one subscription carry its tier until it runs out, so the weight split
+  // predicts nothing there and a lopsided tier is the policy working, not a misconfiguration.
+  if (totals === undefined || selection === 'quota-reset') return deviations;
   const actual = tierActualShares(tier, totals);
   // A tier that served nothing falls out here too: an unused tier adds no observation and is
   // not a bad split.
@@ -50,13 +53,15 @@ export const tierDeviations = (
 export const isDeviating = (
   model: DashboardRoutingModel,
   totals: readonly RoutingTrafficProviderTotals[] | undefined,
+  selection: RouterSelection = 'weighted',
 ): boolean | undefined => {
   if (totals === undefined) return undefined;
-  return model.tiers.some((tier) => tierDeviations(tier, totals).size > 0);
+  return model.tiers.some((tier) => tierDeviations(tier, totals, selection).size > 0);
 };
 
 export const modelRisks = (
   model: DashboardRoutingModel,
   totals: readonly RoutingTrafficProviderTotals[] | undefined,
+  selection: RouterSelection = 'weighted',
 ): readonly RoutingRisk[] =>
-  isDeviating(model, totals) === true ? [...configuredRisks(model), 'deviating'] : configuredRisks(model);
+  isDeviating(model, totals, selection) === true ? [...configuredRisks(model), 'deviating'] : configuredRisks(model);

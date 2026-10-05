@@ -1,11 +1,12 @@
 import {
   type OutboundProxy,
+  readJsonRequest,
   resolveNativeProxyUrl,
   pluginDefaultAliases,
   type StoredCatalog,
   validateModelCatalog,
 } from '@aio-proxy/core';
-import type { AccountContext, CredentialPort } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort } from '@aio-proxy/plugin-sdk';
 import { type Diagnostic, providerLoginCommand } from '@aio-proxy/types';
 
 import {
@@ -24,6 +25,7 @@ import {
   refreshDiagnostic,
   summary,
 } from './catalog';
+import { oauthCatalogJob } from './catalog-job';
 import { digest, runtimeIdentity } from './identity';
 import {
   type CatalogJobDescriptor,
@@ -138,6 +140,7 @@ async function createRuntimeMaterialization(
           ...(config.plugin === '@aio-proxy/plugin-openai-chatgpt' &&
           options.plugins.plugins.get(config.plugin)?.builtIn === true
             ? {
+                __aioReadJsonRequest: readJsonRequest,
                 __aioRegisterPayloadHint: (hint: PayloadCaptureHint) => {
                   payloadCaptureHint = hint;
                 },
@@ -281,23 +284,8 @@ export async function materializePluginProvider(
       adapter.quota !== undefined,
       canRefreshCredential,
     );
-  const catalogJobFor = (credentials: CredentialPort<unknown>): CatalogJobDescriptor => ({
-    providerId: config.id,
-    plugin: account.plugin,
-    capability: account.capability,
-    accountRuntimeRevision: account.runtimeRevision,
-    policy: adapter.catalog.policy,
-    stored: storedCatalog,
-    enabled: config.enabled,
-    ...(unavailable === undefined ? {} : { unavailableOccurredAt: Date.parse(unavailable.occurredAt) }),
-    discover: (signal) =>
-      adapter.catalog.discover({
-        credentials: credentials as never,
-        options: accountOptions,
-        signal,
-        ...(options.runtimeFetch === undefined ? {} : { fetch: options.runtimeFetch }),
-      } as unknown as AccountContext<unknown, unknown>),
-  });
+  const catalogJobFor = (credentials: CredentialPort<unknown>): CatalogJobDescriptor =>
+    oauthCatalogJob(options, prepared, credentials, storedCatalog, unavailable);
 
   if (storedCatalog === null) {
     return catalogUnavailableMaterialization(options, unavailable, persistedSummary, catalogJobFor, createCredentials);

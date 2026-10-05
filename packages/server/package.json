@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/server",
-  "version": "0.37.0",
+  "version": "0.39.1",
   "private": true,
   "type": "module",
   "imports": {
@@ -11,7 +11,7 @@
   },
   "scripts": {
     "test": "bun run test:unit",
-    "test:unit": "bun test --preload=./__tests__/setup.ts"
+    "test:unit": "bun test"
   },
   "dependencies": {
     "@aio-proxy/core": "workspace:*",

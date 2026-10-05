@@ -57,6 +57,7 @@ const ERRORS: Readonly<Record<string, () => string>> = {
   invalid_provider_id: () => m['dashboard.agents.error.invalid_provider_id'](),
   occupied_provider_id: () => m['dashboard.agents.error.occupied_provider_id'](),
   endpoint_changed: () => m['dashboard.agents.error.endpoint_changed'](),
+  configuration_modified: () => m['dashboard.agents.error.configuration_modified'](),
   authorization_denied: () => m['dashboard.agents.error.authorization_denied'](),
   authorization_expired: () => m['dashboard.agents.error.authorization_expired'](),
   recovery_required: () => m['dashboard.agents.error.recovery_required'](),

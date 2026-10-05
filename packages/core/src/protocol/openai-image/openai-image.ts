@@ -18,7 +18,7 @@ import {
   type ImageInvocation,
   type ImageTransportResult,
 } from '../image-adapter';
-import { REQUEST_BODY_LIMITS, type RequestBodyLimits, readJsonRequest, readRequestText } from '../request';
+import { type RequestBodyLimits, readJsonRequest, readRequestText } from '../request/index';
 import { assertConvertMask, decodeImageBytes } from './mask';
 
 export { CPA_DEFAULT_IMAGE_MODEL, type OpenAIImageRequest } from '../../ingress/openai-image';
@@ -32,6 +32,8 @@ export type OpenAIImageContext = {
 
 const DALLE_IDS = new Set(['dall-e-2', 'dall-e-3']);
 const SIZE_PATTERN = /^(\d+)x(\d+)$/u;
+// Generations retain the older media boundary; edits allow the official larger envelopes.
+const GENERATIONS_BODY_LIMITS = Object.freeze({ encoded: 64 * 1_024 * 1_024, decoded: 128 * 1_024 * 1_024 });
 const EDITS_JSON_LIMITS = Object.freeze({ encoded: 357_564_416, decoded: 357_564_416 });
 const EDITS_MULTIPART_LIMITS = Object.freeze({ encoded: 851_048_559, decoded: 851_048_559 });
 const MULTIPART_REPLAY_FIELDS = [
@@ -116,7 +118,7 @@ export const openAIImagesAdapter = defineImageProtocolAdapter<OpenAIImageRequest
 
 function openaiImageBodyLimits(raw: Request, context: OpenAIImageContext): RequestBodyLimits {
   if (context.operation === 'edits') return isMultipartRequest(raw) ? EDITS_MULTIPART_LIMITS : EDITS_JSON_LIMITS;
-  return REQUEST_BODY_LIMITS;
+  return GENERATIONS_BODY_LIMITS;
 }
 
 function isMultipartRequest(raw: Request): boolean {

@@ -44,6 +44,21 @@ test('shows the display name and keeps the Provider ID to the hover title', () =
   expect(screen.queryByText('carpool')).not.toBeInTheDocument();
 });
 
+test('a linked Provider card shows the localized local sign-in source badge', () => {
+  renderCard(
+    <ProviderCard
+      {...baseProps}
+      provider={providerStub({ localSignInSource: { default: 'Vendor CLI', en: 'Codex' } })}
+    />,
+  );
+  expect(screen.getByText('Linked to Codex on this machine')).toBeInTheDocument();
+});
+
+test('an unlinked Provider card has no local sign-in badge', () => {
+  renderCard(<ProviderCard {...baseProps} provider={providerStub()} />);
+  expect(screen.queryByText(/Linked to .* on this machine/u)).toBeNull();
+});
+
 test('the card body is one link and never a nested-interactive button', () => {
   renderCard(
     <ProviderCard
@@ -73,7 +88,7 @@ test('an API Provider names its protocol on line 2 and draws the API mark on lin
   );
 
   expect(screen.getByTestId('provider-kind-mark')).toBeInTheDocument();
-  expect(screen.getByTestId('provider-card-detail')).toHaveTextContent('OpenAI Compatible');
+  expect(screen.getByTestId('provider-card-detail')).toHaveTextContent('OpenAI Chat Completions');
 });
 
 test('several protocols collapse to one word so line 2 never wraps', () => {
@@ -90,7 +105,7 @@ test('several protocols collapse to one word so line 2 never wraps', () => {
 
   const detail = screen.getByTestId('provider-card-detail');
   expect(screen.getByTestId('provider-protocols-multi')).toBeInTheDocument();
-  expect(detail).not.toHaveTextContent('OpenAI Compatible');
+  expect(detail).not.toHaveTextContent('OpenAI Chat Completions');
   expect(detail).not.toHaveTextContent('Anthropic');
 });
 

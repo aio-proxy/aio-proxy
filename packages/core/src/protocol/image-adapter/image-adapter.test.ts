@@ -2,11 +2,16 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { REQUEST_BODY_LIMITS } from '../request';
+import {
+  readJsonRequest,
+  RequestBodyTooLargeError,
+  withRequestBodyLimits,
+  REQUEST_BODY_LIMITS,
+} from '../request/index';
 import { defineImageProtocolAdapter } from './image-adapter';
 
 describe('defineImageProtocolAdapter', () => {
-  test('freezes an image adapter with capability image and no imageSse', () => {
+  test('freezes an image adapter with capability image and no imageSse', async () => {
     const adapter = defineImageProtocolAdapter({
       protocol: ProviderProtocol.OpenAIImage,
       async parse() {
@@ -47,6 +52,12 @@ describe('defineImageProtocolAdapter', () => {
       responseFormat: 'b64_json',
     });
     expect('imageSse' in adapter).toBe(false);
+    await withRequestBodyLimits({ encoded: 8, decoded: 8 }, async () => {
+      const raw = new Request('https://proxy.test', { method: 'POST', body: '{"model":"too-long"}' });
+      await expect(readJsonRequest(raw, adapter.bodyLimits(raw, undefined))).rejects.toBeInstanceOf(
+        RequestBodyTooLargeError,
+      );
+    });
     expect('modelInvocation' in adapter).toBe(false);
   });
 

@@ -60,6 +60,14 @@ const completeListResult: AgentListResult = {
     connection: 'not_checked',
     changedPaths: [],
   },
+  claudeCode: {
+    target: 'claude-code',
+    integration: 'static-config',
+    configPath: '/tmp/claude/settings.json',
+    status: 'absent',
+    connection: 'not_checked',
+    changedPaths: [],
+  },
 };
 
 const AGENT_KEYS = [
@@ -127,6 +135,17 @@ const AGENT_KEYS = [
   'cli.agent.codex.keys_retained',
   'cli.agent.codex.restore_option',
   'cli.agent.codex.pending_recovery',
+  'cli.agent.claude_code.configured',
+  'cli.agent.claude_code.credential_placeholder',
+  'cli.agent.claude_code.credential_existing',
+  'cli.agent.claude_code.offline',
+  'cli.agent.claude_code.restart',
+  'cli.agent.claude_code.key_required',
+  'cli.agent.claude_code.credential_failed',
+  'cli.agent.claude_code.endpoint_changed',
+  'cli.agent.claude_code.modified',
+  'cli.agent.claude_code.removed',
+  'cli.agent.claude_code.preserved',
   'cli.agent.grok_login',
   'cli.agent.grok_models',
   'cli.agent.configuration_modified',
@@ -348,6 +367,45 @@ test('Codex authorization cancellation does not claim a zero-write operation', (
   expect(text).not.toContain('no files were changed');
 });
 
+test('Claude Code list and results say which credential is in use without printing it', () => {
+  const managed = renderAgentList(
+    {
+      ...completeListResult,
+      claudeCode: {
+        ...completeListResult.claudeCode,
+        status: 'modified',
+        baseUrl: 'http://127.0.0.1:9317',
+        credential: 'existing',
+        endpointMatches: true,
+        changedPaths: ['env.ANTHROPIC_AUTH_TOKEN'],
+      },
+    },
+    false,
+  );
+  expect(managed).toContain('▲ claude-code  modified');
+  expect(managed.join('\n')).toContain('env.ANTHROPIC_AUTH_TOKEN');
+  const configured = renderAgentConfigure({
+    target: 'claude-code',
+    integration: 'static-config',
+    status: 'configured',
+    configPath: '/tmp/claude/settings.json',
+    baseUrl: 'http://127.0.0.1:9317',
+    credential: 'placeholder',
+    connection: 'not_checked',
+  });
+  expect(configured).toContain(m['cli.agent.claude_code.credential_placeholder']());
+  expect(configured).toContain(m['cli.agent.claude_code.restart']());
+  const removed = renderAgentRemove({
+    target: 'claude-code',
+    integration: 'static-config',
+    configPath: '/tmp/claude/settings.json',
+    status: 'partial',
+    preservedPaths: ['env.ANTHROPIC_AUTH_TOKEN'],
+  });
+  expect(removed[0]!.startsWith('▲')).toBe(true);
+  expect(removed).toContain(m['cli.agent.claude_code.preserved']({ fields: 'env.ANTHROPIC_AUTH_TOKEN' }));
+});
+
 test('Grok configure rendering includes login, models, and close-settings prompts', () => {
   const lines = renderAgentConfigure({
     target: 'grok',
@@ -402,6 +460,7 @@ test('modified Grok list text keeps the marker and configured authorization entr
     ],
     server: 'reachable',
     codex: completeListResult.codex,
+    claudeCode: completeListResult.claudeCode,
     authorizations: [
       {
         installationId: OUTPUT_INSTALLATION,

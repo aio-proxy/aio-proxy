@@ -2,7 +2,8 @@ import { expect, test } from 'bun:test';
 import { gzipSync } from 'node:zlib';
 
 import { OpenAIImagesInvalidRequestError } from '../../error';
-import { REQUEST_BODY_LIMITS } from '../request';
+import { releaseMultipartSpool } from '../../ingress/multipart';
+import { withRequestBodyLimits } from '../request/index';
 import {
   CPA_DEFAULT_IMAGE_MODEL,
   imageConvertSkipReason,
@@ -409,9 +410,10 @@ test('edits JSON bodyLimits accept the official-max envelope', () => {
     encoded: 357_564_416,
     decoded: 357_564_416,
   });
-  expect(openAIImagesAdapter.bodyLimits(generationsRequest({ prompt: 'a cat' }), generations)).toEqual(
-    REQUEST_BODY_LIMITS,
-  );
+  expect(openAIImagesAdapter.bodyLimits(generationsRequest({ prompt: 'a cat' }), generations)).toEqual({
+    encoded: 67_108_864,
+    decoded: 134_217_728,
+  });
 });
 
 test('rewrites a defaulted edits request to the resolved alias target', async () => {
@@ -689,5 +691,31 @@ test('maps protocol-shaped Images errors', async () => {
   expect(stream.status).toBe(501);
   expect(await stream.json()).toMatchObject({
     error: { code: 'unsupported_feature', type: 'invalid_request_error' },
+  });
+});
+
+test('edits JSON and multipart parse and rewrite with their own media budgets', async () => {
+  await withRequestBodyLimits({ encoded: 8, decoded: 8 }, async () => {
+    const json = editsRequest(editsImageUrl);
+    const parsedJson = await openAIImagesAdapter.parse(json, edits);
+    const rewrittenJson = await openAIImagesAdapter.rawRequest(json, parsedJson, 'image-wire', new Set(), edits);
+    expect(await rewrittenJson.json()).toMatchObject({ model: 'image-wire', prompt: 'make it night' });
+    const multipart = editsMultipartRequest({ prompt: 'make it night', image: pngBlob() });
+    try {
+      const parsedMultipart = await openAIImagesAdapter.parse(multipart, edits);
+      const rewritten = await openAIImagesAdapter.rawRequest(
+        multipart,
+        parsedMultipart,
+        'image-wire',
+        new Set(),
+        edits,
+      );
+      const fields = await rewritten.formData();
+      expect(fields.get('model')).toBe('image-wire');
+      expect(fields.get('prompt')).toBe('make it night');
+      expect(fields.get('image')).toBeInstanceOf(Blob);
+    } finally {
+      await releaseMultipartSpool(multipart);
+    }
   });
 });

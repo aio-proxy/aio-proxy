@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/plugin-kimi-code",
-  "version": "0.37.0",
+  "version": "0.39.1",
   "private": true,
   "files": [
     "dist"
@@ -15,7 +15,7 @@
   "scripts": {
     "build": "rslib",
     "test": "bun run test:unit",
-    "test:unit": "bun test --preload=./test/setup.ts",
+    "test:unit": "bun test",
     "test:artifact": "bun test ./oauth.smoke.ts"
   },
   "dependencies": {

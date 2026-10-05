@@ -1,3 +1,4 @@
+import { REQUEST_BODY_LIMITS, withRequestBodyLimits } from '@aio-proxy/core';
 import { ProviderProtocol } from '@aio-proxy/types';
 import { context } from '@opentelemetry/api';
 
@@ -21,52 +22,55 @@ export async function withProtocolRequestObservation<TRequest, TContext>(
   const inboundProtocol = options.adapter.protocol;
   const lease =
     inboundProtocol === ProviderProtocol.OpenAIResponse ? options.source.acquireProviderSnapshot() : undefined;
-  let transferred = false;
-  try {
-    const policy =
-      lease === undefined
-        ? undefined
-        : await options.source.preObservationCapturePolicy?.(
-            options.rawRequest,
-            lease.snapshot,
-            options.adapter.bodyLimits(options.rawRequest, options.context).encoded,
+  const snapshot = lease?.snapshot ?? options.source.currentProviderSnapshot();
+  const maxBytes = snapshot.config?.server.requestBody.maxBytes ?? REQUEST_BODY_LIMITS.encoded;
+  const captureMaxBytes = snapshot.config?.server.logging?.captureMaxBytes ?? 67108864;
+  return withRequestBodyLimits({ encoded: maxBytes, decoded: maxBytes }, async () => {
+    let transferred = false;
+    try {
+      // Admission capacity must not widen the fail-closed privacy probe.
+      const policy =
+        lease === undefined
+          ? undefined
+          : await options.source.preObservationCapturePolicy?.(options.rawRequest, lease.snapshot, 64 * 1_024 * 1_024);
+      // Sensitive preflight may have cancelled a stalled clone; never parse its retained body.
+      if (policy?.capturePayload === false && options.rawRequest.signal.aborted) {
+        void cancelRetainedRequestBody(options.rawRequest, options.rawRequest.signal.reason);
+        options.rawRequest.signal.throwIfAborted();
+      }
+      return await withRequestLogContext(
+        {
+          requestId: '',
+          captureMaxBytes,
+          debug: options.source.debugLogging === true,
+          logger: options.source.logger,
+          ...(policy === undefined ? {} : policy),
+        },
+        async () => {
+          const session = options.source.requestRecorder.begin({
+            inboundRequest: options.rawRequest,
+            inboundProtocol,
+            ...(options.httpRoute === undefined ? {} : { httpRoute: options.httpRoute }),
+          });
+          return context.with(session.rootContext, () =>
+            withRequestLogContext(
+              {
+                requestId: session.requestId,
+                debug: options.source.debugLogging === true,
+                logger: options.source.logger,
+                rootContext: session.rootContext,
+                ...(policy === undefined ? {} : policy),
+              },
+              () =>
+                run(options, session, inboundProtocol, lease, () => {
+                  transferred = true;
+                }),
+            ),
           );
-    // Sensitive preflight may have cancelled a stalled clone; never parse its retained body.
-    if (policy?.capturePayload === false && options.rawRequest.signal.aborted) {
-      void cancelRetainedRequestBody(options.rawRequest, options.rawRequest.signal.reason);
-      options.rawRequest.signal.throwIfAborted();
+        },
+      );
+    } finally {
+      if (!transferred) lease?.release();
     }
-    return await withRequestLogContext(
-      {
-        requestId: '',
-        debug: options.source.debugLogging === true,
-        logger: options.source.logger,
-        ...(policy === undefined ? {} : policy),
-      },
-      async () => {
-        const session = options.source.requestRecorder.begin({
-          inboundRequest: options.rawRequest,
-          inboundProtocol,
-          ...(options.httpRoute === undefined ? {} : { httpRoute: options.httpRoute }),
-        });
-        return context.with(session.rootContext, () =>
-          withRequestLogContext(
-            {
-              requestId: session.requestId,
-              debug: options.source.debugLogging === true,
-              logger: options.source.logger,
-              rootContext: session.rootContext,
-              ...(policy === undefined ? {} : policy),
-            },
-            () =>
-              run(options, session, inboundProtocol, lease, () => {
-                transferred = true;
-              }),
-          ),
-        );
-      },
-    );
-  } finally {
-    if (!transferred) lease?.release();
-  }
+  });
 }

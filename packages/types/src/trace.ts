@@ -206,6 +206,8 @@ const DashboardTraceWireBodySchema = z
     truncated: z.boolean().optional(),
     // 视频等二进制正文写侧不落 chunk，终态仍是 complete + 真实 byteLength + 空 text
     omitted: z.boolean().optional(),
+    captureLimitBytes: z.number().int().min(0).optional(),
+    omissionReason: z.enum(['privacy_policy', 'media_payload', 'capture_limit']).optional(),
   })
   .strict();
 
