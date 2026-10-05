@@ -9,7 +9,7 @@ use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, 
 use crate::app::{AppEvent, AppModel};
 use crate::client::health::HealthState;
 #[cfg(any(target_os = "macos", test))]
-use crate::prefs::{LabelStyle, MAX_TRAY_METRICS, Prefs, TrayMetric};
+use crate::prefs::{MAX_TRAY_METRICS, Prefs, TrayMetric};
 
 mod menu;
 mod metrics;
@@ -208,15 +208,6 @@ pub fn display_menu_entries(prefs: &Prefs) -> Vec<MenuEntry> {
         checked: prefs.shows_icon(),
         enabled: !prefs.tray_metrics.is_empty(),
     });
-    entries.push(MenuEntry::Separator);
-    for (style, label) in [(LabelStyle::Prefix, "Labels: Prefix"), (LabelStyle::Unit, "Labels: Unit")] {
-        entries.push(MenuEntry::Check {
-            command: MenuCommand::TrayLabels(style),
-            label: label.into(),
-            checked: prefs.tray_label_style == style,
-            enabled: true,
-        });
-    }
     entries
 }
 
@@ -306,18 +297,17 @@ pub fn run(cx: &mut App, command: MenuCommand) {
             let prefs = &mut cx.global_mut::<AppModel>().prefs;
             prefs.tray_show_icon = !prefs.tray_show_icon;
         }
-        MenuCommand::TrayLabels(style) => cx.global_mut::<AppModel>().prefs.tray_label_style = style,
         // Quitting leaves the proxy running: launchd owns it.
         MenuCommand::Quit => cx.quit(),
     }
-    if matches!(command, MenuCommand::TrayMetric(_) | MenuCommand::ToggleTrayIcon | MenuCommand::TrayLabels(_)) {
+    if matches!(command, MenuCommand::TrayMetric(_) | MenuCommand::ToggleTrayIcon) {
         let model = cx.global::<AppModel>();
         let path = crate::prefs::prefs_path(&model.paths);
         let saved = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| model.prefs.save(&path));
         if let Err(error) = saved {
             crate::log::info(format!("cannot save preferences to {}: {error}", path.display()));
         }
-        // muda toggles check items before dispatch, even when the selected label style is unchanged.
+        // muda toggles check items before dispatch; rebuild them from the saved preferences.
         invalidate_menu(cx);
         sync(cx);
     }

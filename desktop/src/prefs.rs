@@ -13,25 +13,16 @@ pub enum TrayMetric {
     InFlight,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum LabelStyle {
-    Prefix,
-    #[default]
-    Unit,
-}
-
 #[derive(Clone, PartialEq, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Prefs {
     pub tray_metrics: Vec<TrayMetric>,
     pub tray_show_icon: bool,
-    pub tray_label_style: LabelStyle,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { tray_metrics: vec![], tray_show_icon: true, tray_label_style: LabelStyle::Unit }
+        Self { tray_metrics: vec![], tray_show_icon: true }
     }
 }
 
@@ -41,7 +32,6 @@ impl Default for Prefs {
 struct StoredPrefs {
     tray_metrics: Vec<String>,
     tray_show_icon: bool,
-    tray_label_style: LabelStyle,
 }
 
 pub const MAX_TRAY_METRICS: usize = 2;
@@ -79,7 +69,6 @@ impl Prefs {
                         .take(MAX_TRAY_METRICS)
                         .collect(),
                     tray_show_icon: stored.tray_show_icon,
-                    tray_label_style: stored.tray_label_style,
                 }
             }
             Err(error) => {

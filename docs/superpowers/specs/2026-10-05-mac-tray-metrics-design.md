@@ -73,10 +73,10 @@ token 与费用沿用 `DesktopSummaryV1` 的整数字符串约定（`NonNegative
 `~/Library/Application Support/aio-proxy-desktop/preferences.json`（路径与现有 `instance.lock` 同目录）：
 
 ```json
-{ "trayMetrics": ["todayTokens", "tokensPerSecond"], "trayShowIcon": true, "trayLabelStyle": "unit" }
+{ "trayMetrics": ["todayTokens", "tokensPerSecond"], "trayShowIcon": true }
 ```
 
-- 默认：`trayMetrics: []`、`trayShowIcon: true`、`trayLabelStyle: "unit"`，即老用户升级后外观不变。
+- 默认：`trayMetrics: []`、`trayShowIcon: true`，即老用户升级后外观不变。
 - 文件缺失或解析失败时整体回退默认值并记录日志；未知指标 ID 丢弃；超过 2 个时截取前 2 个。
 - `trayMetrics` 为空时强制显示图标，忽略 `trayShowIcon`。
 - 写入用临时文件 + rename。
@@ -88,7 +88,6 @@ token 与费用沿用 `DesktopSummaryV1` 的整数字符串约定（`NonNegative
 - 4 个指标 `CheckMenuItem`（Today Tokens / Tokens per Second / Today Cost / Requests in Flight），勾选顺序即显示顺序（第一个在上）。已勾 2 个时其余未勾项置灰。
 - 分隔线
 - 「Show Icon」勾选项（无指标时置灰并显示为勾选）
-- 「Labels: Prefix」/「Labels: Unit」两个互斥勾选项
 
 菜单文字跟随现有菜单的英文风格。
 
@@ -111,21 +110,23 @@ token 与费用沿用 `DesktopSummaryV1` 的整数字符串约定（`NonNegative
 `set_title` 只能显示单行系统字号文字，因此整块内容（图标 + 1–2 行文字）由 AppKit 绘制为模板位图后交给 `tray.set_icon`，亮/暗菜单栏由系统着色。
 
 - 新文件 `desktop/src/tray/metrics_image.rs`（macOS 限定）：`NSAttributedString` + `NSFont::monospacedDigitSystemFontOfSize_weight` 绘制到 `NSBitmapImageRep`，导出 RGBA；`objc2-app-kit` 仅需新增 `NSImage`、`NSBitmapImageRep`、`NSFont`、`NSAttributedString`、`NSStringDrawing`、`NSGraphicsContext` feature，不新增依赖。
-- 画布高 36 px（18 pt @2x），宽度随内容。1 个指标：单行 12 pt；2 个指标：两行各约 9 pt，数值列右对齐。
+- 画布高 36 px（18 pt @2x），宽度随内容。1 个指标：单行 12 pt；2 个指标：两行各约 9 pt，标签列左对齐，数值与单位整体左对齐。
 - 图标在左，与文字间距 4 pt；`trayShowIcon` 关闭时只有文字。
 - 状态：Down 整体 alpha 0.4；Attention 时圆点画在图标右上角，无图标时画在文字块右上角。
 - 只在 `(文本, 状态, 是否变暗, 偏好)` 变化时重绘并 `set_icon`，避免每秒提交相同图像。
 
 ### 格式化
 
-纯函数 `format_metric(id, value, style) -> (label, value, unit)`，固定有效位数以减少宽度抖动：
+纯函数 `format_metric(metric, live) -> MetricText`，固定有效位数以减少宽度抖动：
 
-| 指标 | Unit 样式 | Prefix 样式 |
-| --- | --- | --- |
-| todayTokens | `1.23M tok` | `TOK 1.23M` |
-| tokensPerSecond | `48.2 tok/s` | `TPS 48.2` |
-| todayCost | `$3.41` | `USD 3.41` |
-| inFlight | `2 req` | `REQ 2` |
+| 指标 | 标签 | 数值 | 单位 |
+| --- | --- | --- | --- |
+| todayTokens | `TOK` | `1.23M` | `tok` |
+| tokensPerSecond | `TPS` | `48.3` | `tok/s` |
+| todayCost | `COST` | `$3.41` | 无 |
+| inFlight | `REQ` | `2` | `req` |
+
+每行始终显示标签和单位；数据不可用时仅数值替换为 `—`。标签列左对齐，数值与单位作为一个整体左对齐。
 
 数值规则：token 用 `K/M/B` 三位有效数字；tok/s `< 100` 保留一位小数，`≥ 100` 取整；费用 `< $100` 两位小数，否则取整；进行中为整数。
 
