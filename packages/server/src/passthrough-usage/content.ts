@@ -135,8 +135,8 @@ function openAIResponsesItemHasGeneratedText(item: unknown): boolean {
   if (type === 'reasoning') {
     return partsHaveNonEmptyText(item['content']) || partsHaveNonEmptyText(item['summary']);
   }
-  if (type === 'function_call') return nonEmptyString(item['arguments']);
-  if (type === 'custom_tool_call') return nonEmptyString(item['input']);
+  // A completed call is generated output even with empty input (zero-argument tools).
+  if (type === 'function_call' || type === 'custom_tool_call') return true;
   return false;
 }
 

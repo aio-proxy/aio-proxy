@@ -265,6 +265,19 @@ describe('passthrough usage extraction', () => {
     }
   });
 
+  test('Responses TTFT counts a completed zero-input custom tool call', () => {
+    let content = 0;
+    const observer = createPassthroughSseUsageObserver(ProviderProtocol.OpenAIResponse, {
+      onContent: () => {
+        content += 1;
+      },
+    });
+    observer.feed(
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"custom_tool_call","call_id":"c1","name":"now","input":""}}\n\n',
+    );
+    expect(content).toBe(1);
+  });
+
   test('counts buffered reasoning output_item.done with content text when summary is empty', () => {
     let content = 0;
     const observer = createPassthroughSseUsageObserver(ProviderProtocol.OpenAIResponse, {
