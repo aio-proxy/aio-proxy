@@ -1,5 +1,23 @@
 # @aio-proxy/cli
 
+## 0.39.1
+
+### Patch Changes
+
+- [#489](https://github.com/aio-proxy/aio-proxy/pull/489) [`ec485f0`](https://github.com/aio-proxy/aio-proxy/commit/ec485f035dfea998bed00c2852bb74bfb730d6b5) Thanks @baranwang - Codex no longer fails to start with "model_catalog_json ... must contain at least one model" when model metadata is briefly unavailable. An empty model catalog is never written, and one written by an earlier version is no longer kept: the last non-empty catalog is kept, or, with none, Codex uses its built-in catalog. The server logs a `codex.catalog_sync_failed` warning with code `empty_catalog` while the catalog stays empty.
+- Updated dependencies [[`d5218bf`](https://github.com/aio-proxy/aio-proxy/commit/d5218bfaf68e0af8d9b97cc09ac90b3ebe2f8593), [`7ba11b2`](https://github.com/aio-proxy/aio-proxy/commit/7ba11b2ef78af331754be0e94bda7bc19de19312)]:
+  - @aio-proxy/core@0.39.1
+  - @aio-proxy/server@0.39.1
+  - @aio-proxy/types@0.39.1
+  - @aio-proxy/dashboard@0.39.1
+  - @aio-proxy/opencode-provider@0.39.1
+  - @aio-proxy/pi-provider@0.39.1
+  - @aio-proxy/agent-provider-runtime@0.39.1
+  - @aio-proxy/plugin-sdk@0.39.1
+  - @aio-proxy/logger@0.39.1
+  - @aio-proxy/i18n@0.39.1
+  - @aio-proxy/shared@0.39.1
+
 ## 0.39.0
 
 ### Minor Changes
