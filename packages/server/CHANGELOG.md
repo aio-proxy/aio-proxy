@@ -1,5 +1,18 @@
 # @aio-proxy/server
 
+## 0.40.0
+
+### Patch Changes
+
+- [#493](https://github.com/aio-proxy/aio-proxy/pull/493) [`6c3a88e`](https://github.com/aio-proxy/aio-proxy/commit/6c3a88ebd254397c4aa4ec3bc4d89b3ba8267445) Thanks @baranwang - Time to first token is now recorded for streamed responses that only produce a tool call. Agent turns that streamed tool-call arguments without any text or reasoning summary previously showed no TTFT in the dashboard.
+- Updated dependencies [[`0a41886`](https://github.com/aio-proxy/aio-proxy/commit/0a4188627a2bd86a56da5a73e07e41ab10a9b790)]:
+  - @aio-proxy/core@0.40.0
+  - @aio-proxy/i18n@0.40.0
+  - @aio-proxy/logger@0.40.0
+  - @aio-proxy/plugin-sdk@0.40.0
+  - @aio-proxy/shared@0.40.0
+  - @aio-proxy/types@0.40.0
+
 ## 0.39.1
 
 ### Patch Changes
