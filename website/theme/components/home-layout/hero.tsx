@@ -34,7 +34,7 @@ export function Hero() {
         <div className="flex flex-wrap items-start gap-3">
           <Link
             href={startLink}
-            className="group inline-flex items-center gap-2 rounded-full bg-teal-700 px-6 py-3 text-sm font-semibold text-white home-shadow transition hover:bg-teal-800 dark:bg-teal-500 dark:text-olive-950 dark:hover:bg-teal-400"
+            className="group inline-flex items-center gap-2 rounded-full border border-transparent bg-teal-700 px-6 py-3 text-sm font-semibold text-white home-shadow transition hover:bg-teal-800 dark:bg-teal-500 dark:text-olive-950 dark:hover:bg-teal-400"
           >
             {copy.hero.primary}
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
