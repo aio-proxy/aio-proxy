@@ -54,12 +54,14 @@ macOS 菜单栏除品牌图标外，可常驻显示 1–2 个用户选择的指�
 ```json
 {
   "version": 1,
-  "todayTokens": 1234567,
-  "todayCostNanoUsd": 3410000000,
+  "todayTokens": "1234567",
+  "todayCostNanoUsd": "3410000000",
   "inFlight": 2,
   "outputTokensPerSecond": 48.3
 }
 ```
+
+token 与费用沿用 `DesktopSummaryV1` 的整数字符串约定（`NonNegativeIntegerStringSchema`），对象为 strict。
 
 选择轮询而非 SSE：桌面端 HTTP 客户端是手写的短连接（1 s 连接 / 5 s 总超时），接 SSE 需要新的流式读取与重连；本机每秒一次轮询开销可忽略。
 
