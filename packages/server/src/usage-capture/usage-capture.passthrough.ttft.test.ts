@@ -194,6 +194,37 @@ describe('usage capture passthrough ttft', () => {
     expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
   });
 
+  test('records ttft for zero-argument tool calls that stream no argument output', async () => {
+    const cases: Array<[ProviderProtocol, string]> = [
+      [
+        ProviderProtocol.OpenAICompatible,
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"now","arguments":""}}]}}]}\n\n' +
+          'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+      ],
+      [
+        ProviderProtocol.Anthropic,
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t1","name":"now","input":{}}}\n\n' +
+          'data: {"type":"content_block_stop","index":0}\n\n' +
+          'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":1}}\n\n',
+      ],
+      [
+        ProviderProtocol.GeminiInteractions,
+        'event: step.start\ndata: {"event_type":"step.start","index":0,"step":{"type":"function_call","id":"c1","name":"now","arguments":{}}}\n\n' +
+          'event: step.stop\ndata: {"event_type":"step.stop","index":0}\n\n' +
+          'event: interaction.completed\ndata: {"event_type":"interaction.completed","interaction":{"steps":[{"type":"function_call","id":"c1","name":"now","arguments":{}}]}}\n\n',
+      ],
+    ];
+    for (const [protocol, body] of cases) {
+      const captured = ssePassthrough(body, protocol);
+      await drain(captured.value);
+      const completion = await captured.completion;
+      expect({ protocol, ttftMs: 'ttftMs' in completion ? completion.ttftMs : undefined }).toEqual({
+        protocol,
+        ttftMs: expect.any(Number),
+      });
+    }
+  });
+
   test('omits ttft when the stream carries no content delta', async () => {
     const captured = ssePassthrough(
       'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n' +

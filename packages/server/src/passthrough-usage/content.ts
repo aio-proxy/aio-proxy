@@ -86,19 +86,46 @@ function openAIResponsesContent(eventType: string | undefined, value: unknown): 
   );
 }
 
-// Some Responses relays buffer the whole item and emit it on output_item.done
-// with no preceding *.delta frames. Use only when no incremental content has
-// been seen, so customary done-after-delta frames do not invent a content gap.
-// Empty shells and hosted tool items (web search, image generation) do not count.
+// Used only when no incremental content has been seen, so customary
+// done-after-delta frames do not invent a content gap. Covers outputs that
+// stream no deltas: Responses relays that buffer a whole item onto
+// output_item.done, and zero-argument tool calls, which only ever emit an
+// empty opener before the frame that completes the call. Empty shells and
+// hosted tool items (web search, image generation) do not count.
 export function hasTtftFallbackContent(
   protocol: ProviderProtocol,
   eventType: string | undefined,
   value: unknown,
 ): boolean {
-  if (protocol !== ProviderProtocol.OpenAIResponse) return false;
-  const type = eventType ?? (isPlainObject(value) ? value['type'] : undefined);
-  if (type !== 'response.output_item.done' || !isPlainObject(value)) return false;
-  return openAIResponsesItemHasGeneratedText(value['item']);
+  if (!isPlainObject(value)) return false;
+  switch (protocol) {
+    case ProviderProtocol.OpenAIResponse: {
+      const type = eventType ?? value['type'];
+      return type === 'response.output_item.done' && openAIResponsesItemHasGeneratedText(value['item']);
+    }
+    case ProviderProtocol.OpenAICompatible:
+      return (
+        Array.isArray(value['choices']) &&
+        value['choices'].some((choice) => isPlainObject(choice) && choice['finish_reason'] === 'tool_calls')
+      );
+    case ProviderProtocol.Anthropic:
+      return (
+        value['type'] === 'message_delta' &&
+        isPlainObject(value['delta']) &&
+        value['delta']['stop_reason'] === 'tool_use'
+      );
+    case ProviderProtocol.GeminiInteractions: {
+      const interaction = value['interaction'];
+      return (
+        (eventType ?? value['event_type']) === 'interaction.completed' &&
+        isPlainObject(interaction) &&
+        Array.isArray(interaction['steps']) &&
+        interaction['steps'].some((step) => isPlainObject(step) && step['type'] === 'function_call')
+      );
+    }
+    default:
+      return false;
+  }
 }
 
 function openAIResponsesItemHasGeneratedText(item: unknown): boolean {
