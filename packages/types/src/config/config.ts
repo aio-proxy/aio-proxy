@@ -25,6 +25,7 @@ import {
 } from '../provider';
 import { validateSyncModels } from '../provider-sync-models/index';
 import { ServerOtelAuthoringSchema, ServerOtelSchema, type OtelDestination } from './otel';
+import { ServerRequestBodySchema } from './request-body';
 
 export { ServerOtelAuthoringSchema, ServerOtelSchema, type OtelDestination };
 
@@ -48,6 +49,7 @@ const ApiKeyAuthoringSchema = z.object({
 });
 
 export const ServerLoggingSchema = z.object({
+  captureMaxBytes: z.number().int().min(0).max(67108864).default(67108864),
   enabled: z.boolean().default(false),
   dir: z.string().min(1).optional(),
   retentionDays: z.number().int().min(1).max(365).default(3),
@@ -80,6 +82,7 @@ export const ServerConfigSchema = z.object({
   password: z.string().min(1).optional().describe('Dashboard password or Argon2id PHC hash.'),
   logging: ServerLoggingSchema.prefault({}).optional(),
   retry: ServerRetrySchema.prefault({}),
+  requestBody: ServerRequestBodySchema.prefault({}),
   otel: ServerOtelSchema.prefault({}),
 });
 

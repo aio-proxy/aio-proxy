@@ -25,6 +25,8 @@ export type BodyDraft = {
   kept: number;
   truncated?: boolean;
   omitted?: boolean;
+  captureLimitBytes?: number;
+  omissionReason?: 'privacy_policy' | 'media_payload' | 'capture_limit';
   byteLength?: number;
   outcome?: BodyOutcome;
 };
@@ -119,6 +121,13 @@ function applyBodyEvent(body: BodyDraft | undefined, event: WireEvent): BodyDraf
   const outcome = stringField(event, 'outcome');
   if (outcome !== undefined && BODY_OUTCOMES.has(outcome)) draft.outcome = outcome as BodyOutcome;
   if (event['omitted'] === true) draft.omitted = true;
+  if (event['truncated'] === true) draft.truncated = true;
+  const captureLimitBytes = numberField(event, 'captureLimitBytes');
+  if (captureLimitBytes !== undefined && Number.isInteger(captureLimitBytes) && captureLimitBytes >= 0)
+    draft.captureLimitBytes = captureLimitBytes;
+  const reason = event['omissionReason'];
+  if (reason === 'privacy_policy' || reason === 'media_payload' || reason === 'capture_limit')
+    draft.omissionReason = reason;
   return draft;
 }
 
@@ -248,7 +257,12 @@ function finalizeBody(body: BodyDraft | undefined): BodyView {
     text,
     ...(body.truncated === true ? { truncated: true } : {}),
     ...(omitted ? { omitted: true } : {}),
-    ...defined({ byteLength: body.byteLength, outcome: body.outcome }),
+    ...defined({
+      byteLength: body.byteLength,
+      outcome: body.outcome,
+      captureLimitBytes: body.captureLimitBytes,
+      omissionReason: body.omissionReason,
+    }),
   };
 }
 
@@ -263,6 +277,8 @@ type BodyView =
       readonly outcome?: BodyOutcome;
       readonly truncated?: boolean;
       readonly omitted?: boolean;
+      readonly captureLimitBytes?: number;
+      readonly omissionReason?: 'privacy_policy' | 'media_payload' | 'capture_limit';
     }
   | undefined;
 

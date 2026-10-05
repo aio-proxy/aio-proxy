@@ -186,9 +186,10 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     async preObservationCapturePolicy(request, snapshot, maxBytes) {
       for (const hint of snapshot.payloadCaptureHints ?? []) {
         try {
-          if ((await hint(request, { maxBytes })) === 'sensitive') return { capturePayload: false };
+          if ((await hint(request, { maxBytes })) === 'sensitive')
+            return { capturePayload: false, omissionReason: 'privacy_policy' };
         } catch {
-          return { capturePayload: false };
+          return { capturePayload: false, omissionReason: 'privacy_policy' };
         }
       }
       return { capturePayload: true };

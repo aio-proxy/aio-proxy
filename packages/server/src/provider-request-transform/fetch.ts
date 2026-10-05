@@ -1,3 +1,4 @@
+import { readRequestText } from '@aio-proxy/core';
 import { apiProviderEndpoints, type Provider, ProviderKind } from '@aio-proxy/types';
 
 import { currentProviderAttemptContext } from '../request-logging';
@@ -99,8 +100,9 @@ async function loadJsonBody(
   if (mediaType === undefined || (mediaType !== 'application/json' && !mediaType.endsWith('+json'))) {
     throw new ProviderRequestTransformError({ code: 'REQUEST_TRANSFORM_BODY_NOT_JSON', ...location });
   }
+  const text = await readRequestText(request);
   try {
-    return JSON.parse(await request.clone().text()) as ProviderRequestTransformJson;
+    return JSON.parse(text) as ProviderRequestTransformJson;
   } catch {
     throw new ProviderRequestTransformError({ code: 'REQUEST_TRANSFORM_BODY_PARSE_FAILED', ...location });
   }
@@ -117,7 +119,10 @@ function rebuildRequest(request: Request, result: ProviderRequestTransformResult
         ...(location === undefined ? {} : location),
       });
     }
-    if (result.bodyModified) headers.delete('content-length');
+    if (result.bodyModified) {
+      headers.delete('content-encoding');
+      headers.delete('content-length');
+    }
 
     const serializedBody = result.bodyModified ? JSON.stringify(result.request.body) : undefined;
     let body: BodyInit | undefined;

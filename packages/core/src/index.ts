@@ -183,6 +183,7 @@ export {
   OpenAIVideoCreateInputSchema,
   OpenAIVideoEditInputSchema,
   OpenAIVideoRemixInputSchema,
+  VIDEO_REQUEST_BODY_LIMITS,
 } from './ingress/openai-video';
 export { OpenAIResponsesCompactRequestSchema } from './ingress/openai-responses';
 export {

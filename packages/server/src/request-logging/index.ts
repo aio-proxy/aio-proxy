@@ -1,4 +1,5 @@
 export {
+  type BodyCaptureReason,
   capturesRequestPayload,
   currentDebugRequestLogScope,
   currentProviderAttemptContext,

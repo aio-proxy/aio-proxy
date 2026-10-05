@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { REQUEST_BODY_LIMITS } from '../request';
+import {
+  readJsonRequest,
+  RequestBodyTooLargeError,
+  withRequestBodyLimits,
+  REQUEST_BODY_LIMITS,
+} from '../request/index';
 import { type AudioCapability, defineAudioProtocolAdapter, isAudioProtocolAdapter } from './audio-adapter';
 
 const errors = {
@@ -37,9 +42,13 @@ describe('defineAudioProtocolAdapter', () => {
     expect(adapter('transcription').capability).toBe('transcription');
   });
 
-  test('fills the shared defaults and exposes no language or image surface', () => {
+  test('fills the shared defaults and exposes no language or image surface', async () => {
     const speech = adapter('speech');
     expect(speech.bodyLimits(new Request('https://proxy.test'), {})).toEqual(REQUEST_BODY_LIMITS);
+    await withRequestBodyLimits({ encoded: 8, decoded: 8 }, async () => {
+      const raw = new Request('https://proxy.test', { method: 'POST', body: '{"model":"too-long"}' });
+      await expect(readJsonRequest(raw, speech.bodyLimits(raw, {}))).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+    });
     expect(speech.dimensions({ model: 'tts-1' }, {})).toEqual({});
     expect(speech.requestDiagnostics({ model: 'tts-1' }, {})).toEqual([]);
     expect(speech.wantsStream({ model: 'tts-1' }, {})).toBe(false);

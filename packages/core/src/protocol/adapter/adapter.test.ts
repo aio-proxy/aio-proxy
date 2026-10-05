@@ -7,13 +7,16 @@ import {
   defineEmbeddingProtocolAdapter,
   defineProtocolAdapter,
   functionToolSet,
+  readJsonRequest,
+  RequestBodyTooLargeError,
+  withRequestBodyLimits,
   type ProtocolAdapter,
-} from '../../src/index';
+} from '../../index';
 
 type RequestValue = { readonly model: string };
 type RouteContext = { readonly stream: boolean };
 
-test('defineEmbeddingProtocolAdapter freezes capability embedding and omits stream/session defaults', () => {
+test('defineEmbeddingProtocolAdapter freezes capability embedding and omits stream/session defaults', async () => {
   const adapter = defineEmbeddingProtocolAdapter({
     capability: 'embedding',
     protocol: ProviderProtocol.OpenAICompatible,
@@ -33,12 +36,18 @@ test('defineEmbeddingProtocolAdapter freezes capability embedding and omits stre
       rateLimited: () => new Response(null, { status: 429 }),
     },
   });
+  await withRequestBodyLimits({ encoded: 8, decoded: 8 }, async () => {
+    const raw = new Request('https://proxy.test', { method: 'POST', body: '{"model":"too-long"}' });
+    await expect(readJsonRequest(raw, adapter.bodyLimits(raw, undefined))).rejects.toBeInstanceOf(
+      RequestBodyTooLargeError,
+    );
+  });
   expect(adapter.capability).toBe('embedding');
   expect(adapter.wantsStream({ model: 'm' }, { stream: true })).toBe(false);
 });
 
 describe('defineProtocolAdapter', () => {
-  test('adds the empty-dimensions default and freezes the adapter', () => {
+  test('adds the empty-dimensions default and freezes the adapter', async () => {
     const adapter = defineProtocolAdapter<RequestValue, RouteContext>({
       protocol: ProviderProtocol.OpenAICompatible,
       async parse(raw) {
@@ -72,8 +81,14 @@ describe('defineProtocolAdapter', () => {
     expect(Object.isFrozen(adapter)).toBe(true);
     expect(adapter.capability).toBe('language');
     expect(adapter.bodyLimits(new Request('https://x'), { stream: false })).toEqual({
-      encoded: 64 * 1_024 * 1_024,
-      decoded: 128 * 1_024 * 1_024,
+      encoded: 256 * 1_024 * 1_024,
+      decoded: 256 * 1_024 * 1_024,
+    });
+    await withRequestBodyLimits({ encoded: 8, decoded: 8 }, async () => {
+      const raw = new Request('https://proxy.test', { method: 'POST', body: '{"model":"too-long"}' });
+      await expect(readJsonRequest(raw, adapter.bodyLimits(raw, { stream: false }))).rejects.toBeInstanceOf(
+        RequestBodyTooLargeError,
+      );
     });
     const typed: ProtocolAdapter<RequestValue, RouteContext> = adapter;
     expect(typed.protocol).toBe(ProviderProtocol.OpenAICompatible);

@@ -3,22 +3,28 @@ import { type AliasDimensions, canonicalEffort, ProviderProtocol } from '@aio-pr
 import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
-import type { FilePart, ModelMessage, ToolSet } from '../ai-sdk-bridge';
-import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../egress/openai-responses/index';
-import { OpenAIResponsesUnsupportedFeatureError } from '../error';
-import { isImageMediaType, openAIImageDetail } from '../image-input';
-import { type OpenAIResponsesCompactRequest, parseOpenAIResponsesCompact } from '../ingress/openai-responses/compact';
-import { type OpenAIResponsesRequest, parseOpenAIResponses } from '../ingress/openai-responses/index';
-import { openAIResponsesToModelMessages, readOpenAIResponsesWireMetadata } from '../transform/openai-responses/index';
-import { warnOpenAIResponsesDegradation } from '../transform/openai-responses/tools';
-import { defineProtocolAdapter } from './adapter';
-import { openAIResponsesErrors } from './errors';
-import { openAIResponsesRawRetry } from './openai-responses/encrypted-content-retry';
-import { repairOpenAIResponsesCallIdlessToolOutputs } from './openai-responses/tool-pairing-retry';
-import { clampSdkReasoning, normalizeEffort, reasoningSettings } from './reasoning-effort/index';
-import { readJsonRequest, readRequestText } from './request';
-import type { SessionCandidate } from './session';
-import { functionToolSet } from './tools';
+import type { FilePart, ModelMessage, ToolSet } from '../../ai-sdk-bridge';
+import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../../egress/openai-responses/index';
+import { OpenAIResponsesUnsupportedFeatureError } from '../../error';
+import { isImageMediaType, openAIImageDetail } from '../../image-input';
+import {
+  type OpenAIResponsesCompactRequest,
+  parseOpenAIResponsesCompact,
+} from '../../ingress/openai-responses/compact';
+import { type OpenAIResponsesRequest, parseOpenAIResponses } from '../../ingress/openai-responses/index';
+import {
+  openAIResponsesToModelMessages,
+  readOpenAIResponsesWireMetadata,
+} from '../../transform/openai-responses/index';
+import { warnOpenAIResponsesDegradation } from '../../transform/openai-responses/tools';
+import { defineProtocolAdapter } from '../adapter';
+import { openAIResponsesErrors } from '../errors';
+import { clampSdkReasoning, normalizeEffort, reasoningSettings } from '../reasoning-effort/index';
+import { readJsonRequest, readRequestText } from '../request/index';
+import type { SessionCandidate } from '../session';
+import { functionToolSet } from '../tools';
+import { openAIResponsesRawRetry } from './encrypted-content-retry';
+import { repairOpenAIResponsesCallIdlessToolOutputs } from './tool-pairing-retry';
 
 export type OpenAIResponsesContext = { readonly operation?: 'create' | 'compact' };
 
@@ -216,16 +222,16 @@ function openAIResponsesMessages(messages: readonly ModelMessage[]): readonly Mo
 const jsonObjectSchema = z.object({}).catchall(z.unknown());
 
 async function rewriteOpenAIResponsesCompactRequest(raw: Request, resolvedModel: string): Promise<Request> {
-  // Read the decoded body once so a no-op rewrite forwards it verbatim instead
-  // of round-tripping through JSON, which would silently truncate large
-  // integers and drop the client's exact byte representation.
+  // Inspect the decoded body once to decide whether rewriting is necessary.
+  // A no-op preserves the original encoded bytes and headers, including integers
+  // that would lose precision during a JSON round-trip.
   const bodyText = await readRequestText(raw);
   const body = jsonObjectSchema.parse(JSON.parse(bodyText));
   const headers = new Headers(raw.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
   if (body['model'] === resolvedModel && !Object.hasOwn(body, 'stream')) {
-    return new Request(raw, { method: raw.method, body: bodyText, headers });
+    return raw.clone();
   }
   const { stream: _stream, ...bodyWithoutStream } = body;
   return new Request(raw, {
@@ -240,9 +246,9 @@ async function rewriteOpenAIResponsesRequest(
   resolvedModel: string,
   supportedEfforts: ReadonlySet<string>,
 ): Promise<Request> {
-  // Read the decoded body once so a no-op rewrite forwards it verbatim instead
-  // of round-tripping through JSON, which would silently truncate large
-  // integers and drop the client's exact byte representation.
+  // Inspect the decoded body once to decide whether rewriting is necessary.
+  // A no-op preserves the original encoded bytes and headers, including integers
+  // that would lose precision during a JSON round-trip.
   const bodyText = await readRequestText(raw);
   const { background: _background, ...body } = jsonObjectSchema.parse(JSON.parse(bodyText));
   const reasoning = body['reasoning'];
@@ -270,15 +276,13 @@ async function rewriteOpenAIResponsesRequest(
     (typeof reasoning === 'object' &&
       reasoning !== null &&
       (nextReasoning as { effort?: unknown }).effort === (reasoning as { effort?: unknown }).effort);
-  const forwardedBody =
-    modelUnchanged && !backgroundStripped && effortUnchanged && repairedInput === undefined
-      ? bodyText
-      : JSON.stringify({
-          ...body,
-          model: resolvedModel,
-          ...(nextReasoning === undefined ? {} : { reasoning: nextReasoning }),
-          ...(repairedInput === undefined ? {} : { input: repairedInput }),
-        });
+  if (modelUnchanged && !backgroundStripped && effortUnchanged && repairedInput === undefined) return raw.clone();
+  const forwardedBody = JSON.stringify({
+    ...body,
+    model: resolvedModel,
+    ...(nextReasoning === undefined ? {} : { reasoning: nextReasoning }),
+    ...(repairedInput === undefined ? {} : { input: repairedInput }),
+  });
   return new Request(raw, {
     method: raw.method,
     body: forwardedBody,

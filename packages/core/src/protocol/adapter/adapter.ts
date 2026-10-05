@@ -2,7 +2,7 @@ import type { ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
 import type { AliasDimensions, ProviderProtocol } from '@aio-proxy/types';
 
 import type { AiSdkCallSettings, ModelMessage, TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
-import { REQUEST_BODY_LIMITS, type RequestBodyLimits } from '../request';
+import { currentRequestBodyLimits, type RequestBodyLimits } from '../request/index';
 import type { ProtocolSessionHints } from '../session';
 
 export type EmptyProtocolContext = Readonly<Record<never, never>>;
@@ -140,7 +140,7 @@ export type ProtocolAdapterDefinition<TRequest, TContext> = Omit<
 const noDimensions = (): AliasDimensions => ({});
 const noRequestDiagnostics = (): readonly ProtocolRequestDiagnostic[] => [];
 const sameModelInvocation = (invocation: ModelInvocation): ModelInvocation => invocation;
-const defaultBodyLimits = (): RequestBodyLimits => REQUEST_BODY_LIMITS;
+const defaultBodyLimits = (): RequestBodyLimits => currentRequestBodyLimits();
 
 export function defineProtocolAdapter<TRequest, TContext>(
   definition: ProtocolAdapterDefinition<TRequest, TContext>,

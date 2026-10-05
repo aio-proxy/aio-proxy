@@ -69,6 +69,20 @@ const localFields = new Set([
   attributeName.sessionResolvedBy,
 ]);
 
+const bodyEnums = new Map<string, ReadonlySet<string>>([
+  ['omissionReason', new Set(['privacy_policy', 'media_payload', 'capture_limit'])],
+  ['bodyLimitStage', new Set(['encoded', 'decoded'])],
+  ['bodyMeasurement', new Set(['declared', 'observed_lower_bound', 'unknown'])],
+  ['bodyRejectReason', new Set(['invalid_content_length'])],
+  ['bodyContentEncoding', new Set(['identity', 'gzip', 'x-gzip', 'zstd', 'deflate', 'br', 'unsupported'])],
+]);
+for (const [key, values] of [...bodyEnums]) {
+  const attribute = attributeName[key as keyof typeof attributeName];
+  if (attribute !== undefined) bodyEnums.set(attribute, values);
+}
+
+const bodySizes = new Set(['bodyBytes', 'bodyLimitBytes', attributeName.bodyBytes, attributeName.bodyLimitBytes]);
+
 // A Provider ID (same shape as `identifiers` admits) and a fixed reason; nothing request-derived.
 const SKIPPED_CANDIDATE = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}:(cooldown|quota_exhausted)$/u;
 
@@ -76,6 +90,9 @@ export function safeDiagnosticFields<T extends object>(fields: T, capturePayload
   if (capturePayload) return fields;
   return Object.fromEntries(
     Object.entries(fields).filter(([key, value]) => {
+      const bodyValues = bodyEnums.get(key);
+      if (bodyValues !== undefined) return typeof value === 'string' && bodyValues.has(value);
+      if (bodySizes.has(key)) return typeof value === 'number' && Number.isFinite(value);
       if (typeof value === 'number') return Number.isFinite(value);
       if (typeof value === 'boolean') return true;
       if (Array.isArray(value)) {

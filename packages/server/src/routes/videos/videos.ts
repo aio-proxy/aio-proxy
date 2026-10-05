@@ -7,14 +7,14 @@ import {
   parseOpenAIVideoRemix,
   readJsonRequest,
   releaseMultipartSpool,
-  REQUEST_BODY_LIMITS,
+  VIDEO_REQUEST_BODY_LIMITS,
   stripHopHeaders,
 } from '@aio-proxy/core';
 import { isPlainObject } from 'es-toolkit/predicate';
 import { type Context, Hono } from 'hono';
 
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
-import { handleProtocolRequest, hasInvalidOrOversizedContentLength } from '../pipeline';
+import { handleProtocolRequest, inspectRequestContentLength } from '../pipeline';
 import { cancelRetainedRequestBody } from '../pipeline/request';
 import { videoCapabilityNotSupported, videoForbidden, videoInvalidRequest, videoStoreFull } from './errors';
 import { isValidVideoId, sameVideoOwner } from './job-store';
@@ -50,8 +50,14 @@ export function createOpenAIVideosRoutes(source: VideosRouteSource) {
 
 async function handleVideoCreate(context: Context<CallerPrincipalEnv>, source: VideosRouteSource) {
   const raw = context.req.raw;
-  if (hasInvalidOrOversizedContentLength(raw, REQUEST_BODY_LIMITS)) {
-    return await rejectFollowUp(raw, openAIVideosAdapter.errors.tooLarge());
+  const inspection = inspectRequestContentLength(raw, VIDEO_REQUEST_BODY_LIMITS);
+  if (inspection !== undefined) {
+    return await rejectFollowUp(
+      raw,
+      inspection.kind === 'invalid'
+        ? videoInvalidRequest('Invalid Content-Length')
+        : openAIVideosAdapter.errors.tooLarge(),
+    );
   }
   const parsed = await videosTryParseAsync(() => openAIVideosAdapter.parse(raw, { operation: 'create' }));
   if (!parsed.ok) return await rejectFollowUp(raw, parsed.response);
@@ -148,12 +154,19 @@ type FollowUpPeek =
   | { readonly kind: 'unparsed' };
 
 async function peekFollowUpBody(raw: Request): Promise<FollowUpPeek> {
-  if (hasInvalidOrOversizedContentLength(raw, REQUEST_BODY_LIMITS)) {
-    return { kind: 'reject', response: openAIVideosAdapter.errors.tooLarge() };
+  const inspection = inspectRequestContentLength(raw, VIDEO_REQUEST_BODY_LIMITS);
+  if (inspection !== undefined) {
+    return {
+      kind: 'reject',
+      response:
+        inspection.kind === 'invalid'
+          ? videoInvalidRequest('Invalid Content-Length')
+          : openAIVideosAdapter.errors.tooLarge(),
+    };
   }
   if (isMultipartRequest(raw) || !isJsonRequest(raw)) return { kind: 'unparsed' };
   try {
-    return { kind: 'json', body: await readJsonRequest(raw, REQUEST_BODY_LIMITS) };
+    return { kind: 'json', body: await readJsonRequest(raw, VIDEO_REQUEST_BODY_LIMITS) };
   } catch (error) {
     return { kind: 'reject', response: videosRequestError(error) };
   }

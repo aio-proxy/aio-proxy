@@ -6,7 +6,7 @@ import { jsonRequest, REQUESTED_MODEL, rawProvider } from '../../../__tests__/pi
 import { MAX_BODY_BYTES, pipeline } from './test-support';
 
 describe('shared protocol routing pipeline request guards', () => {
-  test('rejects Content-Length above 64 MiB before parse or provider dispatch', async () => {
+  test('rejects Content-Length above the request budget before parse or provider dispatch', async () => {
     const provider = rawProvider({ id: 'raw' });
     const harness = pipeline([provider]);
 
@@ -19,7 +19,7 @@ describe('shared protocol routing pipeline request guards', () => {
     expect(provider.calls.raw).toEqual([]);
   });
 
-  test('accepts Content-Length at the 64 MiB boundary', async () => {
+  test('accepts Content-Length at the request budget boundary', async () => {
     const provider = rawProvider({ id: 'raw' });
     const harness = pipeline([provider]);
 
@@ -36,7 +36,7 @@ describe('shared protocol routing pipeline request guards', () => {
 
     const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL }, { contentLength: 'invalid' }));
 
-    expect(response.status).toBe(413);
+    expect(response.status).toBe(400);
     expect(harness.context.parseCalls).toBe(0);
     expect(harness.recording.begins).toEqual([{ inboundProtocol: ProviderProtocol.OpenAICompatible }]);
     expect(provider.calls.raw).toEqual([]);

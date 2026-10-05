@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { openAIResponsesAdapter } from '../index';
+import { openAIResponsesAdapter } from '../../index';
 
 test('drops background before raw forwarding while preserving unknown fields', async () => {
   const body = Bun.zstdCompressSync(

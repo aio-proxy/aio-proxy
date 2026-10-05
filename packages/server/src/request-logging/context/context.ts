@@ -6,6 +6,8 @@ import type { Context } from '@opentelemetry/api';
 import type { ServerLogSink } from '../../server-log';
 import { safeDiagnosticFields } from '../capture-policy';
 
+export type BodyCaptureReason = 'privacy_policy' | 'media_payload' | 'capture_limit';
+
 export type RequestLogContext = {
   readonly requestId: string;
   readonly attemptIndex?: number;
@@ -29,6 +31,8 @@ export type RequestLogScope = RequestLogContext &
   Partial<Omit<ProviderAttemptContext, 'providerId' | 'modelId'>> & {
     readonly debug: boolean;
     readonly capturePayload?: boolean;
+    readonly captureMaxBytes?: number;
+    readonly omissionReason?: BodyCaptureReason;
     readonly logger: ServerLogSink;
     readonly rootContext?: Context;
     /** 同一次 attempt 里多次 inAttempt 要共用计数；spread 会换对象，Map 要按引用带着走。 */
@@ -38,10 +42,15 @@ export type RequestLogScope = RequestLogContext &
 const storage = new AsyncLocalStorage<RequestLogScope>();
 
 export function withRequestLogContext<T>(input: RequestLogScope, operation: () => T): T {
-  const sensitive = input.capturePayload === false || storage.getStore()?.capturePayload === false;
+  const parent = storage.getStore();
+  const sensitive = input.capturePayload === false || parent?.capturePayload === false;
   return storage.run(
     {
       ...input,
+      captureMaxBytes: input.captureMaxBytes ?? parent?.captureMaxBytes ?? 67108864,
+      ...(sensitive
+        ? { omissionReason: 'privacy_policy' as const }
+        : { omissionReason: input.omissionReason ?? parent?.omissionReason }),
       ...(sensitive ? { logger: (entry) => input.logger(safeDiagnosticFields(entry)) } : {}),
       ...(storage.getStore()?.capturePayload === false ? { capturePayload: false } : {}),
       sendCounts: input.sendCounts ?? new Map<number, number>(),

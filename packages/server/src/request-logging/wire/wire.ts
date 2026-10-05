@@ -1,27 +1,13 @@
 import { ProviderProtocol } from '@aio-proxy/types';
-import { createParser } from 'eventsource-parser';
 
-import type {
-  AttemptResponseObservation,
-  ResponseBodyObservation,
-  SendResponseObservation,
-} from '../../response-observation';
+import type { AttemptResponseObservation, SendResponseObservation } from '../../response-observation';
 import { currentAttemptResponseObservation, inheritObservedResponse } from '../../response-observation';
-import type { RequestBodyDirection, ServerLogSink } from '../../server-log';
-import { logServerEvent, serverErrorDetails, serverErrorType } from '../../server-log';
-import { tapTextBody } from '../body-tap';
-import { currentDebugRequestLogScope } from '../context';
+import type { ServerLogSink } from '../../server-log';
+import { logServerEvent, serverErrorDetails } from '../../server-log';
+import { type BodyCaptureReason, currentDebugRequestLogScope } from '../context';
 import { requestMetadata, responseMetadata } from '../request-metadata';
+import { observedBody, type BodyIdentity, type ResponseObservationOptions } from './body-observation';
 import { type BunFetchInit, fetchTarget, fetchWithSpan } from './upstream-span';
-
-type BodyIdentity = {
-  readonly requestId: string;
-  readonly direction: RequestBodyDirection;
-  readonly attemptIndex?: number;
-  readonly sendIndex?: number;
-  readonly providerId?: string;
-  readonly modelId?: string;
-};
 
 function takeSendIndex(scope: { readonly attemptIndex?: number; readonly sendCounts?: Map<number, number> }): number {
   const attempt = scope.attemptIndex;
@@ -36,21 +22,6 @@ type ResponseMetadata = ResponseInit & {
   readonly redirected: boolean;
   readonly type: Response['type'];
   readonly url: string;
-};
-
-type DebugResponseObservation = {
-  readonly identity: BodyIdentity;
-  readonly logger: ServerLogSink;
-  readonly signal: AbortSignal | undefined;
-  readonly omitChunks?: boolean;
-};
-
-type ResponseObservationOptions = {
-  readonly bodyObservation?: ResponseBodyObservation;
-  readonly observeSseEvent?: () => void;
-  readonly debug?: DebugResponseObservation;
-  readonly controlledIdentitySse?: boolean;
-  readonly bodyTerminal?: (outcome: 'complete' | 'cancelled' | 'error', error?: unknown) => void;
 };
 
 export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof globalThis.fetch {
@@ -89,8 +60,11 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
       });
       const hideVideoBodies = scope?.capturePayload === false || scope?.sourceProtocol === ProviderProtocol.OpenAIVideo;
       const requestIdentity = { ...debug.identity, direction: 'upstream_request' as const };
-      if (hideVideoBodies) logOmittedBody(debug.logger, requestIdentity);
-      const delegated = hideVideoBodies ? request : requestWithObservedBody(request, requestIdentity, debug.logger);
+      const omissionReason = hideVideoBodies ? (scope?.omissionReason ?? 'media_payload') : undefined;
+      if (omissionReason !== undefined) logOmittedBody(debug.logger, requestIdentity, omissionReason);
+      const delegated = hideVideoBodies
+        ? request
+        : requestWithObservedBody(request, requestIdentity, debug.logger, scope?.captureMaxBytes);
       const decompress = (init as BunFetchInit | undefined)?.decompress;
       const response = await fetchWithSpan(
         fetcher,
@@ -114,7 +88,8 @@ export function createObservedFetch(fetcher: typeof globalThis.fetch): typeof gl
           identity: { ...debug.identity, direction: 'upstream_response' },
           logger: debug.logger,
           signal: request.signal,
-          ...(hideVideoBodies ? { omitChunks: true } : {}),
+          captureMaxBytes: scope?.captureMaxBytes,
+          ...(omissionReason === undefined ? {} : { omissionReason }),
         },
       });
     } catch (error) {
@@ -142,100 +117,38 @@ export function observeInboundRequest(request: Request, inboundProtocol: string)
   // Videos create 可能带 data URL / multipart。头照常记；正文不落 chunk，但要有终态，
   // 否则面板当没抓、hopsNeedNextDay 还会去扫下一天。
   if (scope.capturePayload === false || inboundProtocol === ProviderProtocol.OpenAIVideo) {
-    logOmittedBody(scope.logger, { requestId: scope.requestId, direction: 'inbound' });
+    logOmittedBody(
+      scope.logger,
+      { requestId: scope.requestId, direction: 'inbound' },
+      scope.omissionReason ?? 'media_payload',
+    );
     return request;
   }
-  return requestWithObservedBody(request, { requestId: scope.requestId, direction: 'inbound' }, scope.logger);
+  return requestWithObservedBody(
+    request,
+    { requestId: scope.requestId, direction: 'inbound' },
+    scope.logger,
+    scope.captureMaxBytes,
+  );
 }
 
-function logOmittedBody(logger: ServerLogSink, identity: BodyIdentity): void {
+function logOmittedBody(logger: ServerLogSink, identity: BodyIdentity, omissionReason: BodyCaptureReason): void {
   logServerEvent(logger, {
     event: 'request.body_terminal',
     ...identity,
     sequence: 0,
     outcome: 'complete',
     omitted: true,
+    omissionReason,
   });
 }
 
-function observedBody(
-  body: ReadableStream<Uint8Array>,
-  contentType: string | null,
-  options: ResponseObservationOptions,
-): ReadableStream<Uint8Array> {
-  const { bodyObservation, debug, observeSseEvent } = options;
-  let sequence = 0;
-  let pendingRead: number | undefined;
-  let pendingSseEvents = 0;
-  let readObservationActive = true;
-  let parserActive = observeSseEvent !== undefined && options.controlledIdentitySse === true;
-  const parser = parserActive
-    ? createParser({
-        onEvent() {
-          if (!parserActive) return;
-          pendingSseEvents++;
-          try {
-            observeSseEvent?.();
-          } catch {
-            parserActive = false;
-          }
-        },
-      })
-    : undefined;
-  const observeRead = (byteLength: number, sseFrames: number) => {
-    if (!readObservationActive || bodyObservation === undefined) return;
-    try {
-      bodyObservation.observeRead(byteLength, sseFrames);
-    } catch {
-      readObservationActive = false;
-    }
-  };
-  return tapTextBody(
-    body,
-    contentType,
-    {
-      chunk(text) {
-        if (debug !== undefined && debug.omitChunks !== true) {
-          logServerEvent(debug.logger, { event: 'request.body_chunk', ...debug.identity, sequence: sequence++, text });
-        }
-        if (!parserActive || parser === undefined) return;
-        try {
-          parser.feed(text);
-        } catch {
-          parserActive = false;
-        }
-      },
-      terminal({ byteLength, error, outcome }) {
-        safely(() => options.bodyTerminal?.(outcome, error));
-        if (debug !== undefined) {
-          logServerEvent(debug.logger, {
-            event: 'request.body_terminal',
-            ...debug.identity,
-            sequence,
-            byteLength,
-            outcome,
-            ...(error === undefined ? {} : { errorType: serverErrorType(error) }),
-          });
-        }
-      },
-      sourceRead(byteLength) {
-        observeRead(byteLength, 0);
-        if (parser !== undefined) {
-          pendingRead = byteLength;
-          pendingSseEvents = 0;
-        }
-      },
-      sseFrames() {
-        if (pendingRead === undefined) return;
-        observeRead(pendingRead, pendingSseEvents);
-        pendingRead = undefined;
-      },
-    },
-    debug?.signal,
-  );
-}
-
-function requestWithObservedBody(request: Request, identity: BodyIdentity, logger: ServerLogSink): Request {
+function requestWithObservedBody(
+  request: Request,
+  identity: BodyIdentity,
+  logger: ServerLogSink,
+  captureMaxBytes?: number,
+): Request {
   try {
     const body = request.body;
     if (body === null) {
@@ -260,7 +173,7 @@ function requestWithObservedBody(request: Request, identity: BodyIdentity, logge
     };
     return new Request(request.url, {
       ...init,
-      body: observedBody(body, contentType, { debug: { identity, logger, signal: request.signal } }),
+      body: observedBody(body, contentType, { debug: { identity, logger, signal: request.signal, captureMaxBytes } }),
     });
   } catch {
     return request;

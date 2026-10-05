@@ -1,5 +1,6 @@
 import {
   type OutboundProxy,
+  readJsonRequest,
   resolveNativeProxyUrl,
   pluginDefaultAliases,
   type StoredCatalog,
@@ -139,6 +140,7 @@ async function createRuntimeMaterialization(
           ...(config.plugin === '@aio-proxy/plugin-openai-chatgpt' &&
           options.plugins.plugins.get(config.plugin)?.builtIn === true
             ? {
+                __aioReadJsonRequest: readJsonRequest,
                 __aioRegisterPayloadHint: (hint: PayloadCaptureHint) => {
                   payloadCaptureHint = hint;
                 },

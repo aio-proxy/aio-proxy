@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
-import { OpenAIResponsesUnsupportedFeatureError } from '../error';
-import { openAIResponsesErrors } from './errors';
+import { OpenAIResponsesUnsupportedFeatureError } from '../../error';
+import { openAIResponsesErrors } from '../errors';
 import { openAIResponsesAdapter } from './openai-responses';
 
 const compactCtx = { operation: 'compact' } as const;
