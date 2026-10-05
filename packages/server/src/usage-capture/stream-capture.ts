@@ -137,6 +137,12 @@ export function streamCapture(
           const contentAt = observeContentAt(observation);
           firstTokenAt ??= contentAt;
         } else {
+          // A zero-argument tool call completes with no input delta. Only use it
+          // when nothing came earlier, so a tool-call after its deltas does not
+          // add a spurious content-gap observation.
+          if (next.value.type === 'tool-call' && next.value.providerExecuted !== true && firstTokenAt === undefined) {
+            firstTokenAt = observeContentAt(observation);
+          }
           eventCounts.observe(next.value);
         }
         controller.enqueue(next.value);

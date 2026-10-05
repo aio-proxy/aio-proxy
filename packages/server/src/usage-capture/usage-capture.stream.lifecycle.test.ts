@@ -131,6 +131,24 @@ describe('usage capture stream lifecycle', () => {
     expect(await ttftOf(stream(['', '{}']))).toEqual(expect.any(Number));
   });
 
+  test('records ttft for a zero-argument tool call that streams no input delta', async () => {
+    const captured = createUsageCapture().stream({
+      providerId: 'provider',
+      modelId: 'model',
+      startedAt: performance.now(),
+      stream: textStream([
+        { type: 'tool-input-start', id: 'call-1', toolName: 'now' },
+        { type: 'tool-input-end', id: 'call-1' },
+        { type: 'tool-call', toolCallId: 'call-1', toolName: 'now', input: '{}' },
+        finishPart(),
+      ]),
+    });
+
+    await drain(captured.value);
+    const completion = await captured.completion;
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
+  });
+
   test('omits ttft when startedAt is not provided', async () => {
     const captured = createUsageCapture().stream({
       providerId: 'provider',
