@@ -211,7 +211,8 @@ describe('usage capture passthrough ttft', () => {
         ProviderProtocol.GeminiInteractions,
         'event: step.start\ndata: {"event_type":"step.start","index":0,"step":{"type":"function_call","id":"c1","name":"now","arguments":{}}}\n\n' +
           'event: step.stop\ndata: {"event_type":"step.stop","index":0}\n\n' +
-          'event: interaction.completed\ndata: {"event_type":"interaction.completed","interaction":{"steps":[{"type":"function_call","id":"c1","name":"now","arguments":{}}]}}\n\n',
+          // Upstream interaction.completed carries no steps.
+          'event: interaction.completed\ndata: {"event_type":"interaction.completed","interaction":{"status":"completed"}}\n\n',
       ],
     ];
     for (const [protocol, body] of cases) {

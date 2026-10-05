@@ -92,12 +92,32 @@ function openAIResponsesContent(eventType: string | undefined, value: unknown): 
 // output_item.done, and zero-argument tool calls, which only ever emit an
 // empty opener before the frame that completes the call. Empty shells and
 // hosted tool items (web search, image generation) do not count.
-export function hasTtftFallbackContent(
+//
+// Stateful per stream: an Interactions step.stop does not name its step type,
+// so function_call step indices are remembered from step.start.
+export function createTtftFallbackDetector(
+  protocol: ProviderProtocol,
+): (eventType: string | undefined, value: unknown) => boolean {
+  const functionCallSteps = new Set<unknown>();
+  return (eventType, value) => {
+    if (!isPlainObject(value)) return false;
+    if (protocol === ProviderProtocol.GeminiInteractions) {
+      const type = eventType ?? value['event_type'];
+      const step = value['step'];
+      if (type === 'step.start' && isPlainObject(step) && step['type'] === 'function_call') {
+        functionCallSteps.add(value['index']);
+      }
+      return type === 'step.stop' && functionCallSteps.has(value['index']);
+    }
+    return hasTtftFallbackContent(protocol, eventType, value);
+  };
+}
+
+function hasTtftFallbackContent(
   protocol: ProviderProtocol,
   eventType: string | undefined,
-  value: unknown,
+  value: Record<string, unknown>,
 ): boolean {
-  if (!isPlainObject(value)) return false;
   switch (protocol) {
     case ProviderProtocol.OpenAIResponse: {
       const type = eventType ?? value['type'];
@@ -114,15 +134,6 @@ export function hasTtftFallbackContent(
         isPlainObject(value['delta']) &&
         value['delta']['stop_reason'] === 'tool_use'
       );
-    case ProviderProtocol.GeminiInteractions: {
-      const interaction = value['interaction'];
-      return (
-        (eventType ?? value['event_type']) === 'interaction.completed' &&
-        isPlainObject(interaction) &&
-        Array.isArray(interaction['steps']) &&
-        interaction['steps'].some((step) => isPlainObject(step) && step['type'] === 'function_call')
-      );
-    }
     default:
       return false;
   }
