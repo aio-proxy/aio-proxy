@@ -71,7 +71,14 @@ async function endTask(io: SchtasksIo, path: string, task: ParsedTask | undefine
 }
 const runTask = (io: SchtasksIo, path: string) => io.run(['schtasks', '/Run', '/TN', path]);
 
-async function replaceSpecAndTask(io: SchtasksIo, path: string, specPath: string, spec: string, xml: string) {
+/** Returns what the spec path held before, for a caller that must put it back after a later failure. */
+async function replaceSpecAndTask(
+  io: SchtasksIo,
+  path: string,
+  specPath: string,
+  spec: string,
+  xml: string,
+): Promise<string | undefined> {
   const previous = io.readFile(specPath);
   const staged = `${specPath}.new`;
   io.writeFile(staged, spec);
@@ -88,6 +95,7 @@ async function replaceSpecAndTask(io: SchtasksIo, path: string, specPath: string
     else io.writeFile(specPath, previous);
     throw error;
   }
+  return previous;
 }
 
 export async function schtasksInstall(io: SchtasksIo): Promise<void> {
@@ -106,8 +114,9 @@ export async function schtasksInstall(io: SchtasksIo): Promise<void> {
     wasRunning = supervisorAlive(state, io.imagePath, io.creationTime);
     await endTask(io, path, existing);
   }
+  let previousAtSpecPath: string | undefined;
   try {
-    await replaceSpecAndTask(io, path, specPath, spec, xml);
+    previousAtSpecPath = await replaceSpecAndTask(io, path, specPath, spec, xml);
   } catch (error) {
     // The old task and its spec are back as they were: relaunch the supervisor ended above rather than leave the proxy
     // offline, and still report the failure.
@@ -115,7 +124,28 @@ export async function schtasksInstall(io: SchtasksIo): Promise<void> {
     throw error;
   }
   io.remove(uninstallMarkerPath('win32', { LOCALAPPDATA: io.localAppData })!);
-  if (wasRunning) await runTask(io, path);
+  if (!wasRunning) return;
+  try {
+    await runTask(io, path);
+  } catch (error) {
+    // The replacement will not start: put the migrated task back on its own (untouched) spec and run that, so the
+    // proxy that was serving before the install keeps serving, and report the failure.
+    try {
+      if (previousAtSpecPath === undefined) io.remove(specPath);
+      else io.writeFile(specPath, previousAtSpecPath);
+      const oldSpecPath = existing!.action!.specPath;
+      const oldExec = parseServiceSpec(io.readFile(oldSpecPath) ?? '')?.exec ?? existing!.action!.exec;
+      await createTask(
+        io,
+        path,
+        stageTaskXml(io, renderTaskXml({ sid: io.sid, exec: oldExec, specPath: oldSpecPath })),
+      );
+      await io.run(['schtasks', '/Run', '/TN', path], true);
+    } catch {
+      io.warn(`${createStyle(process.stderr).mark('warn')} ${m['cli.service.restore_failed']()}`);
+    }
+    throw error;
+  }
 }
 
 export async function schtasksStart(io: SchtasksIo): Promise<void> {

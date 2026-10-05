@@ -501,6 +501,26 @@ test('a failed migrating install relaunches the supervisor it ended and still re
   expect(fs.exists(specPath)).toBe(false);
 });
 
+test('install migrating a running task puts the old task back when the replacement will not start', async () => {
+  const movedSpec = 'C:\\Users\\old\\AppData\\Local\\aio-proxy\\service.json';
+  const movedState = 'C:\\Users\\old\\AppData\\Local\\aio-proxy\\service.state.json';
+  let running = true;
+  const oldTask = renderTaskXml({ sid, exec: oldExec, specPath: movedSpec });
+  const fs = fakeFs({ [movedSpec]: oldSpec, [movedState]: supervisorState });
+  await expect(
+    schtasksInstall({
+      ...io({ fs, task: oldTask, failOn: '/Run' }),
+      imagePath: () => (running ? oldExec : undefined),
+      kill: () => {
+        running = false;
+      },
+    }),
+  ).rejects.toThrow('/Run failed');
+  expect(recorded().map((c) => c[1])).toEqual(['/End', '/Create', '/Run', '/Create', '/Run']);
+  expect(fs.lastXmlCreated()).toBe(oldTask);
+  expect(fs.exists(specPath)).toBe(false);
+});
+
 test('install replaces a task that already runs as the current user', async () => {
   const calls = await recordCalls((io) => schtasksInstall(io));
   expect(calls.map((c) => c[1])).toEqual(['/Create']);
