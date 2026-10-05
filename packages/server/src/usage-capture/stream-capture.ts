@@ -129,7 +129,11 @@ export function streamCapture(
         }
         if (next.value.type === 'abort') {
           aborted = true;
-        } else if (next.value.type === 'text-delta' || next.value.type === 'reasoning-delta') {
+        } else if (
+          next.value.type === 'text-delta' ||
+          next.value.type === 'reasoning-delta' ||
+          next.value.type === 'tool-input-delta'
+        ) {
           const contentAt = observeContentAt(observation);
           firstTokenAt ??= contentAt;
         } else {

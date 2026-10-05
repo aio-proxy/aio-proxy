@@ -25,7 +25,7 @@ describe('usage capture passthrough ttft', () => {
     const observation = createAttemptResponseObservation({ startedAt: 90, now: () => times.shift() ?? 115 });
     const response = new Response(
       'data: {"type":"message_start","message":{"id":"msg-1"}}\n\n' +
-        'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{}"}}\n\n' +
+        'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":""}}\n\n' +
         'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}\n\n' +
         'data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"why"}}\n\n' +
         'data: {"type":"message_stop"}\n\n',
@@ -163,7 +163,7 @@ describe('usage capture passthrough ttft', () => {
     expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
   });
 
-  test('omits ttft for OpenAI Responses streams that only complete tool items', async () => {
+  test('records ttft for OpenAI Responses streams that only complete tool items', async () => {
     const captured = ssePassthrough(
       'event: response.output_item.done\n' +
         'data: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"c1","name":"ls","arguments":"{}"}}\n\n' +
@@ -175,7 +175,7 @@ describe('usage capture passthrough ttft', () => {
     const completion = await captured.completion;
 
     expect(completion.outcome).toBe('success');
-    expect('ttftMs' in completion ? completion.ttftMs : undefined).toBeUndefined();
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
   });
 
   test('omits ttft when the stream carries no content delta', async () => {
@@ -217,10 +217,9 @@ describe('usage capture passthrough ttft', () => {
     expect('ttftMs' in completion ? completion.ttftMs : undefined).toBeUndefined();
   });
 
-  test('ignores Anthropic tool-argument deltas and records ttft on the first text delta', async () => {
+  test('ignores an empty Anthropic tool-input opener and records ttft on the first text delta', async () => {
     const captured = ssePassthrough(
-      // input_json_delta carries tool arguments, not generated content: no ttft.
-      'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\\"a\\":1}"}}\n\n' +
+      'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":""}}\n\n' +
         'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}\n\n' +
         'data: {"type":"message_delta","usage":{"input_tokens":3,"output_tokens":2}}\n\n',
       ProviderProtocol.Anthropic,
@@ -233,7 +232,7 @@ describe('usage capture passthrough ttft', () => {
     expect(typeof ttftMs).toBe('number');
   });
 
-  test('omits ttft for an Anthropic stream that only emits tool-argument deltas', async () => {
+  test('records ttft for an Anthropic stream that only emits tool-argument deltas', async () => {
     const captured = ssePassthrough(
       'data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{}"}}\n\n' +
         'data: {"type":"message_delta","usage":{"input_tokens":3,"output_tokens":1}}\n\n',
@@ -243,6 +242,6 @@ describe('usage capture passthrough ttft', () => {
     const completion = await captured.completion;
 
     expect(completion.outcome).toBe('success');
-    expect('ttftMs' in completion ? completion.ttftMs : undefined).toBeUndefined();
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
   });
 });

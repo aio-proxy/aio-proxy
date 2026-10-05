@@ -110,6 +110,19 @@ describe('usage capture stream lifecycle', () => {
     expect(ttftMs).toBeGreaterThanOrEqual(0);
   });
 
+  test('records ttft for a tool-call-only stream', async () => {
+    const captured = createUsageCapture().stream({
+      providerId: 'provider',
+      modelId: 'model',
+      startedAt: performance.now(),
+      stream: textStream([{ type: 'tool-input-delta', id: 'call-1', delta: '{}' }, finishPart()]),
+    });
+
+    await drain(captured.value);
+    const completion = await captured.completion;
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toEqual(expect.any(Number));
+  });
+
   test('omits ttft when startedAt is not provided', async () => {
     const captured = createUsageCapture().stream({
       providerId: 'provider',
