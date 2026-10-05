@@ -1,7 +1,7 @@
 import { type TextStreamPart, type ToolSet } from '@aio-proxy/core';
 import type { UsageRow } from '@aio-proxy/types';
 
-import { codePointLength, type LiveMetrics, liveModelKey } from '../live-metrics';
+import { calibrationOutputTokens, codePointLength, type LiveMetrics, liveModelKey } from '../live-metrics';
 import { isAbortError } from '../route-observation';
 import type { ServerLogSink } from '../server-log';
 import { normalizeAiSdkUsage } from './pricing';
@@ -43,6 +43,8 @@ export function streamCapture(
   let firstTokenAt: number | undefined;
   const modelKey = liveModelKey(providerId, modelId);
   let contentChars = 0;
+  let toolOutput = false;
+  let reasoningChars = 0;
   // Built-in provider events (generated images, web searches) billed
   // per-occurrence. Only counted on a success trace: they merge into finishUsage,
   // which reaches finalizeUsage exclusively via complete() (finish/EOF-success),
@@ -89,8 +91,9 @@ export function streamCapture(
       ...(configPrice === undefined ? {} : { configPrice }),
       ...(logger === undefined ? {} : { logger }),
     });
-    if (live && usage?.outputTokens !== undefined && usage.outputTokens > 0) {
-      liveMetrics?.calibrate(modelKey, contentChars, usage.outputTokens);
+    if (live && usage !== undefined) {
+      const tokens = calibrationOutputTokens(usage, { toolOutput, reasoningChars });
+      if (tokens !== undefined) liveMetrics?.calibrate(modelKey, contentChars, tokens);
     }
     terminal.resolve({
       outcome: 'success',
@@ -135,6 +138,12 @@ export function streamCapture(
           void complete();
           return;
         }
+        if (
+          (next.value.type === 'tool-input-delta' && next.value.delta !== '') ||
+          (next.value.type === 'tool-call' && next.value.providerExecuted !== true)
+        ) {
+          toolOutput = true;
+        }
         if (next.value.type === 'abort') {
           aborted = true;
         } else if (
@@ -149,6 +158,7 @@ export function streamCapture(
           if (live && next.value.type !== 'tool-input-delta') {
             const chars = codePointLength(next.value.text);
             contentChars += chars;
+            if (next.value.type === 'reasoning-delta') reasoningChars += chars;
             liveMetrics?.recordContent(modelKey, chars);
           }
         } else {

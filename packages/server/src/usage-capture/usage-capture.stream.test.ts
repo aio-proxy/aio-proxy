@@ -166,7 +166,6 @@ describe('stream live throughput', () => {
         { type: 'text-delta', id: 't', text: 'hello' },
         { type: 'text-delta', id: 't', text: '世界' },
         { type: 'reasoning-delta', id: 'r', text: 'ab' },
-        { type: 'tool-input-delta', id: 'tool', delta: 'ignored' },
         finish,
       ]),
     });
@@ -182,6 +181,59 @@ describe('stream live throughput', () => {
         : [],
     );
     expect(calibrate.mock.calls).toEqual(live ? [[KEY, 9, 3]] : []);
+  });
+
+  test.each([
+    ['tool delta', { type: 'tool-input-delta', id: 'tool', delta: '{}' }, 0, undefined],
+    ['tool call', { type: 'tool-call', toolCallId: 'tool', toolName: 'run', input: {} }, 0, undefined],
+    [
+      'provider tool',
+      { type: 'tool-call', toolCallId: 'tool', toolName: 'run', input: {}, providerExecuted: true },
+      0,
+      10,
+    ],
+    ['empty tool delta', { type: 'tool-input-delta', id: 'tool', delta: '' }, 0, 10],
+    ['hidden reasoning', undefined, 4, 6],
+    ['visible reasoning', { type: 'reasoning-delta', id: 'r', text: '中😀' }, 4, 10],
+  ] as const)('calibrates only matching output: %s', async (_name, part, reasoningTokens, expectedTokens) => {
+    const liveMetrics = createLiveMetrics();
+    const calibrate = spyOn(liveMetrics, 'calibrate');
+    const record = spyOn(liveMetrics, 'recordContent');
+    const captured = createUsageCapture({ liveMetrics }).stream({
+      providerId: 'p',
+      modelId: 'm',
+      live: true,
+      stream: textStream([
+        { type: 'text-delta', id: 't', text: 'hello' },
+        ...(part === undefined ? [] : [part]),
+        {
+          type: 'finish',
+          finishReason: 'stop',
+          rawFinishReason: 'stop',
+          totalUsage: {
+            inputTokens: 1,
+            outputTokens: 10,
+            totalTokens: 11,
+            inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 1 },
+            outputTokenDetails: { reasoningTokens, textTokens: 10 - reasoningTokens },
+          },
+        },
+      ]),
+    });
+    await drain(captured.value);
+    expect((await captured.completion).outcome).toBe('success');
+    const visibleReasoning = part?.type === 'reasoning-delta';
+    expect(record.mock.calls).toEqual(
+      visibleReasoning
+        ? [
+            [KEY, 5],
+            [KEY, 2],
+          ]
+        : [[KEY, 5]],
+    );
+    expect(calibrate.mock.calls).toEqual(
+      expectedTokens === undefined ? [] : [[KEY, visibleReasoning ? 7 : 5, expectedTokens]],
+    );
   });
 
   test.each(['failure', 'cancel', 'idle', 'after-finish'] as const)(
@@ -209,7 +261,7 @@ describe('stream live throughput', () => {
         await reader.read();
         expect((await captured.completion).outcome).toBe('success');
         await reader.cancel();
-        expect(calibrate.mock.calls).toEqual([[KEY, 5, 6]]);
+        expect(calibrate.mock.calls).toEqual([[KEY, 5, 3]]);
       } else {
         if (mode === 'failure') {
           upstream.error(new Error('upstream failed'));

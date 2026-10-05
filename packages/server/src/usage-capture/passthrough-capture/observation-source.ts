@@ -23,6 +23,7 @@ export function createObservationSource(
   protocol: PassthroughUsageOptions['protocol'],
   observation: PassthroughUsageOptions['observation'],
   callbacks: {
+    readonly onToolOutput?: () => void;
     readonly onContent: (at: number, chars: number) => void;
     readonly onTerminal: (observation: PassthroughObservation) => void;
   },
@@ -77,6 +78,7 @@ function createSseUsageObserver(
   protocol: PassthroughUsageOptions['protocol'],
   observation: PassthroughUsageOptions['observation'],
   callbacks: {
+    readonly onToolOutput?: () => void;
     readonly onContent: (at: number, chars: number) => void;
     readonly onTerminal: (observation: PassthroughObservation) => void;
   },
@@ -85,6 +87,7 @@ function createSseUsageObserver(
   return createPassthroughSseUsageObserver(protocol, {
     ...(onEvent === undefined ? {} : { onEvent }),
     onContent: (chars) => callbacks.onContent(observeContentAt(observation), chars),
+    onToolOutput: () => callbacks.onToolOutput?.(),
     onTerminal: callbacks.onTerminal,
   });
 }

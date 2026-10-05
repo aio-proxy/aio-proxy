@@ -13,6 +13,21 @@ const DEFAULT_CHARS_PER_TOKEN = 4;
 const CALIBRATION_ALPHA = 0.3;
 const MAX_CALIBRATED_MODELS = 256;
 
+// Calibration must compare counted characters with tokens from the same output.
+export function calibrationOutputTokens(
+  usage: { readonly outputTokens?: number; readonly reasoningTokens?: number },
+  observed: { readonly toolOutput: boolean; readonly reasoningChars: number | undefined },
+): number | undefined {
+  if (observed.toolOutput) return undefined;
+  let tokens = usage.outputTokens;
+  if (tokens === undefined || tokens <= 0) return undefined;
+  if (usage.reasoningTokens !== undefined && usage.reasoningTokens > 0) {
+    if (observed.reasoningChars === undefined) return undefined;
+    if (observed.reasoningChars === 0) tokens -= usage.reasoningTokens;
+  }
+  return tokens > 0 ? tokens : undefined;
+}
+
 export function codePointLength(text: string): number {
   let length = 0;
   for (const _codePoint of text) length += 1;

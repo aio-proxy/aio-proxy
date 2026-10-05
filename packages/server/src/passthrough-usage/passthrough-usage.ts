@@ -2,7 +2,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 import { createParser } from 'eventsource-parser';
 
-import { contentDeltaLength, createTtftFallbackDetector, hasContentDelta } from './content';
+import { contentDeltaLength, createTtftFallbackDetector, hasContentDelta, hasToolCallOutput } from './content';
 import { countResponseItems, createResponseItemCounter, type ResponseItemCounts, withItemCounts } from './event-counts';
 import {
   anthropicTotalTokens,
@@ -36,6 +36,7 @@ export type PassthroughSseUsageObserver = {
 
 export type PassthroughSseCallbacks = {
   readonly onEvent?: () => void;
+  readonly onToolOutput?: () => void;
   readonly onContent?: (chars: number) => void;
   readonly onTerminal?: (observation: PassthroughObservation) => void;
 };
@@ -130,6 +131,7 @@ export function createPassthroughSseUsageObserver(
           safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed, itemCounter.totals())));
         return;
       }
+      if (hasToolCallOutput(protocol, event.event, parsed)) safely(callbacks.onToolOutput);
       observed = mergeObservedUsage(protocol, observed, usageFromJson(protocol, parsed));
       itemCounter.observe(event.event, parsed);
       responseId = completedResponseId(protocol, parsed) ?? responseId;

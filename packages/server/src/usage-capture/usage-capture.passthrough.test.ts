@@ -223,6 +223,45 @@ describe('passthrough live throughput', () => {
     expect(calibrate.mock.calls).toEqual(live ? [[KEY, 7, 2]] : []);
   });
 
+  test.each(['tool', 'reasoning'] as const)('skips unsafe SSE calibration: %s', async (mode) => {
+    const liveMetrics = createLiveMetrics();
+    const calibrate = spyOn(liveMetrics, 'calibrate');
+    const record = spyOn(liveMetrics, 'recordContent');
+    const events = [
+      { choices: [{ delta: { content: 'hello' } }] },
+      ...(mode === 'tool' ? [{ choices: [{ delta: { tool_calls: [{ function: { arguments: '{}' } }] } }] }] : []),
+      {
+        usage: {
+          prompt_tokens: 1,
+          completion_tokens: 10,
+          total_tokens: 11,
+          ...(mode === 'reasoning' ? { completion_tokens_details: { reasoning_tokens: 4 } } : {}),
+        },
+      },
+    ];
+    const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') + 'data: [DONE]\n\n';
+    const captured = createUsageCapture({ liveMetrics }).passthrough({
+      providerId: 'p',
+      modelId: 'm',
+      live: true,
+      protocol: ProviderProtocol.OpenAICompatible,
+      response: new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
+    });
+    expect(await captured.value.text()).toBe(body);
+    const completion = await captured.completion;
+    expect(completion.outcome).toBe('success');
+    if (mode === 'reasoning' && completion.outcome === 'success') expect(completion.usage?.reasoningTokens).toBe(4);
+    expect(record.mock.calls).toEqual(
+      mode === 'tool'
+        ? [
+            [KEY, 5],
+            [KEY, 0],
+          ]
+        : [[KEY, 5]],
+    );
+    expect(calibrate).not.toHaveBeenCalled();
+  });
+
   test.each(['failure', 'cancel', 'idle', 'after-finish'] as const)(
     'calibration follows upstream success: %s',
     async (mode) => {

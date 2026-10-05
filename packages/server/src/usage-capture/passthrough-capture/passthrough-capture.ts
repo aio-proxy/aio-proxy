@@ -1,6 +1,6 @@
 import { ProviderProtocol, type UsageRow } from '@aio-proxy/types';
 
-import { type LiveMetrics, liveModelKey } from '../../live-metrics';
+import { calibrationOutputTokens, type LiveMetrics, liveModelKey } from '../../live-metrics';
 import { type PassthroughObservation } from '../../passthrough-usage';
 import { isAbortError } from '../../route-observation';
 import type { ServerLogSink } from '../../server-log';
@@ -77,6 +77,7 @@ export function passthroughCapture(
   let firstTokenAt: number | undefined;
   const modelKey = liveModelKey(providerId, modelId);
   let contentChars = 0;
+  let toolOutput = false;
   // Trace settlement (usage/timing/outcome) and transport lifecycle (reader +
   // client stream) are tracked separately: a terminal frame settles the trace
   // early, but the transport stays live until EOF/cancel/idle. Conflating them
@@ -139,8 +140,9 @@ export function passthroughCapture(
       configPrice,
       logger,
     });
-    if (live && usage?.outputTokens !== undefined && usage.outputTokens > 0) {
-      liveMetrics?.calibrate(modelKey, contentChars, usage.outputTokens);
+    if (live && usage !== undefined) {
+      const tokens = calibrationOutputTokens(usage, { toolOutput, reasoningChars: undefined });
+      if (tokens !== undefined) liveMetrics?.calibrate(modelKey, contentChars, tokens);
     }
     terminal.resolve({
       outcome: 'success',
@@ -154,6 +156,9 @@ export function passthroughCapture(
     protocol,
     observation,
     {
+      onToolOutput: () => {
+        toolOutput = true;
+      },
       onContent: (contentAt, chars) => {
         firstTokenAt ??= contentAt;
         if (live) {

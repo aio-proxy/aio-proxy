@@ -234,3 +234,65 @@ export function contentDeltaLength(protocol: ProviderProtocol, eventType: string
       return assertNever(protocol);
   }
 }
+
+// Tool arguments are intentionally excluded from throughput character counts.
+export function hasToolCallOutput(protocol: ProviderProtocol, eventType: string | undefined, value: unknown): boolean {
+  if (protocol === ProviderProtocol.Gemini && Array.isArray(value)) {
+    return value.some((entry) => hasToolCallOutput(protocol, eventType, entry));
+  }
+  switch (protocol) {
+    case ProviderProtocol.OpenAICompatible:
+      return (
+        isPlainObject(value) &&
+        Array.isArray(value['choices']) &&
+        value['choices'].some((choice) => {
+          if (!isPlainObject(choice)) return false;
+          const delta = choice['delta'];
+          return (
+            choice['finish_reason'] === 'tool_calls' ||
+            (isPlainObject(delta) && Array.isArray(delta['tool_calls']) && delta['tool_calls'].length > 0)
+          );
+        })
+      );
+    case ProviderProtocol.OpenAIResponse: {
+      const type = eventType ?? (isPlainObject(value) ? value['type'] : undefined);
+      if (type === 'response.function_call_arguments.delta' || type === 'response.custom_tool_call_input.delta')
+        return true;
+      if ((type !== 'response.output_item.added' && type !== 'response.output_item.done') || !isPlainObject(value))
+        return false;
+      const item = value['item'];
+      return isPlainObject(item) && (item['type'] === 'function_call' || item['type'] === 'custom_tool_call');
+    }
+    case ProviderProtocol.Anthropic: {
+      if (!isPlainObject(value)) return false;
+      const type = eventType ?? value['type'];
+      if (type === 'content_block_start') {
+        const block = value['content_block'];
+        return isPlainObject(block) && block['type'] === 'tool_use';
+      }
+      const delta = value['delta'];
+      return type === 'content_block_delta' && isPlainObject(delta) && delta['type'] === 'input_json_delta';
+    }
+    case ProviderProtocol.Gemini:
+      return (
+        isPlainObject(value) &&
+        Array.isArray(value['candidates']) &&
+        value['candidates'].some((candidate) => {
+          if (!isPlainObject(candidate) || !isPlainObject(candidate['content'])) return false;
+          const parts = candidate['content']['parts'];
+          return (
+            Array.isArray(parts) && parts.some((part) => isPlainObject(part) && isPlainObject(part['functionCall']))
+          );
+        })
+      );
+    case ProviderProtocol.GeminiInteractions: {
+      if (!isPlainObject(value)) return false;
+      const step = value['step'];
+      return (
+        (eventType ?? value['event_type']) === 'step.start' && isPlainObject(step) && step['type'] === 'function_call'
+      );
+    }
+    default:
+      return false;
+  }
+}

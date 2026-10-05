@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { codePointLength, createLiveMetrics, liveModelKey } from './index';
+import { calibrationOutputTokens, codePointLength, createLiveMetrics, liveModelKey } from './index';
 
 describe('live metrics', () => {
   test('counts Unicode code points and builds provider-qualified model keys', () => {
@@ -115,5 +115,24 @@ describe('live metrics', () => {
     metrics.requestFinished();
     metrics.requestFinished();
     expect(metrics.snapshot().inFlight).toBe(0);
+  });
+});
+
+describe('calibration output tokens', () => {
+  test.each([
+    [{ outputTokens: 10 }, { toolOutput: true, reasoningChars: 0 }, undefined],
+    [{}, { toolOutput: false, reasoningChars: 0 }, undefined],
+    [{ outputTokens: 0 }, { toolOutput: false, reasoningChars: 0 }, undefined],
+    [{ outputTokens: -1 }, { toolOutput: false, reasoningChars: 0 }, undefined],
+    [{ outputTokens: 10 }, { toolOutput: false, reasoningChars: undefined }, 10],
+    [{ outputTokens: 10, reasoningTokens: 0 }, { toolOutput: false, reasoningChars: 0 }, 10],
+    [{ outputTokens: 10, reasoningTokens: -1 }, { toolOutput: false, reasoningChars: 0 }, 10],
+    [{ outputTokens: 10, reasoningTokens: 4 }, { toolOutput: false, reasoningChars: undefined }, undefined],
+    [{ outputTokens: 10, reasoningTokens: 4 }, { toolOutput: false, reasoningChars: 0 }, 6],
+    [{ outputTokens: 10, reasoningTokens: 4 }, { toolOutput: false, reasoningChars: 2 }, 10],
+    [{ outputTokens: 10, reasoningTokens: 10 }, { toolOutput: false, reasoningChars: 0 }, undefined],
+    [{ outputTokens: 10, reasoningTokens: 11 }, { toolOutput: false, reasoningChars: 0 }, undefined],
+  ] as const)('matches counted characters for usage %j and observation %j', (usage, observed, expected) => {
+    expect(calibrationOutputTokens(usage, observed)).toBe(expected);
   });
 });
