@@ -23,6 +23,7 @@ import {
   requireDashboardAuthentication,
 } from '../dashboard-auth';
 import { createDashboardRoutes } from '../dashboard-routes/config';
+import { createDesktopLiveRoute } from '../dashboard-routes/desktop-live';
 import { createDesktopSummaryRoute } from '../dashboard-routes/desktop-summary';
 import { createAnthropicMessagesRoutes } from '../routes/anthropic-messages';
 import { createGeminiGenerateContentRoutes } from '../routes/gemini-generate-content';
@@ -168,7 +169,7 @@ const mountAdminControlPlane = (
   });
 };
 
-/** Registered ahead of every `/dashboard/*` middleware on purpose: the desktop summary carries its own
+/** Registered ahead of every `/dashboard/*` middleware on purpose: the desktop routes carry their own
  *  guard (desktop token + loopback peer) and must not inherit dashboard-session authentication. */
 const mountHealthAndDesktopSummary = (app: Hono, state: ServerState, version: string): void => {
   app.get('/health', (context) =>
@@ -179,6 +180,7 @@ const mountHealthAndDesktopSummary = (app: Hono, state: ServerState, version: st
     }),
   );
   app.route('/dashboard/api/desktop-summary', createDesktopSummaryRoute(state, version));
+  app.route('/dashboard/api/desktop-live', createDesktopLiveRoute(state));
 };
 
 /** Narrows `ServerState` to what realtime is allowed to see: no usage capture, no

@@ -1,1 +1,1 @@
-export { createDesktopSummaryRoute } from './route';
+export { createDesktopSummaryRoute, requireDesktopToken } from './route';
