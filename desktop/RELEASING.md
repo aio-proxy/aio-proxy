@@ -5,13 +5,17 @@ The app ships from CI. After Changesets publishes a release, `release.yml` dispa
 
 - macOS: builds, signs, notarizes and uploads `aio-proxy-<version>-arm64.dmg` to the
   `v<version>` Release, then replaces the Sparkle feed `appcast.xml` on the `desktop-feed`
-  prerelease.
+  prerelease. When that version is the feed's newest, it also replaces `aio-proxy-arm64.dmg`
+  there, the unversioned copy the website's download button links to.
 - Linux and Windows: `verify` checks the tag, then `build-linux` (x86_64 on `ubuntu-22.04`,
   aarch64 on `ubuntu-22.04-arm`) and `build-windows` build unsigned bytes with no secrets.
   `publish-assets` (environment `desktop-release`) signs them with minisign and uploads
   `aio-proxy-<version>-x86_64.AppImage`, `aio-proxy-<version>-aarch64.AppImage` and
   `aio-proxy-<version>-x64-setup.exe`, each with a `.minisig`, to the `v<version>` Release. `feed`
-  then points `latest.json` on `desktop-feed` at the highest version whose three assets all verify.
+  then points `latest.json` on `desktop-feed` at the highest version whose three assets all verify,
+  first uploading that version's three builds there under unversioned names
+  (`aio-proxy-x86_64.AppImage`, `aio-proxy-aarch64.AppImage`, `aio-proxy-x64-setup.exe`) for the
+  website's download buttons.
 
 The Linux/Windows build jobs use no caches on purpose: bytes that get signed must not come from a
 cache. Cold builds are slow (90 minute timeout).

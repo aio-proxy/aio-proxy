@@ -6,6 +6,11 @@
   },
   {
     "type": "file",
+    "name": "desktop",
+    "label": "Desktop App"
+  },
+  {
+    "type": "file",
     "name": "service",
     "label": "Background Service"
   },

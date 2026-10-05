@@ -1,1 +1,1 @@
-export { assetName, checkRehearsalEnv, packagerConfig, targetBuild, withVersion } from './package';
+export { assetName, checkRehearsalEnv, latestAssetName, packagerConfig, targetBuild, withVersion } from './package';

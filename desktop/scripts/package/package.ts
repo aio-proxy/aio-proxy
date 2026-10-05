@@ -49,6 +49,12 @@ export function assetName(target: string, version: string, rehearsal = false): s
   return `aio-proxy-${version}-${asset}${rehearsal ? '-rehearsal' : ''}${extension}`;
 }
 
+/** The unversioned copy on `desktop-feed` that website/theme/components/home-layout/hero.tsx links to. */
+export function latestAssetName(target: string): string {
+  const { asset, extension } = targetBuild(target);
+  return `aio-proxy-${asset}${extension}`;
+}
+
 // Compile-time overrides (option_env!) that point the updater at another feed or key.
 const UPDATER_OVERRIDES = ['AIO_PROXY_DESKTOP_FEED_URL', 'AIO_PROXY_DESKTOP_UPDATE_KEY'];
 

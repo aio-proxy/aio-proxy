@@ -4,7 +4,7 @@
 //
 //   bun run desktop:publish-latest
 // Env: GH_TOKEN; SPARKLE_PUBLIC_ED_KEY (the update public key). No signing key: it only verifies.
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -22,7 +22,7 @@ import {
 } from './latest-json/index';
 import type { UpdateTarget } from './latest-json/index';
 import { trustedComment } from './minisign';
-import { assetName } from './package/index';
+import { assetName, latestAssetName } from './package/index';
 import { verifyPair } from './publish-assets/index';
 
 const FEED_TAG = 'desktop-feed';
@@ -104,17 +104,26 @@ try {
       }
       entries.set(target, { url: assetUrl(version, target), minisig });
     }
-    rmSync(dir, { recursive: true, force: true });
     const complete = entries.size === TARGETS.length;
     checked.push({ version, complete });
     if (complete) break;
+    rmSync(dir, { recursive: true, force: true });
   }
 
   const picked = pickFeedVersion(current, checked, repair);
   if (picked === undefined) {
     console.error(`\nno complete stable Release above ${current ?? '(none)'}; ${FEED} unchanged`);
   } else {
-    step(`4. publish ${FEED} for ${picked}`);
+    // The website's download buttons link to unversioned copies. They go up before the feed, so a failed
+    // run is redone by the next one, which still sees the feed below `picked`.
+    step(`4. unversioned downloads for ${picked}`);
+    for (const target of TARGETS) {
+      const latest = join(work, latestAssetName(target));
+      copyFileSync(join(work, `v${picked}`, assetName(target, picked)), latest);
+      await $`gh release upload ${FEED_TAG} ${latest} --repo ${REPO} --clobber`;
+    }
+
+    step(`5. publish ${FEED} for ${picked}`);
     const feed = join(work, FEED);
     await Bun.write(feed, buildLatestJson(picked, entries));
     await $`gh release upload ${FEED_TAG} ${feed} --repo ${REPO} --clobber`;
