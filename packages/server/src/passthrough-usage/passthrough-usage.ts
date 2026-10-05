@@ -2,7 +2,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 import { createParser } from 'eventsource-parser';
 
-import { hasContentDelta, hasTtftFallbackContent } from './content';
+import { createTtftFallbackDetector, hasContentDelta } from './content';
 import { countResponseItems, createResponseItemCounter, type ResponseItemCounts, withItemCounts } from './event-counts';
 import {
   anthropicTotalTokens,
@@ -63,6 +63,7 @@ export function createPassthroughSseUsageObserver(
   let observed: UsageExtraction = { kind: 'absent' };
   let responseId: string | undefined;
   let sawContent = false;
+  const isTtftFallback = createTtftFallbackDetector(protocol);
   let failed = false;
   const itemCounter = createResponseItemCounter(protocol);
   let linePrefix = '';
@@ -135,7 +136,7 @@ export function createPassthroughSseUsageObserver(
       if (hasContentDelta(protocol, event.event, parsed)) {
         sawContent = true;
         safely(callbacks.onContent);
-      } else if (!sawContent && hasTtftFallbackContent(protocol, event.event, parsed)) {
+      } else if (!sawContent && isTtftFallback(event.event, parsed)) {
         sawContent = true;
         safely(callbacks.onContent);
       }

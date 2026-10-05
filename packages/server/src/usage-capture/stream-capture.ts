@@ -129,10 +129,20 @@ export function streamCapture(
         }
         if (next.value.type === 'abort') {
           aborted = true;
-        } else if (next.value.type === 'text-delta' || next.value.type === 'reasoning-delta') {
+        } else if (
+          next.value.type === 'text-delta' ||
+          next.value.type === 'reasoning-delta' ||
+          (next.value.type === 'tool-input-delta' && next.value.delta !== '')
+        ) {
           const contentAt = observeContentAt(observation);
           firstTokenAt ??= contentAt;
         } else {
+          // A zero-argument tool call completes with no input delta. Only use it
+          // when nothing came earlier, so a tool-call after its deltas does not
+          // add a spurious content-gap observation.
+          if (next.value.type === 'tool-call' && next.value.providerExecuted !== true && firstTokenAt === undefined) {
+            firstTokenAt = observeContentAt(observation);
+          }
           eventCounts.observe(next.value);
         }
         controller.enqueue(next.value);

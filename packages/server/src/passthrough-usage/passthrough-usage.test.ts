@@ -222,7 +222,7 @@ describe('passthrough usage extraction', () => {
     ).toEqual({ inputTokens: 2, outputTokens: 3, totalTokens: 5, imageCount: 1, webSearchCount: 2 });
   });
 
-  test('Responses TTFT waits for text or reasoning, including buffered output_item.done', () => {
+  test('Responses TTFT waits for generated output, including buffered output_item.done', () => {
     let content = 0;
     const observer = createPassthroughSseUsageObserver(ProviderProtocol.OpenAIResponse, {
       onContent: () => {
@@ -231,7 +231,7 @@ describe('passthrough usage extraction', () => {
     });
     observer.feed('event: response.created\ndata: {"type":"response.created"}\n\n');
     observer.feed(
-      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"c1","name":"ls","arguments":"{}"}}\n\n',
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"web_search_call"}}\n\n',
     );
     observer.feed(
       'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"message","content":[]}}\n\n',
@@ -241,11 +241,39 @@ describe('passthrough usage extraction', () => {
     );
     expect(content).toBe(0);
     observer.feed(
-      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"hi"}]}}\n\n',
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"function_call","call_id":"c1","name":"ls","arguments":"{}"}}\n\n',
     );
     expect(content).toBe(1);
     observer.feed(
-      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"reasoning","summary":[{"type":"summary_text","text":"plan"}]}}\n\n',
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"hi"}]}}\n\n',
+    );
+    expect(content).toBe(1);
+  });
+
+  test('Responses TTFT fires on tool-call input deltas for tool-only turns', () => {
+    for (const type of ['response.function_call_arguments.delta', 'response.custom_tool_call_input.delta']) {
+      let content = 0;
+      const observer = createPassthroughSseUsageObserver(ProviderProtocol.OpenAIResponse, {
+        onContent: () => {
+          content += 1;
+        },
+      });
+      observer.feed(`event: ${type}\ndata: {"type":"${type}","delta":""}\n\n`);
+      expect(content).toBe(0);
+      observer.feed(`event: ${type}\ndata: {"type":"${type}","delta":"x"}\n\n`);
+      expect(content).toBe(1);
+    }
+  });
+
+  test('Responses TTFT counts a completed zero-input custom tool call', () => {
+    let content = 0;
+    const observer = createPassthroughSseUsageObserver(ProviderProtocol.OpenAIResponse, {
+      onContent: () => {
+        content += 1;
+      },
+    });
+    observer.feed(
+      'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"custom_tool_call","call_id":"c1","name":"now","input":""}}\n\n',
     );
     expect(content).toBe(1);
   });
@@ -290,7 +318,7 @@ describe('passthrough usage extraction', () => {
       'event: step.delta\ndata: {"event_type":"step.delta","delta":{"type":"thought_summary","content":{"type":"text","text":""}}}\n\n',
     );
     observer.feed(
-      'event: step.delta\ndata: {"event_type":"step.delta","delta":{"type":"arguments_delta","arguments":"{"}}\n\n',
+      'event: step.delta\ndata: {"event_type":"step.delta","delta":{"type":"arguments_delta","arguments":""}}\n\n',
     );
     expect(content).toBe(0);
     observer.feed('event: step.delta\ndata: {"event_type":"step.delta","delta":{"type":"text","text":"hi"}}\n\n');
