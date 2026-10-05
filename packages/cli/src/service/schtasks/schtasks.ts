@@ -318,7 +318,15 @@ export async function schtasksRestartInService(
     // that a failed rename did not write; a failed create puts that spec back below.
     previousCurrent = { content: io.readFile(specPath) };
     io.rename(staged, specPath);
-    if (!taskCurrent(action, exec, specPath)) await createTask(io, path, stageTaskXml(io, xml));
+    // The task keeps naming the spec its live supervisor watches: moving it to today's path here would point status
+    // and stop at a state file the running supervisor never writes. `service install`/`start` migrate it once that
+    // supervisor is ended. Only a moved exec (or a missing task) re-registers it.
+    const taskSpecPath = action?.specPath ?? specPath;
+    if (!taskCurrent(action, exec, taskSpecPath)) {
+      const taskXml =
+        taskSpecPath === specPath ? xml : renderTaskXml({ sid: io.sid, exec: exec!, specPath: taskSpecPath });
+      await createTask(io, path, stageTaskXml(io, taskXml));
+    }
   } catch (error) {
     io.remove(staged);
     if (previousCurrent !== undefined) {

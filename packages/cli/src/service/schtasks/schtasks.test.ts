@@ -574,12 +574,13 @@ test('an in-service restart leaves our unchanged task alone and re-creates a mis
   expect(recorded()).toEqual([]);
   await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), { task: 'missing' });
   expect(recorded().map((c) => c[1])).toEqual(['/Create']);
-  // Same exec, but the supervisor would re-read a spec this restart never wrote.
+  // Same exec, task on an older spec path: the task stays on the spec its live supervisor watches (install/start
+  // migrate it later), and that spec gets the new unit.
   const staleSpec = renderTaskXml({ sid, exec, specPath: 'C:\\Users\\Zoë\\old\\service.json' });
   const { fs } = await recordRun((io) => schtasksRestartInService(io, (code) => void exits.push(code)), {
     task: staleSpec,
   });
-  expect(recorded().map((c) => c[1])).toEqual(['/Create']);
+  expect(recorded()).toEqual([]);
   // The live supervisor re-reads its own (old) spec path, so it relaunches the new unit too.
   expect(fs.read('C:\\Users\\Zoë\\old\\service.json')).toBe(fs.read(specPath));
   expect(exits).toEqual([75, 75, 75]);
@@ -614,7 +615,8 @@ test('an in-service restart that cannot re-create the task keeps the old spec an
 test("an in-service restart that fails after updating the supervisor's older spec puts that spec back", async () => {
   const movedSpec = 'C:\\Users\\Zoë\\old\\service.json';
   const fs = fakeFs({ [movedSpec]: oldSpec });
-  const task = renderTaskXml({ sid, exec, specPath: movedSpec });
+  // A moved exec re-registers the task, so a failed `/Create` must put the supervisor's spec back.
+  const task = renderTaskXml({ sid, exec: oldExec, specPath: movedSpec });
   await expect(schtasksRestartInService(io({ fs, task, failOn: '/Create' }), () => undefined)).rejects.toThrow(
     '/Create failed',
   );
