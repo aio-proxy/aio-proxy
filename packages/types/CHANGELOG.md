@@ -1,5 +1,11 @@
 # @aio-proxy/types
 
+## 0.41.0
+
+### Minor Changes
+
+- [#494](https://github.com/aio-proxy/aio-proxy/pull/494) [`855383c`](https://github.com/aio-proxy/aio-proxy/commit/855383cd5f462aa5ad9bab48aab81d4123dcd659) Thanks @baranwang - The macOS menu bar can show one or two live metrics next to the icon: today's tokens, today's cost, requests in flight, and real-time output tokens per second. Pick them from the menu bar icon's right-click menu.
+
 ## 0.40.0
 
 No changes in this release.

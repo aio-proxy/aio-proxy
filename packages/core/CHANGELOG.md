@@ -1,5 +1,30 @@
 # @aio-proxy/core
 
+## 0.41.0
+
+### Minor Changes
+
+- [#494](https://github.com/aio-proxy/aio-proxy/pull/494) [`855383c`](https://github.com/aio-proxy/aio-proxy/commit/855383cd5f462aa5ad9bab48aab81d4123dcd659) Thanks @baranwang - The macOS menu bar can show one or two live metrics next to the icon: today's tokens, today's cost, requests in flight, and real-time output tokens per second. Pick them from the menu bar icon's right-click menu.
+
+### Patch Changes
+
+- Updated dependencies [[`855383c`](https://github.com/aio-proxy/aio-proxy/commit/855383cd5f462aa5ad9bab48aab81d4123dcd659)]:
+  - @aio-proxy/types@0.41.0
+  - @aio-proxy/plugin-sdk@0.41.0
+  - @aio-proxy/plugin-cursor@0.41.0
+  - @aio-proxy/plugin-openai-chatgpt@0.41.0
+  - @aio-proxy/logger@0.41.0
+  - @aio-proxy/plugin-claude-code@0.41.0
+  - @aio-proxy/plugin-github-copilot@0.41.0
+  - @aio-proxy/plugin-google-antigravity@0.41.0
+  - @aio-proxy/plugin-kimi-code@0.41.0
+  - @aio-proxy/plugin-muse-code@0.41.0
+  - @aio-proxy/plugin-opencode-go@0.41.0
+  - @aio-proxy/plugin-openrouter@0.41.0
+  - @aio-proxy/plugin-xai-grok@0.41.0
+  - @aio-proxy/i18n@0.41.0
+  - @aio-proxy/shared@0.41.0
+
 ## 0.40.0
 
 ### Minor Changes
