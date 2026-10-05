@@ -397,6 +397,15 @@ describe('content code point lengths', () => {
     expect(hasContentDelta(ProviderProtocol.Anthropic, undefined, value)).toBe(true);
   });
 
+  test.each(['response.function_call_arguments.delta', 'response.custom_tool_call_input.delta'])(
+    'Responses %s starts TTFT without contributing throughput characters',
+    (type) => {
+      const value = { type, delta: '{"city":"Paris"}' };
+      expect(contentDeltaLength(ProviderProtocol.OpenAIResponse, type, value)).toBe(0);
+      expect(hasContentDelta(ProviderProtocol.OpenAIResponse, type, value)).toBe(true);
+    },
+  );
+
   test('TTFT fallback reports zero characters', () => {
     const chars: number[] = [];
     const observer = createPassthroughSseUsageObserver(ProviderProtocol.OpenAIResponse, {

@@ -38,7 +38,8 @@ export function codePointLength(text: string): number {
 export const liveModelKey = (providerId: string, modelId: string) => JSON.stringify([providerId, modelId]);
 
 export function createLiveMetrics(options?: { readonly now?: () => number }): LiveMetrics {
-  const now = options?.now ?? Date.now;
+  // Monotonic: a wall-clock step backwards must not strand buckets in the future.
+  const now = options?.now ?? (() => performance.now());
   const buckets = new Map<number, Map<string, number>>();
   const ratios = new Map<string, number>();
   let inFlight = 0;

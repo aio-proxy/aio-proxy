@@ -195,8 +195,13 @@ export function contentDeltaLength(protocol: ProviderProtocol, eventType: string
       }
       return chars;
     }
-    case ProviderProtocol.OpenAIResponse:
+    case ProviderProtocol.OpenAIResponse: {
+      // Tool-argument deltas start TTFT (openAIResponsesContent) but are not text/reasoning throughput.
+      const type = eventType ?? value['type'];
+      if (type === 'response.function_call_arguments.delta' || type === 'response.custom_tool_call_input.delta')
+        return 0;
       return openAIResponsesContent(eventType, value) ? length(value['delta']) : 0;
+    }
     case ProviderProtocol.Anthropic: {
       if (value['type'] !== 'content_block_delta' || !isPlainObject(value['delta'])) return 0;
       const delta = value['delta'];
