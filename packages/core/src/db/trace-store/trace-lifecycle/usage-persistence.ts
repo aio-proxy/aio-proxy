@@ -4,6 +4,7 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 import { parseSqliteInteger, usdToNanoUsd } from '../../../usage-numbers';
 import { usageDaily } from '../../schema';
 import type { StoredSpan, TraceCompletion, TraceTerminalSummary } from '../types';
+import { usageLocalDate } from '../usage-range';
 
 export type PreparedUsage = {
   readonly estimatedCostNanoUsd: number | undefined;
@@ -28,13 +29,6 @@ type UsageDailyDelta = {
   readonly normalizedCacheReadTokens: bigint;
   readonly normalizedPromptTokens: bigint;
 };
-
-function localDay(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
 
 export function prepareUsage(usage: TraceTerminalSummary['usage']): PreparedUsage {
   const estimatedCostNanoUsd = usage?.estimatedCostUsd === undefined ? undefined : usdToNanoUsd(usage.estimatedCostUsd);
@@ -70,7 +64,7 @@ export function upsertUsageDelta(
 
   addUsageDailyDelta(
     tx,
-    localDay(now),
+    usageLocalDate(now),
     modelDimension,
     usageDailyDelta({
       requestCount: 1n,
@@ -130,7 +124,7 @@ function normalizedCache(
 export function upsertInterruptedUsage(tx: BunSQLiteDatabase, count: number, now: Date): void {
   addUsageDailyDelta(
     tx,
-    localDay(now),
+    usageLocalDate(now),
     'unknown',
     usageDailyDelta({ requestCount: BigInt(count), interruptedCount: BigInt(count) }),
   );

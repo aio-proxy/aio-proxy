@@ -5,6 +5,7 @@ import { overviewDashboard, overviewDashboardActivity, overviewDashboardDiagnost
 import { providerWindowCost } from './provider-window-cost';
 import { routingTraffic, routingTrafficBuckets } from './routing-traffic';
 import { findAffinity, markResponseAmbiguous, resolveResponse } from './session-state';
+import { todayUsage } from './today-usage';
 import { complete, prune, recover, startRoot } from './trace-lifecycle/index';
 import { percentile } from './trace-percentile';
 import { find, list } from './trace-queries';
@@ -28,6 +29,7 @@ export function createTraceStore(db: BunSQLiteDatabase): TraceStore {
     overviewDashboardDiagnostics: (query) => overviewDashboardDiagnostics(db, query),
     overviewDashboardActivity: (options) => overviewDashboardActivity(db, options),
     desktopUsage: (query) => desktopUsage(db, query),
+    todayUsage: (now) => todayUsage(db, now),
     resolveResponse: (responseId, now) => resolveResponse(db, responseId, now),
     markResponseAmbiguous: (responseId, now) => markResponseAmbiguous(db, responseId, now),
     findAffinity: (identity, requestedModelId, now) => findAffinity(db, identity, requestedModelId, now),
