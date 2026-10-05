@@ -1,5 +1,18 @@
 # @aio-proxy/server
 
+## 0.39.1
+
+### Patch Changes
+
+- [#491](https://github.com/aio-proxy/aio-proxy/pull/491) [`d5218bf`](https://github.com/aio-proxy/aio-proxy/commit/d5218bfaf68e0af8d9b97cc09ac90b3ebe2f8593) Thanks @baranwang - Allow large image histories and compressed recovery requests with a configurable 256 MiB request limit, including ChatGPT and Provider body transforms. Bound body logs independently to 64 MiB per hop and direction while preserving full forwarding, request diagnostics, and privacy protections.
+- Updated dependencies [[`d5218bf`](https://github.com/aio-proxy/aio-proxy/commit/d5218bfaf68e0af8d9b97cc09ac90b3ebe2f8593)]:
+  - @aio-proxy/core@0.39.1
+  - @aio-proxy/types@0.39.1
+  - @aio-proxy/plugin-sdk@0.39.1
+  - @aio-proxy/logger@0.39.1
+  - @aio-proxy/i18n@0.39.1
+  - @aio-proxy/shared@0.39.1
+
 ## 0.39.0
 
 ### Minor Changes
