@@ -155,6 +155,33 @@ fn writable(dir: &Path) -> bool {
     fs::create_dir_all(dir).is_ok() && fs::write(&probe, b"").is_ok() && fs::remove_file(&probe).is_ok()
 }
 
+/// Beside the stable copy: the version a run of it reported, keyed to its size and mtime. Reading the
+/// version back from a spawn costs a cold start of a ~100 MB binary at every launch (seconds on a
+/// slow Windows machine); any rewrite of the copy changes the key and brings the spawn back.
+fn stamp_path(stable: &Path) -> PathBuf {
+    let name = stable.file_name().unwrap_or_default().to_string_lossy();
+    stable.with_file_name(format!("{name}.version"))
+}
+
+fn stamp_key(stable: &Path) -> Option<String> {
+    let meta = fs::metadata(stable).ok()?;
+    let mtime = meta.modified().ok()?.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_nanos();
+    Some(format!("{} {mtime}", meta.len()))
+}
+
+fn stamped_version(stable: &Path) -> Option<String> {
+    let text = fs::read_to_string(stamp_path(stable)).ok()?;
+    let (version, key) = text.trim_end().split_once('\n')?;
+    (Some(key) == stamp_key(stable).as_deref()).then(|| version.to_owned())
+}
+
+/// Best effort: without a stamp the next start just probes again.
+fn stamp(stable: &Path, version: &str) {
+    if let Some(key) = stamp_key(stable) {
+        let _ = fs::write(stamp_path(stable), format!("{version}\n{key}\n"));
+    }
+}
+
 /// Startup install step off macOS. Without a runnable sidecar or a writable data directory nothing
 /// on disk changes.
 pub fn prepare(
@@ -173,13 +200,16 @@ pub fn prepare(
     // Only a definite "absent" is missing; anything else is a copy we cannot rank.
     let installed = match stable.try_exists() {
         Ok(false) => None,
-        Ok(true) => Some(probe(stable)),
+        Ok(true) => Some(stamped_version(stable).or_else(|| probe(stable).inspect(|found| stamp(stable, found)))),
         Err(_) => Some(None),
     };
     match plan_copy(installed, own_version, stable) {
         CopyPlan::Keep => InstallState::Persistent,
         CopyPlan::Replace => match replace_copy(stable, sidecar, own_version, probe) {
-            Ok(()) => InstallState::Persistent,
+            Ok(()) => {
+                stamp(stable, own_version);
+                InstallState::Persistent
+            }
             Err(error) => InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(error.to_string())),
         },
         CopyPlan::Refuse(reason) => InstallState::ReadOnly(reason),

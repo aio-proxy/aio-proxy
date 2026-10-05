@@ -74,6 +74,7 @@ fn prepare_installs_a_missing_copy_and_keeps_an_equal_one() {
     assert_eq!(prepare(&paths, &sidecar, "0.40.0", |_| Some("0.40.0".into())), InstallState::Persistent);
     assert_eq!(fs::read(&paths.stable).unwrap(), b"new", "an equal copy is kept");
 
+    fs::write(&paths.stable, b"a newer app's copy").unwrap();
     assert_eq!(
         prepare(&paths, &sidecar, "0.40.0", |_| Some("0.41.0".into())),
         InstallState::ReadOnly(ReadOnlyReason::NewerCopy { app: paths.stable.clone(), version: "0.41.0".into() })
@@ -194,4 +195,31 @@ fn recovery_restores_the_newest_backup_and_deletes_the_rest() {
     recover_backups_windows(&stable).unwrap();
     assert_eq!(fs::read(&stable).unwrap(), b"newest", "a present copy is never replaced by a backup");
     assert_eq!(names(dir.path()), ["aio-proxy.exe"]);
+}
+
+#[test]
+fn a_kept_copy_is_probed_once_until_its_file_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = crate::platform::paths_from(dir.path(), |_| None);
+    let sidecar = dir.path().join("app/aio-proxy");
+    fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+    fs::write(&sidecar, b"new").unwrap();
+    #[cfg(unix)]
+    fs::set_permissions(&sidecar, fs::Permissions::from_mode(0o755)).unwrap();
+    let probes = Cell::new(0);
+    let probe = |_: &Path| {
+        probes.set(probes.get() + 1);
+        Some("0.40.0".to_string())
+    };
+
+    assert_eq!(prepare(&paths, &sidecar, "0.40.0", probe), InstallState::Persistent);
+    assert_eq!(probes.replace(0), 1, "the fresh copy is verified by running it");
+    assert_eq!(prepare(&paths, &sidecar, "0.40.0", probe), InstallState::Persistent);
+    assert_eq!(probes.get(), 0, "an unchanged copy reuses the version its install verified");
+
+    fs::write(&paths.stable, b"replaced by something else").unwrap();
+    assert_eq!(
+        prepare(&paths, &sidecar, "0.40.0", |_| Some("0.41.0".into())),
+        InstallState::ReadOnly(ReadOnlyReason::NewerCopy { app: paths.stable.clone(), version: "0.41.0".into() })
+    );
 }

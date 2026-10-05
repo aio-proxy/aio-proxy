@@ -20,11 +20,19 @@ pub fn start(cx: &mut App) {
         (model.paths.clone(), model.bundle.clone())
     };
     let task = cx.background_executor().spawn(async move { prepare_install(&paths, bundle.as_deref()) });
+    // Discovery runs alongside the install step through the bundled CLI (no install state yet, so
+    // `host` picks the sidecar), which is the version the stable copy is about to match. No
+    // automatic action can start meanwhile: `persistent()` is false until the step lands.
+    rediscover(cx);
     cx.spawn(async move |cx| {
         let install = task.await;
         cx.update(|cx| {
             log::info(format!("install: {install:?}"));
             let model = cx.global_mut::<AppModel>();
+            // Only a newer stable copy changes which CLI discovers, and it may read a unit the
+            // sidecar cannot; every other outcome keeps the discovery already taken or in flight.
+            let rerun = matches!(install, InstallState::ReadOnly(ReadOnlyReason::NewerCopy { .. }))
+                || (model.discovery.is_none() && !model.discovering);
             model.install = Some(install);
             #[cfg(target_os = "linux")]
             if let Err(error) = crate::platform::login_item::refresh() {
@@ -34,7 +42,11 @@ pub fn start(cx: &mut App) {
             // panel open.
             model.login_item = crate::platform::login_item::status();
             changed(cx);
-            rediscover(cx);
+            if rerun {
+                rediscover(cx);
+            } else {
+                maybe_automatic(cx);
+            }
             probe_cli(cx);
         });
     })
