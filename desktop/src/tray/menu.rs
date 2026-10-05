@@ -2,6 +2,7 @@
 
 use crate::connect::policy::{Offered, UserAction};
 use crate::platform::LoginItemStatus;
+use crate::prefs::{LabelStyle, TrayMetric};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuCommand {
@@ -14,6 +15,9 @@ pub enum MenuCommand {
     ToggleLogin,
     CheckForUpdates,
     Quit,
+    TrayMetric(TrayMetric),
+    ToggleTrayIcon,
+    TrayLabels(LabelStyle),
 }
 
 impl MenuCommand {
@@ -32,6 +36,13 @@ impl MenuCommand {
             MenuCommand::ToggleLogin => "login",
             MenuCommand::CheckForUpdates => "check-updates",
             MenuCommand::Quit => "quit",
+            MenuCommand::TrayMetric(TrayMetric::TodayTokens) => "tray-metric-today-tokens",
+            MenuCommand::TrayMetric(TrayMetric::TokensPerSecond) => "tray-metric-tokens-per-second",
+            MenuCommand::TrayMetric(TrayMetric::TodayCost) => "tray-metric-today-cost",
+            MenuCommand::TrayMetric(TrayMetric::InFlight) => "tray-metric-in-flight",
+            MenuCommand::ToggleTrayIcon => "tray-icon",
+            MenuCommand::TrayLabels(LabelStyle::Prefix) => "tray-labels-prefix",
+            MenuCommand::TrayLabels(LabelStyle::Unit) => "tray-labels-unit",
         }
     }
 
@@ -50,6 +61,13 @@ impl MenuCommand {
             "login" => MenuCommand::ToggleLogin,
             "check-updates" => MenuCommand::CheckForUpdates,
             "quit" => MenuCommand::Quit,
+            "tray-metric-today-tokens" => MenuCommand::TrayMetric(TrayMetric::TodayTokens),
+            "tray-metric-tokens-per-second" => MenuCommand::TrayMetric(TrayMetric::TokensPerSecond),
+            "tray-metric-today-cost" => MenuCommand::TrayMetric(TrayMetric::TodayCost),
+            "tray-metric-in-flight" => MenuCommand::TrayMetric(TrayMetric::InFlight),
+            "tray-icon" => MenuCommand::ToggleTrayIcon,
+            "tray-labels-prefix" => MenuCommand::TrayLabels(LabelStyle::Prefix),
+            "tray-labels-unit" => MenuCommand::TrayLabels(LabelStyle::Unit),
             _ => return None,
         })
     }

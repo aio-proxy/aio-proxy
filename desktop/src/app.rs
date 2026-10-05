@@ -3,6 +3,7 @@
 
 mod health;
 mod lifecycle;
+mod live;
 mod order;
 mod refresh;
 
@@ -17,6 +18,7 @@ pub use lifecycle::{
     install_cli, open_dashboard, open_dashboard_provider, open_dashboard_providers, open_logs, rediscover,
     run_user_action, set_login_item, start, toggle_login_item,
 };
+pub use live::start as start_live_timer;
 pub use refresh::{manual_refresh, panel_closed, panel_opened, set_usage_range};
 
 use order::DiscoveryOrder;
@@ -28,7 +30,9 @@ use crate::connect::policy::{AutoAction, AutoAttempts, UserAction};
 use crate::connect::run::RunError;
 use crate::install::{InstallState, Paths};
 use crate::platform::LoginItemStatus;
+use crate::prefs::{Prefs, prefs_path};
 use crate::summary::{DegradedReason, SummaryV1, Usage, UsageRange};
+use crate::tray::{LiveDisplay, LiveSchedule};
 
 /// Everything that reaches the GPUI loop from AppKit callbacks, delivered over one channel.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,12 +98,14 @@ impl ActionState {
 
 pub struct AppModel {
     pub paths: Paths,
+    pub prefs: Prefs,
     pub bundle: Option<PathBuf>,
     /// `None` until the startup install step finishes; nothing is automatic before that.
     pub install: Option<InstallState>,
     pub discovery: Option<Discovery>,
     pub discovery_error: Option<String>,
     pub health: HealthTracker,
+    pub live: LiveDisplay,
     pub summary: SummaryState,
     /// Set when a fetch fails while the last good summary stays on screen, with the window it
     /// was for: only that window's Usage group and notice report it.
@@ -126,11 +132,12 @@ pub struct AppModel {
     rediscover_again: bool,
     auth_retry_used: bool,
     refetch_after_discovery: bool,
-    /// When a refused summary fetch last rediscovered, for [`refresh::rediscovers_after`].
+    /// When a refused summary or live fetch last rediscovered, for [`refresh::rediscovers_after`].
     gone_rediscovered_at: Option<Instant>,
+    live_schedule: LiveSchedule,
     scheduler: Scheduler,
     instance: Option<(String, Option<u32>)>,
-    instance_epoch: u64,
+    pub(crate) instance_epoch: u64,
     fetch_task: Option<Task<()>>,
     timer_task: Option<Task<()>>,
 }
@@ -139,13 +146,16 @@ impl Global for AppModel {}
 
 impl AppModel {
     pub fn new(paths: Paths, bundle: Option<PathBuf>) -> Self {
+        let prefs = Prefs::load(&prefs_path(&paths));
         Self {
             paths,
+            prefs,
             bundle,
             install: None,
             discovery: None,
             discovery_error: None,
             health: HealthTracker::default(),
+            live: LiveDisplay::default(),
             summary: SummaryState::Waiting,
             summary_error: None,
             last_summary_at: None,
@@ -164,6 +174,7 @@ impl AppModel {
             auth_retry_used: false,
             refetch_after_discovery: false,
             gone_rediscovered_at: None,
+            live_schedule: LiveSchedule::default(),
             scheduler: Scheduler::default(),
             instance: None,
             instance_epoch: 0,

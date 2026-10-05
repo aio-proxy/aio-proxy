@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
+import { contentDeltaLength, hasContentDelta, hasToolCallOutput } from './content';
 import { createPassthroughSseUsageObserver, extractPassthroughObservation, extractPassthroughUsage } from './index';
 
 describe('passthrough usage extraction', () => {
@@ -338,5 +339,142 @@ describe('passthrough usage extraction', () => {
           'event: image_generation.completed\ndata: {"type":"image_generation.completed","b64_json":"b","usage":{"input_tokens":8,"output_tokens":16,"total_tokens":24}}\n\n',
       ),
     ).toEqual({ inputTokens: 8, outputTokens: 16, totalTokens: 24, imageCount: 2 });
+  });
+});
+
+describe('content code point lengths', () => {
+  test.each([
+    [
+      ProviderProtocol.OpenAICompatible,
+      undefined,
+      { choices: [{ delta: { content: '世🙂', reasoning_content: 'ab' } }] },
+      4,
+    ],
+    [ProviderProtocol.OpenAICompatible, undefined, { choices: [{ text: '世🙂', delta: { reasoning: 'ab' } }] }, 4],
+    [ProviderProtocol.OpenAIResponse, 'response.output_text.delta', { delta: '世🙂' }, 2],
+    [ProviderProtocol.OpenAIResponse, 'response.reasoning_text.delta', { delta: '世🙂' }, 2],
+    [ProviderProtocol.OpenAIResponse, 'response.reasoning_summary_text.delta', { delta: '世🙂' }, 2],
+    [
+      ProviderProtocol.Anthropic,
+      undefined,
+      { type: 'content_block_delta', delta: { type: 'text_delta', text: '世🙂' } },
+      2,
+    ],
+    [
+      ProviderProtocol.Anthropic,
+      undefined,
+      { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: '世🙂' } },
+      2,
+    ],
+    [
+      ProviderProtocol.Gemini,
+      undefined,
+      [{ candidates: [{ content: { parts: [{ text: '世🙂' }, { text: 'ab', thought: true }] } }] }],
+      4,
+    ],
+    [ProviderProtocol.GeminiInteractions, 'step.delta', { delta: { type: 'text', text: '世🙂' } }, 2],
+    [
+      ProviderProtocol.GeminiInteractions,
+      undefined,
+      { event_type: 'step.delta', delta: { type: 'thought_summary', content: { text: '世🙂' } } },
+      2,
+    ],
+    [ProviderProtocol.OpenAIResponse, 'response.output_item.done', { item: { content: [{ text: 'ignored' }] } }, 0],
+    [
+      ProviderProtocol.Anthropic,
+      undefined,
+      { type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{}' } },
+      0,
+    ],
+    [ProviderProtocol.OpenAICompatible, undefined, null, 0],
+  ] as const)('counts only generated text for %s (%s)', (protocol, event, value, expected) => {
+    expect(contentDeltaLength(protocol, event, value)).toBe(expected);
+  });
+
+  test('empty Anthropic delta still triggers TTFT without contributing characters', () => {
+    const value = { type: 'content_block_delta', delta: { type: 'text_delta', text: '' } };
+    expect(contentDeltaLength(ProviderProtocol.Anthropic, undefined, value)).toBe(0);
+    expect(hasContentDelta(ProviderProtocol.Anthropic, undefined, value)).toBe(true);
+  });
+
+  test.each(['response.function_call_arguments.delta', 'response.custom_tool_call_input.delta'])(
+    'Responses %s starts TTFT without contributing throughput characters',
+    (type) => {
+      const value = { type, delta: '{"city":"Paris"}' };
+      expect(contentDeltaLength(ProviderProtocol.OpenAIResponse, type, value)).toBe(0);
+      expect(hasContentDelta(ProviderProtocol.OpenAIResponse, type, value)).toBe(true);
+    },
+  );
+
+  test('TTFT fallback reports zero characters', () => {
+    const chars: number[] = [];
+    const observer = createPassthroughSseUsageObserver(ProviderProtocol.OpenAIResponse, {
+      onContent: (length) => chars.push(length),
+    });
+    observer.feed(
+      'event: response.output_item.done\ndata: {"item":{"type":"message","content":[{"text":"hello"}]}}\n\n',
+    );
+    expect(chars).toEqual([0]);
+  });
+});
+
+describe('tool output calibration detection', () => {
+  test.each([
+    [ProviderProtocol.OpenAICompatible, undefined, { choices: [{ delta: { tool_calls: [{}] } }] }],
+    [ProviderProtocol.OpenAICompatible, undefined, { choices: [{ finish_reason: 'tool_calls' }] }],
+    [ProviderProtocol.OpenAIResponse, 'response.function_call_arguments.delta', { delta: '' }],
+    [ProviderProtocol.OpenAIResponse, 'response.custom_tool_call_input.delta', { delta: '{}' }],
+    [ProviderProtocol.OpenAIResponse, 'response.output_item.added', { item: { type: 'function_call' } }],
+    [ProviderProtocol.OpenAIResponse, 'response.output_item.done', { item: { type: 'custom_tool_call' } }],
+    [
+      ProviderProtocol.OpenAIResponse,
+      undefined,
+      { type: 'response.output_item.done', item: { type: 'function_call' } },
+    ],
+    [ProviderProtocol.Anthropic, undefined, { type: 'content_block_start', content_block: { type: 'tool_use' } }],
+    [ProviderProtocol.Anthropic, 'content_block_delta', { delta: { type: 'input_json_delta' } }],
+    [ProviderProtocol.Gemini, undefined, { candidates: [{ content: { parts: [{ functionCall: {} }] } }] }],
+    [ProviderProtocol.Gemini, undefined, [{ candidates: [{ content: { parts: [{ functionCall: {} }] } }] }]],
+    [ProviderProtocol.GeminiInteractions, 'step.start', { step: { type: 'function_call' } }],
+    [ProviderProtocol.GeminiInteractions, undefined, { event_type: 'step.start', step: { type: 'function_call' } }],
+  ] as const)('detects tool output for %s / %s', (protocol, type, value) => {
+    expect(hasToolCallOutput(protocol, type, value)).toBe(true);
+  });
+
+  test.each([
+    [ProviderProtocol.OpenAICompatible, undefined, { choices: [{ delta: { content: 'hello', tool_calls: [] } }] }],
+    [ProviderProtocol.OpenAIResponse, 'response.output_text.delta', { delta: 'hello' }],
+    [
+      ProviderProtocol.Anthropic,
+      undefined,
+      { type: 'content_block_delta', delta: { type: 'text_delta', text: 'hello' } },
+    ],
+    [ProviderProtocol.Gemini, undefined, [{ candidates: [{ content: { parts: [{ text: 'hello' }] } }] }]],
+    [ProviderProtocol.GeminiInteractions, 'step.start', { step: { type: 'text', text: 'hello' } }],
+    [ProviderProtocol.OpenAIImage, undefined, { text: 'hello' }],
+    [ProviderProtocol.OpenAIAudio, undefined, { text: 'hello' }],
+    [ProviderProtocol.OpenAIVideo, undefined, { text: 'hello' }],
+    [ProviderProtocol.TypeSafeSystemOne, undefined, { text: 'hello' }],
+  ] as const)('ignores plain text for %s', (protocol, type, value) => {
+    expect(hasToolCallOutput(protocol, type, value)).toBe(false);
+  });
+
+  test('tool callbacks run before terminal settlement and cannot break observation', () => {
+    let toolOutput = false;
+    let toolAtTerminal = false;
+    const observer = createPassthroughSseUsageObserver(ProviderProtocol.OpenAIResponse, {
+      onToolOutput: () => {
+        toolOutput = true;
+        throw new Error('observer failed');
+      },
+      onTerminal: () => {
+        toolAtTerminal = toolOutput;
+      },
+    });
+    observer.feed(
+      'event: response.output_item.done\ndata: {"item":{"type":"function_call"},"response":{"status":"completed"}}\n\n',
+    );
+    expect(toolAtTerminal).toBe(true);
+    expect(observer.finish().failed).toBeUndefined();
   });
 });

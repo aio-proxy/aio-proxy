@@ -368,3 +368,30 @@ for (const scenario of ['synthetic', 'original', 'retry', 'ordinary', 'failover'
     expect(previous(source, result.id).resolvedBy).toBe('previous-response');
   });
 }
+
+test.each([true, false])('raw capture receives the requested live flag: %s', async (stream) => {
+  const route = defineProviderRouteSource([
+    rawProvider({
+      id: 'raw',
+      modelId: REQUESTED_MODEL,
+      protocol: ProviderProtocol.OpenAIResponse,
+      invoke: async () =>
+        new Response(
+          stream
+            ? 'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n'
+            : '{"status":"completed"}',
+          { headers: { 'content-type': stream ? 'text/event-stream' : 'application/json' } },
+        ),
+    }),
+  ]);
+  const response = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: jsonRequest({ input: 'ping', model: REQUESTED_MODEL, stream }),
+    source: route.source,
+  });
+  await response.text();
+  await settleRecording(route.recording);
+  expect(route.usage.passthrough).toHaveLength(1);
+  expect(route.usage.passthrough[0]?.live).toBe(stream);
+});

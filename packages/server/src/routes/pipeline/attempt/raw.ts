@@ -159,6 +159,7 @@ export async function completeRawAttempt<TRequest, TContext>(
           provider.upstreamMetadata?.[candidate.modelId]?.cost,
         );
   const captured = source.usageCapture.passthrough({
+    live: ctx.streamRequested,
     response: normalizedResponse,
     protocol: adapter.protocol,
     providerId: provider.id,

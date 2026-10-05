@@ -12,6 +12,7 @@ import {
   type Link,
 } from '@opentelemetry/api';
 
+import type { LiveMetrics } from '../../live-metrics';
 import type { LogicalSessionResolution } from '../../logical-session-store';
 import { safeDiagnosticFields } from '../../request-logging/capture-policy';
 import { capturesRequestPayload } from '../../request-logging/context';
@@ -56,12 +57,15 @@ type IdentityState = {
   mutateSessionState: boolean;
 };
 
-export function createRequestTraceRecorder(options: {
+type RequestTraceRecorderOptions = {
   readonly store: RequestTraceWriteStore;
+  readonly liveMetrics?: Pick<LiveMetrics, 'requestStarted' | 'requestFinished'>;
   readonly now?: () => Date;
   readonly logger?: ServerLogSink;
   readonly onResponsePersisted?: (responseId: string) => void;
-}): RequestTraceRecorder {
+};
+
+export function createRequestTraceRecorder(options: RequestTraceRecorderOptions): RequestTraceRecorder {
   const now = options.now ?? (() => new Date());
   let lastPrunedAt = now();
   runPrune(options.store, options.logger, lastPrunedAt);
@@ -141,6 +145,7 @@ export function createRequestTraceRecorder(options: {
       const complete = (finish: RequestTraceFinishInput): void => {
         if (state === 'finished') return;
         state = 'finished';
+        if (input.operation !== 'token_count') options.liveMetrics?.requestFinished();
         finish = captureTraceFinish(finish, capturePayload);
         try {
           if (finish.clientResponse !== undefined)
@@ -168,6 +173,7 @@ export function createRequestTraceRecorder(options: {
         }
       };
 
+      if (input.operation !== 'token_count') options.liveMetrics?.requestStarted();
       return {
         requestId,
         traceId,

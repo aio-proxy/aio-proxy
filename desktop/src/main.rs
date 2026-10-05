@@ -61,6 +61,7 @@ fn main() {
         platform::updater::start(events.clone());
         app::start(cx);
         app::start_health_timer(cx);
+        app::start_live_timer(cx);
         cx.spawn(async move |cx| {
             while let Some(event) = inbox.next().await {
                 cx.update(|cx| handle(cx, event, &events));

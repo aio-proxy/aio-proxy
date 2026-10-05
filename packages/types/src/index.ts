@@ -22,6 +22,7 @@ export * from './dashboard-localized-text';
 export * from './dashboard-oauth/index';
 export * from './dashboard-provider-mutation';
 export * from './desktop-summary/index';
+export * from './desktop-live/index';
 export * from './dashboard-provider-draft/index';
 export * from './plugin';
 export * from './model-metadata/index';

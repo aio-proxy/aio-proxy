@@ -8,7 +8,10 @@ import { ConfigSchema } from '@aio-proxy/types';
 
 import { createServerState } from '#server-test-lifecycle';
 
+import { liveModelKey } from '../live-metrics';
 import { getTraceRuntime } from '../request-tracing';
+
+const KEY = liveModelKey('p', 'm');
 
 const homes: string[] = [];
 
@@ -84,6 +87,69 @@ test('successful snapshot commits notify after publication and callback errors a
     expect((await state.reload()).ok).toBe(false);
     expect(notifications).toBe(1);
   } finally {
+    state.close();
+  }
+});
+
+test('state and request recorder share live metrics', async () => {
+  const state = await createServerState({
+    builtIns: [],
+    config: ConfigSchema.parse({ providers: {} }),
+    dbHome: tempHome(),
+    watchConfig: false,
+  });
+  try {
+    const session = state.requestRecorder.begin({
+      inboundRequest: new Request('http://localhost/v1/chat/completions'),
+      inboundProtocol: 'openai-chat',
+    });
+    expect(state.liveMetrics.snapshot().inFlight).toBe(1);
+    session.finish({ outcome: 'success' });
+    expect(state.liveMetrics.snapshot().inFlight).toBe(0);
+  } finally {
+    state.close();
+  }
+});
+
+test('state and usage capture share live metrics', async () => {
+  const state = await createServerState({
+    builtIns: [],
+    config: ConfigSchema.parse({ providers: {} }),
+    dbHome: tempHome(),
+    watchConfig: false,
+  });
+  const record = spyOn(state.liveMetrics, 'recordContent');
+  try {
+    const captured = state.usageCapture.stream({
+      providerId: 'p',
+      modelId: 'm',
+      live: true,
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'text-delta', id: 't', text: 'hello' });
+          controller.enqueue({
+            type: 'finish',
+            finishReason: 'stop',
+            rawFinishReason: 'stop',
+            totalUsage: {
+              inputTokens: 0,
+              outputTokens: 0,
+              totalTokens: 0,
+              inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 0 },
+              outputTokenDetails: { reasoningTokens: 0, textTokens: 0 },
+            },
+          });
+          controller.close();
+        },
+      }),
+    });
+    for await (const _part of captured.value) {
+      /* Drain through upstream completion. */
+    }
+    await captured.completion;
+    expect(record).toHaveBeenCalledWith(KEY, 5);
+  } finally {
+    record.mockRestore();
     state.close();
   }
 });

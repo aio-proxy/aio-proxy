@@ -92,6 +92,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
     provider.upstreamMetadata?.[candidate.modelId]?.cost,
   );
   const captured = source.usageCapture.stream({
+    live: ctx.streamRequested,
     providerId: provider.id,
     modelId: candidate.modelId,
     requestedModelId: ctx.requestedModelId,

@@ -1,3 +1,4 @@
+import type { LiveMetrics } from '../live-metrics';
 import type { ServerLogSink } from '../server-log';
 import { embeddingCapture } from './embedding-capture';
 import { evaluationCapture } from './evaluation-capture';
@@ -15,10 +16,12 @@ export type {
   UsageCompletion,
 } from './shared';
 
-export function createUsageCapture(options: { readonly logger?: ServerLogSink } = {}): UsageCapture {
+export function createUsageCapture(
+  options: { readonly logger?: ServerLogSink; readonly liveMetrics?: LiveMetrics } = {},
+): UsageCapture {
   return {
-    stream: (streamOptions) => streamCapture(streamOptions, options.logger),
-    passthrough: (passthroughOptions) => passthroughCapture(passthroughOptions, options.logger),
+    stream: (streamOptions) => streamCapture(streamOptions, options.logger, options.liveMetrics),
+    passthrough: (passthroughOptions) => passthroughCapture(passthroughOptions, options.logger, options.liveMetrics),
     embedding: (embeddingOptions) => embeddingCapture(embeddingOptions, options.logger),
     evaluation: (evaluationOptions) => evaluationCapture(evaluationOptions, options.logger),
   };

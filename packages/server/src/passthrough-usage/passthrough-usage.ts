@@ -2,7 +2,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 import { createParser } from 'eventsource-parser';
 
-import { createTtftFallbackDetector, hasContentDelta } from './content';
+import { contentDeltaLength, createTtftFallbackDetector, hasContentDelta, hasToolCallOutput } from './content';
 import { countResponseItems, createResponseItemCounter, type ResponseItemCounts, withItemCounts } from './event-counts';
 import {
   anthropicTotalTokens,
@@ -36,7 +36,8 @@ export type PassthroughSseUsageObserver = {
 
 export type PassthroughSseCallbacks = {
   readonly onEvent?: () => void;
-  readonly onContent?: () => void;
+  readonly onToolOutput?: () => void;
+  readonly onContent?: (chars: number) => void;
   readonly onTerminal?: (observation: PassthroughObservation) => void;
 };
 
@@ -130,15 +131,16 @@ export function createPassthroughSseUsageObserver(
           safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed, itemCounter.totals())));
         return;
       }
+      if (hasToolCallOutput(protocol, event.event, parsed)) safely(callbacks.onToolOutput);
       observed = mergeObservedUsage(protocol, observed, usageFromJson(protocol, parsed));
       itemCounter.observe(event.event, parsed);
       responseId = completedResponseId(protocol, parsed) ?? responseId;
       if (hasContentDelta(protocol, event.event, parsed)) {
         sawContent = true;
-        safely(callbacks.onContent);
+        safely(() => callbacks.onContent?.(contentDeltaLength(protocol, event.event, parsed)));
       } else if (!sawContent && isTtftFallback(event.event, parsed)) {
         sawContent = true;
-        safely(callbacks.onContent);
+        safely(() => callbacks.onContent?.(0));
       }
       if (failEvent || failParsed || isSuccessTerminal(protocol, event.event, parsed)) {
         safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed, itemCounter.totals())));

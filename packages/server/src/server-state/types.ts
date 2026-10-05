@@ -21,6 +21,7 @@ import type { CatalogRefreshOutcome } from '../catalog-scheduler';
 import type { ConfigStore } from '../config-store';
 import type { OAuthCredentialRefreshOperations } from '../credential-refresh';
 import type { DashboardEventHub, DashboardEventLimits } from '../dashboard-events';
+import type { LiveMetrics } from '../live-metrics';
 import type { ModelRoutingControlPlane } from '../model-routing';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import type { PluginControlPlane, PluginControlPlaneOptions } from '../plugin-control-plane';
@@ -120,6 +121,7 @@ export type ServerState = ProviderRouteSource & {
   readonly realtimeCalls: RealtimeCallStore;
   readonly videoJobs: VideoJobStore;
   readonly traceStore: TraceStore;
+  readonly liveMetrics: LiveMetrics;
 };
 
 export type ProviderSummaryOptions = { readonly filter?: string | undefined; readonly probe: boolean };
