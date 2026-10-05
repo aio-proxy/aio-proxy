@@ -153,6 +153,7 @@ export type ServerStateParts = Pick<
   | 'configStore'
   | 'events'
   | 'logicalSessionStore'
+  | 'liveMetrics'
   | 'modelRouting'
   | 'oauthQuota'
   | 'oauthCredentialRefresh'
@@ -265,6 +266,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     traceStore: parts.traceStore,
     logger,
     requestRecorder: parts.requestRecorder,
+    liveMetrics: parts.liveMetrics,
     usageCapture: parts.usageCapture,
   };
 }

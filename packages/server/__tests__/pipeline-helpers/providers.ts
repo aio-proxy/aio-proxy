@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { aioHome, type ModelEventStream, Router } from '@aio-proxy/core';
 import { ConfigSchema, type Config, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
+import type { LiveMetrics } from '../../src/live-metrics';
 import { LogicalSessionStore } from '../../src/logical-session-store';
 import { ProviderCooldownStore } from '../../src/routes/pipeline/provider-cooldown';
 import type {
@@ -126,10 +127,10 @@ export function defineProviderRouteSource(
   fixtures: readonly FakeProvider[],
   immediateStreamCompletion?: UsageCompletion,
   debugLogging?: boolean,
-  routing: { readonly config?: Config; readonly random?: () => number } = {},
+  routing: { readonly config?: Config; readonly random?: () => number; readonly liveMetrics?: LiveMetrics } = {},
 ) {
   const providers = fixtures.map((fixture) => fixture.provider);
-  const recording = createRecording();
+  const recording = createRecording(routing.liveMetrics);
   seedEmptyPriceCatalog();
   const realUsageCapture = createUsageCapture();
   const usage = {

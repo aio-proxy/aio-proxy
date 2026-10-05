@@ -21,6 +21,7 @@ import {
   textStream,
   textThenErrorStream,
 } from '../../../__tests__/pipeline-helpers';
+import { createLiveMetrics } from '../../live-metrics';
 import { attributeName } from '../../request-tracing';
 import { handleProtocolRequest } from './index';
 import { attemptsOf, pipeline } from './test-support';
@@ -143,7 +144,8 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
           cancelCalls += 1;
         }),
     });
-    const route = defineProviderRouteSource([provider]);
+    const liveMetrics = createLiveMetrics();
+    const route = defineProviderRouteSource([provider], undefined, undefined, { liveMetrics });
     const response = await handleProtocolRequest({
       adapter: openAICompletionsAdapter,
       context: {},
@@ -158,15 +160,34 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
 
     const reader = response.body?.getReader();
     expect((await reader?.read())?.done).toBe(false);
+    expect(liveMetrics.snapshot().inFlight).toBe(1);
     controller.abort();
     await reader?.cancel('client stopped');
     await settleRecording(route.recording);
 
+    expect(liveMetrics.snapshot().inFlight).toBe(0);
     expect(cancelCalls).toBe(1);
     expect(route.usage.capturedStreams[0]?.locked).toBe(false);
     expect(route.recording.finals[0]).toEqual(
       expect.objectContaining({ finalProviderId: 'provider', outcome: 'cancelled' }),
     );
+  });
+
+  test('returns in-flight count to zero after upstream idle timeout', async () => {
+    const liveMetrics = createLiveMetrics();
+    const provider = modelProvider({ id: 'provider', invoke: () => cancellableTextStream('partial', () => {}) });
+    const harness = pipeline([provider], { liveMetrics });
+    const capture = harness.source.usageCapture.stream;
+    harness.source.usageCapture.stream = (options) => capture({ ...options, idleTimeoutMs: 40 });
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
+    expect(liveMetrics.snapshot().inFlight).toBe(1);
+    await expect(response.text()).rejects.toThrow('stream_idle_timeout');
+    await settleRecording(harness.recording);
+    expect(harness.recording.finals[0]).toEqual(
+      expect.objectContaining({ outcome: 'failure', errorCode: 'stream_idle_timeout' }),
+    );
+    expect(liveMetrics.snapshot().inFlight).toBe(0);
   });
 
   test('records stream=true and a numeric ttft for a streamed model attempt', async () => {

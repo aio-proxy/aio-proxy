@@ -349,3 +349,76 @@ describe('createRequestTraceRecorder', () => {
     expect(root?.attributes).toMatchObject({ [attributeName.fast]: true });
   });
 });
+
+describe('request trace in-flight metrics', () => {
+  function setup() {
+    let count = 0;
+    const calls: string[] = [];
+    const liveMetrics = {
+      requestStarted() {
+        count += 1;
+        calls.push('started');
+      },
+      requestFinished() {
+        count -= 1;
+        calls.push('finished');
+      },
+    };
+    const recorder = createRequestTraceRecorder({ store: collector().store, liveMetrics });
+    return { recorder, calls, count: () => count };
+  }
+
+  test.each(['success', 'failure', 'cancelled'] as const)('counts begin through finish with %s', (outcome) => {
+    const metrics = setup();
+    const session = metrics.recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
+    expect(metrics.count()).toBe(1);
+    session.finish({ outcome });
+    expect(metrics.count()).toBe(0);
+    expect(metrics.calls).toEqual(['started', 'finished']);
+  });
+
+  test.each([false, true])('counts until finishFrom settles, rejection=%s', async (reject) => {
+    const metrics = setup();
+    const session = metrics.recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
+    let resolve!: (value: RequestTraceFinishInput) => void;
+    let fail!: (reason: Error) => void;
+    session.finishFrom(
+      new Promise<RequestTraceFinishInput>((r, j) => {
+        resolve = r;
+        fail = j;
+      }),
+    );
+    expect(metrics.count()).toBe(1);
+    if (reject) fail(new Error('upstream failed'));
+    else resolve({ outcome: 'success' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(metrics.count()).toBe(0);
+    expect(metrics.calls).toEqual(['started', 'finished']);
+  });
+
+  test.each(['finish', 'finishFrom'] as const)('only decrements once when finish is followed by %s', async (second) => {
+    const metrics = setup();
+    const session = metrics.recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
+    expect(metrics.count()).toBe(1);
+    session.finish({ outcome: 'success' });
+    if (second === 'finish') session.finish({ outcome: 'failure' });
+    else session.finishFrom(Promise.resolve({ outcome: 'success' }));
+    await Promise.resolve();
+    expect(metrics.count()).toBe(0);
+    expect(metrics.calls).toEqual(['started', 'finished']);
+  });
+
+  test('token_count does not affect in-flight metrics', () => {
+    const metrics = setup();
+    const session = metrics.recorder.begin({
+      inboundRequest: request(),
+      inboundProtocol: 'anthropic',
+      operation: 'token_count',
+    });
+    expect(metrics.count()).toBe(0);
+    session.finish({ outcome: 'success' });
+    expect(metrics.count()).toBe(0);
+    expect(metrics.calls).toEqual([]);
+  });
+});

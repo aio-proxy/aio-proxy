@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { jsonRequest, REQUESTED_MODEL, rawProvider, settleRecording } from '../../../__tests__/pipeline-helpers';
+import { createLiveMetrics } from '../../live-metrics';
 import { attemptsOf, pipeline } from './test-support';
 
 describe('shared protocol routing pipeline raw fallback', () => {
@@ -41,6 +42,47 @@ describe('shared protocol routing pipeline raw fallback', () => {
       }),
     );
     expect(JSON.stringify(harness.logs)).not.toContain(bodySecret);
+  });
+
+  test('counts one request throughout raw candidate fallback', async () => {
+    const liveMetrics = createLiveMetrics();
+    const counts: number[] = [];
+    const primary = rawProvider({
+      id: 'primary',
+      invoke: async () => {
+        counts.push(liveMetrics.snapshot().inFlight);
+        return Response.json({ error: 'unavailable' }, { status: 503 });
+      },
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const backupEntered = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const backup = rawProvider({
+      id: 'backup',
+      invoke: async () => {
+        counts.push(liveMetrics.snapshot().inFlight);
+        entered();
+        await gate;
+        return Response.json({ provider: 'backup' });
+      },
+    });
+    const harness = pipeline([primary, backup], { liveMetrics });
+    const pending = harness.run(jsonRequest({ model: REQUESTED_MODEL }));
+    await backupEntered;
+    const duringFallback = liveMetrics.snapshot().inFlight;
+    release();
+    const response = await pending;
+    expect(await response.json()).toEqual({ provider: 'backup' });
+    await settleRecording(harness.recording);
+    expect(counts).toEqual([1, 1]);
+    expect(duringFallback).toBe(1);
+    expect(harness.recording.begins).toHaveLength(1);
+    expect(liveMetrics.snapshot().inFlight).toBe(0);
   });
 
   test('cancels a raw fallback body even when cleanup rejects', async () => {
