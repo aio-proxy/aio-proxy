@@ -153,12 +153,20 @@ fn poll(
     what: &'static str,
     mut done: impl FnMut() -> bool,
 ) -> Result<(), RunError> {
-    let deadline = host.now() + budget;
+    let started = host.now();
+    let deadline = started + budget;
+    let mut probes = 0u32;
     loop {
+        probes += 1;
         if done() {
+            crate::log::info(format!(
+                "{what} wait: done after {probes} probes, {} ms",
+                (host.now() - started).as_millis()
+            ));
             return Ok(());
         }
         if host.now() >= deadline {
+            crate::log::info(format!("{what} wait: timed out after {probes} probes"));
             return Err(RunError::TimedOut(what));
         }
         host.sleep(POLL_EVERY);

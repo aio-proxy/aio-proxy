@@ -92,7 +92,12 @@ fn without_dir(list: &OsStr, dir: &Path) -> Option<OsString> {
 }
 
 fn check(command: Command, timeout: Duration, what: &str) -> Result<Vec<u8>, String> {
-    let output = run_with_timeout(command, timeout).map_err(|error| format!("{what}: {error}"))?;
+    let started = Instant::now();
+    let output = run_with_timeout(command, timeout).map_err(|error| format!("{what}: {error}"));
+    // A slow CLI call is the usual reason an action takes long (first run of a new copy, a stuck child holding the
+    // pipe); the log is the only place a user's report can show which one it was.
+    crate::log::info(format!("cli: {what} took {} ms", started.elapsed().as_millis()));
+    let output = output?;
     if output.status.success() {
         Ok(output.stdout)
     } else {
@@ -139,8 +144,18 @@ impl Host for SystemHost {
     fn health_version(&self, control_url: &str) -> Option<String> {
         let url = LocalUrl::parse(control_url, "/health").ok()?;
         let limits = Limits { total: HEALTH_TIMEOUT, ..Limits::default() };
-        let response = send(&Request { method: Method::Get, url, bearer: None }, limits, &Cancel::default()).ok()?;
-        parse_health(response.status, &response.body)?.version
+        let response = match send(&Request { method: Method::Get, url, bearer: None }, limits, &Cancel::default()) {
+            Ok(response) => response,
+            Err(error) => {
+                crate::log::info(format!("health probe: {error}"));
+                return None;
+            }
+        };
+        let version = parse_health(response.status, &response.body).and_then(|health| health.version);
+        if version.is_none() {
+            crate::log::info(format!("health probe: status {} without a version", response.status));
+        }
+        version
     }
 
     fn reload(&self, control_url: &str) -> ReloadOutcome {
