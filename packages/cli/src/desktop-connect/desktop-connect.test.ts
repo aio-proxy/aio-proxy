@@ -456,3 +456,37 @@ test('win32: a desktop-owned running task is identified end to end through the s
   expect(result.instance).toMatchObject({ reachable: true, pid: 4312, ppid: 4310, matchesJob: true });
   expect(result.token).toBe('T'.repeat(43));
 });
+
+// Windows retries a SYN to a loopback port without a listener for ~2 s instead of refusing it, so the
+// socket listing decides first whether the HTTP probes can reach anything at all.
+const win32Probe = async (netstat: { code: number; stdout: string }) => {
+  writeConfig(home(), '127.0.0.1', 19317);
+  const requests: Array<{ url: string; auth: string | null }> = [];
+  const result = await desktopConnect({
+    ...deps({ token: 'T'.repeat(43), summaryPid: 4312 }, requests),
+    platform: 'win32',
+    env: { LOCALAPPDATA: join(root, 'local') },
+    owner: 'S-1-5-21-1-2-3-1001',
+    // No process SID is readable: a listener whose account is unknown still counts as a listener.
+    userSid: () => undefined,
+    defaultHome: home,
+    run: async (cmd) => (cmd.join(' ') === 'netstat -ano -p TCP' ? netstat : { code: 0, stdout: '' }),
+  });
+  return { result, requests };
+};
+
+test('win32: no process listening on the control port is reported unreachable without an HTTP probe', async () => {
+  const { result, requests } = await win32Probe({ code: 0, stdout: '' });
+  expect(requests).toEqual([]);
+  expect(result.instance).toMatchObject({ controlUrl: 'http://127.0.0.1:19317', reachable: false, version: null });
+});
+
+test('win32: a listener of any account, or an unreadable listing, still gets probed', async () => {
+  const listening = { code: 0, stdout: '  TCP    0.0.0.0:19317    0.0.0.0:0    LISTENING    4312\r\n' };
+  for (const netstat of [listening, { code: 1, stdout: '' }]) {
+    const { result, requests } = await win32Probe(netstat);
+    expect(requests.map((r) => r.url)).toEqual(['http://127.0.0.1:19317/health']);
+    expect(result.instance.reachable).toBe(true);
+    expect(result.token).toBeNull();
+  }
+});

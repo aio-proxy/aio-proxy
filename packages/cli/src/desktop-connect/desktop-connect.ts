@@ -150,12 +150,33 @@ async function summaryIdentity(
  * listener of this user on `127.0.0.1` proves nothing about `::1`.
  */
 export function listensAt(listeners: readonly Socket[], owner: string, host: string, port: string): boolean {
+  return listeners.some((l) => l.owner === owner && servesAt(l, host, port));
+}
+
+function servesAt(listener: Socket, host: string, port: string): boolean {
   const ipv6 = host.includes(':');
   const exact = ipv6 ? `[${host}]:${port}` : `${host}:${port}`;
-  const family = ipv6 ? 'IPv6' : 'IPv4';
-  return listeners.some(
-    (l) => l.owner === owner && l.family === family && (l.address === exact || l.address === `*:${port}`),
+  return (
+    listener.family === (ipv6 ? 'IPv6' : 'IPv4') && (listener.address === exact || listener.address === `*:${port}`)
   );
+}
+
+/**
+ * Whether the listing proves that no process listens where the probe connects, so the HTTP probes can
+ * be skipped: Windows does not refuse a loopback connect to a port without a listener but retries the
+ * SYN for about 2 s. Only a listing that sees every account's sockets proves absence, and an
+ * unprivileged `lsof` does not (macOS refuses such a connect at once anyway). A failed listing proves
+ * nothing.
+ */
+async function nobodyListensAt(deps: DesktopConnectDeps, host: string, port: string): Promise<boolean> {
+  if (deps.platform === 'darwin' || !/^\d+$/u.test(port)) return false;
+  try {
+    // Any account's listener counts: a process whose SID cannot be read must not vanish from the listing.
+    const sockets = await listSockets(deps.platform, Number(port), { ...deps, userSid: () => 'anyone' });
+    return !sockets.some((socket) => servesAt(socket, host, port));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -203,7 +224,9 @@ export async function desktopConnect(deps: DesktopConnectDeps): Promise<DesktopC
     };
   }
   const controlUrl = controlBaseUrl(host, address.port);
-  const health = await probeHealth(controlUrl, deps.fetch, PROBE_TIMEOUT_MS);
+  const health = (await nobodyListensAt(deps, host, address.port))
+    ? null
+    : await probeHealth(controlUrl, deps.fetch, PROBE_TIMEOUT_MS);
   // The token is reported, and sent for the identity probe, only for a listener this user owns: the
   // app sends it only to an instance discovery reported reachable, so withholding it here covers both.
   const ours = health !== null && (await listenerIsOurs(deps, host, address.port));
