@@ -353,6 +353,10 @@
       pub fn finished(&mut self);
   }
 
+  /// 健康 Up 但 discovery 不可达时是否该主动 rediscover(Task 10 第 4 步),5 s 节流。
+  pub fn rediscover_unreachable(has_metrics: bool, health_up: bool, reachable: Option<bool>,
+                                last: Option<Instant>, now: Instant) -> bool;
+
   #[derive(Default)] pub struct LiveDisplay { epoch: u64, last: Option<DesktopLive>, failures: u32, auth_retry_used: bool }
   pub enum LiveView<'a> { Fresh(&'a DesktopLive), Stale(&'a DesktopLive), Unavailable }
   impl LiveDisplay {
@@ -392,6 +396,10 @@
     - 连续两次 `unauthorized()` 返回 true、false；accept 之后再次 `unauthorized()` 返回 true。
     - 实例 A 的请求在途时切到 B：`set_epoch(B)` 后，A 的 `accept(A, …)` 被忽略，`view()` 为 `Unavailable`；A 的 `fail`、`unauthorized` 同样被忽略，不影响 B 的失败计数和重试锁。
     - `set_epoch` 会清空旧实例遗留的失败计数，以及已用掉的 401 重试机会。
+  - `rediscover_unreachable`（`reachable` 为 `None` 表示没有 discovery）：
+    - 选了指标、健康 Up、`Some(false)`、`last = None` 时为 true。
+    - `last` 在 4 s 前时为 false，在 5 s 前时为 true（覆盖"停止后又在健康检查判定 Down 之前启动"的恢复场景）。
+    - `Some(true)`、`None`、健康状态不是 Up、没选指标时，一律为 false。
 - [ ] **Step 2: 运行**：`cargo test --manifest-path desktop/Cargo.toml tray::metrics`，预期 FAIL。
 - [ ] **Step 3: 实现**。
 - [ ] **Step 4: 运行**：预期 PASS。
@@ -420,7 +428,8 @@
        - `HttpError::Connect` 或 `UntrustedListener`：`fail(epoch)`。另外，只要 `rediscovers_after(&error, model.gone_rediscovered_at, now)` 为真，就记下当前时间并调用 `super::rediscover(cx)`。这与 summary 轮询发现服务消失时的处理相同，有 5 s 节流。
        - 其他错误：`fail(epoch)`。
      - 最后调用 `finished()` 和 `crate::tray::sync(cx)`。
-  4. 每一拍末尾都调用 `crate::tray::sync(cx)`。它本身很便宜，而且 `Shown` 没变化时不会重绘。这样 discovery 或健康状态的变化在 1 s 内就能反映到菜单栏上。
+  4. 如果选了指标、健康状态为 Up、有 `discovery` 但 `!discovery.instance.reachable`：这对应「停止被发现，但健康检查判定 Down 之前服务又启动了」的情况。此时健康状态没有发生转换，所以健康检查不会再触发 rediscovery。当 `rediscover_unreachable(..., model.gone_rediscovered_at, now)` 为 true 时，记下 `gone_rediscovered_at = now`，再调用 `super::rediscover(cx)`。这样新实例被发现后，下一拍会自动恢复拉取。
+  5. 每一拍末尾都调用 `crate::tray::sync(cx)`。它本身很便宜，而且 `Shown` 没变化时不会重绘。这样 discovery 或健康状态的变化在 1 s 内就能反映到菜单栏上。
 
   有了这个循环，健康状态变化、实例替换、Stop/Start、面板开关、偏好修改都不需要单独接线，下一拍会自动按最新状态拉取。
 
@@ -521,6 +530,7 @@
   - 亮色和暗色菜单栏下都能看清。
   - 勾选 tok/s 时执行 `aiop stop`：数秒内文字消失、图标变暗；只勾今日类指标时，约 15 s 内文字消失。`aiop start` 后自动恢复。
   - 在面板打开期间执行 `aiop restart` 替换实例：旧实例的数字不会闪回。
+  - 关闭面板并勾选 tok/s 后，执行 `aiop stop`，等文字消失后在 60 s 内执行 `aiop start`：约 5 s 内数字恢复。
   - 关闭面板后数字照常更新。
   - 重启 app 后偏好保留。
 - [ ] **Step 6: 提交**：`feat(desktop): render metrics into the menu bar icon`
