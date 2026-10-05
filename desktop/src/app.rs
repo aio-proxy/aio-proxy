@@ -137,7 +137,7 @@ pub struct AppModel {
     live_schedule: LiveSchedule,
     scheduler: Scheduler,
     instance: Option<(String, Option<u32>)>,
-    instance_epoch: u64,
+    pub(crate) instance_epoch: u64,
     fetch_task: Option<Task<()>>,
     timer_task: Option<Task<()>>,
 }

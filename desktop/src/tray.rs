@@ -13,6 +13,8 @@ use crate::prefs::{LabelStyle, MAX_TRAY_METRICS, Prefs, TrayMetric};
 
 mod menu;
 mod metrics;
+#[cfg(target_os = "macos")]
+mod metrics_image;
 mod mode;
 
 pub use menu::{CliOffer, MenuCommand, MenuEntry, menu_entries};
@@ -109,10 +111,57 @@ pub fn tray_guid(exe: &std::path::Path) -> u128 {
         .fold(OFFSET, |hash, byte| (hash ^ u128::from(byte)).wrapping_mul(PRIME))
 }
 
+#[derive(Clone, PartialEq, Debug)]
+pub struct Shown {
+    state: TrayState,
+    color: [u8; 3],
+    lines: Vec<MetricText>,
+    show_icon: bool,
+    dimmed: bool,
+}
+
+#[cfg(any(target_os = "macos", test))]
+pub fn shown_for(model: &AppModel, color: [u8; 3]) -> Shown {
+    let stopped = model.health.state() == HealthState::Down
+        || model.discovery.as_ref().is_none_or(|discovery| !discovery.instance.reachable);
+    let state = if stopped { TrayState::Down } else { tray_state(model.health.state(), model.needs_attention()) };
+    let view = if model.live.epoch() == model.instance_epoch { model.live.view() } else { LiveView::Unavailable };
+    let dimmed = stopped || matches!(view, LiveView::Stale(_));
+    let lines = if stopped {
+        Vec::new()
+    } else {
+        model
+            .prefs
+            .tray_metrics
+            .iter()
+            .map(|&metric| match view {
+                LiveView::Fresh(live) | LiveView::Stale(live) => {
+                    format_metric(metric, live, model.prefs.tray_label_style)
+                }
+                LiveView::Unavailable => {
+                    let mut text = format_metric(
+                        metric,
+                        &crate::live::DesktopLive {
+                            today_tokens: 0,
+                            today_cost_nano_usd: 0,
+                            in_flight: 0,
+                            output_tokens_per_second: 0.0,
+                        },
+                        model.prefs.tray_label_style,
+                    );
+                    text.value = "—".into();
+                    text
+                }
+            })
+            .collect()
+    };
+    Shown { state, color, lines, show_icon: stopped || model.prefs.shows_icon(), dimmed }
+}
+
 pub struct Tray {
     pub icon: TrayIcon,
     /// What the icon currently shows; the color changes with the system theme off macOS.
-    shown: Option<(TrayState, [u8; 3])>,
+    shown: Option<Shown>,
     entries: (Vec<MenuEntry>, Option<Vec<MenuEntry>>),
 }
 
@@ -175,7 +224,11 @@ fn build(cx: &App, events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
             let _ = events.unbounded_send(AppEvent::Menu(command));
         }
     }));
-    Ok(Tray { icon, shown: Some((TrayState::Down, color)), entries: (Vec::new(), None) })
+    Ok(Tray {
+        icon,
+        shown: Some(Shown { state: TrayState::Down, color, lines: Vec::new(), show_icon: true, dimmed: true }),
+        entries: (Vec::new(), None),
+    })
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -320,7 +373,6 @@ pub fn sync(cx: &mut App) {
     let Some(model) = cx.try_global::<AppModel>() else {
         return;
     };
-    let state = tray_state(model.health.state(), model.needs_attention());
     let mut entries = entries(model);
     if cfg!(target_os = "linux") {
         // Many hosts show nothing on a left click, so the menu is the way in.
@@ -332,12 +384,30 @@ pub fn sync(cx: &mut App) {
     #[cfg(not(target_os = "macos"))]
     let display = None;
     let entries = (entries, display);
-    let shown = (state, crate::platform::tray_color(cx));
+    let color = crate::platform::tray_color(cx);
+    #[cfg(target_os = "macos")]
+    let shown = shown_for(model, color);
+    #[cfg(not(target_os = "macos"))]
+    let shown = Shown {
+        state: tray_state(model.health.state(), model.needs_attention()),
+        color,
+        lines: Vec::new(),
+        show_icon: true,
+        dimmed: model.health.state() != HealthState::Up,
+    };
     let Some(tray) = cx.try_global::<Tray>() else {
         return;
     };
-    if tray.shown != Some(shown) {
-        let icon = icon(shown.0, shown.1);
+    if tray.shown.as_ref() != Some(&shown) {
+        #[cfg(target_os = "macos")]
+        let icon = if shown.lines.is_empty() {
+            icon(shown.state, shown.color)
+        } else {
+            let (rgba, width, height) = metrics_image::render(&shown.lines, shown.show_icon, shown.state, shown.dimmed);
+            Icon::from_rgba(rgba, width, height).expect("metrics icon buffer matches its size")
+        };
+        #[cfg(not(target_os = "macos"))]
+        let icon = icon(shown.state, shown.color);
         #[cfg(target_os = "macos")]
         let _ = tray.icon.set_icon_with_as_template(Some(icon), true);
         #[cfg(not(target_os = "macos"))]
