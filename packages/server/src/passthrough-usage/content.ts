@@ -1,6 +1,7 @@
 import { ProviderProtocol } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import { codePointLength } from '../live-metrics';
 import { assertNever, nonEmptyString } from './shared';
 
 // Whether one parsed SSE event carries generated content (text or reasoning),
@@ -117,4 +118,66 @@ function geminiContent(value: unknown): boolean {
     }
     return candidate['content']['parts'].some((part) => isPlainObject(part) && nonEmptyString(part['text']));
   });
+}
+
+// Count incremental content only; buffered TTFT fallback frames must not double
+// count text already delivered by delta events.
+export function contentDeltaLength(protocol: ProviderProtocol, eventType: string | undefined, value: unknown): number {
+  if (protocol === ProviderProtocol.Gemini && Array.isArray(value)) {
+    return value.reduce((sum, entry) => sum + contentDeltaLength(protocol, eventType, entry), 0);
+  }
+  if (!isPlainObject(value)) return 0;
+  const length = (text: unknown): number => (typeof text === 'string' ? codePointLength(text) : 0);
+  switch (protocol) {
+    case ProviderProtocol.OpenAICompatible: {
+      if (!Array.isArray(value['choices'])) return 0;
+      let chars = 0;
+      for (const choice of value['choices']) {
+        if (!isPlainObject(choice)) continue;
+        chars += length(choice['text']);
+        const delta = choice['delta'];
+        if (isPlainObject(delta)) {
+          chars += length(delta['content']) + length(delta['reasoning_content']) + length(delta['reasoning']);
+        }
+      }
+      return chars;
+    }
+    case ProviderProtocol.OpenAIResponse:
+      return openAIResponsesContent(eventType, value) ? length(value['delta']) : 0;
+    case ProviderProtocol.Anthropic: {
+      if (value['type'] !== 'content_block_delta' || !isPlainObject(value['delta'])) return 0;
+      const delta = value['delta'];
+      if (delta['type'] === 'text_delta') return length(delta['text']);
+      if (delta['type'] === 'thinking_delta') return length(delta['thinking']);
+      return 0;
+    }
+    case ProviderProtocol.Gemini: {
+      if (!Array.isArray(value['candidates'])) return 0;
+      let chars = 0;
+      for (const candidate of value['candidates']) {
+        if (!isPlainObject(candidate) || !isPlainObject(candidate['content'])) continue;
+        const parts = candidate['content']['parts'];
+        if (!Array.isArray(parts)) continue;
+        for (const part of parts) {
+          if (isPlainObject(part)) chars += length(part['text']);
+        }
+      }
+      return chars;
+    }
+    case ProviderProtocol.GeminiInteractions: {
+      if ((eventType ?? value['event_type']) !== 'step.delta' || !isPlainObject(value['delta'])) return 0;
+      const delta = value['delta'];
+      if (delta['type'] === 'text') return length(delta['text']);
+      if (delta['type'] === 'thought_summary' && isPlainObject(delta['content']))
+        return length(delta['content']['text']);
+      return 0;
+    }
+    case ProviderProtocol.OpenAIImage:
+    case ProviderProtocol.OpenAIAudio:
+    case ProviderProtocol.OpenAIVideo:
+    case ProviderProtocol.TypeSafeSystemOne:
+      return 0;
+    default:
+      return assertNever(protocol);
+  }
 }

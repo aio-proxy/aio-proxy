@@ -1,5 +1,6 @@
 import { ProviderProtocol, type UsageRow } from '@aio-proxy/types';
 
+import { type LiveMetrics, liveModelKey } from '../../live-metrics';
 import { type PassthroughObservation } from '../../passthrough-usage';
 import { isAbortError } from '../../route-observation';
 import type { ServerLogSink } from '../../server-log';
@@ -52,8 +53,10 @@ export function passthroughCapture(
     observation,
     idleTimeoutMs,
     configPrice,
+    live,
   }: PassthroughUsageOptions,
   logger: ServerLogSink | undefined,
+  liveMetrics: LiveMetrics | undefined,
 ): Captured<Response> {
   const shortCircuit = nonStreamingCompletion(response, {
     providerId,
@@ -72,6 +75,8 @@ export function passthroughCapture(
   const contentType = response.headers.get('content-type') ?? undefined;
   const isSse = contentType?.toLowerCase().includes('text/event-stream') === true;
   let firstTokenAt: number | undefined;
+  const modelKey = liveModelKey(providerId, modelId);
+  let contentChars = 0;
   // Trace settlement (usage/timing/outcome) and transport lifecycle (reader +
   // client stream) are tracked separately: a terminal frame settles the trace
   // early, but the transport stays live until EOF/cancel/idle. Conflating them
@@ -134,6 +139,9 @@ export function passthroughCapture(
       configPrice,
       logger,
     });
+    if (live && usage?.outputTokens !== undefined && usage.outputTokens > 0) {
+      liveMetrics?.calibrate(modelKey, contentChars, usage.outputTokens);
+    }
     terminal.resolve({
       outcome: 'success',
       statusCode,
@@ -146,7 +154,13 @@ export function passthroughCapture(
     protocol,
     observation,
     {
-      onContent: (contentAt) => (firstTokenAt ??= contentAt),
+      onContent: (contentAt, chars) => {
+        firstTokenAt ??= contentAt;
+        if (live) {
+          contentChars += chars;
+          liveMetrics?.recordContent(modelKey, chars);
+        }
+      },
       // A completed Gemini Interaction can still be cancelled before EOF. Defer
       // its success completion so its response ID reaches trace persistence only
       // through the clean-EOF commit path; terminal failures remain prompt.

@@ -377,7 +377,7 @@ function guardianRuntimeOptions(
 function createRequestServices(dbHandle: OpenDbHandle, logger: ServerRuntime['logger']) {
   const traceStore = createTraceStore(dbHandle.db);
   const liveMetrics = createLiveMetrics();
-  const usageCapture = createUsageCapture({ logger });
+  const usageCapture = createUsageCapture({ logger, liveMetrics });
   const logicalSessionStore = new LogicalSessionStore({ repository: traceStore, logger });
   const requestRecorder = createRequestTraceRecorder({
     store: traceStore,

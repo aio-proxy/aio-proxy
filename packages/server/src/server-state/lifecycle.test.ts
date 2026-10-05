@@ -107,3 +107,46 @@ test('state and request recorder share live metrics', async () => {
     state.close();
   }
 });
+
+test('state and usage capture share live metrics', async () => {
+  const state = await createServerState({
+    builtIns: [],
+    config: ConfigSchema.parse({ providers: {} }),
+    dbHome: tempHome(),
+    watchConfig: false,
+  });
+  const record = spyOn(state.liveMetrics, 'recordContent');
+  try {
+    const captured = state.usageCapture.stream({
+      providerId: 'p',
+      modelId: 'm',
+      live: true,
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: 'text-delta', id: 't', text: 'hello' });
+          controller.enqueue({
+            type: 'finish',
+            finishReason: 'stop',
+            rawFinishReason: 'stop',
+            totalUsage: {
+              inputTokens: 0,
+              outputTokens: 0,
+              totalTokens: 0,
+              inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 0 },
+              outputTokenDetails: { reasoningTokens: 0, textTokens: 0 },
+            },
+          });
+          controller.close();
+        },
+      }),
+    });
+    for await (const _part of captured.value) {
+      /* Drain through upstream completion. */
+    }
+    await captured.completion;
+    expect(record).toHaveBeenCalledWith('p/m', 5);
+  } finally {
+    record.mockRestore();
+    state.close();
+  }
+});

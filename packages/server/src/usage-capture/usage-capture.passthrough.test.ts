@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
+import { createLiveMetrics } from '../live-metrics';
 import type { ServerLog } from '../server-log';
 import { createUsageCapture } from './index';
 import { clearPriceCatalog, seedPriceCatalog } from './test-support';
@@ -185,4 +186,85 @@ describe('usage capture passthrough observation', () => {
       },
     ]);
   });
+});
+
+describe('passthrough live throughput', () => {
+  beforeEach(() => seedPriceCatalog([]));
+  afterEach(() => clearPriceCatalog());
+
+  test.each([true, false, undefined])('counts SSE content and calibrates only when enabled: %s', async (live) => {
+    const liveMetrics = createLiveMetrics();
+    const record = spyOn(liveMetrics, 'recordContent');
+    const calibrate = spyOn(liveMetrics, 'calibrate');
+    const body =
+      'data: {"choices":[{"delta":{"content":"hello"}}]}\n\n' +
+      'data: {"choices":[{"delta":{"content":"世界"}}]}\n\n' +
+      'data: {"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}\n\ndata: [DONE]\n\n';
+    const captured = createUsageCapture({ liveMetrics }).passthrough({
+      providerId: 'p',
+      modelId: 'm',
+      protocol: ProviderProtocol.OpenAICompatible,
+      ...(live === undefined ? {} : { live }),
+      response: new Response(body, { headers: { 'content-type': 'text/event-stream' } }),
+    });
+    expect(await captured.value.text()).toBe(body);
+    expect((await captured.completion).outcome).toBe('success');
+    expect(record.mock.calls).toEqual(
+      live
+        ? [
+            ['p/m', 5],
+            ['p/m', 2],
+          ]
+        : [],
+    );
+    expect(calibrate.mock.calls).toEqual(live ? [['p/m', 7, 2]] : []);
+  });
+
+  test.each(['failure', 'cancel', 'idle', 'after-finish'] as const)(
+    'calibration follows upstream success: %s',
+    async (mode) => {
+      const liveMetrics = createLiveMetrics();
+      const calibrate = spyOn(liveMetrics, 'calibrate');
+      let upstream!: ReadableStreamDefaultController<Uint8Array>;
+      const encoder = new TextEncoder();
+      const captured = createUsageCapture({ liveMetrics }).passthrough({
+        providerId: 'p',
+        modelId: 'm',
+        protocol: ProviderProtocol.OpenAICompatible,
+        live: true,
+        idleTimeoutMs: 10,
+        response: new Response(
+          new ReadableStream({
+            start(controller) {
+              upstream = controller;
+              controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"hello"}}]}\n\n'));
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+      });
+      const reader = captured.value.body!.getReader();
+      await reader.read();
+      if (mode === 'after-finish') {
+        upstream.enqueue(
+          encoder.encode(
+            'data: {"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}\n\ndata: [DONE]\n\n',
+          ),
+        );
+        await reader.read();
+        expect((await captured.completion).outcome).toBe('success');
+        await reader.cancel();
+        expect(calibrate.mock.calls).toEqual([['p/m', 5, 2]]);
+      } else {
+        if (mode === 'failure') {
+          upstream.error(new Error('upstream failed'));
+          await expect(reader.read()).rejects.toThrow('upstream failed');
+        }
+        if (mode === 'cancel') await reader.cancel();
+        if (mode === 'idle') await expect(reader.read()).rejects.toThrow('stream_idle_timeout');
+        expect((await captured.completion).outcome).toBe(mode === 'cancel' ? 'cancelled' : 'failure');
+        expect(calibrate).not.toHaveBeenCalled();
+      }
+    },
+  );
 });

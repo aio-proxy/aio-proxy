@@ -1,6 +1,7 @@
 import { type TextStreamPart, type ToolSet } from '@aio-proxy/core';
 import type { UsageRow } from '@aio-proxy/types';
 
+import { codePointLength, type LiveMetrics, liveModelKey } from '../live-metrics';
 import { isAbortError } from '../route-observation';
 import type { ServerLogSink } from '../server-log';
 import { normalizeAiSdkUsage } from './pricing';
@@ -28,8 +29,10 @@ export function streamCapture(
     observation,
     idleTimeoutMs,
     configPrice,
+    live,
   }: StreamUsageOptions,
   logger: ServerLogSink | undefined,
+  liveMetrics: LiveMetrics | undefined,
 ): Captured<ReadableStream<TextStreamPart<ToolSet>>> {
   const terminal = deferred<UsageCompletion>();
   const reader = stream.getReader();
@@ -38,6 +41,8 @@ export function streamCapture(
   let finished = false;
   let finishUsage: UsageRow | undefined;
   let firstTokenAt: number | undefined;
+  const modelKey = liveModelKey(providerId, modelId);
+  let contentChars = 0;
   // Built-in provider events (generated images, web searches) billed
   // per-occurrence. Only counted on a success trace: they merge into finishUsage,
   // which reaches finalizeUsage exclusively via complete() (finish/EOF-success),
@@ -84,6 +89,9 @@ export function streamCapture(
       ...(configPrice === undefined ? {} : { configPrice }),
       ...(logger === undefined ? {} : { logger }),
     });
+    if (live && usage?.outputTokens !== undefined && usage.outputTokens > 0) {
+      liveMetrics?.calibrate(modelKey, contentChars, usage.outputTokens);
+    }
     terminal.resolve({
       outcome: 'success',
       ...usageProperty(usage),
@@ -132,6 +140,11 @@ export function streamCapture(
         } else if (next.value.type === 'text-delta' || next.value.type === 'reasoning-delta') {
           const contentAt = observeContentAt(observation);
           firstTokenAt ??= contentAt;
+          if (live) {
+            const chars = codePointLength(next.value.text);
+            contentChars += chars;
+            liveMetrics?.recordContent(modelKey, chars);
+          }
         } else {
           eventCounts.observe(next.value);
         }

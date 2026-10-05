@@ -126,3 +126,12 @@ describe('shared protocol routing pipeline model commit fallback', () => {
     );
   });
 });
+
+test.each([true, false])('model capture receives the requested live flag: %s', async (stream) => {
+  const harness = pipeline([modelProvider({ id: 'model', invoke: () => textStream('hello') })]);
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream }));
+  await response.text();
+  await settleRecording(harness.recording);
+  expect(harness.usage.stream).toHaveLength(1);
+  expect(harness.usage.stream[0]?.live).toBe(stream);
+});
