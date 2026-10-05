@@ -28,6 +28,7 @@ use crate::connect::policy::{AutoAction, AutoAttempts, UserAction};
 use crate::connect::run::RunError;
 use crate::install::{InstallState, Paths};
 use crate::platform::LoginItemStatus;
+use crate::prefs::{Prefs, prefs_path};
 use crate::summary::{DegradedReason, SummaryV1, Usage, UsageRange};
 
 /// Everything that reaches the GPUI loop from AppKit callbacks, delivered over one channel.
@@ -94,6 +95,7 @@ impl ActionState {
 
 pub struct AppModel {
     pub paths: Paths,
+    pub prefs: Prefs,
     pub bundle: Option<PathBuf>,
     /// `None` until the startup install step finishes; nothing is automatic before that.
     pub install: Option<InstallState>,
@@ -139,8 +141,10 @@ impl Global for AppModel {}
 
 impl AppModel {
     pub fn new(paths: Paths, bundle: Option<PathBuf>) -> Self {
+        let prefs = Prefs::load(&prefs_path(&paths));
         Self {
             paths,
+            prefs,
             bundle,
             install: None,
             discovery: None,

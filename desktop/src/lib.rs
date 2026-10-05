@@ -11,6 +11,7 @@ pub mod live;
 pub mod log;
 pub mod panel;
 pub mod platform;
+pub mod prefs;
 pub mod process;
 pub mod summary;
 pub mod theme;
