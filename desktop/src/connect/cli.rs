@@ -19,6 +19,8 @@ use crate::process::{run_with_timeout, tail};
 pub const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 /// `service restart` may wait 10 s for bootout, and `kickstart -k` blocks about 7 s.
 pub const SERVICE_TIMEOUT: Duration = Duration::from_secs(60);
+/// A loopback connect to a live proxy completes in well under a millisecond.
+const WAIT_PROBE_CONNECT_TIMEOUT: Duration = Duration::from_millis(400);
 
 #[derive(Debug, Clone)]
 pub struct SystemHost {
@@ -143,7 +145,9 @@ impl Host for SystemHost {
 
     fn health_version(&self, control_url: &str) -> Option<String> {
         let url = LocalUrl::parse(control_url, "/health").ok()?;
-        let limits = Limits { total: HEALTH_TIMEOUT, ..Limits::default() };
+        // Windows retries a SYN to a loopback port without a listener for about 2 s instead of refusing it; a short
+        // connect bound keeps the wait's poll cadence while the proxy is still coming up.
+        let limits = Limits { connect: WAIT_PROBE_CONNECT_TIMEOUT, total: HEALTH_TIMEOUT, ..Limits::default() };
         let response = match send(&Request { method: Method::Get, url, bearer: None }, limits, &Cancel::default()) {
             Ok(response) => response,
             Err(error) => {
