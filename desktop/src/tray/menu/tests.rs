@@ -149,7 +149,8 @@ fn install_cli_is_listed_only_when_the_shell_has_no_aiop_and_runs_once() {
 fn ids_round_trip() {
     // The exhaustive match below stops compiling when `MenuCommand` gains a variant: add it here too.
     let _exhaustive = |c: MenuCommand| match c {
-        MenuCommand::OpenDashboard
+        MenuCommand::OpenPanel
+        | MenuCommand::OpenDashboard
         | MenuCommand::Run(_)
         | MenuCommand::OpenLogs
         | MenuCommand::InstallCli
@@ -158,6 +159,7 @@ fn ids_round_trip() {
         | MenuCommand::Quit => (),
     };
     for command in [
+        MenuCommand::OpenPanel,
         MenuCommand::OpenDashboard,
         MenuCommand::Run(UserAction::InstallAndStart),
         MenuCommand::Run(UserAction::TakeOver),

@@ -4,10 +4,9 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::connect::discovery::fixture::discovery;
-use crate::install::Paths;
 
 fn model(patch: impl FnOnce(&mut Value)) -> AppModel {
-    let mut model = AppModel::new(Paths::for_home(Path::new("/Users/me")), None);
+    let mut model = AppModel::new(crate::platform::paths_from(Path::new("/Users/me"), |_| None), None);
     model.install = Some(InstallState::Persistent);
     model.discovery = Some(discovery(patch));
     model
@@ -44,6 +43,13 @@ fn the_endpoint_line_names_who_runs_the_service() {
         endpoint_line(&model(|v| v["job"]["disabled"] = json!(true))).as_deref(),
         Some("127.0.0.1:9317 · stopped by you")
     );
+}
+
+#[test]
+fn an_unreadable_linux_job_does_not_claim_the_user_stopped_it() {
+    let unread = model(|v| v["job"] = json!({ "loaded": false, "disabled": true, "pid": null }));
+    let expected = if cfg!(target_os = "linux") { "127.0.0.1:9317" } else { "127.0.0.1:9317 · stopped by you" };
+    assert_eq!(endpoint_line(&unread).as_deref(), Some(expected));
 }
 
 #[test]
@@ -85,4 +91,16 @@ fn actions_in_flight_read_as_words() {
     assert_eq!(notice(&m).as_deref(), Some("Automatic restart for new version…"));
     m.action = ActionState::Running(crate::connect::policy::UserAction::InstallAndStart);
     assert_eq!(notice(&m).as_deref(), Some("Install and start…"));
+}
+
+#[test]
+fn read_only_notices_use_the_platform_s_words() {
+    let macos = cfg!(target_os = "macos");
+    let mut m = model(|_| {});
+    m.install = Some(InstallState::ReadOnly(ReadOnlyReason::Location));
+    assert_eq!(notice(&m).unwrap().contains("Applications"), macos);
+    m.install = Some(InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed("denied".into())));
+    let text = notice(&m).unwrap();
+    assert_eq!(text.contains("service link"), macos);
+    assert_eq!(text.contains("command-line copy"), !macos);
 }

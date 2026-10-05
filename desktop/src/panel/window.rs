@@ -1,22 +1,14 @@
-//! The PopUp window lifecycle: hybrid (destroy the window and its Metal surface on close, keep the
-//! model), animation off, anchored from a click.
+//! The panel window lifecycle: hybrid (destroy the window and its surface on close, keep the model).
+//! Where and how the window opens is the platform's (`platform::panel`).
 
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
-use objc2::rc::Retained;
-use objc2::{MainThreadMarker, MainThreadOnly};
-use objc2_app_kit::{
-    NSAutoresizingMaskOptions, NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState,
-    NSVisualEffectView, NSWindow, NSWindowAnimationBehavior, NSWindowOrderingMode,
-};
-use objc2_foundation::{NSNumber, NSString};
-use tray_icon::TrayIcon;
 
-use super::placement::{Frame, panel_origin};
 use super::view::PanelView;
 use crate::log;
-use crate::tray::Tray;
+use crate::platform;
+use crate::tray::{CloseAction, Tray, TrayMode, close_action, next_mode};
 
 pub const PANEL_WIDTH: f64 = 360.0;
 pub const PANEL_HEIGHT: f64 = 560.0;
@@ -27,9 +19,21 @@ const REOPEN_GUARD: Duration = Duration::from_millis(300);
 pub struct PanelWindow {
     handle: Option<AnyWindowHandle>,
     closed_at: Option<Instant>,
+    tray_mode: TrayMode,
 }
 
 impl Global for PanelWindow {}
+
+/// Opens the panel, or focuses it when it is already open.
+pub fn show(cx: &mut App) {
+    if let Some(handle) = cx.global::<PanelWindow>().handle {
+        if handle.update(cx, |_, window, _| window.activate_window()).is_ok() {
+            return;
+        }
+        cx.global_mut::<PanelWindow>().handle = None;
+    }
+    open(cx);
+}
 
 pub fn toggle(cx: &mut App) {
     let (handle, closed_at) = {
@@ -46,50 +50,50 @@ pub fn toggle(cx: &mut App) {
     if closed_at.is_some_and(|at| at.elapsed() < REOPEN_GUARD) {
         return;
     }
-    // The status item's frame is zero until AppKit lays out the menu bar, so anchor only from a click.
-    let Some((x, y, display)) = anchor(&cx.global::<Tray>().icon) else {
-        log::info("panel: could not compute the anchor");
+    open(cx);
+}
+
+/// Opens a new window, past the reopen guard: callers decide whether a click should be dropped.
+fn open(cx: &mut App) {
+    let Some(options) = platform::panel::window_options(cx, cx.try_global::<Tray>()) else {
         return;
     };
     cx.activate(true);
-    let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
-            origin: point(px(x as f32), px(y as f32)),
-            size: size(px(PANEL_WIDTH as f32), px(PANEL_HEIGHT as f32)),
-        })),
-        titlebar: None,
-        focus: true,
-        // Shown by hand below, after the animation is turned off.
-        show: false,
-        kind: WindowKind::PopUp,
-        is_movable: false,
-        is_resizable: false,
-        is_minimizable: false,
-        // See `frost`: the blur goes in by hand, under GPUI's content.
-        window_background: WindowBackgroundAppearance::Transparent,
-        display_id: Some(DisplayId::new(u64::from(display))),
-        ..Default::default()
-    };
+    let transparent = options.window_background != WindowBackgroundAppearance::Opaque;
     match gpui_kit::open_window(options, cx, |window, cx| cx.new(|cx| PanelView::new(window, cx))) {
         Ok((handle, _view)) => {
-            // GPUI Component's root plugin fills the window with the theme background, which would
-            // cover the blur; the Root's own style is applied after it, so clear it there.
             let _ = handle.update(cx, |_, window, cx| {
-                if let Some(Some(root)) = window.root::<gpui_kit::base::Root>() {
+                // GPUI Component's root plugin fills the window with the theme background, which would
+                // cover a translucent one; the Root's own style is applied after it, so clear it there.
+                if transparent && let Some(Some(root)) = window.root::<gpui_kit::base::Root>() {
                     root.update(cx, |root, _| root.style().background = Some(transparent_black().into()));
                 }
+                // The window manager's close (its button, Alt+F4): forget the window, or quit.
+                #[cfg(target_os = "linux")]
+                window.on_window_should_close(cx, |_, cx| {
+                    match close_action(cx.global::<PanelWindow>().tray_mode) {
+                        CloseAction::Hide => forget(cx),
+                        CloseAction::Quit => cx.quit(),
+                    }
+                    true
+                });
             });
-            let native = handle.update(cx, |_, window, _| native_window(window)).ok().flatten();
-            if let Some(native) = &native {
-                // AppKit's utility-window animation otherwise runs on its own thread for every open and close.
-                native.setAnimationBehavior(NSWindowAnimationBehavior::None);
-                frost(native);
-                native.makeKeyAndOrderFront(None);
-            }
+            // Outside the update: showing the window re-enters GPUI, which must not find it borrowed.
+            platform::panel::after_open(handle, cx);
             cx.global_mut::<PanelWindow>().handle = Some(handle);
             crate::app::panel_opened(cx);
         }
-        Err(error) => log::info(format!("panel: open_window failed: {error:#}")),
+        Err(error) => {
+            log::info(format!("panel: open_window failed: {error:#}"));
+            // Without a tray nothing would be on screen: say why and stop, rather than idle unseen.
+            if close_action(cx.global::<PanelWindow>().tray_mode) == CloseAction::Quit {
+                // The log mirrors to stderr, and a user launching from a menu only has the log.
+                log::info(format!(
+                    "aio-proxy-desktop: cannot open the window ({error:#}); install a Vulkan driver (e.g. mesa-vulkan-drivers)"
+                ));
+                std::process::exit(1);
+            }
+        }
     }
 }
 
@@ -105,55 +109,32 @@ pub fn close_open(cx: &mut App) {
 
 /// Shared by the toggle and the deactivation observer.
 pub fn close(window: &mut Window, cx: &mut App) {
+    window.remove_window();
+    forget(cx);
+}
+
+/// The title bar's close button: hide the window, or quit when no tray could show it again.
+pub fn close_by_user(window: &mut Window, cx: &mut App) {
+    match close_action(cx.global::<PanelWindow>().tray_mode) {
+        CloseAction::Hide => close(window, cx),
+        CloseAction::Quit => cx.quit(),
+    }
+}
+
+/// The tray icon appeared or went away (Linux); losing it opens the window, since nothing else could.
+pub fn tray_host_changed(cx: &mut App, icon_shown: bool) {
+    let state = cx.global_mut::<PanelWindow>();
+    let (mode, open) = next_mode(state.tray_mode, icon_shown);
+    state.tray_mode = mode;
+    if open {
+        show(cx);
+    }
+}
+
+/// Bookkeeping for a window that is closing.
+fn forget(cx: &mut App) {
     let state = cx.global_mut::<PanelWindow>();
     state.handle = None;
     state.closed_at = Some(Instant::now());
-    window.remove_window();
     crate::app::panel_closed(cx);
-}
-
-/// Panel origin (display-local, top-down points) and the icon's display id.
-fn anchor(tray: &TrayIcon) -> Option<(f64, f64, u32)> {
-    let mtm = MainThreadMarker::new()?;
-    let window = tray.ns_status_item()?.button(mtm)?.window()?;
-    let screen = window.screen()?;
-    let frame = |r: objc2_foundation::NSRect| Frame {
-        x: r.origin.x,
-        y: r.origin.y,
-        width: r.size.width,
-        height: r.size.height,
-    };
-    let display = screen
-        .deviceDescription()
-        .objectForKey(&NSString::from_str("NSScreenNumber"))
-        .and_then(|n| n.downcast::<NSNumber>().ok())
-        .map(|n| n.unsignedIntValue())?;
-    let (x, y) = panel_origin(frame(window.frame()), frame(screen.frame()), PANEL_WIDTH);
-    Some((x, y, display))
-}
-
-/// Puts the system popover material under GPUI's content view. GPUI's own `Blurred` background
-/// strips the effect view's layers to make the blur colorless, which on macOS 27 leaves no blur at
-/// all; the panel tints the plain material with its own tokens instead.
-fn frost(window: &NSWindow) {
-    let (Some(mtm), Some(content)) = (MainThreadMarker::new(), window.contentView()) else { return };
-    let effect = NSVisualEffectView::initWithFrame(NSVisualEffectView::alloc(mtm), content.bounds());
-    effect.setMaterial(NSVisualEffectMaterial::Popover);
-    effect.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
-    effect.setState(NSVisualEffectState::Active);
-    effect.setAutoresizingMask(
-        NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
-    );
-    content.addSubview_positioned_relativeTo(&effect, NSWindowOrderingMode::Below, None);
-}
-
-/// The NSWindow GPUI created, reached through the public raw-window-handle (an NSView).
-fn native_window(window: &Window) -> Option<Retained<NSWindow>> {
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    let RawWindowHandle::AppKit(handle) = HasWindowHandle::window_handle(window).ok()?.as_raw() else {
-        return None;
-    };
-    // SAFETY: GPUI's AppKit handle wraps its live GPUIView for as long as `window` is borrowed.
-    let view: &NSView = unsafe { handle.ns_view.cast().as_ref() };
-    view.window()
 }

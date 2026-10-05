@@ -63,3 +63,14 @@ fn a_probe_in_flight_before_a_stop_cannot_bring_the_proxy_back() {
     assert_eq!(h.finish(in_flight, true), None);
     assert_eq!(h.state(), HealthState::Down);
 }
+
+#[test]
+fn a_proxy_an_action_proved_up_reports_no_transition_on_its_next_probe() {
+    let mut h = HealthTracker::default();
+    let in_flight = h.begin();
+    h.mark_up();
+    assert_eq!(h.finish(in_flight, false), None, "a probe from before the action is stale");
+    let next = h.begin();
+    assert_eq!(h.finish(next, true), None);
+    assert_eq!(h.state(), HealthState::Up);
+}

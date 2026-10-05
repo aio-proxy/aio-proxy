@@ -70,6 +70,15 @@ impl HealthTracker {
         self.failures = self.failures.max(2);
         self.state = HealthState::Down;
     }
+
+    /// An action's closing discovery already proved the proxy answering `/health`. Marking it up here
+    /// keeps the next probe from reporting a transition, whose rediscovery would repeat that discovery.
+    pub fn mark_up(&mut self) {
+        // As with a Stop, a probe already in flight predates the action.
+        self.issued += 1;
+        self.failures = 0;
+        self.state = HealthState::Up;
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

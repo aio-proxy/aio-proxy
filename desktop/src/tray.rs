@@ -10,12 +10,21 @@ use crate::app::{AppEvent, AppModel};
 use crate::client::health::HealthState;
 
 mod menu;
+mod mode;
 
 pub use menu::{CliOffer, MenuCommand, MenuEntry, menu_entries};
+pub use mode::{CloseAction, TrayMode, close_action, next_mode};
 
-/// 18 pt tall at 2x.
+/// macOS: 18 pt tall at 2x. Elsewhere the icon is square, as the status-notifier hosts and the
+/// Windows notification area expect.
+#[cfg(target_os = "macos")]
 pub const ICON_WIDTH: u32 = 58;
+#[cfg(target_os = "macos")]
 pub const ICON_HEIGHT: u32 = 36;
+#[cfg(not(target_os = "macos"))]
+pub const ICON_WIDTH: u32 = 32;
+#[cfg(not(target_os = "macos"))]
+pub const ICON_HEIGHT: u32 = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayState {
@@ -35,15 +44,29 @@ pub fn tray_state(health: HealthState, attention: bool) -> TrayState {
 
 /// The AIO mark from `packages/brand`, 10 pt tall in a 58 x 36 canvas (18 pt at 2x) with room at the right
 /// for the attention dot. Regenerate it from the brand path if the mark changes.
+#[cfg(target_os = "macos")]
 const MARK_PNG: &[u8] = include_bytes!("../assets/tray-mark.png");
+/// The same mark, black with alpha, centered in 32 x 32 with room above it for the attention dot.
+/// Regenerate: `sed 's/currentColor/#000/' packages/brand/src/aio-proxy-mark.svg > mark.svg`, then draw
+/// it into a 32 x 32 transparent bitmap (macOS: a short Swift `NSImage(contentsOfFile:).draw(in:)`
+/// script writing PNG; or `rsvg-convert -w 32 -h 32 mark.svg`).
+#[cfg(not(target_os = "macos"))]
+const MARK_PNG: &[u8] = include_bytes!("../assets/tray-mark-square.png");
 
-/// Template-image pixels: the mark (running), the mark dimmed (down), the mark with a dot at its top
-/// right (attention). AppKit tints template images for light and dark menu bars.
-pub fn icon_rgba(state: TrayState) -> Vec<u8> {
+/// Where the attention dot sits: (x, y, radius) at the mark's top right.
+#[cfg(target_os = "macos")]
+const DOT: (f32, f32, f32) = (53.5, 9.5, 3.5);
+#[cfg(not(target_os = "macos"))]
+const DOT: (f32, f32, f32) = (27.0, 6.0, 3.0);
+
+/// Pixels in `color`: the mark (running), the mark dimmed (down), the mark with a dot at its top right
+/// (attention). On macOS this is a template image (AppKit tints it for light and dark menu bars, so
+/// the color is black); elsewhere the caller picks the color that contrasts with the panel behind it.
+pub fn icon_rgba(state: TrayState, color: [u8; 3]) -> Vec<u8> {
     let mark = image::load_from_memory_with_format(MARK_PNG, image::ImageFormat::Png)
         .expect("the bundled tray mark decodes")
         .to_rgba8();
-    let (dot_x, dot_y, dot_r) = (53.5_f32, 9.5_f32, 3.5_f32);
+    let (dot_x, dot_y, dot_r) = DOT;
     let mut rgba = Vec::with_capacity((ICON_WIDTH * ICON_HEIGHT * 4) as usize);
     for (x, y, pixel) in mark.enumerate_pixels() {
         let alpha = f32::from(pixel[3]) / 255.0;
@@ -56,18 +79,36 @@ pub fn icon_rgba(state: TrayState) -> Vec<u8> {
                 alpha.max((dot_r + 0.5 - d).clamp(0.0, 1.0))
             }
         };
-        rgba.extend_from_slice(&[0, 0, 0, (alpha * 255.0).round() as u8]);
+        rgba.extend_from_slice(&[color[0], color[1], color[2], (alpha * 255.0).round() as u8]);
     }
     rgba
 }
 
-fn icon(state: TrayState) -> Icon {
-    Icon::from_rgba(icon_rgba(state), ICON_WIDTH, ICON_HEIGHT).expect("icon buffer matches its size")
+fn icon(state: TrayState, color: [u8; 3]) -> Icon {
+    Icon::from_rgba(icon_rgba(state, color), ICON_WIDTH, ICON_HEIGHT).expect("icon buffer matches its size")
+}
+
+/// Only when the executable's path is unknown. Never change it.
+#[cfg(windows)]
+const FALLBACK_GUID: u128 = 0x0967_9fb3_76f4_7c3a_3bb6_c89c_2a69_d6d8;
+
+/// The notification-area icon's GUID, so the user's "always show" choice survives updates. Windows
+/// binds a GUID to one executable path and silently refuses the icon from any other, so each path
+/// (an install, a dev build) gets its own: FNV-1a 128 over the lower-cased path's UTF-8, stable
+/// across Rust versions. Changing this function re-creates every user's icon.
+pub fn tray_guid(exe: &std::path::Path) -> u128 {
+    const OFFSET: u128 = 0x6c62_272e_07bb_0142_62b8_2175_6295_c58d;
+    const PRIME: u128 = 0x0000_0000_0100_0000_0000_0000_0000_013b;
+    exe.to_string_lossy()
+        .to_lowercase()
+        .bytes()
+        .fold(OFFSET, |hash, byte| (hash ^ u128::from(byte)).wrapping_mul(PRIME))
 }
 
 pub struct Tray {
     pub icon: TrayIcon,
-    shown: Option<TrayState>,
+    /// What the icon currently shows; the color changes with the system theme off macOS.
+    shown: Option<(TrayState, [u8; 3])>,
     entries: Vec<MenuEntry>,
 }
 
@@ -83,17 +124,42 @@ pub fn click_event(button: MouseButton, state: MouseButtonState) -> Option<AppEv
     }
 }
 
+/// Creates the icon unless it exists. Linux may have no tray host (yet): that is no-tray mode, and
+/// the icon comes when a host appears (`AppEvent::TrayHost`).
+pub fn install(cx: &mut App, events: UnboundedSender<AppEvent>) {
+    if cx.has_global::<Tray>() {
+        return;
+    }
+    match build(cx, events) {
+        Ok(tray) => {
+            cx.set_global(tray);
+            sync(cx);
+        }
+        Err(error) if cfg!(target_os = "linux") => crate::log::info(format!("tray: no icon: {error}")),
+        Err(error) => panic!("create the menu-bar icon: {error}"),
+    }
+}
+
 /// Must run on the main thread inside the GPUI `run` callback.
-pub fn build(events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
-    let icon = TrayIconBuilder::new()
-        .with_icon(icon(TrayState::Down))
-        .with_icon_as_template(true)
-        .with_tooltip("AIO Proxy")
-        .with_menu_on_left_click(false)
-        .build()
-        .map_err(|error| error.to_string())?;
+fn build(cx: &App, events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
+    let color = crate::platform::tray_color(cx);
+    let builder = TrayIconBuilder::new().with_icon(icon(TrayState::Down, color));
+    #[cfg(target_os = "macos")]
+    let builder = builder.with_icon_as_template(true);
+    #[cfg(windows)]
+    let builder = builder.with_guid(
+        std::env::current_exe()
+            .map(|exe| tray_guid(&std::fs::canonicalize(&exe).unwrap_or(exe)))
+            .unwrap_or(FALLBACK_GUID),
+    );
+    let icon =
+        builder.with_tooltip("AIO Proxy").with_menu_on_left_click(false).build().map_err(|error| error.to_string())?;
     let clicks = events.clone();
     TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
+        #[cfg(windows)]
+        if let TrayIconEvent::Click { rect, .. } = event {
+            crate::platform::panel::remember_click(rect);
+        }
         if let TrayIconEvent::Click { button, button_state, .. } = event
             && let Some(message) = click_event(button, button_state)
         {
@@ -105,7 +171,7 @@ pub fn build(events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
             let _ = events.unbounded_send(AppEvent::Menu(command));
         }
     }));
-    Ok(Tray { icon, shown: Some(TrayState::Down), entries: Vec::new() })
+    Ok(Tray { icon, shown: Some((TrayState::Down, color)), entries: Vec::new() })
 }
 
 fn native_menu(entries: &[MenuEntry]) -> Menu {
@@ -131,7 +197,8 @@ pub fn invalidate_menu(cx: &mut App) {
     }
 }
 
-/// The right-click menu for the model's state; the panel's `⋯` menu shows the same.
+/// The right-click menu for the model's state; the panel's `⋯` menu shows the same, and the tray adds
+/// "Open Panel" on Linux.
 pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
     let offered = model
         .discovery
@@ -143,10 +210,18 @@ pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
         _ if model.cli_installing => CliOffer::Installing,
         Some(probe) if !probe.aiop => {
             if !model.can_link_cli() {
-                CliOffer::Blocked("Install aiop command (move to /Applications first)")
+                CliOffer::Blocked(if cfg!(target_os = "macos") {
+                    "Install aiop command (move to /Applications first)"
+                } else {
+                    "Install aiop command (unavailable from this location)"
+                })
             } else if !probe.link_dir_on_path {
                 // The link would not make `aiop` resolve, and the offer would come straight back.
-                CliOffer::Blocked("Install aiop command (/usr/local/bin is not on your PATH)")
+                CliOffer::Blocked(if cfg!(target_os = "macos") {
+                    "Install aiop command (/usr/local/bin is not on your PATH)"
+                } else {
+                    "Install aiop command (~/.local/bin is not on your PATH)"
+                })
             } else {
                 CliOffer::Ready
             }
@@ -159,12 +234,13 @@ pub fn entries(model: &AppModel) -> Vec<MenuEntry> {
 /// Runs a menu command, from the right-click menu or the panel's `⋯` menu.
 pub fn run(cx: &mut App, command: MenuCommand) {
     match command {
+        MenuCommand::OpenPanel => crate::panel::show(cx),
         MenuCommand::OpenDashboard => crate::app::open_dashboard(cx),
         MenuCommand::Run(action) => crate::app::run_user_action(cx, action),
         MenuCommand::OpenLogs => crate::app::open_logs(cx),
         MenuCommand::InstallCli => crate::app::install_cli(cx),
         MenuCommand::ToggleLogin => crate::app::toggle_login_item(cx),
-        MenuCommand::CheckForUpdates => crate::updater::check_now(),
+        MenuCommand::CheckForUpdates => crate::platform::updater::check_now(),
         // Quitting leaves the proxy running: launchd owns it.
         MenuCommand::Quit => cx.quit(),
     }
@@ -176,13 +252,23 @@ pub fn sync(cx: &mut App) {
         return;
     };
     let state = tray_state(model.health.state(), model.needs_attention());
-    let entries = entries(model);
+    let mut entries = entries(model);
+    if cfg!(target_os = "linux") {
+        // Many hosts show nothing on a left click, so the menu is the way in.
+        entries
+            .insert(0, MenuEntry::Item { command: MenuCommand::OpenPanel, label: "Open Panel".into(), enabled: true });
+    }
+    let shown = (state, crate::platform::tray_color(cx));
     let Some(tray) = cx.try_global::<Tray>() else {
         return;
     };
-    if tray.shown != Some(state) {
-        let _ = tray.icon.set_icon_with_as_template(Some(icon(state)), true);
-        cx.global_mut::<Tray>().shown = Some(state);
+    if tray.shown != Some(shown) {
+        let icon = icon(shown.0, shown.1);
+        #[cfg(target_os = "macos")]
+        let _ = tray.icon.set_icon_with_as_template(Some(icon), true);
+        #[cfg(not(target_os = "macos"))]
+        let _ = tray.icon.set_icon(Some(icon));
+        cx.global_mut::<Tray>().shown = Some(shown);
     }
     if cx.global::<Tray>().entries != entries {
         // tray-icon attaches the menu only while presenting it, so swapping it at any time is safe.

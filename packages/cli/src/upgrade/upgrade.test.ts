@@ -3,7 +3,16 @@ import { mkdtempSync, mkdirSync, realpathSync, symlinkSync, unlinkSync, writeFil
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { isPathInDirectory, resolveManagedRestartExec, resolveUpgradeMethod, resolveUpgradeTargetFrom } from './detect';
+import {
+  isPathInDirectory,
+  isPlatformCliBinary,
+  launcherBeside,
+  nativeAt,
+  whichOnPath,
+  resolveManagedRestartExec,
+  resolveUpgradeMethod,
+  resolveUpgradeTargetFrom,
+} from './detect';
 
 const canonicalTempDir = (prefix: string): string => realpathSync(mkdtempSync(join(tmpdir(), prefix)));
 
@@ -35,11 +44,14 @@ test('resolveUpgradeMethod: priority brew > bun > npm > pnpm', () => {
 
 import { NPM_REGISTRY } from './constants';
 import {
+  batchFileCommand,
   buildBunInstallArgs,
   buildHomebrewUpdateArgs,
   buildNpmInstallArgs,
   buildPnpmInstallArgs,
+  interpreterSafePath,
   runPackageManagerUpgrade,
+  spawnableCommand,
 } from './methods';
 
 test('buildBunInstallArgs pins registry and version', () => {
@@ -66,6 +78,43 @@ test('buildPnpmInstallArgs pins registry and version', () => {
     'aio-proxy@1.2.3',
   ]);
 });
+test('interpreterSafePath builds a `;` PATH on Windows and the POSIX fallbacks elsewhere', () => {
+  expect(interpreterSafePath('C:\\npm\\npm.cmd', 'win32', { Path: 'C:\\Windows' })).toBe('C:\\npm;C:\\Windows');
+  expect(interpreterSafePath('/opt/bin/npm', 'linux', { PATH: '/usr/local/bin' })).toBe(
+    '/opt/bin:/usr/bin:/bin:/usr/local/bin',
+  );
+});
+
+test('a batch-file package manager runs through one verbatim cmd.exe line, quoted where cmd would split it', () => {
+  const npm = 'C:\\Program Files\\nodejs\\npm.cmd';
+  expect(batchFileCommand([npm, ...buildNpmInstallArgs('1.2.3', NPM_REGISTRY)])).toEqual([
+    'cmd.exe',
+    '/d',
+    '/s',
+    '/c',
+    `""C:\\Program Files\\nodejs\\npm.cmd" install -g "--registry=${NPM_REGISTRY}" aio-proxy@1.2.3"`,
+  ]);
+  expect(() => batchFileCommand([npm, 'a"b'])).toThrow();
+  expect(() => batchFileCommand([npm, '%PATH%'])).toThrow();
+});
+
+test('only a Windows batch-file launcher is spawned through cmd.exe verbatim', () => {
+  const shim = 'C:\\Users\\Zoë\\AppData\\Roaming\\npm\\aio-proxy.CMD';
+  expect(spawnableCommand([shim, '--version'], 'win32')).toEqual({
+    cmd: batchFileCommand([shim, '--version']),
+    windowsVerbatimArguments: true,
+  });
+  for (const [command, platform] of [
+    ['C:\\bin\\aio-proxy.exe', 'win32'],
+    ['/npm/bin/aio-proxy.cmd', 'linux'],
+  ] as const) {
+    expect(spawnableCommand([command, '--version'], platform)).toEqual({
+      cmd: [command, '--version'],
+      windowsVerbatimArguments: false,
+    });
+  }
+});
+
 test('buildHomebrewUpdateArgs switches on force', () => {
   expect(buildHomebrewUpdateArgs(false)).toEqual(['upgrade', 'aio-proxy/tap/aio-proxy']);
   expect(buildHomebrewUpdateArgs(true)).toEqual(['reinstall', 'aio-proxy/tap/aio-proxy']);
@@ -451,34 +500,42 @@ const writeExecutable = (path: string, body: string): void => {
   chmodSync(path, 0o755);
 };
 
-test('resolveUpgradeTargetFrom maps a Homebrew prefix symlink to Cellar as brew', async () => {
-  const prefix = canonicalTempDir('aio-brew-prefix-');
-  const cellar = join(prefix, 'Cellar', 'aio-proxy', '1.2.3', 'bin', 'aio-proxy');
-  const bin = join(prefix, 'bin', 'aio-proxy');
-  writeExecutable(join(prefix, 'bin', 'brew'), '#!/bin/sh\n');
-  writeExecutable(cellar, '#!/bin/sh\n');
-  symlinkSync(cellar, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
-    method: 'brew',
-    command: join(prefix, 'bin', 'brew'),
-    bin,
-  });
-});
+// POSIX-only: Homebrew prefix/Cellar layout built from symlinks and shebang executables.
+test.skipIf(process.platform === 'win32')(
+  'resolveUpgradeTargetFrom maps a Homebrew prefix symlink to Cellar as brew',
+  async () => {
+    const prefix = canonicalTempDir('aio-brew-prefix-');
+    const cellar = join(prefix, 'Cellar', 'aio-proxy', '1.2.3', 'bin', 'aio-proxy');
+    const bin = join(prefix, 'bin', 'aio-proxy');
+    writeExecutable(join(prefix, 'bin', 'brew'), '#!/bin/sh\n');
+    writeExecutable(cellar, '#!/bin/sh\n');
+    symlinkSync(cellar, bin);
+    expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+      method: 'brew',
+      command: join(prefix, 'bin', 'brew'),
+      bin,
+    });
+  },
+);
 
-test('resolveUpgradeTargetFrom maps a Homebrew prefix symlink to brew even when npm sits beside it', async () => {
-  const prefix = canonicalTempDir('aio-brew-npm-cellar-');
-  const cellar = join(prefix, 'Cellar', 'aio-proxy', '1.2.3', 'bin', 'aio-proxy');
-  const bin = join(prefix, 'bin', 'aio-proxy');
-  writeExecutable(join(prefix, 'bin', 'brew'), '#!/bin/sh\n');
-  writeExecutable(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
-  writeExecutable(cellar, '#!/bin/sh\n');
-  symlinkSync(cellar, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
-    method: 'brew',
-    command: join(prefix, 'bin', 'brew'),
-    bin,
-  });
-});
+// POSIX-only: Homebrew prefix/Cellar layout built from symlinks and shebang executables.
+test.skipIf(process.platform === 'win32')(
+  'resolveUpgradeTargetFrom maps a Homebrew prefix symlink to brew even when npm sits beside it',
+  async () => {
+    const prefix = canonicalTempDir('aio-brew-npm-cellar-');
+    const cellar = join(prefix, 'Cellar', 'aio-proxy', '1.2.3', 'bin', 'aio-proxy');
+    const bin = join(prefix, 'bin', 'aio-proxy');
+    writeExecutable(join(prefix, 'bin', 'brew'), '#!/bin/sh\n');
+    writeExecutable(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
+    writeExecutable(cellar, '#!/bin/sh\n');
+    symlinkSync(cellar, bin);
+    expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+      method: 'brew',
+      command: join(prefix, 'bin', 'brew'),
+      bin,
+    });
+  },
+);
 
 test('resolveUpgradeTargetFrom maps a brew+npm sibling that is not a Cellar link to binary', async () => {
   const prefix = mkdtempSync(join(tmpdir(), 'aio-brew-npm-sibling-'));
@@ -488,6 +545,64 @@ test('resolveUpgradeTargetFrom maps a brew+npm sibling that is not a Cellar link
   writeExecutable(bin, '#!/bin/sh\n');
   await withEmptyManagerPath(async () => {
     expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({ method: 'binary', path: bin });
+  });
+});
+
+test('resolveUpgradeTargetFrom on Windows picks the npm .cmd shim, never the extensionless shell script', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-win-npm-shim-'));
+  const bin = join(dir, 'aio-proxy.cmd');
+  writeFileSync(bin, '');
+  writeFileSync(join(dir, 'npm'), '#!/bin/sh\n');
+  const env = { AIO_PROXY_UPGRADE_METHOD: 'npm' };
+  const resolve = () => withEmptyManagerPath(() => resolveUpgradeTargetFrom(bin, env, {}, 'win32'));
+  // Only the extensionless script: it is skipped and resolution falls back to PATH lookup.
+  const fallback = await resolve().catch(() => undefined);
+  expect(fallback !== undefined && 'command' in fallback ? fallback.command : undefined).not.toBe(join(dir, 'npm'));
+  writeFileSync(join(dir, 'npm.cmd'), '');
+  expect(await resolve()).toEqual({ method: 'npm', command: join(dir, 'npm.cmd'), bin });
+});
+
+test("resolveUpgradeTargetFrom on Windows maps Bun's .exe shim to bun only through its .bunx target", async () => {
+  const bunHome = join(mkdtempSync(join(tmpdir(), 'aio-win-bun-shim-')), '.bun');
+  const pkg = join(bunHome, 'install', 'global', 'node_modules', 'aio-proxy');
+  const bin = join(bunHome, 'bin', 'aio-proxy.exe');
+  mkdirSync(join(pkg, 'bin'), { recursive: true });
+  mkdirSync(join(bunHome, 'bin'), { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeFileSync(join(pkg, 'bin', 'aio-proxy.js'), '');
+  writeFileSync(join(bunHome, 'bin', 'bun.exe'), '');
+  writeFileSync(bin, 'MZ shim');
+  await withEmptyManagerPath(async () => {
+    // A bare .exe next to bun is a standalone binary, not Bun's.
+    expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'win32')).toEqual({ method: 'binary', path: bin });
+    writeFileSync(
+      join(bunHome, 'bin', 'aio-proxy.bunx'),
+      Buffer.from('..\\install\\global\\node_modules\\aio-proxy\\bin\\aio-proxy.js\0', 'utf16le'),
+    );
+    expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'win32')).toEqual({
+      method: 'bun',
+      command: join(bunHome, 'bin', 'bun.exe'),
+      bin,
+    });
+  });
+});
+
+test('resolveUpgradeTargetFrom on Windows maps the npm-generated aio-proxy.cmd launcher to npm', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-win-npm-cmd-'));
+  const pkg = join(prefix, 'node_modules', 'aio-proxy');
+  const bin = join(prefix, 'aio-proxy.cmd');
+  mkdirSync(join(pkg, 'bin'), { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeFileSync(join(pkg, 'bin', 'aio-proxy.js'), '');
+  writeFileSync(
+    bin,
+    '@ECHO off\r\nSETLOCAL\r\nSET dp0=%~dp0\r\n"%_prog%"  "%dp0%\\node_modules\\aio-proxy\\bin\\aio-proxy.js" %*\r\n',
+  );
+  writeFileSync(join(prefix, 'npm.cmd'), '');
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'win32')).toEqual({
+    method: 'npm',
+    command: join(prefix, 'npm.cmd'),
+    bin,
   });
 });
 
@@ -523,24 +638,28 @@ test('AIO_PROXY_UPGRADE_METHOD=brew still uses a sibling brew for a non-Cellar l
   });
 });
 
-test('resolveUpgradeTargetFrom maps a Cellar path to brew, not binary, even when brew is off PATH', async () => {
-  const prefix = mkdtempSync(join(tmpdir(), 'aio-brew-cellar-'));
-  const cellar = join(prefix, 'Cellar', 'aio-proxy', '1.2.3', 'bin', 'aio-proxy');
-  writeExecutable(join(prefix, 'bin', 'brew'), '#!/bin/sh\n');
-  writeExecutable(cellar, '#!/bin/sh\n');
-  const previous = process.env['PATH'];
-  process.env['PATH'] = '/usr/bin:/bin';
-  try {
-    expect(await resolveUpgradeTargetFrom(cellar, {})).toEqual({
-      method: 'brew',
-      command: join(prefix, 'bin', 'brew'),
-      bin: join(prefix, 'bin', 'aio-proxy'),
-    });
-  } finally {
-    if (previous === undefined) delete process.env['PATH'];
-    else process.env['PATH'] = previous;
-  }
-});
+// POSIX-only: Homebrew prefix/Cellar layout built from symlinks and shebang executables.
+test.skipIf(process.platform === 'win32')(
+  'resolveUpgradeTargetFrom maps a Cellar path to brew, not binary, even when brew is off PATH',
+  async () => {
+    const prefix = mkdtempSync(join(tmpdir(), 'aio-brew-cellar-'));
+    const cellar = join(prefix, 'Cellar', 'aio-proxy', '1.2.3', 'bin', 'aio-proxy');
+    writeExecutable(join(prefix, 'bin', 'brew'), '#!/bin/sh\n');
+    writeExecutable(cellar, '#!/bin/sh\n');
+    const previous = process.env['PATH'];
+    process.env['PATH'] = '/usr/bin:/bin';
+    try {
+      expect(await resolveUpgradeTargetFrom(cellar, {})).toEqual({
+        method: 'brew',
+        command: join(prefix, 'bin', 'brew'),
+        bin: join(prefix, 'bin', 'aio-proxy'),
+      });
+    } finally {
+      if (previous === undefined) delete process.env['PATH'];
+      else process.env['PATH'] = previous;
+    }
+  },
+);
 
 test('resolveUpgradeTargetFrom treats a standalone binary as binary', async () => {
   expect(await resolveUpgradeTargetFrom('/opt/aio-proxy', {})).toEqual({ method: 'binary', path: '/opt/aio-proxy' });
@@ -593,7 +712,7 @@ test('resolveUpgradeTargetFrom maps a prefix/node_modules package shim to npm', 
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'npm',
     command: join(prefix, 'bin', 'npm'),
     bin,
@@ -608,7 +727,7 @@ test('resolveUpgradeTargetFrom maps npm when package.json bin is the prefix laun
   writeExecutable(bin, '#!/bin/sh\n');
   mkdirSync(pkg, { recursive: true });
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"../../../bin/aio-proxy"}}\n');
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'npm',
     command: join(prefix, 'bin', 'npm'),
     bin,
@@ -626,7 +745,7 @@ test('resolveUpgradeTargetFrom maps an npm prefix shim that resolves into the pa
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'npm',
     command: join(prefix, 'bin', 'npm'),
     bin,
@@ -668,7 +787,7 @@ test('resolveUpgradeTargetFrom maps a node_modules/@aio-proxy/cli-* binary to np
   const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-cli-pkg-'));
   const native = writePlatformCliBinary(prefix, 'npm');
   await withEmptyManagerPath(async () => {
-    expect(await resolveUpgradeTargetFrom(native, {})).toEqual({
+    expect(await resolveUpgradeTargetFrom(native, {}, {}, 'linux')).toEqual({
       method: 'npm',
       command: join(prefix, 'bin', 'npm'),
       bin: join(prefix, 'bin', 'aio-proxy'),
@@ -702,7 +821,7 @@ test('resolveUpgradeTargetFrom maps a .bun/bin shim that resolves into the packa
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'bun',
     command: join(bunHome, 'bin', 'bun'),
     bin,
@@ -731,7 +850,7 @@ test('resolveUpgradeTargetFrom maps a pnpm global/<n> shim that resolves into th
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'pnpm',
     command: join(pnpmHome, 'pnpm'),
     bin,
@@ -748,7 +867,7 @@ test('resolveUpgradeTargetFrom maps a pnpm v11 isolated shim that resolves into 
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'pnpm',
     command: join(pnpmHome, 'pnpm'),
     bin,
@@ -765,7 +884,7 @@ test('resolveUpgradeTargetFrom maps a pnpm home shim that resolves into the pack
   writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
   writeExecutable(pkgBin, '#!/usr/bin/env node\n');
   symlinkSync(pkgBin, bin);
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+  expect(await resolveUpgradeTargetFrom(bin, {}, {}, 'linux')).toEqual({
     method: 'pnpm',
     command: join(pnpmHome, 'pnpm'),
     bin,
@@ -786,24 +905,28 @@ fi
   );
 };
 
-test('resolveUpgradeTargetFrom maps a pnpm generated global cmd-shim to pnpm', async () => {
-  const pnpmHome = join(canonicalTempDir('aio-pnpm-cmdshim-'), 'pnpm');
-  const storePkg = join(pnpmHome, 'global', '5', '.pnpm', 'aio-proxy@1.0.0', 'node_modules', 'aio-proxy');
-  const pkgBin = join(storePkg, 'bin', 'aio-proxy.js');
-  const bin = join(pnpmHome, 'aio-proxy');
-  writeExecutable(join(pnpmHome, 'pnpm'), '#!/bin/sh\n');
-  mkdirSync(join(storePkg, 'bin'), { recursive: true });
-  mkdirSync(join(pnpmHome, 'global', '5', 'node_modules'), { recursive: true });
-  writeFileSync(join(storePkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
-  writeExecutable(pkgBin, '#!/usr/bin/env node\n');
-  symlinkSync(storePkg, join(pnpmHome, 'global', '5', 'node_modules', 'aio-proxy'));
-  writePnpmCmdShim(bin, 'global/5/.pnpm/aio-proxy@1.0.0/node_modules/aio-proxy/bin/aio-proxy.js');
-  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
-    method: 'pnpm',
-    command: join(pnpmHome, 'pnpm'),
-    bin,
-  });
-});
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'resolveUpgradeTargetFrom maps a pnpm generated global cmd-shim to pnpm',
+  async () => {
+    const pnpmHome = join(canonicalTempDir('aio-pnpm-cmdshim-'), 'pnpm');
+    const storePkg = join(pnpmHome, 'global', '5', '.pnpm', 'aio-proxy@1.0.0', 'node_modules', 'aio-proxy');
+    const pkgBin = join(storePkg, 'bin', 'aio-proxy.js');
+    const bin = join(pnpmHome, 'aio-proxy');
+    writeExecutable(join(pnpmHome, 'pnpm'), '#!/bin/sh\n');
+    mkdirSync(join(storePkg, 'bin'), { recursive: true });
+    mkdirSync(join(pnpmHome, 'global', '5', 'node_modules'), { recursive: true });
+    writeFileSync(join(storePkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+    writeExecutable(pkgBin, '#!/usr/bin/env node\n');
+    symlinkSync(storePkg, join(pnpmHome, 'global', '5', 'node_modules', 'aio-proxy'));
+    writePnpmCmdShim(bin, 'global/5/.pnpm/aio-proxy@1.0.0/node_modules/aio-proxy/bin/aio-proxy.js');
+    expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+      method: 'pnpm',
+      command: join(pnpmHome, 'pnpm'),
+      bin,
+    });
+  },
+);
 
 test('resolveUpgradeTargetFrom does not treat a leftover package bin field as cmd-shim ownership', async () => {
   const pnpmHome = join(mkdtempSync(join(tmpdir(), 'aio-curl-pnpm-bin-')), 'pnpm');
@@ -826,7 +949,7 @@ test('resolveUpgradeTargetFrom maps a bun global cli-* binary to bun, not binary
   writeExecutable(join(bunHome, 'bin', 'aio-proxy'), '#!/bin/sh\n');
   writeExecutable(native, '#!/bin/sh\n');
   await withEmptyManagerPath(async () => {
-    expect(await resolveUpgradeTargetFrom(native, {})).toEqual({
+    expect(await resolveUpgradeTargetFrom(native, {}, {}, 'linux')).toEqual({
       method: 'bun',
       command: join(bunHome, 'bin', 'bun'),
       bin: join(bunHome, 'bin', 'aio-proxy'),
@@ -841,7 +964,7 @@ test('resolveUpgradeTargetFrom maps a pnpm global cli-* binary to pnpm, not bina
   writeExecutable(join(prefix, 'bin', 'aio-proxy'), '#!/bin/sh\n');
   writeExecutable(native, '#!/bin/sh\n');
   await withEmptyManagerPath(async () => {
-    expect(await resolveUpgradeTargetFrom(native, {})).toEqual({
+    expect(await resolveUpgradeTargetFrom(native, {}, {}, 'linux')).toEqual({
       method: 'pnpm',
       command: join(prefix, 'bin', 'pnpm'),
       bin: join(prefix, 'bin', 'aio-proxy'),
@@ -849,32 +972,40 @@ test('resolveUpgradeTargetFrom maps a pnpm global cli-* binary to pnpm, not bina
   });
 });
 
-test('resolveManagedRestartExec uses the native cli-* binary for npm, not the JS shim', () => {
-  const prefix = canonicalTempDir('aio-restart-npm-');
-  const native = writePlatformCliBinary(prefix, 'npm');
-  expect(
-    resolveManagedRestartExec({
-      method: 'npm',
-      command: join(prefix, 'bin', 'npm'),
-      bin: join(prefix, 'bin', 'aio-proxy'),
-    }),
-  ).toBe(native);
-});
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'resolveManagedRestartExec uses the native cli-* binary for npm, not the JS shim',
+  () => {
+    const prefix = canonicalTempDir('aio-restart-npm-');
+    const native = writePlatformCliBinary(prefix, 'npm');
+    expect(
+      resolveManagedRestartExec({
+        method: 'npm',
+        command: join(prefix, 'bin', 'npm'),
+        bin: join(prefix, 'bin', 'aio-proxy'),
+      }),
+    ).toBe(native);
+  },
+);
 
-test('resolveManagedRestartExec uses the native cli-* binary for pnpm, not the JS shim', () => {
-  const prefix = canonicalTempDir('aio-restart-pnpm-');
-  const native = join(prefix, 'global', '5', 'node_modules', '@aio-proxy', nativeCliPackage, 'bin', 'aio-proxy');
-  writeExecutable(join(prefix, 'bin', 'pnpm'), '#!/bin/sh\n');
-  writeExecutable(join(prefix, 'bin', 'aio-proxy'), '#!/usr/bin/env node\n');
-  writeExecutable(native, '#!/bin/sh\n');
-  expect(
-    resolveManagedRestartExec({
-      method: 'pnpm',
-      command: join(prefix, 'bin', 'pnpm'),
-      bin: join(prefix, 'bin', 'aio-proxy'),
-    }),
-  ).toBe(native);
-});
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'resolveManagedRestartExec uses the native cli-* binary for pnpm, not the JS shim',
+  () => {
+    const prefix = canonicalTempDir('aio-restart-pnpm-');
+    const native = join(prefix, 'global', '5', 'node_modules', '@aio-proxy', nativeCliPackage, 'bin', 'aio-proxy');
+    writeExecutable(join(prefix, 'bin', 'pnpm'), '#!/bin/sh\n');
+    writeExecutable(join(prefix, 'bin', 'aio-proxy'), '#!/usr/bin/env node\n');
+    writeExecutable(native, '#!/bin/sh\n');
+    expect(
+      resolveManagedRestartExec({
+        method: 'pnpm',
+        command: join(prefix, 'bin', 'pnpm'),
+        bin: join(prefix, 'bin', 'aio-proxy'),
+      }),
+    ).toBe(native);
+  },
+);
 
 const writePnpmGlobalLayout = (options: {
   readonly prefix: string;
@@ -918,82 +1049,98 @@ const writePnpmGlobalLayout = (options: {
   return native;
 };
 
-test('resolveManagedRestartExec finds pnpm virtual-store cli-* under global/<n>/node_modules/.pnpm', () => {
-  const prefix = canonicalTempDir('aio-restart-pnpm-virtual-');
-  const native = writePnpmGlobalLayout({
-    prefix,
-    version: '2.0.0',
-    globalNodeModules: join(prefix, 'global', '5', 'node_modules'),
-    nestUnderAioProxy: false,
-  });
-  expect(
-    resolveManagedRestartExec({
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'resolveManagedRestartExec finds pnpm virtual-store cli-* under global/<n>/node_modules/.pnpm',
+  () => {
+    const prefix = canonicalTempDir('aio-restart-pnpm-virtual-');
+    const native = writePnpmGlobalLayout({
+      prefix,
+      version: '2.0.0',
+      globalNodeModules: join(prefix, 'global', '5', 'node_modules'),
+      nestUnderAioProxy: false,
+    });
+    expect(
+      resolveManagedRestartExec({
+        method: 'pnpm',
+        command: join(prefix, 'bin', 'pnpm'),
+        bin: join(prefix, 'bin', 'aio-proxy'),
+      }),
+    ).toBe(native);
+  },
+);
+
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'resolveManagedRestartExec finds pnpm cli-* nested under the installed aio-proxy package',
+  () => {
+    const prefix = canonicalTempDir('aio-restart-pnpm-nested-');
+    const nodeModules = join(prefix, 'global', '5', 'node_modules');
+    writePnpmGlobalLayout({
+      prefix,
+      version: '2.0.0',
+      globalNodeModules: nodeModules,
+      nestUnderAioProxy: true,
+    });
+    const nested = join(nodeModules, 'aio-proxy', 'node_modules', '@aio-proxy', nativeCliPackage, 'bin', 'aio-proxy');
+    expect(
+      resolveManagedRestartExec({
+        method: 'pnpm',
+        command: join(prefix, 'bin', 'pnpm'),
+        bin: join(prefix, 'bin', 'aio-proxy'),
+      }),
+    ).toBe(nested);
+  },
+);
+
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'resolveManagedRestartExec finds pnpm v11 isolated-install virtual-store cli-*',
+  () => {
+    const prefix = canonicalTempDir('aio-restart-pnpm-v11-');
+    const native = writePnpmGlobalLayout({
+      prefix,
+      version: '2.0.0',
+      globalNodeModules: join(prefix, 'global', 'v11', 'abc123', 'node_modules'),
+      nestUnderAioProxy: false,
+    });
+    expect(
+      resolveManagedRestartExec({
+        method: 'pnpm',
+        command: join(prefix, 'bin', 'pnpm'),
+        bin: join(prefix, 'bin', 'aio-proxy'),
+      }),
+    ).toBe(native);
+  },
+);
+
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'resolveManagedRestartExec prefers the cli-* linked from the installed aio-proxy package',
+  () => {
+    const prefix = canonicalTempDir('aio-restart-pnpm-prefer-');
+    const nodeModules = join(prefix, 'global', '5', 'node_modules');
+    const stale = writePnpmGlobalLayout({
+      prefix,
+      version: '1.0.0',
+      globalNodeModules: nodeModules,
+      nestUnderAioProxy: false,
+    });
+    writePnpmGlobalLayout({
+      prefix,
+      version: '2.0.0',
+      globalNodeModules: nodeModules,
+      nestUnderAioProxy: true,
+    });
+    const found = resolveManagedRestartExec({
       method: 'pnpm',
       command: join(prefix, 'bin', 'pnpm'),
       bin: join(prefix, 'bin', 'aio-proxy'),
-    }),
-  ).toBe(native);
-});
-
-test('resolveManagedRestartExec finds pnpm cli-* nested under the installed aio-proxy package', () => {
-  const prefix = canonicalTempDir('aio-restart-pnpm-nested-');
-  const nodeModules = join(prefix, 'global', '5', 'node_modules');
-  writePnpmGlobalLayout({
-    prefix,
-    version: '2.0.0',
-    globalNodeModules: nodeModules,
-    nestUnderAioProxy: true,
-  });
-  const nested = join(nodeModules, 'aio-proxy', 'node_modules', '@aio-proxy', nativeCliPackage, 'bin', 'aio-proxy');
-  expect(
-    resolveManagedRestartExec({
-      method: 'pnpm',
-      command: join(prefix, 'bin', 'pnpm'),
-      bin: join(prefix, 'bin', 'aio-proxy'),
-    }),
-  ).toBe(nested);
-});
-
-test('resolveManagedRestartExec finds pnpm v11 isolated-install virtual-store cli-*', () => {
-  const prefix = canonicalTempDir('aio-restart-pnpm-v11-');
-  const native = writePnpmGlobalLayout({
-    prefix,
-    version: '2.0.0',
-    globalNodeModules: join(prefix, 'global', 'v11', 'abc123', 'node_modules'),
-    nestUnderAioProxy: false,
-  });
-  expect(
-    resolveManagedRestartExec({
-      method: 'pnpm',
-      command: join(prefix, 'bin', 'pnpm'),
-      bin: join(prefix, 'bin', 'aio-proxy'),
-    }),
-  ).toBe(native);
-});
-
-test('resolveManagedRestartExec prefers the cli-* linked from the installed aio-proxy package', () => {
-  const prefix = canonicalTempDir('aio-restart-pnpm-prefer-');
-  const nodeModules = join(prefix, 'global', '5', 'node_modules');
-  const stale = writePnpmGlobalLayout({
-    prefix,
-    version: '1.0.0',
-    globalNodeModules: nodeModules,
-    nestUnderAioProxy: false,
-  });
-  writePnpmGlobalLayout({
-    prefix,
-    version: '2.0.0',
-    globalNodeModules: nodeModules,
-    nestUnderAioProxy: true,
-  });
-  const found = resolveManagedRestartExec({
-    method: 'pnpm',
-    command: join(prefix, 'bin', 'pnpm'),
-    bin: join(prefix, 'bin', 'aio-proxy'),
-  });
-  expect(found).toBeDefined();
-  expect(found).not.toBe(stale);
-});
+    });
+    expect(found).toBeDefined();
+    expect(found).not.toBe(stale);
+  },
+);
 
 const pointLauncherAtPackage = (prefix: string, packageDir: string): string => {
   const pkgBin = join(packageDir, 'bin', 'aio-proxy');
@@ -1008,85 +1155,111 @@ const pointLauncherAtPackage = (prefix: string, packageDir: string): string => {
   return launcher;
 };
 
-test('resolveManagedRestartExec uses the pnpm group owned by the launcher, not the first group', () => {
-  const prefix = canonicalTempDir('aio-restart-pnpm-owned-');
-  const stale = writePnpmGlobalLayout({
-    prefix,
-    version: '1.0.0',
-    globalNodeModules: join(prefix, 'global', 'node_modules'),
-    nestUnderAioProxy: false,
-  });
-  const current = writePnpmGlobalLayout({
-    prefix,
-    version: '2.0.0',
-    globalNodeModules: join(prefix, 'global', '6', 'node_modules'),
-    nestUnderAioProxy: false,
-  });
-  const launcher = pointLauncherAtPackage(prefix, join(prefix, 'global', '6', 'node_modules', 'aio-proxy'));
-  expect(
-    resolveManagedRestartExec({
-      method: 'pnpm',
-      command: join(prefix, 'bin', 'pnpm'),
-      bin: launcher,
-    }),
-  ).toBe(current);
-  expect(stale).not.toBe(current);
-});
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'resolveManagedRestartExec uses the pnpm group owned by the launcher, not the first group',
+  () => {
+    const prefix = canonicalTempDir('aio-restart-pnpm-owned-');
+    const stale = writePnpmGlobalLayout({
+      prefix,
+      version: '1.0.0',
+      globalNodeModules: join(prefix, 'global', 'node_modules'),
+      nestUnderAioProxy: false,
+    });
+    const current = writePnpmGlobalLayout({
+      prefix,
+      version: '2.0.0',
+      globalNodeModules: join(prefix, 'global', '6', 'node_modules'),
+      nestUnderAioProxy: false,
+    });
+    const launcher = pointLauncherAtPackage(prefix, join(prefix, 'global', '6', 'node_modules', 'aio-proxy'));
+    expect(
+      resolveManagedRestartExec({
+        method: 'pnpm',
+        command: join(prefix, 'bin', 'pnpm'),
+        bin: launcher,
+      }),
+    ).toBe(current);
+    expect(stale).not.toBe(current);
+  },
+);
 
-test('resolveManagedRestartExec uses the v11 isolated group owned by the launcher', () => {
-  const prefix = canonicalTempDir('aio-restart-pnpm-v11-owned-');
-  const stale = writePnpmGlobalLayout({
-    prefix,
-    version: '1.0.0',
-    globalNodeModules: join(prefix, 'global', 'v11', 'node_modules'),
-    nestUnderAioProxy: false,
-  });
-  const current = writePnpmGlobalLayout({
-    prefix,
-    version: '2.0.0',
-    globalNodeModules: join(prefix, 'global', 'v11', 'newhash', 'node_modules'),
-    nestUnderAioProxy: false,
-  });
-  const launcher = pointLauncherAtPackage(
-    prefix,
-    join(prefix, 'global', 'v11', 'newhash', 'node_modules', 'aio-proxy'),
-  );
-  expect(
-    resolveManagedRestartExec({
-      method: 'pnpm',
-      command: join(prefix, 'bin', 'pnpm'),
-      bin: launcher,
-    }),
-  ).toBe(current);
-  expect(stale).not.toBe(current);
-});
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'resolveManagedRestartExec uses the v11 isolated group owned by the launcher',
+  () => {
+    const prefix = canonicalTempDir('aio-restart-pnpm-v11-owned-');
+    const stale = writePnpmGlobalLayout({
+      prefix,
+      version: '1.0.0',
+      globalNodeModules: join(prefix, 'global', 'v11', 'node_modules'),
+      nestUnderAioProxy: false,
+    });
+    const current = writePnpmGlobalLayout({
+      prefix,
+      version: '2.0.0',
+      globalNodeModules: join(prefix, 'global', 'v11', 'newhash', 'node_modules'),
+      nestUnderAioProxy: false,
+    });
+    const launcher = pointLauncherAtPackage(
+      prefix,
+      join(prefix, 'global', 'v11', 'newhash', 'node_modules', 'aio-proxy'),
+    );
+    expect(
+      resolveManagedRestartExec({
+        method: 'pnpm',
+        command: join(prefix, 'bin', 'pnpm'),
+        bin: launcher,
+      }),
+    ).toBe(current);
+    expect(stale).not.toBe(current);
+  },
+);
 
-test('resolveManagedRestartExec uses the native cli-* binary for bun, not the JS shim', () => {
-  const bunHome = canonicalTempDir('aio-restart-bun-');
-  const native = join(bunHome, 'install', 'global', 'node_modules', '@aio-proxy', nativeCliPackage, 'bin', 'aio-proxy');
-  writeExecutable(join(bunHome, 'bin', 'bun'), '#!/bin/sh\n');
-  writeExecutable(join(bunHome, 'bin', 'aio-proxy'), '#!/usr/bin/env node\n');
-  writeExecutable(native, '#!/bin/sh\n');
-  expect(
-    resolveManagedRestartExec({
-      method: 'bun',
-      command: join(bunHome, 'bin', 'bun'),
-      bin: join(bunHome, 'bin', 'aio-proxy'),
-    }),
-  ).toBe(native);
-});
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'resolveManagedRestartExec uses the native cli-* binary for bun, not the JS shim',
+  () => {
+    const bunHome = canonicalTempDir('aio-restart-bun-');
+    const native = join(
+      bunHome,
+      'install',
+      'global',
+      'node_modules',
+      '@aio-proxy',
+      nativeCliPackage,
+      'bin',
+      'aio-proxy',
+    );
+    writeExecutable(join(bunHome, 'bin', 'bun'), '#!/bin/sh\n');
+    writeExecutable(join(bunHome, 'bin', 'aio-proxy'), '#!/usr/bin/env node\n');
+    writeExecutable(native, '#!/bin/sh\n');
+    expect(
+      resolveManagedRestartExec({
+        method: 'bun',
+        command: join(bunHome, 'bin', 'bun'),
+        bin: join(bunHome, 'bin', 'aio-proxy'),
+      }),
+    ).toBe(native);
+  },
+);
 
-test('resolveManagedRestartExec returns undefined when no native binary exists so restart falls back', () => {
-  expect(
-    resolveManagedRestartExec({
-      method: 'npm',
-      command: '/usr/bin/npm',
-      bin: '/usr/bin/aio-proxy',
-    }),
-  ).toBeUndefined();
-});
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'resolveManagedRestartExec returns undefined when no native binary exists so restart falls back',
+  () => {
+    expect(
+      resolveManagedRestartExec({
+        method: 'npm',
+        command: '/usr/bin/npm',
+        bin: '/usr/bin/aio-proxy',
+      }),
+    ).toBeUndefined();
+  },
+);
 
-test('resolveManagedRestartExec returns the brew launcher bin', () => {
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')('resolveManagedRestartExec returns the brew launcher bin', () => {
   expect(
     resolveManagedRestartExec({
       method: 'brew',
@@ -1100,7 +1273,7 @@ test('AIO_PROXY_UPGRADE_METHOD=npm reconstructs an absolute command from the cli
   const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-env-'));
   const native = writePlatformCliBinary(prefix, 'npm');
   await withEmptyManagerPath(async () => {
-    const target = await resolveUpgradeTargetFrom(native, { AIO_PROXY_UPGRADE_METHOD: 'npm' });
+    const target = await resolveUpgradeTargetFrom(native, { AIO_PROXY_UPGRADE_METHOD: 'npm' }, {}, 'linux');
     expect(target).toEqual({
       method: 'npm',
       command: join(prefix, 'bin', 'npm'),
@@ -1131,27 +1304,36 @@ test('runPackageManagerUpgrade for brew execs the absolute command, never the st
   }
 });
 
-test('runPackageManagerUpgrade for npm sets PATH so the sibling node satisfies env node', async () => {
-  const calls: { readonly cmd: string[]; readonly path?: string }[] = [];
+const npmPathFor = async (platform: NodeJS.Platform, command: string): Promise<string | undefined> => {
+  const paths: (string | undefined)[] = [];
   const original = Bun.spawn;
-  Bun.spawn = ((cmd: string[], options?: { readonly env?: NodeJS.ProcessEnv }) => {
-    calls.push({ cmd, path: options?.env?.['PATH'] });
+  Bun.spawn = ((_cmd: string[], options?: { readonly env?: NodeJS.ProcessEnv }) => {
+    paths.push(options?.env?.['PATH']);
     return { exited: Promise.resolve(0) };
   }) as typeof Bun.spawn;
   try {
     await runPackageManagerUpgrade(
-      { method: 'npm', command: '/usr/local/bin/npm', bin: '/usr/local/bin/aio-proxy' },
+      { method: 'npm', command, bin: 'aio-proxy' },
       '1.2.3',
       { registry: NPM_REGISTRY, force: false },
+      platform,
     );
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.cmd[0]).toBe('/usr/local/bin/npm');
-    expect(calls[0]?.path).toContain('/usr/local/bin');
-    expect(calls[0]?.path).toContain('/usr/bin');
-    expect(calls[0]?.path).toContain('/bin');
   } finally {
     Bun.spawn = original;
   }
+  expect(paths).toHaveLength(1);
+  return paths[0];
+};
+
+test('runPackageManagerUpgrade for npm sets PATH so the sibling node satisfies env node', async () => {
+  const path = await npmPathFor('linux', '/usr/local/bin/npm');
+  expect(path?.startsWith('/usr/local/bin:/usr/bin:/bin')).toBe(true);
+});
+
+test('runPackageManagerUpgrade for npm on Windows puts the command directory first on a ;-joined PATH', async () => {
+  const path = await npmPathFor('win32', 'C:\\Program Files\\nodejs\\npm.cmd');
+  // Exactly the command directory plus the host PATH: no POSIX fallbacks, `;` separator.
+  expect(path).toBe(`C:\\Program Files\\nodejs;${process.env['PATH'] ?? process.env['Path']}`);
 });
 
 test('runUpgradeCommand pins options.version and does not call fetchLatest', async () => {
@@ -1242,32 +1424,36 @@ test('brew install whose launcher version stays at current returns unchanged and
   expect(restarted).toBe(false);
 });
 
-test('runUpgradeCommand restarts npm installs with the native cli-* path, not the JS shim', async () => {
-  const prefix = canonicalTempDir('aio-npm-restart-');
-  const native = writePlatformCliBinary(prefix, 'npm');
-  const shim = join(prefix, 'bin', 'aio-proxy');
-  let restarted: string | undefined = 'unset';
-  const result = await runUpgradeCommand(
-    { version: '2.0.0' },
-    () => {},
-    makeDeps({
-      currentVersion: '1.0.0',
-      resolveTarget: async () => ({
-        method: 'npm',
-        command: join(prefix, 'bin', 'npm'),
-        bin: shim,
+// POSIX-only: npm/pnpm/bun global layouts with extensionless executables and forward-slash paths.
+test.skipIf(process.platform === 'win32')(
+  'runUpgradeCommand restarts npm installs with the native cli-* path, not the JS shim',
+  async () => {
+    const prefix = canonicalTempDir('aio-npm-restart-');
+    const native = writePlatformCliBinary(prefix, 'npm');
+    const shim = join(prefix, 'bin', 'aio-proxy');
+    let restarted: string | undefined = 'unset';
+    const result = await runUpgradeCommand(
+      { version: '2.0.0' },
+      () => {},
+      makeDeps({
+        currentVersion: '1.0.0',
+        resolveTarget: async () => ({
+          method: 'npm',
+          command: join(prefix, 'bin', 'npm'),
+          bin: shim,
+        }),
+        isDaemonRunning: async () => true,
+        isServiceManaged: () => true,
+        restartService: async (exec) => {
+          restarted = exec;
+        },
       }),
-      isDaemonRunning: async () => true,
-      isServiceManaged: () => true,
-      restartService: async (exec) => {
-        restarted = exec;
-      },
-    }),
-  );
-  expect(result).toBe('installed');
-  expect(restarted).toBe(native);
-  expect(restarted).not.toBe(shim);
-});
+    );
+    expect(result).toBe('installed');
+    expect(restarted).toBe(native);
+    expect(restarted).not.toBe(shim);
+  },
+);
 
 test('brew --force hands off the installed tap version when it differs from npm latest', async () => {
   const lines: string[] = [];
@@ -1345,20 +1531,24 @@ test('successful brew upgrade restarts with the stable launcher', async () => {
   expect(restarted).toBe('/opt/homebrew/bin/aio-proxy');
 });
 
-test('resolveNewAgentBinary for a brew target uses target.bin, not Bun.which', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'aio-brew-agent-bin-'));
-  const binary = join(root, 'aio-proxy');
-  writeExecutable(
-    binary,
-    `#!/usr/bin/env bun
+// POSIX-only: the fake aio-proxy is an extensionless shebang script, which Windows cannot spawn.
+test.skipIf(process.platform === 'win32')(
+  'resolveNewAgentBinary for a brew target uses target.bin, not Bun.which',
+  async () => {
+    const root = mkdtempSync(join(tmpdir(), 'aio-brew-agent-bin-'));
+    const binary = join(root, 'aio-proxy');
+    writeExecutable(
+      binary,
+      `#!/usr/bin/env bun
 if (process.argv[2] === "--version") { console.log("2.0.0"); process.exit(0); }
 process.exit(9);
 `,
-  );
-  await expect(
-    resolveNewAgentBinary({ method: 'brew', command: '/opt/homebrew/bin/brew', bin: binary }, '2.0.0'),
-  ).resolves.toBe(binary);
-});
+    );
+    await expect(
+      resolveNewAgentBinary({ method: 'brew', command: '/opt/homebrew/bin/brew', bin: binary }, '2.0.0'),
+    ).resolves.toBe(binary);
+  },
+);
 
 test('a desktop-managed process refuses to upgrade before touching any installer', async () => {
   const install = mock(async () => {});
@@ -1389,6 +1579,39 @@ test('isDesktopManagedInstall recognizes the desktop markers and an app-bundle b
   expect(isDesktopManagedInstall({}, '/opt/homebrew/bin/aio-proxy', (p) => p)).toBe(false);
   // An empty marker (an unset variable exported as '') is not ownership.
   expect(isDesktopManagedInstall({ AIO_PROXY_DESKTOP_EXEC: '' }, '/opt/homebrew/bin/aio-proxy', (p) => p)).toBe(false);
+});
+
+test('a stable desktop copy reached without env markers is desktop-managed', () => {
+  const real = (p: string) => p;
+  expect(isDesktopManagedInstall({}, '/home/u/.local/share/aio-proxy-desktop/bin/aio-proxy', real, 'linux')).toBe(true);
+  expect(
+    isDesktopManagedInstall({}, 'C:\\Users\\U\\AppData\\Local\\AIO-Proxy-Desktop\\bin\\aio-proxy.exe', real, 'win32'),
+  ).toBe(true);
+  expect(isDesktopManagedInstall({}, '/home/u/.bun/bin/aio-proxy', real, 'linux')).toBe(false);
+});
+
+test('the native win32 binary under an npm prefix is recognized as a package install', () => {
+  const exe = 'C:\\Users\\U\\AppData\\Roaming\\npm\\node_modules\\@aio-proxy\\cli-win32-x64\\bin\\aio-proxy.exe';
+  expect(isPlatformCliBinary(exe)).toBe(true);
+});
+
+test('on win32 the .exe and .cmd launchers are found where the extensionless name is not', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-win-launcher-'));
+  writeFileSync(join(dir, 'aio-proxy.cmd'), '');
+  expect(whichOnPath(`/nowhere;${dir}`, 'win32')).toBe(join(dir, 'aio-proxy.cmd'));
+  expect(whichOnPath(`/nowhere:${dir}`, 'linux')).toBeUndefined();
+  writeFileSync(join(dir, 'aio-proxy.exe'), '');
+  expect(launcherBeside(join(dir, 'npm.cmd'), 'win32')).toBe(join(dir, 'aio-proxy.exe'));
+  expect(launcherBeside(join(dir, 'npm'), 'linux')).toBeUndefined();
+});
+
+test('nativeAt looks for aio-proxy.exe on win32', () => {
+  const nm = mkdtempSync(join(tmpdir(), 'aio-win-native-'));
+  const bin = join(nm, '@aio-proxy', 'cli-win32-x64', 'bin');
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, 'aio-proxy.exe'), '');
+  expect(nativeAt(nm, '@aio-proxy/cli-win32-x64', 'win32')).toBe(join(bin, 'aio-proxy.exe'));
+  expect(nativeAt(nm, '@aio-proxy/cli-win32-x64', 'linux')).toBeUndefined();
 });
 
 test('a CLI upgrade installs but never restarts a service the desktop app owns', async () => {

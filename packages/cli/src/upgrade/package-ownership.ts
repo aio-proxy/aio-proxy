@@ -53,15 +53,29 @@ const packageBinTargets = (packageDir: string): readonly string[] => {
   }
 };
 
-// pnpm writes a regular shell launcher (cmd-shim). realpath is the shim
-// itself; ownership is an exec target that resolves inside the package.
+// pnpm writes a regular shell launcher (cmd-shim), and on Windows npm and pnpm write `.cmd`/`.ps1` launchers
+// without a shebang. realpath is the shim itself; ownership is an exec target that resolves inside the package.
 const MAX_SHIM_BYTES = 64 * 1024;
 
+// Bun's Windows launcher is a generic `<name>.exe` shim beside a `<name>.bunx` file naming the target in UTF-16LE;
+// only that metadata file says which package the shim runs, so an arbitrary .exe is never read as owned.
+const readBunShimTarget = (binPath: string): string | undefined => {
+  if (!/\.exe$/iu.test(binPath)) return undefined;
+  try {
+    const raw = readFileSync(binPath.replace(/\.exe$/iu, '.bunx'));
+    return raw.length === 0 || raw.length > MAX_SHIM_BYTES ? undefined : raw.toString('utf16le');
+  } catch {
+    return undefined;
+  }
+};
+
 const readLauncherShim = (binPath: string): string | undefined => {
+  const bunTarget = readBunShimTarget(binPath);
+  if (bunTarget !== undefined) return bunTarget;
   try {
     const raw = readFileSync(binPath);
     if (raw.length === 0 || raw.length > MAX_SHIM_BYTES) return undefined;
-    if (raw[0] !== 0x23 || raw[1] !== 0x21) return undefined;
+    if ((raw[0] !== 0x23 || raw[1] !== 0x21) && !/\.(?:cmd|ps1)$/iu.test(binPath)) return undefined;
     return raw.toString('utf8');
   } catch {
     return undefined;
@@ -78,8 +92,11 @@ const shimReferencesPackageBin = (binPath: string, packageDir: string): boolean 
     if (real !== undefined) candidates.add(real);
     for (const abs of candidates) {
       if (text.includes(abs)) return true;
+      // A `.cmd` launcher names the target with backslashes (`%dp0%\node_modules\…`), a shell one with slashes.
       const rel = relative(launcherDir, abs).replaceAll('\\', '/');
-      if (rel !== '' && !rel.startsWith('/') && text.includes(rel)) return true;
+      if (rel !== '' && !rel.startsWith('/') && (text.includes(rel) || text.includes(rel.replaceAll('/', '\\')))) {
+        return true;
+      }
     }
     return false;
   });

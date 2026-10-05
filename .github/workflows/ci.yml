@@ -50,12 +50,39 @@ jobs:
       - run: bun run test:unit -- --concurrency=2
       - run: bun run test:e2e:api
 
+  cli-windows:
+    if: github.event_name == 'push' || !github.event.pull_request.draft
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - run: bun install --frozen-lockfile --prefer-offline
+      # The CLI tests resolve workspace packages through their built dist.
+      - run: bun run build
+      - run: bun run test:unit src/service src/service-run src/win32-ffi src/desktop-connect src/upgrade
+        working-directory: packages/cli
+      - run: bun test src/desktop-token
+        working-directory: packages/core
+
   desktop-changes:
     if: github.event_name == 'push' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.diff.outputs.rust }}
       bundle: ${{ steps.diff.outputs.bundle }}
+      service: ${{ steps.diff.outputs.service }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -77,20 +104,37 @@ jobs:
           # Server and dashboard changes are left out to spare macOS minutes; the release desktop job
           # always runs the full runtime smoke before signing (spec "CI").
           echo "bundle=$(changed desktop packages/cli/scripts packages/brand/src/app-icon.icon .github/workflows bun.lock .bun-version)" >> "$GITHUB_OUTPUT"
+          # The service smoke exercises the CLI's service and discovery code, which `bundle` leaves out.
+          echo "service=$(changed desktop packages/cli/src packages/core/src/desktop-token packages/core/src/paths .github/workflows bun.lock .bun-version)" >> "$GITHUB_OUTPUT"
 
   rust:
     needs: desktop-changes
     if: needs.desktop-changes.outputs.rust == 'true'
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
+        # The toolchain step is bash; Windows runners default to PowerShell.
+        shell: bash
         working-directory: desktop
     steps:
       - uses: actions/checkout@v7
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev pkg-config
       - name: Install the pinned Rust toolchain
         run: |
           channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin
+          rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy --target ${{ matrix.target }}
       - uses: actions/cache@v6
         with:
           path: |
@@ -149,3 +193,168 @@ jobs:
       # Build, Mach-O checks, runtime smoke, ad-hoc hardened signature, then the signed smoke with
       # the JIT check.
       - run: bun run desktop:bundle --unsigned
+
+  service-smoke:
+    needs: desktop-changes
+    if: needs.desktop-changes.outputs.service == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            sidecar: linux-x64
+            exec: aio-proxy
+          - os: windows-2025
+            sidecar: win32-x64
+            exec: aio-proxy.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - run: bun install --frozen-lockfile --prefer-offline
+      - run: bun run build
+      - run: bun packages/cli/scripts/build-binary.ts ${{ matrix.sidecar }} "$RUNNER_TEMP/sidecar/${{ matrix.exec }}"
+
+      # A runner job has no login session, so this user has no systemd --user manager until lingering
+      # starts one.
+      - name: Start a systemd user manager
+        if: runner.os == 'Linux'
+        run: |
+          sudo loginctl enable-linger "$USER"
+          runtime="/run/user/$(id -u)"
+          for _ in $(seq 1 30); do
+            [ -S "$runtime/systemd/private" ] && break
+            sleep 1
+          done
+          test -S "$runtime/systemd/private"
+          echo "XDG_RUNTIME_DIR=$runtime" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus" >> "$GITHUB_ENV"
+
+      - run: bun desktop/scripts/smoke/cli.ts --service "$RUNNER_TEMP/sidecar/${{ matrix.exec }}"
+
+      # A killed or timed-out smoke skips its own cleanup; leave no task or unit behind.
+      - name: Remove the service
+        if: always()
+        run: '"$RUNNER_TEMP/sidecar/${{ matrix.exec }}" service uninstall || true'
+
+  desktop-package:
+    needs: desktop-changes
+    if: needs.desktop-changes.outputs.bundle == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest supported Ubuntu LTS keeps the AppImage's glibc floor low.
+          - os: ubuntu-22.04
+            target: linux-x86_64
+            rust-target: x86_64-unknown-linux-gnu
+            asset: aio-proxy-0.0.1-x86_64.AppImage
+          # Release builds run the tag's packaging code, so aarch64 must be proven before a tag, not after.
+          - os: ubuntu-22.04-arm
+            target: linux-aarch64
+            rust-target: aarch64-unknown-linux-gnu
+            asset: aio-proxy-0.0.1-aarch64.AppImage
+          - os: windows-2025
+            target: windows-x86_64
+            rust-target: x86_64-pc-windows-msvc
+            asset: aio-proxy-0.0.1-x64-setup.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-bun-
+
+      - run: bun install --frozen-lockfile --prefer-offline
+
+      # libfuse2 runs linuxdeploy's AppImage plugins; squashfs-tools repacks the image with the original CLI.
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev pkg-config libfuse2 squashfs-tools
+
+      - name: Install the pinned Rust toolchain
+        working-directory: desktop
+        run: |
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustup toolchain install "$channel" --profile minimal --target ${{ matrix.rust-target }}
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            desktop/target
+          key: ${{ runner.os }}-${{ runner.arch }}-desktop-package-${{ hashFiles('desktop/rust-toolchain.toml', 'desktop/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-desktop-package-
+
+      # `cargo install` skips a matching install it finds in ~/.cargo/bin plus its .crates*.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/bin/cargo-packager*
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-packager-0.11.8
+
+      - run: cargo install cargo-packager --version 0.11.8 --locked
+
+      - run: bun run desktop:package --target ${{ matrix.target }} --version 0.0.1
+
+      - name: Check the AppImage's bundled binaries
+        if: runner.os == 'Linux'
+        working-directory: desktop/target/package
+        run: |
+          file ./${{ matrix.asset }}
+          ./${{ matrix.asset }} --appimage-extract > /dev/null
+          file squashfs-root/usr/bin/aio-proxy squashfs-root/usr/bin/aio-proxy-desktop
+          # The packaged CLI must be the built sidecar byte for byte (linuxdeploy's patchelf breaks it).
+          cmp "sidecar/aio-proxy-${{ matrix.rust-target }}" squashfs-root/usr/bin/aio-proxy
+          cli="$(squashfs-root/usr/bin/aio-proxy --version)"
+          app="$(squashfs-root/usr/bin/aio-proxy-desktop --version)"
+          echo "cli: $cli / app: $app"
+          test "$cli" = 0.0.1
+          test "$app" = 0.0.1
+          # Launchers read the root icon; docks match the window's WM_CLASS to StartupWMClass.
+          file -L squashfs-root/aio-proxy-desktop.png | grep -F '512 x 512'
+          grep -x 'StartupWMClass=aio-proxy-desktop' squashfs-root/aio-proxy-desktop.desktop
+          grep -x 'Exec=aio-proxy-desktop' squashfs-root/aio-proxy-desktop.desktop
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ matrix.asset }}
+          path: desktop/target/package/${{ matrix.asset }}
+          if-no-files-found: error
+          retention-days: 7

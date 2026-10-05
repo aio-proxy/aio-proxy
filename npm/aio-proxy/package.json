@@ -18,6 +18,7 @@
     "@aio-proxy/cli-darwin-arm64": "workspace:*",
     "@aio-proxy/cli-darwin-x64": "workspace:*",
     "@aio-proxy/cli-linux-arm64": "workspace:*",
-    "@aio-proxy/cli-linux-x64": "workspace:*"
+    "@aio-proxy/cli-linux-x64": "workspace:*",
+    "@aio-proxy/cli-win32-x64": "workspace:*"
   }
 }

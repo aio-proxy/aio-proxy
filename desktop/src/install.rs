@@ -1,9 +1,9 @@
-//! Install-location policy, the stable symlink, the no-downgrade rule and the single-instance lock.
+//! Install-location policy, the stable exec (a symlink on macOS, a copy elsewhere), the no-downgrade
+//! rule and the single-instance lock.
 
 use std::cmp::Ordering;
 use std::fs::{self, File, OpenOptions};
 use std::io;
-use std::os::fd::AsRawFd;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -11,31 +11,21 @@ use std::time::Duration;
 use crate::process::run_with_timeout;
 use crate::version;
 
+/// Built per OS by `platform::paths`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Paths {
     pub home: PathBuf,
     pub support: PathBuf,
-    /// `AIO_PROXY_DESKTOP_EXEC`: the only path a desktop-owned plist ever points at.
-    pub symlink: PathBuf,
+    /// `AIO_PROXY_DESKTOP_EXEC`, the only path a desktop-owned service ever runs: a symlink to the bundle on
+    /// macOS, a versioned copy of the sidecar on Linux and Windows.
+    pub stable: PathBuf,
     pub lock: PathBuf,
     /// The app's own log directory.
     pub logs: PathBuf,
 }
 
-impl Paths {
-    pub fn for_home(home: &Path) -> Self {
-        let support = home.join("Library/Application Support/aio-proxy-desktop");
-        Self {
-            home: home.to_path_buf(),
-            symlink: support.join("bin/aio-proxy"),
-            lock: support.join("instance.lock"),
-            logs: home.join("Library/Logs/aio-proxy-desktop"),
-            support,
-        }
-    }
-}
-
 /// `…/X.app/Contents/MacOS/aio-proxy-desktop` → `…/X.app`.
+#[cfg(target_os = "macos")]
 pub fn bundle_of(exe: &Path) -> Option<PathBuf> {
     let macos = exe.parent()?;
     let contents = macos.parent()?;
@@ -46,8 +36,31 @@ pub fn bundle_of(exe: &Path) -> Option<PathBuf> {
     ok.then(|| bundle.to_path_buf())
 }
 
+#[cfg(target_os = "macos")]
 pub fn sidecar_of(bundle: &Path) -> PathBuf {
     bundle.join("Contents/MacOS/aio-proxy")
+}
+
+/// Off macOS the "bundle" is the directory holding the sidecar: the executable's own, or
+/// `$APPDIR/usr/bin` inside an AppImage.
+#[cfg(not(target_os = "macos"))]
+pub fn bundle_of(exe: &Path) -> Option<PathBuf> {
+    let appdir = if cfg!(target_os = "linux") { std::env::var_os("APPDIR") } else { None };
+    sidecar_dir(exe, appdir)
+}
+
+/// `bundle_of` with `$APPDIR` passed in; a relative or empty one is ignored.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn sidecar_dir(exe: &Path, appdir: Option<std::ffi::OsString>) -> Option<PathBuf> {
+    match appdir.map(PathBuf::from).filter(|dir| dir.is_absolute()) {
+        Some(dir) => Some(dir.join("usr/bin")),
+        None => exe.parent().map(Path::to_path_buf),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn sidecar_of(bundle: &Path) -> PathBuf {
+    bundle.join(if cfg!(windows) { "aio-proxy.exe" } else { "aio-proxy" })
 }
 
 /// `…/X.app/Contents/MacOS/aio-proxy` → `…/X.app`, for naming a copy in a notice.
@@ -95,6 +108,7 @@ pub fn location_allows_persistence(bundle: &Path, home: &Path, read_only_volume:
 }
 
 /// Unknown counts as read-only.
+#[cfg(unix)]
 pub fn volume_is_read_only(path: &Path) -> bool {
     let Ok(c_path) = std::ffi::CString::new(path.as_os_str().as_encoded_bytes()) else {
         return true;
@@ -143,6 +157,7 @@ pub fn plan_symlink(
 }
 
 /// Create-temp-symlink + rename, so the service never sees a missing link.
+#[cfg(unix)]
 pub fn repoint(symlink: &Path, target: &Path) -> io::Result<()> {
     let dir = symlink.parent().ok_or_else(|| io::Error::other("symlink has no parent"))?;
     fs::create_dir_all(dir)?;
@@ -155,6 +170,7 @@ pub fn repoint(symlink: &Path, target: &Path) -> io::Result<()> {
 }
 
 /// Startup install step. Outside an Applications folder nothing on disk changes.
+#[cfg(unix)]
 pub fn prepare(
     paths: &Paths,
     bundle: &Path,
@@ -168,20 +184,20 @@ pub fn prepare(
     let sidecar = sidecar_of(bundle);
     // Anything but "no link there" (a regular file or directory, EACCES, EIO) is something we cannot
     // rank, so it is never renamed over.
-    let current = match fs::read_link(&paths.symlink) {
+    let current = match fs::read_link(&paths.stable) {
         Ok(target) => Some(target),
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
         Err(error) if error.kind() == io::ErrorKind::InvalidInput => {
             return InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(format!(
                 "{} exists and is not a symlink",
-                paths.symlink.display()
+                paths.stable.display()
             )));
         }
         Err(error) => return InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(error.to_string())),
     };
     match plan_symlink(current.as_deref(), &sidecar, own_version, target_version) {
         SymlinkPlan::Keep => InstallState::Persistent,
-        SymlinkPlan::Repoint => match repoint(&paths.symlink, &sidecar) {
+        SymlinkPlan::Repoint => match repoint(&paths.stable, &sidecar) {
             Ok(()) => InstallState::Persistent,
             Err(error) => InstallState::ReadOnly(ReadOnlyReason::SymlinkFailed(error.to_string())),
         },
@@ -197,7 +213,7 @@ pub fn probe_version(exec: &Path) -> Option<String> {
     output.status.success().then(|| version::parse_version_output(&String::from_utf8_lossy(&output.stdout)))?
 }
 
-/// Held for the life of the process; the kernel drops the flock when it exits.
+/// Held for the life of the process; the OS drops the lock when it exits.
 #[derive(Debug)]
 #[must_use = "dropping releases the single-instance lock"]
 pub struct InstanceLock {
@@ -210,13 +226,14 @@ pub fn acquire_instance_lock(path: &Path) -> io::Result<Option<InstanceLock>> {
         fs::create_dir_all(dir)?;
     }
     let file = OpenOptions::new().create(true).truncate(false).read(true).write(true).open(path)?;
-    // SAFETY: flock on a descriptor we own.
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
-        return Ok(Some(InstanceLock { _file: file }));
+    match file.try_lock() {
+        Ok(()) => Ok(Some(InstanceLock { _file: file })),
+        Err(fs::TryLockError::WouldBlock) => Ok(None),
+        Err(fs::TryLockError::Error(error)) => Err(error),
     }
-    let error = io::Error::last_os_error();
-    if error.raw_os_error() == Some(libc::EWOULDBLOCK) { Ok(None) } else { Err(error) }
 }
+
+pub mod copy;
 
 #[cfg(test)]
 mod tests;
