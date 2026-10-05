@@ -44,7 +44,7 @@
 2. **非流式请求混进 tok/s**：AI SDK 路径对非流式请求也会走 `streamCapture`。Task 4 测试 `stream:false` 时不记录、也不校准。
 3. **异常 usage 污染比例**：Task 2 测试 EMA 多次更新后被夹在上下限内，以及 `outputTokens = 0` 时跳过校准。
 4. **大整数和跨零点**：今日累计超过 JS 安全整数时不能丢精度，23:59 与 00:01 要读到不同的本地日。Task 5 测试。
-5. **菜单栏卡在旧数字**：服务停止、返回 401、实例被替换、面板关闭时，菜单栏都要及时更新。Task 9 用纯状态机测试"何时该拉取"和"失败如何显示"；Task 10 的 401 处理会触发重新发现。
+5. **菜单栏卡在旧数字**：服务停止、返回 401、实例被替换、面板关闭时，菜单栏都要及时更新。Task 9 用纯状态机测试"何时该拉取""失败如何显示"以及按 epoch 丢弃旧实例的迟到响应；Task 10 在收到 401 或连接失败时触发重新发现和健康检查，各自的检测时限写在 Task 10 里。
 
 ---
 
@@ -123,7 +123,7 @@
   - `packages/server/src/request-tracing/request-trace-recorder/request-trace-recorder.ts`
     - options 增加 `liveMetrics`。
     - `begin` 中加一，`operation === 'token_count'` 时跳过。
-    - 内部 `complete` 在 `state = 'finished'` 之后减一。session 里记一个 `counted` 标志，保证只减一次。
+    - 内部 `complete` 在 `state = 'finished'` 之后减一。现有的 `state === 'finished'` 守卫已经保证只执行一次，不需要再加标志。
   - `packages/server/src/server-state/index.ts`：`createRequestServices` 创建 `liveMetrics`，传给 recorder，并作为返回值之一。
   - `packages/server/src/server-state/lifecycle.ts`：
     - `ServerStateParts`（`:149`）的 Pick 增加 `'liveMetrics'`。
@@ -144,7 +144,11 @@
   - `finishFrom` 的 Promise resolve 后回到 0；reject 后同样回到 0。
   - 先 `finish` 再 `finishFrom`，或者 `finish` 两次，都只减一次。
   - `operation: 'token_count'` 的请求不计数。
-- [ ] **Step 2: 运行**：`bun run --cwd packages/server test:unit -- src/request-tracing`，预期 FAIL。
+  - **pipeline 集成**：在 `routes/pipeline/model-stream.lifecycle.test.ts` 和 `raw-fallback.test.ts` 的现有 setup 上追加用例，断言 `state.liveMetrics.snapshot().inFlight`：
+    - 客户端在流中途取消后回到 0。
+    - 上游空闲超时后回到 0。
+    - 第一个候选失败、fallback 到第二个候选期间始终为 1（同一请求只计一次），结束后回到 0。
+- [ ] **Step 2: 运行**：`bun run --cwd packages/server test:unit -- src/request-tracing src/routes/pipeline`，预期 FAIL。
 - [ ] **Step 3: 实现**：按上面 Files 的说明改。
 - [ ] **Step 4: 运行**：同上，再跑 `bun run --cwd packages/server test:unit -- src/server-state` 和 `bun run check`，预期 PASS。
 - [ ] **Step 5: 提交**：`feat(server): count in-flight generation requests`
@@ -183,7 +187,9 @@
   - 流式捕获（`live: false`）：同样的输入，`recordContent` 和 `calibrate` 都不被调用。
   - 透传 SSE（OpenAI-compatible，`live: true`）：两个 content chunk 共 7 个字符，`recordContent` 总和为 7；最终 usage 为 `outputTokens: 2` 时调用 `calibrate('p/m', 7, 2)`。
   - 失败、取消、空闲超时时不调用 `calibrate`。
-- [ ] **Step 2: 运行**：`bun run --cwd packages/server test:unit -- src/passthrough-usage src/usage-capture`，预期 FAIL。
+  - 在上游 finish 之前取消，不校准；在上游 finish 之后、向客户端转发时才取消，仍然校准（这是 spec 规定的时机）。
+  - **pipeline 接线**：在 `routes/pipeline/model-stream.test.ts` 和 `raw-session.test.ts` 的现有 setup 上，组合 model / raw × `stream: true` / `stream: false` 四种情况。流式时 `snapshot().outputTokensPerSecond` 在推进时钟后大于 0；非流式时为 0。这样两个调用点漏传 `live` 都会让测试失败。
+- [ ] **Step 2: 运行**：`bun run --cwd packages/server test:unit -- src/passthrough-usage src/usage-capture src/routes/pipeline`，预期 FAIL。
 - [ ] **Step 3: 实现**：按上面 Files 的说明改。
 - [ ] **Step 4: 运行**：再跑一遍 `bun run --cwd packages/server test:unit`（整包）。预期全部 PASS，现有的 ttft 测试不改动也能通过。
 - [ ] **Step 5: 提交**：`feat(server): feed streamed content into live throughput`
@@ -196,6 +202,7 @@
   - `packages/core/src/db/trace-store/types.ts`：`TraceStore` 增加 `todayUsage`。
   - `packages/core/src/db/trace-store/trace-store.ts`：注册 `todayUsage`。
   - `packages/core/src/db/trace-store/trace-lifecycle/usage-persistence.ts:32`：删除私有的 `localDay`，改用 `../usage-range` 的 `usageLocalDate`，让写入和查询共用同一个函数。
+  - `packages/core/src/db/trace-store/index.ts` 和 `packages/core/src/db/index.ts`：公开导出 `usageLocalDate`，让 Task 6 能通过 `@aio-proxy/core/db` 使用它。
 
 **Interfaces:**
 - Produces: `todayUsage(db, now: Date): { readonly inputTokens: bigint; readonly outputTokens: bigint; readonly estimatedCostNanoUsd: bigint }`。
@@ -328,27 +335,31 @@
 - Consumes: `DesktopLive`、`TrayMetric`、`LabelStyle`。
 - Produces:
   ```rust
+  #[derive(Clone, PartialEq, Eq, Debug)]
   pub struct MetricText { pub label: &'static str, pub value: String, pub unit: &'static str }
   pub fn format_metric(metric: TrayMetric, live: &DesktopLive, style: LabelStyle) -> MetricText;
   pub fn poll_interval(metrics: &[TrayMetric]) -> Option<Duration>; // 1 s / 15 s / None
 
-  /// 决定常驻 1 s 循环的这一拍是否发请求。`key` 由选中的指标与实例 (control_url, pid) 组成,
-  /// 变化即立即拉取。
-  #[derive(Default)] pub struct LiveSchedule { last: Option<(Instant, LiveKey)> , in_flight: bool }
-  #[derive(Clone, PartialEq, Eq, Debug)] pub struct LiveKey { pub metrics: Vec<TrayMetric>, pub instance: Option<(String, u32)> }
+  /// 决定常驻 1 s 循环的这一拍是否发请求。`epoch` 是 `AppModel.instance_epoch`
+  /// (实例每次变化都会递增),不另造实例标识。
+  #[derive(Clone, PartialEq, Eq, Debug)] pub struct LiveKey { pub metrics: Vec<TrayMetric>, pub epoch: u64 }
+  #[derive(Default)] pub struct LiveSchedule { last: Option<(Instant, LiveKey)>, in_flight: bool }
   impl LiveSchedule {
-      /// eligible = 健康 Up && 有 discovery 与 token
+      /// eligible = 健康 Up && 有 reachable control_url && 有 token
       pub fn due(&mut self, now: Instant, key: &LiveKey, eligible: bool) -> bool;
       pub fn finished(&mut self);
   }
 
-  #[derive(Default)] pub struct LiveDisplay { last: Option<DesktopLive>, failures: u32, auth_retry_used: bool }
+  #[derive(Default)] pub struct LiveDisplay { epoch: u64, last: Option<DesktopLive>, failures: u32, auth_retry_used: bool }
   pub enum LiveView<'a> { Fresh(&'a DesktopLive), Stale(&'a DesktopLive), Unavailable }
   impl LiveDisplay {
-      pub fn accept(&mut self, live: DesktopLive);
-      pub fn fail(&mut self);
+      /// 实例变化:清空数据、失败计数与鉴权重试状态。
+      pub fn set_epoch(&mut self, epoch: u64);
+      /// 以下三个结果方法都带请求发出时的 epoch;与当前 epoch 不同的(旧实例的迟到响应)直接忽略。
+      pub fn accept(&mut self, epoch: u64, live: DesktopLive);
+      pub fn fail(&mut self, epoch: u64);
       /// 收到 401:返回 true 表示调用方应 rediscover 一次。
-      pub fn unauthorized(&mut self) -> bool;
+      pub fn unauthorized(&mut self, epoch: u64) -> bool;
       pub fn view(&self) -> LiveView<'_>;
   }
   ```
@@ -370,12 +381,14 @@
   - `LiveSchedule`：
     - 首拍为 true；`finished` 之前的下一拍为 false。
     - 1 s 间隔下，0.5 s 后为 false，1 s 后为 true。
-    - 15 s 间隔下，改变 `metrics` 后立即为 true；`instance` 改变后立即为 true。
+    - 15 s 间隔下，改变 `metrics` 后立即为 true；`epoch` 改变后立即为 true。
     - `eligible = false` 时为 false，恢复为 true 后立即为 true。
     - 指标为空时恒为 false。
   - `LiveDisplay`：
     - accept 后为 Fresh；连续失败 2 次为 Stale；第 3 次为 Unavailable；再次 accept 回到 Fresh。
     - 连续两次 `unauthorized()` 返回 true、false；accept 之后再次 `unauthorized()` 返回 true。
+    - 实例 A 的请求在途时切到 B：`set_epoch(B)` 后，A 的 `accept(A, …)` 被忽略，`view()` 为 `Unavailable`；A 的 `fail`、`unauthorized` 同样被忽略，不影响 B 的失败计数和重试锁。
+    - `set_epoch` 会清空旧实例遗留的失败计数，以及已用掉的 401 重试机会。
 - [ ] **Step 2: 运行**：`cargo test --manifest-path desktop/Cargo.toml tray::metrics`，预期 FAIL。
 - [ ] **Step 3: 实现**。
 - [ ] **Step 4: 运行**：预期 PASS。
@@ -385,21 +398,30 @@
 
 **Files:**
 - Create: `desktop/src/app/live.rs`
-- Modify: `desktop/src/app.rs`
-  - `AppModel` 增加 `pub live: LiveDisplay` 和 `live_schedule: LiveSchedule`。
-  - 在 app 启动处（`health::start_timer` 被调用的同一位置）调用 `live::start(cx)`。
+- Modify:
+  - `desktop/src/app.rs`：
+    - `AppModel` 增加 `pub live: LiveDisplay` 和 `live_schedule: LiveSchedule`。
+    - 声明 `mod live;`，并 `pub use live::start as start_live_timer;`。
+  - `desktop/src/main.rs:63`：在 `app::start_health_timer(cx);` 之后调用 `app::start_live_timer(cx);`。
 
 **Interfaces:**
-- Consumes: `LiveSchedule`、`LiveDisplay`、`live::parse`、`transport::spawn`，discovery 和 token 的取法与 `app/refresh.rs::summary_request` 相同，以及 `super::rediscover`。
+- Consumes: `LiveSchedule`、`LiveDisplay`、`live::parse`、`transport::spawn`、`refresh::rediscovers_after`、`super::check_health`、`super::rediscover`；discovery 和 token 的取法与 `app/refresh.rs::summary_request` 相同。
 - Produces: `pub fn start(cx: &mut App)`，与 `health::start_timer` 同构，是一个 detached 循环，每 1 s 执行一拍：
-  1. 由 `model.prefs.tray_metrics` 和 `model.instance` 组成 `LiveKey`；`eligible = model.health.state() == HealthState::Up && 有 reachable 的 control_url && 有 token`。
-  2. 如果 `due(...)` 为 true，就 spawn 一个 `GET /dashboard/api/desktop-live`。结果按以下方式处理，最后都调用 `finished()` 和 `crate::tray::sync(cx)`：
-     - 200：`accept`。
-     - 401：如果 `unauthorized()` 返回 true，调用 `super::rediscover(cx)`。
-     - 其他错误：`fail`。
-  3. 如果 `eligible` 为 false，且显示的不是 `Unavailable`，就调用 `crate::tray::sync(cx)`，让菜单栏立即反映服务停止。
+  1. 取 `epoch = model.instance_epoch`。如果 `model.live` 记录的 epoch 与它不同，就调用 `set_epoch(epoch)`。
+  2. 用 `LiveKey { metrics: prefs.tray_metrics.clone(), epoch }` 判断 `due(now, &key, eligible)`，其中 `eligible = model.health.state() == HealthState::Up && 有 reachable 的 control_url && 有 token`。
+  3. 如果 `due(...)` 为 true，就 spawn 一个 `GET /dashboard/api/desktop-live`，请求带上发出时的 `epoch`。结果按以下方式处理，最后都调用 `finished()` 和 `crate::tray::sync(cx)`：
+     - 200：`accept(epoch, …)`。
+     - 401：如果 `unauthorized(epoch)` 返回 true，调用 `super::rediscover(cx)`。
+     - `HttpError::Connect` 或 `UntrustedListener`：`fail(epoch)`。另外，只要 `rediscovers_after(&error, model.gone_rediscovered_at, now)` 为真，就记下时间，再调用 `super::check_health(cx)` 和 `super::rediscover(cx)`。这和 summary 轮询发现服务消失时的处理方式相同，有 5 s 节流。
+     - 其他错误：`fail(epoch)`。
+  4. 如果 `eligible` 为 false，且显示的不是 `Unavailable`，就调用 `crate::tray::sync(cx)`，让菜单栏立即反映服务停止。
 
-  这样不需要在健康状态、实例、Stop/Start、面板开关、偏好修改这些地方逐一接线，下一拍会自动按最新状态拉取。
+  有了这个循环，健康状态变化、实例替换、Stop/Start、面板开关、偏好修改都不需要单独接线，下一拍会自动按最新状态拉取；旧实例的迟到响应会被 epoch 挡掉。
+
+  **服务停止的检测时限**：
+  - 选了 1 s 指标时，连接失败会立刻触发健康检查（节流 5 s），健康检查需要连续两次失败才判定 Down。所以菜单栏约 1 s 后变暗，约 5–10 s 后文字消失。
+  - 只选今日类指标时，每 15 s 才拉一次，最长约 30 s 后文字消失。
+  - 不改动健康检查本身的 60 s 周期。
 
 - [ ] **Step 1: 实现**：规则已由 Task 9 的纯函数测试覆盖，这里只写胶水代码。
 - [ ] **Step 2: 验证**：`cargo test --manifest-path desktop/Cargo.toml` 全绿；`cargo clippy --manifest-path desktop/Cargo.toml -- -D warnings` 无告警。
@@ -448,7 +470,7 @@
       pub struct Shown {
           state: TrayState,
           color: [u8; 3],
-          lines: Vec<String>,
+          lines: Vec<MetricText>, // 比较与渲染共用同一份数据;Unavailable 时 value 为 "—"
           show_icon: bool,
           dimmed: bool,
       }
@@ -486,7 +508,8 @@
   - 切换 Labels：`TOK 1.23M` 与 `1.23M tok` 互换。
   - 关掉 Show Icon：只剩文字。
   - 亮色和暗色菜单栏下都能看清。
-  - `aiop stop`：1–2 s 内变暗、文字消失；`aiop start` 后自动恢复。
+  - 勾选 tok/s 时执行 `aiop stop`：约 1 s 后变暗，约 10 s 内文字消失；`aiop start` 后自动恢复。
+  - 在面板打开期间执行 `aiop restart` 替换实例：旧实例的数字不会闪回。
   - 关闭面板后数字照常更新。
   - 重启 app 后偏好保留。
 - [ ] **Step 6: 提交**：`feat(desktop): render metrics into the menu bar icon`
