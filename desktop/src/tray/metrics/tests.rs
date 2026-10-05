@@ -52,6 +52,43 @@ fn formats_rate_cost_and_requests_in_both_styles() {
 }
 
 #[test]
+fn token_rounding_promotes_precision_and_units_in_both_styles() {
+    for (tokens, value) in [
+        (9_994, "9.99K"),
+        (9_995, "10.0K"),
+        (99_949, "99.9K"),
+        (99_950, "100K"),
+        (999_499, "999K"),
+        (999_950, "1.00M"),
+        (999_999, "1.00M"),
+        (999_499_999, "999M"),
+        (999_950_000, "1.00B"),
+    ] {
+        let mut live = live();
+        live.today_tokens = tokens;
+        text(TrayMetric::TodayTokens, &live, "TOK", value, "tok");
+    }
+}
+
+#[test]
+fn rate_rounding_promotes_to_integer_precision_in_both_styles() {
+    for (rate, value) in [(99.94, "99.9"), (99.95, "100")] {
+        let mut live = live();
+        live.output_tokens_per_second = rate;
+        text(TrayMetric::TokensPerSecond, &live, "TPS", value, "tok/s");
+    }
+}
+
+#[test]
+fn cost_rounding_promotes_to_integer_precision_in_both_styles() {
+    for (nano, value) in [(99_994_999_999, "99.99"), (99_995_000_000, "100")] {
+        let mut live = live();
+        live.today_cost_nano_usd = nano;
+        text(TrayMetric::TodayCost, &live, "USD", value, "");
+    }
+}
+
+#[test]
 fn chooses_poll_interval_for_selected_metrics() {
     assert_eq!(poll_interval(&[]), None);
     assert_eq!(poll_interval(&[TrayMetric::TodayTokens]), Some(Duration::from_secs(15)));

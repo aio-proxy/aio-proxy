@@ -17,17 +17,14 @@ pub fn format_metric(metric: TrayMetric, live: &DesktopLive, style: LabelStyle) 
         TrayMetric::TodayTokens => ("TOK", tokens(live.today_tokens), "tok"),
         TrayMetric::TokensPerSecond => {
             let rate = live.output_tokens_per_second;
-            let value = if rate < 100.0 {
-                format!("{:.1}", (rate * 10.0).round() / 10.0)
-            } else {
-                format!("{:.0}", rate.round())
-            };
+            let tenths = (rate * 10.0).round() / 10.0;
+            let value = if tenths < 100.0 { format!("{tenths:.1}") } else { format!("{:.0}", rate.round()) };
             ("TPS", value, "tok/s")
         }
         TrayMetric::TodayCost => {
             let nano = live.today_cost_nano_usd;
-            let value = if nano < 100_000_000_000 {
-                let cents = rounded(nano, 10_000_000);
+            let cents = rounded(nano, 10_000_000);
+            let value = if cents < 10_000 {
                 format!("{}.{:02}", cents / 100, cents % 100)
             } else {
                 rounded(nano, 1_000_000_000).to_string()
@@ -52,15 +49,29 @@ fn rounded(value: u128, divisor: u128) -> u128 {
 }
 
 fn tokens(value: u128) -> String {
-    for (scale, suffix) in [(1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K")] {
+    const UNITS: [(u128, &str); 3] = [(1_000, "K"), (1_000_000, "M"), (1_000_000_000, "B")];
+    for (index, &(scale, mut suffix)) in UNITS.iter().enumerate().rev() {
         if value >= scale {
-            let decimals = match value / scale {
+            let mut decimals = match value / scale {
                 0..=9 => 2,
                 10..=99 => 1,
                 _ => 0,
             };
-            let factor = 10_u128.pow(decimals);
-            let amount = rounded(value, scale / factor);
+            let mut factor = 10_u128.pow(decimals);
+            let mut amount = rounded(value, scale / factor);
+            // A rounding carry changes the display tier, even before the raw count reaches it.
+            if amount == 1_000 {
+                if decimals > 0 {
+                    amount /= 10;
+                    decimals -= 1;
+                    factor /= 10;
+                } else if let Some((_, next_suffix)) = UNITS.get(index + 1) {
+                    amount = 100;
+                    decimals = 2;
+                    factor = 100;
+                    suffix = next_suffix;
+                }
+            }
             return if decimals == 0 {
                 format!("{amount}{suffix}")
             } else {
