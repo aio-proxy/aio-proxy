@@ -80,6 +80,10 @@ export function feedAction(previous: readonly AppcastItem[], version: string): F
     : { kind: 'publish' };
 }
 
+/** Whether `version` may hold the unversioned website download: nothing in the feed is newer. */
+export const ownsLatestDownload = (previous: readonly AppcastItem[], version: string): boolean =>
+  previous.every((item) => Bun.semver.order(item.version, version) <= 0);
+
 export type ExpectedItem = { readonly version: string; readonly url: string; readonly length: number };
 
 export function itemProblems(item: AppcastItem, { version, url, length }: ExpectedItem): string[] {

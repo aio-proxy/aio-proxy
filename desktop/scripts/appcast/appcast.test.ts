@@ -5,6 +5,7 @@ import {
   feedAction,
   feedProblems,
   feedState,
+  ownsLatestDownload,
   parseAppcast,
   publicKeyFromPrivate,
   verifyEdSignature,
@@ -93,6 +94,20 @@ describe('feedAction', () => {
 
   test('resuming an older tag after a newer release does not add it', () => {
     expect(feedAction(previous, '0.36.5')).toEqual({ kind: 'superseded', newest: '0.37.0' });
+  });
+});
+
+describe('ownsLatestDownload', () => {
+  const previous = [item('0.37.0'), item('0.36.0')];
+
+  test('a new newest version and a resumed newest version replace the download', () => {
+    expect(ownsLatestDownload(previous, '0.38.0')).toBe(true);
+    expect(ownsLatestDownload(previous, '0.37.0')).toBe(true);
+  });
+
+  test('resuming an older tag never downgrades the download', () => {
+    expect(ownsLatestDownload(previous, '0.36.0')).toBe(false);
+    expect(ownsLatestDownload(previous, '0.36.5')).toBe(false);
   });
 });
 

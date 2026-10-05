@@ -1,5 +1,27 @@
 # @aio-proxy/cli
 
+## 0.40.0
+
+### Minor Changes
+
+- [#481](https://github.com/aio-proxy/aio-proxy/pull/481) [`0a41886`](https://github.com/aio-proxy/aio-proxy/commit/0a4188627a2bd86a56da5a73e07e41ab10a9b790) Thanks @baranwang - The AIO Proxy desktop app is now available for Linux (AppImage, x86_64 and arm64) and Windows (x64 installer), with a tray menu, launch at login, the `aiop` command and signed in-app updates. The CLI now ships for Windows, where `aio-proxy service` is backed by a per-user scheduled task. On Linux and Windows, a service you stopped or uninstalled now stays stopped, and installing the Linux service without a systemd user session now says so instead of failing with an internal error.
+
+### Patch Changes
+
+- [#481](https://github.com/aio-proxy/aio-proxy/pull/481) [`0a41886`](https://github.com/aio-proxy/aio-proxy/commit/0a4188627a2bd86a56da5a73e07e41ab10a9b790) Thanks @baranwang - The desktop app starts the proxy faster. Its service check no longer waits about 2 seconds after it has its answer whenever the proxy is running, runs alongside the app's startup checks instead of after them, and an automatic install or start skips two redundant service checks.
+- Updated dependencies [[`6c3a88e`](https://github.com/aio-proxy/aio-proxy/commit/6c3a88ebd254397c4aa4ec3bc4d89b3ba8267445), [`0a41886`](https://github.com/aio-proxy/aio-proxy/commit/0a4188627a2bd86a56da5a73e07e41ab10a9b790)]:
+  - @aio-proxy/server@0.40.0
+  - @aio-proxy/core@0.40.0
+  - @aio-proxy/i18n@0.40.0
+  - @aio-proxy/dashboard@0.40.0
+  - @aio-proxy/opencode-provider@0.40.0
+  - @aio-proxy/pi-provider@0.40.0
+  - @aio-proxy/agent-provider-runtime@0.40.0
+  - @aio-proxy/logger@0.40.0
+  - @aio-proxy/plugin-sdk@0.40.0
+  - @aio-proxy/shared@0.40.0
+  - @aio-proxy/types@0.40.0
+
 ## 0.39.1
 
 ### Patch Changes

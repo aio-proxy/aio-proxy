@@ -1,5 +1,30 @@
 # @aio-proxy/core
 
+## 0.40.0
+
+### Minor Changes
+
+- [#481](https://github.com/aio-proxy/aio-proxy/pull/481) [`0a41886`](https://github.com/aio-proxy/aio-proxy/commit/0a4188627a2bd86a56da5a73e07e41ab10a9b790) Thanks @baranwang - The AIO Proxy desktop app is now available for Linux (AppImage, x86_64 and arm64) and Windows (x64 installer), with a tray menu, launch at login, the `aiop` command and signed in-app updates. The CLI now ships for Windows, where `aio-proxy service` is backed by a per-user scheduled task. On Linux and Windows, a service you stopped or uninstalled now stays stopped, and installing the Linux service without a systemd user session now says so instead of failing with an internal error.
+
+### Patch Changes
+
+- Updated dependencies [[`0a41886`](https://github.com/aio-proxy/aio-proxy/commit/0a4188627a2bd86a56da5a73e07e41ab10a9b790)]:
+  - @aio-proxy/i18n@0.40.0
+  - @aio-proxy/logger@0.40.0
+  - @aio-proxy/plugin-sdk@0.40.0
+  - @aio-proxy/plugin-claude-code@0.40.0
+  - @aio-proxy/plugin-cursor@0.40.0
+  - @aio-proxy/plugin-github-copilot@0.40.0
+  - @aio-proxy/plugin-google-antigravity@0.40.0
+  - @aio-proxy/plugin-kimi-code@0.40.0
+  - @aio-proxy/plugin-muse-code@0.40.0
+  - @aio-proxy/plugin-openai-chatgpt@0.40.0
+  - @aio-proxy/plugin-opencode-go@0.40.0
+  - @aio-proxy/plugin-openrouter@0.40.0
+  - @aio-proxy/plugin-xai-grok@0.40.0
+  - @aio-proxy/shared@0.40.0
+  - @aio-proxy/types@0.40.0
+
 ## 0.39.1
 
 ### Patch Changes

@@ -4,9 +4,10 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import { codePointLength } from '../live-metrics';
 import { assertNever, nonEmptyString } from './shared';
 
-// Whether one parsed SSE event carries generated content (text or reasoning),
-// aligned with the streaming path's text-delta/reasoning-delta TTFT trigger.
-// Lifecycle/metadata frames (response.created, message_start, ping) return false.
+// Whether one parsed SSE event carries generated content (text, reasoning, or
+// tool-call arguments), aligned with the streaming path's TTFT trigger. Agent
+// turns often emit only a tool call, so excluding arguments left them without
+// TTFT. Lifecycle/metadata frames (response.created, message_start, ping) return false.
 export function hasContentDelta(protocol: ProviderProtocol, eventType: string | undefined, value: unknown): boolean {
   switch (protocol) {
     case ProviderProtocol.OpenAICompatible:
@@ -23,6 +24,7 @@ export function hasContentDelta(protocol: ProviderProtocol, eventType: string | 
       const delta = value['delta'];
       if (!isPlainObject(delta)) return false;
       if (delta['type'] === 'text') return nonEmptyString(delta['text']);
+      if (delta['type'] === 'arguments_delta') return nonEmptyString(delta['arguments']);
       if (delta['type'] === 'thought_summary') {
         const content = delta['content'];
         return isPlainObject(content) && nonEmptyString(content['text']);
@@ -42,13 +44,13 @@ export function hasContentDelta(protocol: ProviderProtocol, eventType: string | 
   }
 }
 
-// Anthropic content_block_delta also carries tool-argument (input_json_delta)
-// and signature (signature_delta) frames; only text/thinking deltas are
-// generated content, matching the streaming path's TTFT trigger.
+// signature_delta frames are not generated content. Tool input often opens with
+// an empty partial_json frame, which does not count either.
 function anthropicContent(value: unknown): boolean {
   if (!isPlainObject(value) || value['type'] !== 'content_block_delta') return false;
   const delta = value['delta'];
   if (!isPlainObject(delta)) return false;
+  if (delta['type'] === 'input_json_delta') return nonEmptyString(delta['partial_json']);
   return delta['type'] === 'text_delta' || delta['type'] === 'thinking_delta';
 }
 
@@ -62,13 +64,22 @@ function openAICompatibleContent(value: unknown): boolean {
     return (
       nonEmptyString(delta['content']) ||
       nonEmptyString(delta['reasoning_content']) ||
-      nonEmptyString(delta['reasoning'])
+      nonEmptyString(delta['reasoning']) ||
+      // The opener frame carries id/name with empty arguments; wait for real output.
+      (Array.isArray(delta['tool_calls']) &&
+        delta['tool_calls'].some(
+          (call) =>
+            isPlainObject(call) && isPlainObject(call['function']) && nonEmptyString(call['function']['arguments']),
+        ))
     );
   });
 }
 
 function openAIResponsesContent(eventType: string | undefined, value: unknown): boolean {
   const type = eventType ?? (isPlainObject(value) ? value['type'] : undefined);
+  if (type === 'response.function_call_arguments.delta' || type === 'response.custom_tool_call_input.delta') {
+    return isPlainObject(value) && nonEmptyString(value['delta']);
+  }
   return (
     type === 'response.output_text.delta' ||
     type === 'response.reasoning_text.delta' ||
@@ -76,19 +87,57 @@ function openAIResponsesContent(eventType: string | undefined, value: unknown): 
   );
 }
 
-// Some Responses relays buffer the whole message or reasoning item and emit
-// it on output_item.done with no preceding *.delta frames. Use only when no
-// incremental content has been seen, so customary done-after-delta frames do
-// not invent a content gap. Empty shells and tool items still do not count.
-export function hasTtftFallbackContent(
+// Used only when no incremental content has been seen, so customary
+// done-after-delta frames do not invent a content gap. Covers outputs that
+// stream no deltas: Responses relays that buffer a whole item onto
+// output_item.done, and zero-argument tool calls, which only ever emit an
+// empty opener before the frame that completes the call. Empty shells and
+// hosted tool items (web search, image generation) do not count.
+//
+// Stateful per stream: an Interactions step.stop does not name its step type,
+// so function_call step indices are remembered from step.start.
+export function createTtftFallbackDetector(
+  protocol: ProviderProtocol,
+): (eventType: string | undefined, value: unknown) => boolean {
+  const functionCallSteps = new Set<unknown>();
+  return (eventType, value) => {
+    if (!isPlainObject(value)) return false;
+    if (protocol === ProviderProtocol.GeminiInteractions) {
+      const type = eventType ?? value['event_type'];
+      const step = value['step'];
+      if (type === 'step.start' && isPlainObject(step) && step['type'] === 'function_call') {
+        functionCallSteps.add(value['index']);
+      }
+      return type === 'step.stop' && functionCallSteps.has(value['index']);
+    }
+    return hasTtftFallbackContent(protocol, eventType, value);
+  };
+}
+
+function hasTtftFallbackContent(
   protocol: ProviderProtocol,
   eventType: string | undefined,
-  value: unknown,
+  value: Record<string, unknown>,
 ): boolean {
-  if (protocol !== ProviderProtocol.OpenAIResponse) return false;
-  const type = eventType ?? (isPlainObject(value) ? value['type'] : undefined);
-  if (type !== 'response.output_item.done' || !isPlainObject(value)) return false;
-  return openAIResponsesItemHasGeneratedText(value['item']);
+  switch (protocol) {
+    case ProviderProtocol.OpenAIResponse: {
+      const type = eventType ?? value['type'];
+      return type === 'response.output_item.done' && openAIResponsesItemHasGeneratedText(value['item']);
+    }
+    case ProviderProtocol.OpenAICompatible:
+      return (
+        Array.isArray(value['choices']) &&
+        value['choices'].some((choice) => isPlainObject(choice) && choice['finish_reason'] === 'tool_calls')
+      );
+    case ProviderProtocol.Anthropic:
+      return (
+        value['type'] === 'message_delta' &&
+        isPlainObject(value['delta']) &&
+        value['delta']['stop_reason'] === 'tool_use'
+      );
+    default:
+      return false;
+  }
 }
 
 function openAIResponsesItemHasGeneratedText(item: unknown): boolean {
@@ -98,6 +147,8 @@ function openAIResponsesItemHasGeneratedText(item: unknown): boolean {
   if (type === 'reasoning') {
     return partsHaveNonEmptyText(item['content']) || partsHaveNonEmptyText(item['summary']);
   }
+  // A completed call is generated output even with empty input (zero-argument tools).
+  if (type === 'function_call' || type === 'custom_tool_call') return true;
   return false;
 }
 
@@ -116,7 +167,9 @@ function geminiContent(value: unknown): boolean {
     ) {
       return false;
     }
-    return candidate['content']['parts'].some((part) => isPlainObject(part) && nonEmptyString(part['text']));
+    return candidate['content']['parts'].some(
+      (part) => isPlainObject(part) && (nonEmptyString(part['text']) || isPlainObject(part['functionCall'])),
+    );
   });
 }
 
