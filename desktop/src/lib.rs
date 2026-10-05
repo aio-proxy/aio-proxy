@@ -7,6 +7,7 @@ pub mod cli_command;
 pub mod client;
 pub mod connect;
 pub mod install;
+pub mod live;
 pub mod log;
 pub mod panel;
 pub mod platform;
