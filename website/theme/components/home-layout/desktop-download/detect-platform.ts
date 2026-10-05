@@ -7,6 +7,8 @@ export function detectPlatform(userAgent: string, maxTouchPoints: number): Deskt
   if (/Android|CrOS/u.test(userAgent)) return undefined;
   if (/Mac/u.test(userAgent)) return maxTouchPoints <= 1 ? 'macos' : undefined;
   if (/Windows/u.test(userAgent)) return 'windows';
-  if (/Linux/u.test(userAgent)) return /aarch64|arm64/u.test(userAgent) ? 'linux-aarch64' : 'linux-x86_64';
-  return undefined;
+  if (!/Linux/u.test(userAgent)) return undefined;
+  if (/aarch64|arm64/u.test(userAgent)) return 'linux-aarch64';
+  // 32-bit x86 and ARM (i686, armv7l) have no build.
+  return /x86_64/u.test(userAgent) ? 'linux-x86_64' : undefined;
 }

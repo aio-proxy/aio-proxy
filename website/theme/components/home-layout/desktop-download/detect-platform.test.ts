@@ -11,6 +11,8 @@ test('offers each desktop build only to the OS that can run it', () => {
     ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36', 0, 'windows'],
     ['Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36', 0, 'linux-x86_64'],
     ['Mozilla/5.0 (X11; Linux aarch64; rv:140.0) Gecko/20100101 Firefox/140.0', 0, 'linux-aarch64'],
+    ['Mozilla/5.0 (X11; Linux i686; rv:140.0) Gecko/20100101 Firefox/140.0', 0, undefined],
+    ['Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 Chrome/140.0 Safari/537.36', 0, undefined],
     ['Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36', 5, undefined],
     ['Mozilla/5.0 (X11; CrOS x86_64 16093.0.0) AppleWebKit/537.36 Chrome/140.0 Safari/537.36', 0, undefined],
   ];
