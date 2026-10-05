@@ -103,10 +103,16 @@ export async function verifiedGet(
     socket.write(
       `GET ${path} HTTP/1.1\r\nHost: ${endpoint(host, port)}\r\nAuthorization: Bearer ${token}\r\nAccept: application/json\r\nConnection: close\r\n\r\n`,
     );
+    // A cleared timer, not `Bun.sleep`: a sleep left pending after the race keeps the process alive
+    // until the deadline, which delayed every `__desktop-connect` against a running proxy by ~2 s.
+    let timer: Timer | undefined;
     const timedOut = await Promise.race([
       closed.then(() => false),
-      Bun.sleep(Math.max(0, deadline - Date.now())).then(() => true),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(resolve, Math.max(0, deadline - Date.now()), true);
+      }),
     ]);
+    clearTimeout(timer);
     if (timedOut) return undefined;
   } finally {
     socket.end();

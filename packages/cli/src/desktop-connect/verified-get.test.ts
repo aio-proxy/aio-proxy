@@ -68,3 +68,30 @@ test.skipIf(process.platform !== 'darwin' && process.platform !== 'linux')(
     }
   },
 );
+
+test.skipIf(process.platform !== 'darwin' && process.platform !== 'linux')(
+  'a finished request leaves no timer holding the process until the deadline',
+  async () => {
+    const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: () => Response.json({}) });
+    try {
+      const uid = process.getuid?.() ?? -1;
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `const { readFile } = await import('node:fs/promises');
+           const { verifiedGet } = await import(${JSON.stringify(`${import.meta.dir}/verified-get.ts`)});
+           const run = async (cmd) => { const p = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'ignore' }); return { stdout: await new Response(p.stdout).text(), code: await p.exited }; };
+           const res = await verifiedGet(process.platform, { run, readFile: (p) => readFile(p, 'utf8') }, '${uid}', '127.0.0.1', '${server.port}', '/x', 't', 10000);
+           if (res?.status !== 200) process.exit(2);`,
+        ],
+        { stdout: 'ignore', stderr: 'inherit' },
+      );
+      const started = Date.now();
+      expect(await child.exited).toBe(0);
+      expect(Date.now() - started).toBeLessThan(5_000);
+    } finally {
+      await server.stop(true);
+    }
+  },
+);
