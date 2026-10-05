@@ -1,4 +1,5 @@
 use super::*;
+use crate::prefs::{LabelStyle, Prefs, TrayMetric};
 
 #[test]
 fn only_a_healthy_proxy_shows_running_or_attention() {
@@ -59,4 +60,93 @@ fn the_tray_guid_follows_the_executable_path_but_not_its_case() {
 fn the_tray_guid_for_a_path_never_changes() {
     // FNV-1a 128 test vector ("a"): a changed hash would orphan every user's pinned icon.
     assert_eq!(tray_guid(std::path::Path::new("a")), 0xd228_cb69_6f1a_8caf_7891_2b70_4e4a_8964);
+}
+
+#[test]
+fn display_commands_round_trip_through_their_native_ids() {
+    let commands = [
+        (MenuCommand::TrayMetric(TrayMetric::TodayTokens), "tray-metric-today-tokens"),
+        (MenuCommand::TrayMetric(TrayMetric::TokensPerSecond), "tray-metric-tokens-per-second"),
+        (MenuCommand::TrayMetric(TrayMetric::TodayCost), "tray-metric-today-cost"),
+        (MenuCommand::TrayMetric(TrayMetric::InFlight), "tray-metric-in-flight"),
+        (MenuCommand::ToggleTrayIcon, "tray-icon"),
+        (MenuCommand::TrayLabels(LabelStyle::Prefix), "tray-labels-prefix"),
+        (MenuCommand::TrayLabels(LabelStyle::Unit), "tray-labels-unit"),
+    ];
+    for (command, id) in commands {
+        assert_eq!(command.id(), id);
+        assert_eq!(MenuCommand::from_id(command.id()), Some(command));
+    }
+}
+
+fn check_state(entries: &[MenuEntry], command: MenuCommand) -> (bool, bool) {
+    entries
+        .iter()
+        .find_map(|entry| match entry {
+            MenuEntry::Check { command: found, checked, enabled, .. } if *found == command => {
+                Some((*checked, *enabled))
+            }
+            _ => None,
+        })
+        .expect("display command is a check item")
+}
+
+#[test]
+fn two_selected_metrics_remain_removable_and_disable_the_unselected_metrics() {
+    let prefs = Prefs { tray_metrics: vec![TrayMetric::TodayTokens, TrayMetric::InFlight], ..Prefs::default() };
+    let entries = display_menu_entries(&prefs);
+    for metric in [TrayMetric::TodayTokens, TrayMetric::InFlight] {
+        assert_eq!(check_state(&entries, MenuCommand::TrayMetric(metric)), (true, true));
+    }
+    for metric in [TrayMetric::TokensPerSecond, TrayMetric::TodayCost] {
+        assert_eq!(check_state(&entries, MenuCommand::TrayMetric(metric)), (false, false));
+    }
+    assert!(entries.iter().all(|entry| matches!(entry, MenuEntry::Check { .. } | MenuEntry::Separator)));
+}
+
+#[test]
+fn fewer_than_two_metrics_allows_adding_another_metric() {
+    for selected in [vec![], vec![TrayMetric::TodayCost]] {
+        let prefs = Prefs { tray_metrics: selected, ..Prefs::default() };
+        let entries = display_menu_entries(&prefs);
+        for metric in
+            [TrayMetric::TodayTokens, TrayMetric::TokensPerSecond, TrayMetric::TodayCost, TrayMetric::InFlight]
+        {
+            assert_eq!(
+                check_state(&entries, MenuCommand::TrayMetric(metric)),
+                (prefs.tray_metrics.contains(&metric), true)
+            );
+        }
+    }
+}
+
+#[test]
+fn no_metrics_forces_the_icon_checked_and_prevents_hiding_it() {
+    let prefs = Prefs { tray_show_icon: false, ..Prefs::default() };
+    assert_eq!(check_state(&display_menu_entries(&prefs), MenuCommand::ToggleTrayIcon), (true, false));
+    let prefs = Prefs { tray_metrics: vec![TrayMetric::TodayTokens], ..prefs };
+    assert_eq!(check_state(&display_menu_entries(&prefs), MenuCommand::ToggleTrayIcon), (false, true));
+}
+
+#[test]
+fn label_style_checks_exactly_the_selected_style() {
+    for style in [LabelStyle::Prefix, LabelStyle::Unit] {
+        let prefs = Prefs { tray_label_style: style, ..Prefs::default() };
+        let entries = display_menu_entries(&prefs);
+        for candidate in [LabelStyle::Prefix, LabelStyle::Unit] {
+            assert_eq!(check_state(&entries, MenuCommand::TrayLabels(candidate)), (candidate == style, true));
+        }
+    }
+}
+
+#[test]
+fn the_panel_menu_never_contains_display_commands() {
+    let home = tempfile::tempdir().unwrap();
+    let mut model = AppModel::new(crate::platform::paths_from(home.path(), |_| None), None);
+    model.prefs.tray_metrics = vec![TrayMetric::TodayTokens, TrayMetric::InFlight];
+    assert!(entries(&model).iter().all(|entry| match entry {
+        MenuEntry::Item { command, .. } | MenuEntry::Check { command, .. } =>
+            !matches!(command, MenuCommand::TrayMetric(_) | MenuCommand::ToggleTrayIcon | MenuCommand::TrayLabels(_)),
+        MenuEntry::Separator => true,
+    }));
 }

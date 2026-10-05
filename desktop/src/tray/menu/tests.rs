@@ -156,7 +156,10 @@ fn ids_round_trip() {
         | MenuCommand::InstallCli
         | MenuCommand::ToggleLogin
         | MenuCommand::CheckForUpdates
-        | MenuCommand::Quit => (),
+        | MenuCommand::Quit
+        | MenuCommand::TrayMetric(_)
+        | MenuCommand::ToggleTrayIcon
+        | MenuCommand::TrayLabels(_) => (),
     };
     for command in [
         MenuCommand::OpenPanel,

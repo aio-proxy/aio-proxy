@@ -3,11 +3,13 @@
 
 use futures::channel::mpsc::UnboundedSender;
 use gpui_kit::{App, Global};
-use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::{CheckMenuItem, IsMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
 use crate::app::{AppEvent, AppModel};
 use crate::client::health::HealthState;
+#[cfg(any(target_os = "macos", test))]
+use crate::prefs::{LabelStyle, MAX_TRAY_METRICS, Prefs, TrayMetric};
 
 mod menu;
 mod metrics;
@@ -111,7 +113,7 @@ pub struct Tray {
     pub icon: TrayIcon,
     /// What the icon currently shows; the color changes with the system theme off macOS.
     shown: Option<(TrayState, [u8; 3])>,
-    entries: Vec<MenuEntry>,
+    entries: (Vec<MenuEntry>, Option<Vec<MenuEntry>>),
 }
 
 impl Global for Tray {}
@@ -173,21 +175,71 @@ fn build(cx: &App, events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
             let _ = events.unbounded_send(AppEvent::Menu(command));
         }
     }));
-    Ok(Tray { icon, shown: Some((TrayState::Down, color)), entries: Vec::new() })
+    Ok(Tray { icon, shown: Some((TrayState::Down, color)), entries: (Vec::new(), None) })
 }
 
-fn native_menu(entries: &[MenuEntry]) -> Menu {
+#[cfg(any(target_os = "macos", test))]
+pub fn display_menu_entries(prefs: &Prefs) -> Vec<MenuEntry> {
+    let mut entries = Vec::new();
+    for (metric, label) in [
+        (TrayMetric::TodayTokens, "Today's Tokens"),
+        (TrayMetric::TokensPerSecond, "Tokens/sec"),
+        (TrayMetric::TodayCost, "Today's Cost"),
+        (TrayMetric::InFlight, "In-flight Requests"),
+    ] {
+        let checked = prefs.tray_metrics.contains(&metric);
+        entries.push(MenuEntry::Check {
+            command: MenuCommand::TrayMetric(metric),
+            label: label.into(),
+            checked,
+            enabled: checked || prefs.tray_metrics.len() < MAX_TRAY_METRICS,
+        });
+    }
+    entries.push(MenuEntry::Separator);
+    entries.push(MenuEntry::Check {
+        command: MenuCommand::ToggleTrayIcon,
+        label: "Show Icon".into(),
+        checked: prefs.shows_icon(),
+        enabled: !prefs.tray_metrics.is_empty(),
+    });
+    entries.push(MenuEntry::Separator);
+    for (style, label) in [(LabelStyle::Prefix, "Labels: Prefix"), (LabelStyle::Unit, "Labels: Unit")] {
+        entries.push(MenuEntry::Check {
+            command: MenuCommand::TrayLabels(style),
+            label: label.into(),
+            checked: prefs.tray_label_style == style,
+            enabled: true,
+        });
+    }
+    entries
+}
+
+fn native_entry(entry: &MenuEntry) -> Box<dyn IsMenuItem> {
+    match entry {
+        MenuEntry::Item { command, label, enabled } => Box::new(MenuItem::with_id(command.id(), label, *enabled, None)),
+        MenuEntry::Check { command, label, checked, enabled } => {
+            Box::new(CheckMenuItem::with_id(command.id(), label, *enabled, *checked, None))
+        }
+        MenuEntry::Separator => Box::new(PredefinedMenuItem::separator()),
+    }
+}
+
+fn native_menu(entries: &[MenuEntry], display: Option<&[MenuEntry]>) -> Menu {
+    #[cfg(not(target_os = "macos"))]
+    let _ = display;
     let menu = Menu::new();
     for entry in entries {
-        let _ = match entry {
-            MenuEntry::Item { command, label, enabled } => {
-                menu.append(&MenuItem::with_id(command.id(), label, *enabled, None))
+        #[cfg(target_os = "macos")]
+        if matches!(entry, MenuEntry::Item { command: MenuCommand::OpenLogs, .. })
+            && let Some(display) = display
+        {
+            let submenu = tray_icon::menu::Submenu::new("Menu Bar Display", true);
+            for child in display {
+                let _ = submenu.append(native_entry(child).as_ref());
             }
-            MenuEntry::Check { command, label, checked, enabled } => {
-                menu.append(&CheckMenuItem::with_id(command.id(), label, *enabled, *checked, None))
-            }
-            MenuEntry::Separator => menu.append(&PredefinedMenuItem::separator()),
-        };
+            let _ = menu.append(&submenu);
+        }
+        let _ = menu.append(native_entry(entry).as_ref());
     }
     menu
 }
@@ -195,7 +247,7 @@ fn native_menu(entries: &[MenuEntry]) -> Menu {
 /// Forces the next `sync` to rebuild the menu, discarding any state muda changed natively.
 pub fn invalidate_menu(cx: &mut App) {
     if cx.try_global::<Tray>().is_some() {
-        cx.global_mut::<Tray>().entries.clear();
+        cx.global_mut::<Tray>().entries = (Vec::new(), None);
     }
 }
 
@@ -243,8 +295,23 @@ pub fn run(cx: &mut App, command: MenuCommand) {
         MenuCommand::InstallCli => crate::app::install_cli(cx),
         MenuCommand::ToggleLogin => crate::app::toggle_login_item(cx),
         MenuCommand::CheckForUpdates => crate::platform::updater::check_now(),
+        MenuCommand::TrayMetric(metric) => cx.global_mut::<AppModel>().prefs.toggle_metric(metric),
+        MenuCommand::ToggleTrayIcon => {
+            let prefs = &mut cx.global_mut::<AppModel>().prefs;
+            prefs.tray_show_icon = !prefs.tray_show_icon;
+        }
+        MenuCommand::TrayLabels(style) => cx.global_mut::<AppModel>().prefs.tray_label_style = style,
         // Quitting leaves the proxy running: launchd owns it.
         MenuCommand::Quit => cx.quit(),
+    }
+    if matches!(command, MenuCommand::TrayMetric(_) | MenuCommand::ToggleTrayIcon | MenuCommand::TrayLabels(_)) {
+        let model = cx.global::<AppModel>();
+        let path = crate::prefs::prefs_path(&model.paths);
+        let saved = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| model.prefs.save(&path));
+        if let Err(error) = saved {
+            crate::log::info(format!("cannot save preferences to {}: {error}", path.display()));
+        }
+        sync(cx);
     }
 }
 
@@ -260,6 +327,11 @@ pub fn sync(cx: &mut App) {
         entries
             .insert(0, MenuEntry::Item { command: MenuCommand::OpenPanel, label: "Open Panel".into(), enabled: true });
     }
+    #[cfg(target_os = "macos")]
+    let display = Some(display_menu_entries(&model.prefs));
+    #[cfg(not(target_os = "macos"))]
+    let display = None;
+    let entries = (entries, display);
     let shown = (state, crate::platform::tray_color(cx));
     let Some(tray) = cx.try_global::<Tray>() else {
         return;
@@ -275,7 +347,7 @@ pub fn sync(cx: &mut App) {
     if cx.global::<Tray>().entries != entries {
         // tray-icon attaches the menu only while presenting it, so swapping it at any time is safe.
         let tray = cx.global_mut::<Tray>();
-        tray.icon.set_menu(Some(Box::new(native_menu(&entries))));
+        tray.icon.set_menu(Some(Box::new(native_menu(&entries.0, entries.1.as_deref()))));
         tray.entries = entries;
     }
 }
