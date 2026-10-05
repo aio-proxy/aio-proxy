@@ -26,7 +26,7 @@ export function DesktopDownload({ className, fallback }: { readonly className: s
 
   const { label, note } = copy.hero.downloads[platform];
   return (
-    <div className="flex flex-col items-center gap-1.5">
+    <div className="flex flex-col items-start gap-1.5">
       <a
         href={`https://github.com/aio-proxy/aio-proxy/releases/download/desktop-feed/${files[platform]}`}
         className={className}
