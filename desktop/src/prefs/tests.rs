@@ -77,3 +77,15 @@ fn empty_metrics_keep_icon_visible() {
     prefs.tray_show_icon = true;
     assert!(prefs.shows_icon());
 }
+
+#[test]
+fn duplicate_metrics_keep_the_first_occurrence_before_applying_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("preferences.json");
+    fs::write(
+        &path,
+        r#"{"trayMetrics":["todayTokens","todayTokens","inFlight"],"trayShowIcon":true,"trayLabelStyle":"unit"}"#,
+    )
+    .unwrap();
+    assert_eq!(Prefs::load(&path).tray_metrics, vec![TrayMetric::TodayTokens, TrayMetric::InFlight]);
+}

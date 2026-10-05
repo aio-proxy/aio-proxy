@@ -14,7 +14,9 @@ const CALIBRATION_ALPHA = 0.3;
 const MAX_CALIBRATED_MODELS = 256;
 
 export function codePointLength(text: string): number {
-  return Array.from(text).length;
+  let length = 0;
+  for (const _codePoint of text) length += 1;
+  return length;
 }
 
 export const liveModelKey = (providerId: string, modelId: string) => `${providerId}/${modelId}`;

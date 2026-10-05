@@ -55,22 +55,33 @@ impl Prefs {
         let stored =
             fs::read(path).and_then(|bytes| serde_json::from_slice::<StoredPrefs>(&bytes).map_err(io::Error::other));
         match stored {
-            Ok(stored) => Self {
-                tray_metrics: stored
-                    .tray_metrics
-                    .iter()
-                    .filter_map(|id| match id.as_str() {
-                        "todayTokens" => Some(TrayMetric::TodayTokens),
-                        "tokensPerSecond" => Some(TrayMetric::TokensPerSecond),
-                        "todayCost" => Some(TrayMetric::TodayCost),
-                        "inFlight" => Some(TrayMetric::InFlight),
-                        _ => None,
-                    })
-                    .take(MAX_TRAY_METRICS)
-                    .collect(),
-                tray_show_icon: stored.tray_show_icon,
-                tray_label_style: stored.tray_label_style,
-            },
+            Ok(stored) => {
+                let mut seen = Vec::new();
+                Self {
+                    tray_metrics: stored
+                        .tray_metrics
+                        .iter()
+                        .filter_map(|id| match id.as_str() {
+                            "todayTokens" => Some(TrayMetric::TodayTokens),
+                            "tokensPerSecond" => Some(TrayMetric::TokensPerSecond),
+                            "todayCost" => Some(TrayMetric::TodayCost),
+                            "inFlight" => Some(TrayMetric::InFlight),
+                            _ => None,
+                        })
+                        .filter(|metric| {
+                            if seen.contains(metric) {
+                                false
+                            } else {
+                                seen.push(*metric);
+                                true
+                            }
+                        })
+                        .take(MAX_TRAY_METRICS)
+                        .collect(),
+                    tray_show_icon: stored.tray_show_icon,
+                    tray_label_style: stored.tray_label_style,
+                }
+            }
             Err(error) => {
                 crate::log::info(format!("cannot load preferences from {}: {error}; using defaults", path.display()));
                 Self::default()

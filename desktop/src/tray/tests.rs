@@ -95,6 +95,25 @@ fn check_state(entries: &[MenuEntry], command: MenuCommand) -> (bool, bool) {
 fn two_selected_metrics_remain_removable_and_disable_the_unselected_metrics() {
     let prefs = Prefs { tray_metrics: vec![TrayMetric::TodayTokens, TrayMetric::InFlight], ..Prefs::default() };
     let entries = display_menu_entries(&prefs);
+    let labels: Vec<_> = entries
+        .iter()
+        .filter_map(|entry| match entry {
+            MenuEntry::Check { label, .. } => Some(label.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        labels,
+        [
+            "Today Tokens",
+            "Tokens per Second",
+            "Today Cost",
+            "Requests in Flight",
+            "Show Icon",
+            "Labels: Prefix",
+            "Labels: Unit"
+        ]
+    );
     for metric in [TrayMetric::TodayTokens, TrayMetric::InFlight] {
         assert_eq!(check_state(&entries, MenuCommand::TrayMetric(metric)), (true, true));
     }
@@ -149,92 +168,4 @@ fn the_panel_menu_never_contains_display_commands() {
             !matches!(command, MenuCommand::TrayMetric(_) | MenuCommand::ToggleTrayIcon | MenuCommand::TrayLabels(_)),
         MenuEntry::Separator => true,
     }));
-}
-
-fn metric_model() -> (tempfile::TempDir, AppModel) {
-    let home = tempfile::tempdir().unwrap();
-    let mut model = AppModel::new(crate::platform::paths_from(home.path(), |_| None), None);
-    model.health.mark_up();
-    model.discovery = Some(crate::connect::discovery::fixture::discovery(|_| {}));
-    model.prefs.tray_metrics = vec![TrayMetric::TodayTokens, TrayMetric::TokensPerSecond];
-    model.live.accept(0, metric_sample());
-    (home, model)
-}
-
-fn metric_sample() -> crate::live::DesktopLive {
-    crate::live::DesktopLive {
-        today_tokens: 1_234_567,
-        today_cost_nano_usd: 3_410_000_000,
-        in_flight: 2,
-        output_tokens_per_second: 48.25,
-    }
-}
-
-#[test]
-fn shown_redraws_on_fresh_to_stale_and_stale_to_fresh_without_value_changes() {
-    let (_home, mut model) = metric_model();
-    let fresh = shown_for(&model, [0; 3]);
-    assert_eq!(fresh.lines[0].value, "1.23M");
-    assert!(!fresh.dimmed);
-    model.live.fail(0);
-    let stale = shown_for(&model, [0; 3]);
-    assert!(stale.dimmed);
-    assert_ne!(fresh, stale);
-    assert_eq!(stale, Shown { dimmed: true, ..fresh.clone() });
-    model.live.accept(0, metric_sample());
-    let recovered = shown_for(&model, [0; 3]);
-    assert_ne!(stale, recovered);
-    assert_eq!(fresh, recovered);
-}
-
-#[test]
-fn shown_hides_metrics_and_dims_the_icon_when_down() {
-    let (_home, mut model) = metric_model();
-    model.health.mark_down();
-    let shown = shown_for(&model, [0; 3]);
-    assert!(shown.lines.is_empty());
-    assert!(shown.dimmed);
-    assert!(shown.show_icon);
-    assert_eq!(shown.state, TrayState::Down);
-}
-
-#[test]
-fn shown_hides_metrics_when_discovery_is_unreachable_even_if_health_is_up() {
-    let (_home, mut model) = metric_model();
-    model.discovery.as_mut().unwrap().instance.reachable = false;
-    assert_eq!(model.health.state(), HealthState::Up);
-    let shown = shown_for(&model, [0; 3]);
-    assert!(shown.lines.is_empty());
-    assert!(shown.dimmed);
-    assert_eq!(shown.state, TrayState::Down);
-}
-
-#[test]
-fn shown_hides_metrics_without_discovery() {
-    let (_home, mut model) = metric_model();
-    model.discovery = None;
-    let shown = shown_for(&model, [0; 3]);
-    assert!(shown.lines.is_empty());
-    assert!(shown.dimmed);
-}
-
-#[test]
-fn shown_replaces_every_value_after_three_failures() {
-    let (_home, mut model) = metric_model();
-    for _ in 0..3 {
-        model.live.fail(0);
-    }
-    let shown = shown_for(&model, [0; 3]);
-    assert_eq!(shown.lines.len(), 2);
-    assert!(shown.lines.iter().all(|line| line.value == "—"));
-}
-
-#[test]
-fn shown_never_restores_old_instance_values_before_the_next_live_tick() {
-    let (_home, mut model) = metric_model();
-    assert!(shown_for(&model, [0; 3]).lines.iter().all(|line| line.value != "—"));
-    model.instance_epoch += 1;
-    let shown = shown_for(&model, [0; 3]);
-    assert_eq!(shown.lines.len(), 2);
-    assert!(shown.lines.iter().all(|line| line.value == "—"));
 }

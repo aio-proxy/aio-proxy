@@ -111,53 +111,6 @@ pub fn tray_guid(exe: &std::path::Path) -> u128 {
         .fold(OFFSET, |hash, byte| (hash ^ u128::from(byte)).wrapping_mul(PRIME))
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub struct Shown {
-    state: TrayState,
-    color: [u8; 3],
-    lines: Vec<MetricText>,
-    show_icon: bool,
-    dimmed: bool,
-}
-
-#[cfg(any(target_os = "macos", test))]
-pub fn shown_for(model: &AppModel, color: [u8; 3]) -> Shown {
-    let stopped = model.health.state() == HealthState::Down
-        || model.discovery.as_ref().is_none_or(|discovery| !discovery.instance.reachable);
-    let state = if stopped { TrayState::Down } else { tray_state(model.health.state(), model.needs_attention()) };
-    let view = if model.live.epoch() == model.instance_epoch { model.live.view() } else { LiveView::Unavailable };
-    let dimmed = stopped || matches!(view, LiveView::Stale(_));
-    let lines = if stopped {
-        Vec::new()
-    } else {
-        model
-            .prefs
-            .tray_metrics
-            .iter()
-            .map(|&metric| match view {
-                LiveView::Fresh(live) | LiveView::Stale(live) => {
-                    format_metric(metric, live, model.prefs.tray_label_style)
-                }
-                LiveView::Unavailable => {
-                    let mut text = format_metric(
-                        metric,
-                        &crate::live::DesktopLive {
-                            today_tokens: 0,
-                            today_cost_nano_usd: 0,
-                            in_flight: 0,
-                            output_tokens_per_second: 0.0,
-                        },
-                        model.prefs.tray_label_style,
-                    );
-                    text.value = "—".into();
-                    text
-                }
-            })
-            .collect()
-    };
-    Shown { state, color, lines, show_icon: stopped || model.prefs.shows_icon(), dimmed }
-}
-
 pub struct Tray {
     pub icon: TrayIcon,
     /// What the icon currently shows; the color changes with the system theme off macOS.
@@ -235,10 +188,10 @@ fn build(cx: &App, events: UnboundedSender<AppEvent>) -> Result<Tray, String> {
 pub fn display_menu_entries(prefs: &Prefs) -> Vec<MenuEntry> {
     let mut entries = Vec::new();
     for (metric, label) in [
-        (TrayMetric::TodayTokens, "Today's Tokens"),
-        (TrayMetric::TokensPerSecond, "Tokens/sec"),
-        (TrayMetric::TodayCost, "Today's Cost"),
-        (TrayMetric::InFlight, "In-flight Requests"),
+        (TrayMetric::TodayTokens, "Today Tokens"),
+        (TrayMetric::TokensPerSecond, "Tokens per Second"),
+        (TrayMetric::TodayCost, "Today Cost"),
+        (TrayMetric::InFlight, "Requests in Flight"),
     ] {
         let checked = prefs.tray_metrics.contains(&metric);
         entries.push(MenuEntry::Check {
@@ -364,6 +317,8 @@ pub fn run(cx: &mut App, command: MenuCommand) {
         if let Err(error) = saved {
             crate::log::info(format!("cannot save preferences to {}: {error}", path.display()));
         }
+        // muda toggles check items before dispatch, even when the selected label style is unchanged.
+        invalidate_menu(cx);
         sync(cx);
     }
 }

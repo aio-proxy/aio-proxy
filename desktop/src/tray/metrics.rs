@@ -2,8 +2,63 @@
 
 use std::time::{Duration, Instant};
 
+use super::TrayState;
+#[cfg(any(target_os = "macos", test))]
+use super::tray_state;
+#[cfg(any(target_os = "macos", test))]
+use crate::app::AppModel;
+#[cfg(any(target_os = "macos", test))]
+use crate::client::health::HealthState;
+
 use crate::live::DesktopLive;
 use crate::prefs::{LabelStyle, TrayMetric};
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Shown {
+    pub(super) state: TrayState,
+    pub(super) color: [u8; 3],
+    pub(super) lines: Vec<MetricText>,
+    pub(super) show_icon: bool,
+    pub(super) dimmed: bool,
+}
+
+#[cfg(any(target_os = "macos", test))]
+pub fn shown_for(model: &AppModel, color: [u8; 3]) -> Shown {
+    let stopped = model.health.state() == HealthState::Down
+        || model.discovery.as_ref().is_none_or(|discovery| !discovery.instance.reachable);
+    let state = if stopped { TrayState::Down } else { tray_state(model.health.state(), model.needs_attention()) };
+    let view = if model.live.epoch() == model.instance_epoch { model.live.view() } else { LiveView::Unavailable };
+    let dimmed = stopped || matches!(view, LiveView::Stale(_));
+    let lines = if stopped {
+        Vec::new()
+    } else {
+        model
+            .prefs
+            .tray_metrics
+            .iter()
+            .map(|&metric| match view {
+                LiveView::Fresh(live) | LiveView::Stale(live) => {
+                    format_metric(metric, live, model.prefs.tray_label_style)
+                }
+                LiveView::Unavailable => {
+                    let mut text = format_metric(
+                        metric,
+                        &crate::live::DesktopLive {
+                            today_tokens: 0,
+                            today_cost_nano_usd: 0,
+                            in_flight: 0,
+                            output_tokens_per_second: 0.0,
+                        },
+                        model.prefs.tray_label_style,
+                    );
+                    text.value = "—".into();
+                    text
+                }
+            })
+            .collect()
+    };
+    Shown { state, color, lines, show_icon: stopped || model.prefs.shows_icon(), dimmed }
+}
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MetricText {

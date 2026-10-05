@@ -1,4 +1,6 @@
 use super::*;
+use crate::app::AppModel;
+use crate::client::health::HealthState;
 use crate::live::DesktopLive;
 use crate::prefs::{LabelStyle, TrayMetric};
 use std::time::{Duration, Instant};
@@ -220,4 +222,92 @@ fn rediscovery_requires_unreachable_discovery_and_is_throttled_for_five_seconds(
     }
     assert!(!rediscover_unreachable(true, false, Some(false), None, now));
     assert!(!rediscover_unreachable(false, true, Some(false), None, now));
+}
+
+fn metric_model() -> (tempfile::TempDir, AppModel) {
+    let home = tempfile::tempdir().unwrap();
+    let mut model = AppModel::new(crate::platform::paths_from(home.path(), |_| None), None);
+    model.health.mark_up();
+    model.discovery = Some(crate::connect::discovery::fixture::discovery(|_| {}));
+    model.prefs.tray_metrics = vec![TrayMetric::TodayTokens, TrayMetric::TokensPerSecond];
+    model.live.accept(0, metric_sample());
+    (home, model)
+}
+
+fn metric_sample() -> crate::live::DesktopLive {
+    crate::live::DesktopLive {
+        today_tokens: 1_234_567,
+        today_cost_nano_usd: 3_410_000_000,
+        in_flight: 2,
+        output_tokens_per_second: 48.25,
+    }
+}
+
+#[test]
+fn shown_redraws_on_fresh_to_stale_and_stale_to_fresh_without_value_changes() {
+    let (_home, mut model) = metric_model();
+    let fresh = shown_for(&model, [0; 3]);
+    assert_eq!(fresh.lines[0].value, "1.23M");
+    assert!(!fresh.dimmed);
+    model.live.fail(0);
+    let stale = shown_for(&model, [0; 3]);
+    assert!(stale.dimmed);
+    assert_ne!(fresh, stale);
+    assert_eq!(stale, Shown { dimmed: true, ..fresh.clone() });
+    model.live.accept(0, metric_sample());
+    let recovered = shown_for(&model, [0; 3]);
+    assert_ne!(stale, recovered);
+    assert_eq!(fresh, recovered);
+}
+
+#[test]
+fn shown_hides_metrics_and_dims_the_icon_when_down() {
+    let (_home, mut model) = metric_model();
+    model.health.mark_down();
+    let shown = shown_for(&model, [0; 3]);
+    assert!(shown.lines.is_empty());
+    assert!(shown.dimmed);
+    assert!(shown.show_icon);
+    assert_eq!(shown.state, TrayState::Down);
+}
+
+#[test]
+fn shown_hides_metrics_when_discovery_is_unreachable_even_if_health_is_up() {
+    let (_home, mut model) = metric_model();
+    model.discovery.as_mut().unwrap().instance.reachable = false;
+    assert_eq!(model.health.state(), HealthState::Up);
+    let shown = shown_for(&model, [0; 3]);
+    assert!(shown.lines.is_empty());
+    assert!(shown.dimmed);
+    assert_eq!(shown.state, TrayState::Down);
+}
+
+#[test]
+fn shown_hides_metrics_without_discovery() {
+    let (_home, mut model) = metric_model();
+    model.discovery = None;
+    let shown = shown_for(&model, [0; 3]);
+    assert!(shown.lines.is_empty());
+    assert!(shown.dimmed);
+}
+
+#[test]
+fn shown_replaces_every_value_after_three_failures() {
+    let (_home, mut model) = metric_model();
+    for _ in 0..3 {
+        model.live.fail(0);
+    }
+    let shown = shown_for(&model, [0; 3]);
+    assert_eq!(shown.lines.len(), 2);
+    assert!(shown.lines.iter().all(|line| line.value == "—"));
+}
+
+#[test]
+fn shown_never_restores_old_instance_values_before_the_next_live_tick() {
+    let (_home, mut model) = metric_model();
+    assert!(shown_for(&model, [0; 3]).lines.iter().all(|line| line.value != "—"));
+    model.instance_epoch += 1;
+    let shown = shown_for(&model, [0; 3]);
+    assert_eq!(shown.lines.len(), 2);
+    assert!(shown.lines.iter().all(|line| line.value == "—"));
 }

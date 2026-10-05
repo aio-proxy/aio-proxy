@@ -73,7 +73,6 @@ export function createRequestTraceRecorder(options: RequestTraceRecorderOptions)
 
   return {
     begin(input) {
-      if (input.operation !== 'token_count') options.liveMetrics?.requestStarted();
       const capturePayload = capturesRequestPayload();
       const current = now();
       if (current.getTime() - lastPrunedAt.getTime() >= PRUNE_INTERVAL_MS) {
@@ -174,6 +173,7 @@ export function createRequestTraceRecorder(options: RequestTraceRecorderOptions)
         }
       };
 
+      if (input.operation !== 'token_count') options.liveMetrics?.requestStarted();
       return {
         requestId,
         traceId,

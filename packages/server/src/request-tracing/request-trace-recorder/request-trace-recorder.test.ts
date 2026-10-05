@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import type { StoredSpan, TraceCompletion, TraceRootStart } from '@aio-proxy/core/db';
 import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
@@ -407,6 +407,22 @@ describe('request trace in-flight metrics', () => {
     await Promise.resolve();
     expect(metrics.count()).toBe(0);
     expect(metrics.calls).toEqual(['started', 'finished']);
+  });
+
+  test('span setup failure does not leak an in-flight request', () => {
+    const metrics = setup();
+    const startSpan = spyOn(getTraceRuntime().tracer, 'startSpan').mockImplementation(() => {
+      throw new Error('span setup failed');
+    });
+    try {
+      expect(() => metrics.recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' })).toThrow(
+        'span setup failed',
+      );
+      expect(metrics.count()).toBe(0);
+      expect(metrics.calls).toEqual([]);
+    } finally {
+      startSpan.mockRestore();
+    }
   });
 
   test('token_count does not affect in-flight metrics', () => {
