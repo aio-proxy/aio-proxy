@@ -34,17 +34,18 @@ macOS 菜单栏除品牌图标外，可常驻显示 1–2 个用户选择的指�
 
 - **输入**：每个内容增量调用 `recordContent(modelKey, chars)`。
   - AI SDK 路径：`stream-capture.ts` 已识别 `text-delta` / `reasoning-delta`，取其文本长度。
-  - 透传路径：把 `passthrough-usage/content.ts` 的 `hasContentDelta(): boolean` 改为 `contentDeltaLength(): number`（0 表示无内容），由 `onContent` 回调把长度带出；TTFT 逻辑改为 `length > 0` 判定，行为不变。
+  - 透传路径：`passthrough-usage/content.ts` 保留 `hasContentDelta()` 作为 TTFT 判定（不变），新增仅供指标用的 `contentDeltaLength(): number`，由 `onContent` 回调把长度带出。
+  - 只有客户端请求了流式（`streamRequested`）的 attempt 才记录；AI SDK 路径对非流式请求也走 `streamCapture`，由 pipeline 显式传入开关。
   - `chars` 按 Unicode code point 计数（`[...text].length` 的语义，但实现用不分配数组的循环）。
   - `modelKey` 为最终 attempt 的 `providerId/modelId`。
 - **分桶**：按秒分桶的环形缓冲，每桶存各 `modelKey` 的字符数；只保留最近 3 个完整秒。
 - **速率**：`tokensPerSecond = Σ_model (chars_model_3s / ratio_model) / 3`。无内容时为 0。
-- **校准**：trace 成功结束且有真实 `outputTokens > 0` 时，用该请求累计字符数更新 `ratio_model = chars / outputTokens` 的 EMA（α = 0.3）。无样本的模型使用默认 4。比例限制在 `0.5..10` 防止异常 usage 污染。仅内存保存，最多保留 256 个模型（超出时淘汰最久未更新者）。
+- **校准**：上游 capture 成功结束且有真实 `outputTokens > 0` 时（不等待向客户端 egress 完成——比例只描述上游字符与 token 的关系，与 egress 成败无关），用该次 attempt 累计字符数更新 `ratio_model = chars / outputTokens` 的 EMA（α = 0.3）。无样本的模型使用默认 4。EMA 结果夹在 `0.5..10` 防止异常 usage 污染。仅内存保存，最多保留 256 个模型（超出时淘汰最久未更新者）。
 - 非流式响应不计入吞吐（它没有"实时"可言），但计入进行中计数。
 
 ### 今日累计
 
-`core` 的 `trace-store` 增加 `queryTodayUsage(now)`：读取当前本地日的 `usage_daily` 行，返回 `{ inputTokens, outputTokens, estimatedCostNanoUsd }`。本地日计算复用写入 `usage_daily` 时的同一函数，确保跨零点一致。结果在 `live-metrics` 中缓存 5 s。进行中请求的 token 不计入今日累计（它们结束时才落库），这与面板一致。
+`core` 的 `trace-store` 增加 `todayUsage(now)`：读取当前本地日的 `usage_daily` 各行（列为十进制 TEXT），在 JS 中以 `bigint` 求和，返回 `{ inputTokens, outputTokens, estimatedCostNanoUsd }`。写入与查询共用 `usageLocalDate`，确保跨零点一致。结果在 `live-metrics` 中缓存 5 s。进行中请求的 token 不计入今日累计（它们结束时才落库），这与面板一致。
 
 ## 接口：`GET /dashboard/api/desktop-live`
 
@@ -82,7 +83,7 @@ token 与费用沿用 `DesktopSummaryV1` 的整数字符串约定（`NonNegative
 
 ### 右键菜单
 
-在「Open logs」之前（macOS 限定）加入「Menu Bar Display ▸」子菜单：
+仅在托盘组装原生菜单时（不进入面板 `⋯` 菜单共用的条目列表）于「Open logs」之前（macOS 限定）加入「Menu Bar Display ▸」子菜单：
 
 - 4 个指标 `CheckMenuItem`（Today Tokens / Tokens per Second / Today Cost / Requests in Flight），勾选顺序即显示顺序（第一个在上）。已勾 2 个时其余未勾项置灰。
 - 分隔线
@@ -93,13 +94,14 @@ token 与费用沿用 `DesktopSummaryV1` 的整数字符串约定（`NonNegative
 
 ### 轮询
 
-`desktop/src/client/` 新增 live 轮询，与面板的 summary 轮询独立：
+一个随 app 启动的常驻 1 s 循环，与面板的 summary 轮询独立。每拍读取偏好、健康状态与 discovery，决定是否发请求（不在各处状态变化点接线）：
 
-- 选中 `tokensPerSecond` 或 `inFlight`：1 s。
+- 选中 `tokensPerSecond` 或 `inFlight`：每 1 s 拉一次。
 - 仅选今日类指标：15 s。
-- 无指标：不轮询。
-- 服务健康状态非 Up 时暂停，恢复 Up 后立即拉一次。
+- 无指标、健康状态非 Up、无 discovery 或 token：不发请求。
+- 偏好变化、实例变化或健康恢复 Up 后的下一拍立即拉取。
 - 请求失败时保留上一次的值并变暗显示，连续失败 3 次后改为显示 `—`。
+- 401：触发一次 rediscovery，成功响应前不再重复触发。
 
 ### 渲染
 
@@ -109,7 +111,7 @@ token 与费用沿用 `DesktopSummaryV1` 的整数字符串约定（`NonNegative
 - 画布高 36 px（18 pt @2x），宽度随内容。1 个指标：单行 12 pt；2 个指标：两行各约 9 pt，数值列右对齐。
 - 图标在左，与文字间距 4 pt；`trayShowIcon` 关闭时只有文字。
 - 状态：Down 整体 alpha 0.4；Attention 时圆点画在图标右上角，无图标时画在文字块右上角。
-- 只在 `(文本, 状态, 偏好)` 变化时重绘并 `set_icon`，避免每秒提交相同图像。
+- 只在 `(文本, 状态, 是否变暗, 偏好)` 变化时重绘并 `set_icon`，避免每秒提交相同图像。
 
 ### 格式化
 
