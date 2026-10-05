@@ -8,7 +8,10 @@ import { ConfigSchema } from '@aio-proxy/types';
 
 import { createServerState } from '#server-test-lifecycle';
 
+import { liveModelKey } from '../live-metrics';
 import { getTraceRuntime } from '../request-tracing';
+
+const KEY = liveModelKey('p', 'm');
 
 const homes: string[] = [];
 
@@ -144,7 +147,7 @@ test('state and usage capture share live metrics', async () => {
       /* Drain through upstream completion. */
     }
     await captured.completion;
-    expect(record).toHaveBeenCalledWith('p/m', 5);
+    expect(record).toHaveBeenCalledWith(KEY, 5);
   } finally {
     record.mockRestore();
     state.close();

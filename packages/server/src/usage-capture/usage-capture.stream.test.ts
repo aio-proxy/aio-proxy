@@ -3,9 +3,12 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import type { TextStreamPart, ToolSet } from '@aio-proxy/core';
 
 import { createLiveMetrics } from '../live-metrics';
+import { liveModelKey } from '../live-metrics';
 import { createAttemptResponseObservation } from '../response-observation';
 import { createUsageCapture } from './index';
 import { clearPriceCatalog, drain, finishPart, seedPriceCatalog, settle, textStream } from './test-support';
+
+const KEY = liveModelKey('p', 'm');
 
 describe('usage capture stream', () => {
   test('model capture records every content delta and ignores metadata and tool deltas', async () => {
@@ -172,13 +175,13 @@ describe('stream live throughput', () => {
     expect(record.mock.calls).toEqual(
       live
         ? [
-            ['p/m', 5],
-            ['p/m', 2],
-            ['p/m', 2],
+            [KEY, 5],
+            [KEY, 2],
+            [KEY, 2],
           ]
         : [],
     );
-    expect(calibrate.mock.calls).toEqual(live ? [['p/m', 9, 3]] : []);
+    expect(calibrate.mock.calls).toEqual(live ? [[KEY, 9, 3]] : []);
   });
 
   test.each(['failure', 'cancel', 'idle', 'after-finish'] as const)(
@@ -206,7 +209,7 @@ describe('stream live throughput', () => {
         await reader.read();
         expect((await captured.completion).outcome).toBe('success');
         await reader.cancel();
-        expect(calibrate.mock.calls).toEqual([['p/m', 5, 6]]);
+        expect(calibrate.mock.calls).toEqual([[KEY, 5, 6]]);
       } else {
         if (mode === 'failure') {
           upstream.error(new Error('upstream failed'));

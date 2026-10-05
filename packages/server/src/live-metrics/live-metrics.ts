@@ -19,7 +19,8 @@ export function codePointLength(text: string): number {
   return length;
 }
 
-export const liveModelKey = (providerId: string, modelId: string) => `${providerId}/${modelId}`;
+// Provider and model IDs may both contain '/', so a joined string could merge distinct pairs.
+export const liveModelKey = (providerId: string, modelId: string) => JSON.stringify([providerId, modelId]);
 
 export function createLiveMetrics(options?: { readonly now?: () => number }): LiveMetrics {
   const now = options?.now ?? Date.now;

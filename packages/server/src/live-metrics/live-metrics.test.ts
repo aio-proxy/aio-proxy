@@ -6,7 +6,7 @@ describe('live metrics', () => {
   test('counts Unicode code points and builds provider-qualified model keys', () => {
     expect(codePointLength('a中😀')).toBe(3);
     expect(codePointLength('')).toBe(0);
-    expect(liveModelKey('p', 'm')).toBe('p/m');
+    expect(liveModelKey('a', 'b/c')).not.toBe(liveModelKey('a/b', 'c'));
   });
 
   test('accumulates chunks and excludes the current second from the three-second window', () => {

@@ -3,9 +3,12 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import { createLiveMetrics } from '../live-metrics';
+import { liveModelKey } from '../live-metrics';
 import type { ServerLog } from '../server-log';
 import { createUsageCapture } from './index';
 import { clearPriceCatalog, seedPriceCatalog } from './test-support';
+
+const KEY = liveModelKey('p', 'm');
 
 describe('usage capture passthrough observation', () => {
   // Pricing resolves through getProviders(); an empty isolated catalog keeps
@@ -212,12 +215,12 @@ describe('passthrough live throughput', () => {
     expect(record.mock.calls).toEqual(
       live
         ? [
-            ['p/m', 5],
-            ['p/m', 2],
+            [KEY, 5],
+            [KEY, 2],
           ]
         : [],
     );
-    expect(calibrate.mock.calls).toEqual(live ? [['p/m', 7, 2]] : []);
+    expect(calibrate.mock.calls).toEqual(live ? [[KEY, 7, 2]] : []);
   });
 
   test.each(['failure', 'cancel', 'idle', 'after-finish'] as const)(
@@ -254,7 +257,7 @@ describe('passthrough live throughput', () => {
         await reader.read();
         expect((await captured.completion).outcome).toBe('success');
         await reader.cancel();
-        expect(calibrate.mock.calls).toEqual([['p/m', 5, 2]]);
+        expect(calibrate.mock.calls).toEqual([[KEY, 5, 2]]);
       } else {
         if (mode === 'failure') {
           upstream.error(new Error('upstream failed'));
