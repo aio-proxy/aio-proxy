@@ -26,11 +26,10 @@
   - 今日累计缓存 5 s。
   - 拉取间隔：选了 `tokensPerSecond` 或 `inFlight` 时 1 s；只选今日类指标时 15 s；没选指标时不拉取。
   - 连续失败 3 次显示 `—`。
-- **偏好默认值**：`trayMetrics: []`、`trayShowIcon: true`、`trayLabelStyle: "unit"`；最多 2 个指标。
-- **菜单文案（英文）**：`Menu Bar Display`、`Today Tokens`、`Tokens per Second`、`Today Cost`、`Requests in Flight`、`Show Icon`、`Labels: Prefix`、`Labels: Unit`。
+- **偏好默认值**：`trayMetrics: []`、`trayShowIcon: true`；最多 2 个指标。
+- **菜单文案（英文）**：`Menu Bar Display`、`Today Tokens`、`Tokens per Second`、`Today Cost`、`Requests in Flight`、`Show Icon`。
 - **ID**：
   - 指标：`todayTokens`、`tokensPerSecond`、`todayCost`、`inFlight`。
-  - 样式：`prefix`、`unit`。
 - **平台范围**：
   - 菜单和渲染只做 macOS（`cfg(target_os = "macos")`），Linux 和 Windows 的行为不变。
   - 子菜单只加在托盘的原生菜单里，不进入面板 `⋯` 菜单也在用的 `tray::entries()`。
@@ -293,11 +292,8 @@
   #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)] #[serde(rename_all = "camelCase")]
   pub enum TrayMetric { TodayTokens, TokensPerSecond, TodayCost, InFlight }
 
-  #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)] #[serde(rename_all = "camelCase")]
-  pub enum LabelStyle { Prefix, #[default] Unit }
-
   #[derive(Clone, PartialEq, Debug)]
-  pub struct Prefs { pub tray_metrics: Vec<TrayMetric>, pub tray_show_icon: bool, pub tray_label_style: LabelStyle }
+  pub struct Prefs { pub tray_metrics: Vec<TrayMetric>, pub tray_show_icon: bool }
 
   impl Prefs {
       pub fn load(path: &Path) -> Prefs;
@@ -335,12 +331,12 @@
 - Modify: `desktop/src/tray.rs`（加 `mod metrics; pub use metrics::*;`）
 
 **Interfaces:**
-- Consumes: `DesktopLive`、`TrayMetric`、`LabelStyle`。
+- Consumes: `DesktopLive`、`TrayMetric`。
 - Produces:
   ```rust
   #[derive(Clone, PartialEq, Eq, Debug)]
   pub struct MetricText { pub label: &'static str, pub value: String, pub unit: &'static str }
-  pub fn format_metric(metric: TrayMetric, live: &DesktopLive, style: LabelStyle) -> MetricText;
+  pub fn format_metric(metric: TrayMetric, live: &DesktopLive) -> MetricText;
   pub fn poll_interval(metrics: &[TrayMetric]) -> Option<Duration>; // 1 s / 15 s / None
 
   /// 决定常驻 1 s 循环的这一拍是否发请求。`epoch` 是 `AppModel.instance_epoch`
@@ -370,7 +366,7 @@
       pub fn view(&self) -> LiveView<'_>;
   }
   ```
-  - `MetricText` 的取值：Prefix 样式下 `label` 有值、`unit` 为空；Unit 样式下 `label` 为空、`unit` 有值。今日费用在 Unit 样式下 value 带 `$` 前缀，unit 为空。
+  - `MetricText` 始终包含标签和单位；今日费用标签为 `COST`，value 带 `$` 前缀，unit 为空。
   - `due` 返回 `true` 的条件：`eligible` 为真，**且**当前没有请求在途，**且**满足以下任一条：
     - 从未拉取过；
     - `key` 与上次不同；
@@ -380,9 +376,9 @@
   - `unauthorized()`：先计一次失败；在 `auth_retry_used` 为假时把它置为真并返回 true，否则返回 false。`accept` 会把 `auth_retry_used` 重置为假。
 
 - [ ] **Step 1: 写失败测试**：断言 spec 表格里的全部值。
-  - `todayTokens`：999 → `999`；1_234_567 → `1.23M`；12_345_678 → `12.3M`；1_234_567_890 → `1.23B`。Unit 样式为 `1.23M tok`，Prefix 样式为 `TOK 1.23M`。
+  - `todayTokens`：999 → `999`；1_234_567 → `1.23M`；12_345_678 → `12.3M`；1_234_567_890 → `1.23B`。显示为 `TOK 1.23M tok`。
   - `tokensPerSecond`：48.25 → `48.3`；0.0 → `0.0`；123.6 → `124`。
-  - `todayCost`（nano USD）：3_410_000_000 → `$3.41`（Unit）或 `USD 3.41`（Prefix）；123_400_000_000 → `$123`。
+  - `todayCost`（nano USD）：3_410_000_000 → `COST $3.41`；123_400_000_000 → `COST $123`。
   - `inFlight`：2 → `2 req` 或 `REQ 2`。
   - `poll_interval`：`[]` → `None`；`[TodayTokens]` → 15 s；`[TodayCost, InFlight]` → 1 s。
   - `LiveSchedule`：
@@ -449,7 +445,7 @@
 **Files:**
 - Modify:
   - `desktop/src/tray/menu.rs`：
-    - `MenuCommand` 新增 `TrayMetric(TrayMetric)`、`ToggleTrayIcon`、`TrayLabels(LabelStyle)`，id 分别为 `tray-metric-today-tokens`、`tray-metric-tokens-per-second`、`tray-metric-today-cost`、`tray-metric-in-flight`、`tray-icon`、`tray-labels-prefix`、`tray-labels-unit`。
+    - `MenuCommand` 新增 `TrayMetric(TrayMetric)`、`ToggleTrayIcon`，id 分别为 `tray-metric-today-tokens`、`tray-metric-tokens-per-second`、`tray-metric-today-cost`、`tray-metric-in-flight`、`tray-icon`。
     - **不改** `MenuEntry`，因为面板 `footer.rs:44` 和 `tray/menu/tests.rs:11` 都对它做了穷尽匹配，加变体会编译失败。
   - `desktop/src/tray.rs`：
     - `pub fn display_menu_entries(prefs: &Prefs) -> Vec<MenuEntry>`：只用 `Check` 条目和 `Separator`，是纯函数。
@@ -467,7 +463,6 @@
   - 所有新 `MenuCommand` 的 `from_id(cmd.id())` 往返一致。
   - 选中 `[TodayTokens, InFlight]` 时，这两项为 checked 且 enabled，另外两项为 unchecked 且 disabled。
   - 选中为空时，`Show Icon` 为 checked 且 disabled。
-  - 两个 Labels 项中只有一个 checked。
   - `entries(model)` 的结果里不包含任何新命令，证明面板菜单不受影响。
 - [ ] **Step 2: 运行**：`cargo test --manifest-path desktop/Cargo.toml tray::`，预期 FAIL。
 - [ ] **Step 3: 实现**。
@@ -503,7 +498,7 @@
 - Consumes: `MetricText`、`LiveView`、`TrayState`、`MARK_PNG`、`DOT`。
 - Produces: `pub fn render(lines: &[MetricText], show_icon: bool, state: TrayState, dimmed: bool) -> (Vec<u8>, u32, u32)`，返回 RGBA、宽度和高度（固定 36 px）。
   - 1 行用 12 pt，2 行各 9 pt；字体为 `NSFont::monospacedDigitSystemFontOfSize_weight`。
-  - 两行时数值列右对齐，Prefix 样式下标签列左对齐。
+  - 标签列左对齐，数值和单位作为一个整体左对齐。
   - 图标与文字间距 4 pt（@2x 为 8 px）。
   - `dimmed` 时整体 alpha × 0.4。
   - Attention 圆点：有图标时画在图标右上角，无图标时画在文字块右上角。
@@ -525,7 +520,7 @@
   - 默认只显示图标，与改动前一致。
   - 只勾 `Today Tokens`：单行 12 pt 文字。
   - 再勾 `Tokens per Second`：两行；发流式请求时 tok/s 每秒跳动，宽度不抖动；非流式请求不让 tok/s 跳动。
-  - 切换 Labels：`TOK 1.23M` 与 `1.23M tok` 互换。
+  - 每行始终显示标签和单位，例如 `TOK 1.23M tok`、`COST $3.41`。
   - 关掉 Show Icon：只剩文字。
   - 亮色和暗色菜单栏下都能看清。
   - 勾选 tok/s 时执行 `aiop stop`：数秒内文字消失、图标变暗；只勾今日类指标时，约 15 s 内文字消失。`aiop start` 后自动恢复。

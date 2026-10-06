@@ -11,7 +11,7 @@ use crate::app::AppModel;
 use crate::client::health::HealthState;
 
 use crate::live::DesktopLive;
-use crate::prefs::{LabelStyle, TrayMetric};
+use crate::prefs::TrayMetric;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Shown {
@@ -37,9 +37,7 @@ pub fn shown_for(model: &AppModel, color: [u8; 3]) -> Shown {
             .tray_metrics
             .iter()
             .map(|&metric| match view {
-                LiveView::Fresh(live) | LiveView::Stale(live) => {
-                    format_metric(metric, live, model.prefs.tray_label_style)
-                }
+                LiveView::Fresh(live) | LiveView::Stale(live) => format_metric(metric, live),
                 LiveView::Unavailable => {
                     let mut text = format_metric(
                         metric,
@@ -49,7 +47,6 @@ pub fn shown_for(model: &AppModel, color: [u8; 3]) -> Shown {
                             in_flight: 0,
                             output_tokens_per_second: 0.0,
                         },
-                        model.prefs.tray_label_style,
                     );
                     text.value = "—".into();
                     text
@@ -67,7 +64,7 @@ pub struct MetricText {
     pub unit: &'static str,
 }
 
-pub fn format_metric(metric: TrayMetric, live: &DesktopLive, style: LabelStyle) -> MetricText {
+pub fn format_metric(metric: TrayMetric, live: &DesktopLive) -> MetricText {
     let (label, value, unit) = match metric {
         TrayMetric::TodayTokens => ("TOK", tokens(live.today_tokens), "tok"),
         TrayMetric::TokensPerSecond => {
@@ -84,18 +81,11 @@ pub fn format_metric(metric: TrayMetric, live: &DesktopLive, style: LabelStyle) 
             } else {
                 rounded(nano, 1_000_000_000).to_string()
             };
-            ("USD", value, "")
+            ("COST", format!("${value}"), "")
         }
         TrayMetric::InFlight => ("REQ", live.in_flight.to_string(), "req"),
     };
-    match style {
-        LabelStyle::Prefix => MetricText { label, value, unit: "" },
-        LabelStyle::Unit => MetricText {
-            label: "",
-            value: if metric == TrayMetric::TodayCost { format!("${value}") } else { value },
-            unit,
-        },
-    }
+    MetricText { label, value, unit }
 }
 
 // Divide before rounding so large u128 counters never overflow or lose integer precision.

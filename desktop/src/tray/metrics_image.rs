@@ -23,17 +23,16 @@ pub fn render(lines: &[MetricText], show_icon: bool, state: TrayState, dimmed: b
         );
         // The dictionary contains precisely the NSFont and NSColor required by NSString drawing.
         let measure = |text: &str| unsafe { NSString::from_str(text).sizeWithAttributes(Some(&attributes)) };
-        let widths = lines.iter().fold([0.0_f64; 3], |mut widths, line| {
-            for (index, text) in [line.label, &line.value, line.unit].into_iter().enumerate() {
-                widths[index] = widths[index].max(measure(text).width);
-            }
-            widths
-        });
         let gap = measure(" ").width;
-        let label_width = if widths[0] > 0.0 { widths[0] + gap } else { 0.0 };
-        let unit_width = if widths[2] > 0.0 { gap + widths[2] } else { 0.0 };
+        // Value and unit read as one left-aligned run after the label column.
+        let value_width = |line: &MetricText| {
+            let value = measure(&line.value).width;
+            if line.unit.is_empty() { value } else { value + gap + measure(line.unit).width }
+        };
+        let label_width = lines.iter().map(|line| measure(line.label).width).fold(0.0_f64, f64::max);
+        let label_width = if label_width > 0.0 { label_width + gap } else { 0.0 };
         let text_x = if show_icon { f64::from(ICON_WIDTH) / 2.0 + 4.0 } else { 0.0 };
-        let text_width = label_width + widths[1] + unit_width;
+        let text_width = label_width + lines.iter().map(value_width).fold(0.0_f64, f64::max);
         // Reserve space for the attention dot even when absent, so attention doesn't shift text.
         let dot_space = if show_icon { 0.0 } else { 4.0 };
         let width = ((text_x + text_width + dot_space) * 2.0).ceil().max(1.0) as u32;
@@ -63,11 +62,11 @@ pub fn render(lines: &[MetricText], show_icon: bool, state: TrayState, dimmed: b
         let row_height = f64::from(ICON_HEIGHT) / 2.0 / lines.len() as f64;
         for (index, line) in lines.iter().enumerate() {
             let y = (lines.len() - index - 1) as f64 * row_height + (row_height - measure(&line.value).height) / 2.0;
-            let value_x = text_x + label_width + widths[1] - measure(&line.value).width;
+            let value_x = text_x + label_width;
             for (text, x) in [
                 (line.label, text_x),
                 (line.value.as_str(), value_x),
-                (line.unit, text_x + label_width + widths[1] + gap),
+                (line.unit, value_x + measure(&line.value).width + gap),
             ] {
                 // SAFETY: the attributes have valid types and the bitmap context is current.
                 unsafe {

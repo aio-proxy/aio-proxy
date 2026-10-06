@@ -2,7 +2,7 @@ use super::*;
 use crate::app::AppModel;
 use crate::client::health::HealthState;
 use crate::live::DesktopLive;
-use crate::prefs::{LabelStyle, TrayMetric};
+use crate::prefs::TrayMetric;
 use std::time::{Duration, Instant};
 
 fn live() -> DesktopLive {
@@ -14,17 +14,12 @@ fn live() -> DesktopLive {
     }
 }
 
-fn text(metric: TrayMetric, live: &DesktopLive, prefix: &'static str, value: &str, unit: &'static str) {
-    assert_eq!(
-        format_metric(metric, live, LabelStyle::Prefix),
-        MetricText { label: prefix, value: value.into(), unit: "" }
-    );
-    let unit_value = if metric == TrayMetric::TodayCost { format!("${value}") } else { value.into() };
-    assert_eq!(format_metric(metric, live, LabelStyle::Unit), MetricText { label: "", value: unit_value, unit });
+fn text(metric: TrayMetric, live: &DesktopLive, label: &'static str, value: &str, unit: &'static str) {
+    assert_eq!(format_metric(metric, live), MetricText { label, value: value.into(), unit });
 }
 
 #[test]
-fn formats_tokens_in_both_styles() {
+fn formats_tokens_with_label_and_unit() {
     for (tokens, value) in [
         (999, "999"),
         (1_234, "1.23K"),
@@ -40,21 +35,21 @@ fn formats_tokens_in_both_styles() {
 }
 
 #[test]
-fn formats_rate_cost_and_requests_in_both_styles() {
+fn formats_rate_cost_and_requests_with_label_and_unit() {
     let mut live = live();
     for (rate, value) in [(48.25, "48.3"), (0.0, "0.0"), (123.6, "124")] {
         live.output_tokens_per_second = rate;
         text(TrayMetric::TokensPerSecond, &live, "TPS", value, "tok/s");
     }
-    for (cost, value) in [(3_410_000_000, "3.41"), (123_400_000_000, "123")] {
+    for (cost, value) in [(3_410_000_000, "$3.41"), (123_400_000_000, "$123")] {
         live.today_cost_nano_usd = cost;
-        text(TrayMetric::TodayCost, &live, "USD", value, "");
+        text(TrayMetric::TodayCost, &live, "COST", value, "");
     }
     text(TrayMetric::InFlight, &live, "REQ", "2", "req");
 }
 
 #[test]
-fn token_rounding_promotes_precision_and_units_in_both_styles() {
+fn token_rounding_promotes_precision_and_units_with_label_and_unit() {
     for (tokens, value) in [
         (9_994, "9.99K"),
         (9_995, "10.0K"),
@@ -73,7 +68,7 @@ fn token_rounding_promotes_precision_and_units_in_both_styles() {
 }
 
 #[test]
-fn rate_rounding_promotes_to_integer_precision_in_both_styles() {
+fn rate_rounding_promotes_to_integer_precision_with_label_and_unit() {
     for (rate, value) in [(99.94, "99.9"), (99.95, "100")] {
         let mut live = live();
         live.output_tokens_per_second = rate;
@@ -82,11 +77,11 @@ fn rate_rounding_promotes_to_integer_precision_in_both_styles() {
 }
 
 #[test]
-fn cost_rounding_promotes_to_integer_precision_in_both_styles() {
-    for (nano, value) in [(99_994_999_999, "99.99"), (99_995_000_000, "100")] {
+fn cost_rounding_promotes_to_integer_precision_with_label_and_unit() {
+    for (nano, value) in [(99_994_999_999, "$99.99"), (99_995_000_000, "$100")] {
         let mut live = live();
         live.today_cost_nano_usd = nano;
-        text(TrayMetric::TodayCost, &live, "USD", value, "");
+        text(TrayMetric::TodayCost, &live, "COST", value, "");
     }
 }
 
@@ -309,9 +304,15 @@ fn shown_replaces_every_value_after_three_failures() {
     for _ in 0..3 {
         model.live.fail(0);
     }
-    let shown = shown_for(&model, [0; 3]);
-    assert_eq!(shown.lines.len(), 2);
-    assert!(shown.lines.iter().all(|line| line.value == "—"));
+    for (metric, label, unit) in [
+        (TrayMetric::TodayTokens, "TOK", "tok"),
+        (TrayMetric::TokensPerSecond, "TPS", "tok/s"),
+        (TrayMetric::TodayCost, "COST", ""),
+        (TrayMetric::InFlight, "REQ", "req"),
+    ] {
+        model.prefs.tray_metrics = vec![metric];
+        assert_eq!(shown_for(&model, [0; 3]).lines, vec![MetricText { label, value: "—".into(), unit }]);
+    }
 }
 
 #[test]

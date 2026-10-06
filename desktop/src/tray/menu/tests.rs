@@ -158,8 +158,7 @@ fn ids_round_trip() {
         | MenuCommand::CheckForUpdates
         | MenuCommand::Quit
         | MenuCommand::TrayMetric(_)
-        | MenuCommand::ToggleTrayIcon
-        | MenuCommand::TrayLabels(_) => (),
+        | MenuCommand::ToggleTrayIcon => (),
     };
     for command in [
         MenuCommand::OpenPanel,

@@ -1,13 +1,13 @@
 use std::fs;
 
-use super::{LabelStyle, Prefs, TrayMetric, prefs_path};
+use super::{Prefs, TrayMetric, prefs_path};
 use crate::app::AppModel;
 
 #[test]
 fn missing_and_corrupt_files_use_defaults() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("preferences.json");
-    let expected = Prefs { tray_metrics: vec![], tray_show_icon: true, tray_label_style: LabelStyle::Unit };
+    let expected = Prefs { tray_metrics: vec![], tray_show_icon: true };
     assert_eq!(Prefs::load(&path), expected);
     fs::write(&path, "{not json").unwrap();
     assert_eq!(Prefs::load(&path), expected);
@@ -17,18 +17,10 @@ fn missing_and_corrupt_files_use_defaults() {
 fn unknown_metrics_are_discarded_before_applying_limit() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("preferences.json");
-    fs::write(
-        &path,
-        r#"{"trayMetrics":["todayTokens","bogus","inFlight","todayCost"],"trayShowIcon":false,"trayLabelStyle":"prefix"}"#,
-    )
-    .unwrap();
+    fs::write(&path, r#"{"trayMetrics":["todayTokens","bogus","inFlight","todayCost"],"trayShowIcon":false}"#).unwrap();
     assert_eq!(
         Prefs::load(&path),
-        Prefs {
-            tray_metrics: vec![TrayMetric::TodayTokens, TrayMetric::InFlight],
-            tray_show_icon: false,
-            tray_label_style: LabelStyle::Prefix,
-        }
+        Prefs { tray_metrics: vec![TrayMetric::TodayTokens, TrayMetric::InFlight], tray_show_icon: false }
     );
 }
 
@@ -39,14 +31,11 @@ fn save_replaces_preferences_and_startup_loads_them() {
     fs::create_dir_all(&paths.support).unwrap();
     let path = prefs_path(&paths);
     assert_eq!(path, paths.support.join("preferences.json"));
-    let mut prefs = Prefs {
-        tray_metrics: vec![TrayMetric::TodayCost, TrayMetric::TokensPerSecond],
-        tray_show_icon: false,
-        tray_label_style: LabelStyle::Prefix,
-    };
+    let mut prefs =
+        Prefs { tray_metrics: vec![TrayMetric::TodayCost, TrayMetric::TokensPerSecond], tray_show_icon: false };
     prefs.save(&path).unwrap();
     assert_eq!(Prefs::load(&path), prefs);
-    prefs.tray_label_style = LabelStyle::Unit;
+    prefs.tray_show_icon = true;
     prefs.save(&path).unwrap();
     assert_eq!(Prefs::load(&path), prefs);
     assert!(!paths.support.join("preferences.json.tmp").exists());
@@ -55,11 +44,7 @@ fn save_replaces_preferences_and_startup_loads_them() {
 
 #[test]
 fn toggle_respects_limit_and_preserves_selection_order() {
-    let mut prefs = Prefs {
-        tray_metrics: vec![TrayMetric::TodayTokens, TrayMetric::InFlight],
-        tray_show_icon: true,
-        tray_label_style: LabelStyle::Unit,
-    };
+    let mut prefs = Prefs { tray_metrics: vec![TrayMetric::TodayTokens, TrayMetric::InFlight], tray_show_icon: true };
     prefs.toggle_metric(TrayMetric::TodayCost);
     assert_eq!(prefs.tray_metrics, vec![TrayMetric::TodayTokens, TrayMetric::InFlight]);
     prefs.toggle_metric(TrayMetric::TodayTokens);
@@ -70,7 +55,7 @@ fn toggle_respects_limit_and_preserves_selection_order() {
 
 #[test]
 fn empty_metrics_keep_icon_visible() {
-    let mut prefs = Prefs { tray_metrics: vec![], tray_show_icon: false, tray_label_style: LabelStyle::Unit };
+    let mut prefs = Prefs { tray_metrics: vec![], tray_show_icon: false };
     assert!(prefs.shows_icon());
     prefs.toggle_metric(TrayMetric::TodayTokens);
     assert!(!prefs.shows_icon());
@@ -82,10 +67,24 @@ fn empty_metrics_keep_icon_visible() {
 fn duplicate_metrics_keep_the_first_occurrence_before_applying_limit() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("preferences.json");
-    fs::write(
-        &path,
-        r#"{"trayMetrics":["todayTokens","todayTokens","inFlight"],"trayShowIcon":true,"trayLabelStyle":"unit"}"#,
-    )
-    .unwrap();
+    fs::write(&path, r#"{"trayMetrics":["todayTokens","todayTokens","inFlight"],"trayShowIcon":true}"#).unwrap();
     assert_eq!(Prefs::load(&path).tray_metrics, vec![TrayMetric::TodayTokens, TrayMetric::InFlight]);
+}
+
+#[test]
+fn legacy_preferences_ignore_removed_style_and_save_without_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("preferences.json");
+    let expected = Prefs { tray_metrics: vec![TrayMetric::TodayCost], tray_show_icon: false };
+    // Even an unrecognized legacy value must not reset the remaining preferences.
+    for style in ["prefix", "unit", "unknown"] {
+        fs::write(&path, format!(r#"{{"trayMetrics":["todayCost"],"trayShowIcon":false,"trayLabelStyle":"{style}"}}"#))
+            .unwrap();
+        let loaded = Prefs::load(&path);
+        assert_eq!(loaded, expected);
+        loaded.save(&path).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert!(saved.get("trayLabelStyle").is_none());
+        assert_eq!(Prefs::load(&path), expected);
+    }
 }

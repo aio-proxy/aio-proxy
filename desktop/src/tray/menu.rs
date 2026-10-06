@@ -2,7 +2,7 @@
 
 use crate::connect::policy::{Offered, UserAction};
 use crate::platform::LoginItemStatus;
-use crate::prefs::{LabelStyle, TrayMetric};
+use crate::prefs::TrayMetric;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuCommand {
@@ -17,7 +17,6 @@ pub enum MenuCommand {
     Quit,
     TrayMetric(TrayMetric),
     ToggleTrayIcon,
-    TrayLabels(LabelStyle),
 }
 
 impl MenuCommand {
@@ -41,8 +40,6 @@ impl MenuCommand {
             MenuCommand::TrayMetric(TrayMetric::TodayCost) => "tray-metric-today-cost",
             MenuCommand::TrayMetric(TrayMetric::InFlight) => "tray-metric-in-flight",
             MenuCommand::ToggleTrayIcon => "tray-icon",
-            MenuCommand::TrayLabels(LabelStyle::Prefix) => "tray-labels-prefix",
-            MenuCommand::TrayLabels(LabelStyle::Unit) => "tray-labels-unit",
         }
     }
 
@@ -66,8 +63,6 @@ impl MenuCommand {
             "tray-metric-today-cost" => MenuCommand::TrayMetric(TrayMetric::TodayCost),
             "tray-metric-in-flight" => MenuCommand::TrayMetric(TrayMetric::InFlight),
             "tray-icon" => MenuCommand::ToggleTrayIcon,
-            "tray-labels-prefix" => MenuCommand::TrayLabels(LabelStyle::Prefix),
-            "tray-labels-unit" => MenuCommand::TrayLabels(LabelStyle::Unit),
             _ => return None,
         })
     }
