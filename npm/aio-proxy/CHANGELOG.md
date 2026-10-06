@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.41.1
+
+### Patch Changes
+
+- [#496](https://github.com/aio-proxy/aio-proxy/pull/496) [`e2d1228`](https://github.com/aio-proxy/aio-proxy/commit/e2d12289890af16a4e8143b0ee425b51a0144744) Thanks @baranwang - The macOS menu bar metrics always show both a prefix label and a unit, with today's cost shown as COST and a dollar value. The label-style setting has been removed, and labels and values remain aligned on the left.
+
 ## 0.41.0
 
 ### Minor Changes
