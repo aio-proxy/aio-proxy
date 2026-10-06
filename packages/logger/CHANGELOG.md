@@ -1,5 +1,12 @@
 # @aio-proxy/logger
 
+## 0.41.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.41.1
+
 ## 0.41.0
 
 ### Patch Changes

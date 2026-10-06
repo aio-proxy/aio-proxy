@@ -1,5 +1,9 @@
 # @aio-proxy/types
 
+## 0.41.1
+
+No changes in this release.
+
 ## 0.41.0
 
 ### Minor Changes
