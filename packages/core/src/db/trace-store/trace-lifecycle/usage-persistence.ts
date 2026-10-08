@@ -3,6 +3,7 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { parseSqliteInteger, usdToNanoUsd } from '../../../usage-numbers';
 import { usageDaily } from '../../schema';
+import { consumedUsage } from '../consumed-usage';
 import type { StoredSpan, TraceCompletion, TraceTerminalSummary } from '../types';
 import { usageLocalDate } from '../usage-range';
 
@@ -56,6 +57,17 @@ export function upsertUsageDelta(
   const { summary, session } = input;
   const modelDimension = session?.requestedModelId ?? summary.finalModelId ?? 'unknown';
   const usage = summary.usage;
+  const consumed = childSpans.flatMap((span) => {
+    const row = consumedUsage(span);
+    return row === undefined ? [] : [row];
+  });
+  const extraInput = consumed.reduce((sum, row) => sum + BigInt(row.inputTokens ?? 0), 0n);
+  const extraOutput = consumed.reduce((sum, row) => sum + BigInt(row.outputTokens ?? 0), 0n);
+  const extraTotal = consumed.reduce(
+    (sum, row) => sum + BigInt(row.totalTokens ?? (row.inputTokens ?? 0) + (row.outputTokens ?? 0)),
+    0n,
+  );
+  const extraCost = consumed.reduce((sum, row) => sum + BigInt(prepareUsage(row).estimatedCostNanoUsd ?? 0), 0n);
   const success = summary.terminationReason === undefined;
   const inputTokens = BigInt(usage?.inputTokens ?? 0);
   const outputTokens = BigInt(usage?.outputTokens ?? 0);
@@ -72,16 +84,22 @@ export function upsertUsageDelta(
       errorCount: summary.terminationReason === 'failure' ? 1n : 0n,
       cancelledCount: summary.terminationReason === 'cancelled' ? 1n : 0n,
       interruptedCount: summary.terminationReason === 'interrupted' ? 1n : 0n,
-      usageRequestCount: prepared.hasUsage ? 1n : 0n,
-      pricedRequestCount: prepared.estimatedCostNanoUsd === undefined ? 0n : 1n,
-      inputTokens,
-      outputTokens,
-      totalTokens: usage?.totalTokens === undefined ? inputTokens + outputTokens : BigInt(usage.totalTokens),
+      usageRequestCount: prepared.hasUsage || consumed.some((row) => prepareUsage(row).hasUsage) ? 1n : 0n,
+      pricedRequestCount:
+        prepared.estimatedCostNanoUsd !== undefined || consumed.some((row) => row.estimatedCostUsd !== undefined)
+          ? 1n
+          : 0n,
+      inputTokens: inputTokens + extraInput,
+      outputTokens: outputTokens + extraOutput,
+      totalTokens:
+        (usage?.totalTokens === undefined ? inputTokens + outputTokens : BigInt(usage.totalTokens)) + extraTotal,
       cacheReadTokens,
       cacheWriteTokens,
       reasoningTokens: BigInt(usage?.reasoningTokens ?? 0),
-      estimatedCostNanoUsd: BigInt(prepared.estimatedCostNanoUsd ?? 0),
+      estimatedCostNanoUsd: BigInt(prepared.estimatedCostNanoUsd ?? 0) + extraCost,
       ...normalizedCache(childSpans, inputTokens, cacheReadTokens, cacheWriteTokens),
+      normalizedPromptTokens:
+        normalizedCache(childSpans, inputTokens, cacheReadTokens, cacheWriteTokens).normalizedPromptTokens + extraInput,
     }),
   );
 }

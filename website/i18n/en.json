@@ -219,6 +219,12 @@
       "summary": "Upgrades a WebSocket connection.",
       "description": "Upgrades a WebSocket connection. With call_id it attaches to that caller-owned call; otherwise it establishes a direct realtime connection using model and provider capability. Frames follow the chosen upstream realtime protocol, not SSE or JSON HTTP responses.",
       "resource": "Realtime"
+    },
+    "createDecision": {
+      "title": "Create a decision",
+      "summary": "Evaluate text and inline images with predicate, choice, and score questions.",
+      "description": "Evaluates text and inline base64 images. Native Decisions endpoints use raw passthrough; other evaluation-capable providers use the shared evaluation pipeline. Converted choice and score answers require probability distributions and confidence. Provider routing and fallback use the configured model.",
+      "resource": "Decisions"
     }
   }
 }

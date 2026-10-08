@@ -32,6 +32,8 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Usage
       return openAIAudioUsage(value);
     case ProviderProtocol.OpenAIVideo:
       return openAIVideoUsage(value);
+    case ProviderProtocol.OpenAIDecisions:
+      return decisionsUsage(value);
     case ProviderProtocol.TypeSafeSystemOne:
       return systemOneUsage(value);
     default:
@@ -186,4 +188,10 @@ function geminiUsage(value: unknown): UsageExtraction {
     cacheReadTokens: numberField(usage, 'cachedContentTokenCount', 'cacheReadTokens'),
     reasoningTokens: numberField(usage, 'thoughtsTokenCount', 'reasoningTokens'),
   });
+}
+
+function decisionsUsage(value: unknown): UsageExtraction {
+  if (!isPlainObject(value) || !isPlainObject(value['usage'])) return { kind: 'absent' };
+  const inputTokens = numberField(value['usage'], 'input_tokens', 'inputTokens');
+  return tokenUsage({ inputTokens, outputTokens: usageNumber(0, 'outputTokens'), totalTokens: inputTokens });
 }

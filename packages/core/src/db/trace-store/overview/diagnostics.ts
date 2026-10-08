@@ -4,6 +4,7 @@ import type { DashboardOverviewDiagnosticsResponse } from '@aio-proxy/types';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { parseSqliteInteger } from '../../../usage-numbers';
+import { consumedUsageRows } from '../consumed-usage';
 import type { DashboardOverviewQuery } from '../types';
 import { type ResolvedRange, resolveRange } from './range';
 
@@ -67,6 +68,12 @@ function providerHealth(
     const tokens = parseSqliteInteger(row.inputTokens) + parseSqliteInteger(row.outputTokens);
     tokenTotals.set(row.providerId, (tokenTotals.get(row.providerId) ?? 0n) + tokens);
   }
+  for (const row of consumedUsageRows(db, range.start, range.end)) {
+    tokenTotals.set(
+      row.usage.providerId,
+      (tokenTotals.get(row.usage.providerId) ?? 0n) + row.inputTokens + row.outputTokens,
+    );
+  }
   return rows.map((row) => {
     const durations = (JSON.parse(row.durations) as number[]).sort((left, right) => left - right);
     const successes = parseSqliteInteger(row.successCount);
@@ -104,6 +111,10 @@ function topModelCosts(
   for (const row of rows) {
     totals.set(row.modelId, (totals.get(row.modelId) ?? 0n) + parseSqliteInteger(row.estimatedCostNanoUsd));
   }
+  if (range.bucketUnit === 'hour')
+    for (const row of consumedUsageRows(db, range.start, range.end)) {
+      totals.set(row.modelDimension, (totals.get(row.modelDimension) ?? 0n) + row.estimatedCostNanoUsd);
+    }
   return rankTopModels(totals).map(({ modelId, value }) => ({
     modelId,
     estimatedCostNanoUsd: value.toString(),
@@ -141,6 +152,10 @@ function topModelTokens(
       totals.set(row.modelId, (totals.get(row.modelId) ?? 0n) + tokens);
     }
   }
+  if (range.bucketUnit === 'hour')
+    for (const row of consumedUsageRows(db, range.start, range.end)) {
+      totals.set(row.modelDimension, (totals.get(row.modelDimension) ?? 0n) + row.totalTokens);
+    }
   return rankTopModels(totals, true).map(({ modelId, value }) => ({ modelId, totalTokens: value.toString() }));
 }
 

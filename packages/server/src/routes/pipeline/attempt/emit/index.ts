@@ -1,1 +1,1 @@
-export { type AttemptEmitter, attemptLog, createAttemptEmitter } from './emit';
+export { type AttemptEmitter, type AttemptOutcomeFacts, attemptLog, createAttemptEmitter } from './emit';

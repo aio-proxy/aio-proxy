@@ -404,3 +404,5 @@ export type ProviderSummary = {
   readonly id: string;
   readonly protocol: ProviderProtocol;
 };
+
+export { createOpenAIDecisionsEvaluate } from './provider/openai-decisions';

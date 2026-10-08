@@ -248,6 +248,7 @@ export type EvaluationInvocation = {
 };
 
 export type EvaluationAnswer =
+  | { readonly type: 'refusal' }
   | { readonly type: 'noul'; readonly noul: number }
   | {
       readonly type: 'choice';
@@ -283,7 +284,7 @@ export type EvaluationProtocolAdapter<TRequest, TContext> = Readonly<{
   wantsStream: (request: TRequest, context: TContext) => boolean;
   rawRequest: (raw: Request, request: TRequest, resolvedModel: string, context: TContext) => Promise<Request>;
   evaluationInvocation: (request: TRequest, context: TContext) => EvaluationInvocation;
-  evaluationJson: (result: EvaluationResult, context: EvaluationEgressContext) => unknown;
+  evaluationJson: (result: EvaluationResult, context: EvaluationEgressContext, request: TRequest) => unknown;
   errors: ProtocolErrorMapper;
 }>;
 

@@ -29,6 +29,7 @@ const identifiers = new Set([
   attributeName.finalProviderId,
   attributeName.genAiRequestModel,
   attributeName.attemptModelId,
+  attributeName.usagePriceModelId,
 ]);
 const localFields = new Set([
   'event',
@@ -70,6 +71,7 @@ const localFields = new Set([
 ]);
 
 const bodyEnums = new Map<string, ReadonlySet<string>>([
+  [attributeName.usagePriceSource, new Set(['config', 'models-dev', 'default'])],
   ['omissionReason', new Set(['privacy_policy', 'media_payload', 'capture_limit'])],
   ['bodyLimitStage', new Set(['encoded', 'decoded'])],
   ['bodyMeasurement', new Set(['declared', 'observed_lower_bound', 'unknown'])],

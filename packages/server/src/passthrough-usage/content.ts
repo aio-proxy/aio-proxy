@@ -37,6 +37,7 @@ export function hasContentDelta(protocol: ProviderProtocol, eventType: string | 
     // Evaluation adapters answer `wantsStream` false and System One defines no SSE
     // frames, so there is no content delta to detect and no TTFT to report. Not a
     // placeholder: a buffered JSON protocol has no first-token moment.
+    case ProviderProtocol.OpenAIDecisions:
     case ProviderProtocol.TypeSafeSystemOne:
       return false;
     default:
@@ -233,6 +234,7 @@ export function contentDeltaLength(protocol: ProviderProtocol, eventType: string
     case ProviderProtocol.OpenAIImage:
     case ProviderProtocol.OpenAIAudio:
     case ProviderProtocol.OpenAIVideo:
+    case ProviderProtocol.OpenAIDecisions:
     case ProviderProtocol.TypeSafeSystemOne:
       return 0;
     default:
