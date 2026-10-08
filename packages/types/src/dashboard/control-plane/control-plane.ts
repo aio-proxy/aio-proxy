@@ -91,7 +91,7 @@ const DashboardPasswordSchema = z
   .min(8)
   .describe('New dashboard password in plaintext; the server stores only an Argon2id hash.');
 
-const DashboardApiKeyLabelSchema = z.string().min(1);
+const DashboardApiKeyLabelSchema = z.string().trim().min(1).max(40);
 
 const DashboardApiKeySecretSchema = z
   .string()
@@ -102,6 +102,7 @@ const DashboardApiKeySecretSchema = z
   );
 
 export const DashboardApiKeyViewSchema = z.strictObject({
+  id: z.uuid().optional(),
   // The authored value, template references included: the editor round-trips it straight back
   // through the mutation endpoint, so masking it here would write the mask over the credential.
   key: z.string().min(1),
@@ -109,8 +110,9 @@ export const DashboardApiKeyViewSchema = z.strictObject({
 });
 
 export const DashboardApiKeyMutationSchema = z.strictObject({
+  id: z.uuid().optional(),
   key: DashboardApiKeySecretSchema,
-  label: DashboardApiKeyLabelSchema.optional(),
+  label: DashboardApiKeyLabelSchema,
 });
 
 const DashboardOtelDestinationSchema = z.strictObject({
@@ -144,7 +146,26 @@ export const DashboardSettingsMutationSchema = z.strictObject({
   proxyBackup: z.union([DashboardHttpProxyUrlSchema, DashboardHttpProxyTemplateSchema, z.null()]).optional(),
   proxyFallback: z.boolean().optional(),
   password: z.union([DashboardPasswordSchema, z.null()]).optional(),
-  apiKeys: z.array(DashboardApiKeyMutationSchema).optional(),
+  apiKeys: z
+    .array(DashboardApiKeyMutationSchema)
+    .superRefine((entries, context) => {
+      const labels = new Set<string>();
+      const keys = new Set<string>();
+      const ids = new Set<string>();
+      entries.forEach((entry, index) => {
+        if (labels.has(entry.label) || keys.has(entry.key) || (entry.id !== undefined && ids.has(entry.id))) {
+          context.addIssue({
+            code: 'custom',
+            path: [index, 'label'],
+            message: 'API key labels, keys and IDs must be unique',
+          });
+        }
+        labels.add(entry.label);
+        keys.add(entry.key);
+        if (entry.id !== undefined) ids.add(entry.id);
+      });
+    })
+    .optional(),
   requireApiKey: z.boolean().optional(),
   logging: z
     .strictObject({

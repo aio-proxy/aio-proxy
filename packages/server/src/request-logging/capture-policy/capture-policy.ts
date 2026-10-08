@@ -31,6 +31,9 @@ const identifiers = new Set([
   attributeName.attemptModelId,
 ]);
 const localFields = new Set([
+  attributeName.callerId,
+  attributeName.callerLabel,
+  attributeName.callerKind,
   'event',
   'requestId',
   'inboundProtocol',

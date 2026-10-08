@@ -137,7 +137,10 @@ test('GET /settings serves the authored caller keys and redacts only the root pr
     expect(JSON.parse(text)).toEqual({
       // Authored, not expanded and not masked: the editor round-trips these rows back through
       // PUT, so a mask would be written over the credential and `sk-from-env` over the template.
-      apiKeys: [{ key: '{{env.SETTINGS_API_KEY}}', label: 'ci' }, { key: 'sk-plain-preserved' }],
+      apiKeys: [
+        { key: '{{env.SETTINGS_API_KEY}}', label: 'ci', id: expect.any(String) },
+        { key: 'sk-plain-preserved', id: expect.any(String) },
+      ],
       hasPassword: true,
       host: '127.0.0.1',
       logging: { enabled: false, level: 'info', retentionDays: 3 },
@@ -377,7 +380,7 @@ test('an API key array is authored wholesale, templates byte-for-byte', async ()
     // Unlisted authored keys are gone, and the write is hot: the middleware reads the policy
     // from `currentConfig()` per request, so the reload is the whole rollout.
     expect(await response.json()).toMatchObject({ ok: true, restartRequired: false, settings: { apiKeys } });
-    expect(onDisk(configPath).server.apiKeys).toEqual(apiKeys);
+    expect(onDisk(configPath).server.apiKeys).toMatchObject(apiKeys);
   });
 });
 
@@ -553,5 +556,43 @@ test('a missing otel env var is config_rejected and leaves the file unchanged', 
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
     expect(readFileSync(configPath, 'utf8')).toBe(before);
+  });
+});
+
+test('key labels are required, trimmed and unique; rejected edits leave the configuration untouched', async () => {
+  await withSettingsFixture(async ({ routes, configPath }) => {
+    const before = readFileSync(configPath, 'utf8');
+    for (const apiKeys of [
+      [{ key: 'new' }],
+      [{ key: 'new', label: '  ' }],
+      [
+        { key: 'one', label: 'Alice' },
+        { key: 'two', label: ' Alice ' },
+      ],
+    ]) {
+      expect((await put(routes, { apiKeys })).status).toBe(422);
+      expect(readFileSync(configPath, 'utf8')).toBe(before);
+    }
+  });
+});
+
+test('settings preserve caller identity through rename and rotation and retain authored env templates', async () => {
+  await withSettingsFixture(async ({ routes, state }) => {
+    const view = (await (await routes.request('/settings')).json()) as {
+      apiKeys: Array<{ id: string; key: string; label?: string }>;
+    };
+    const id = view.apiKeys[0]!.id;
+    expect(id).toMatch(/^[0-9a-f-]{36}$/u);
+    const response = await put(routes, { apiKeys: [{ id, key: 'rotated-key', label: ' Alice ' }] });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      settings: { apiKeys: [{ id, key: 'rotated-key', label: 'Alice' }] },
+    });
+    expect(state.traceStore.resolveUsageCaller(state.currentConfig().server.apiKeys[0]!).id).toBe(id);
+    const renamed = await put(routes, { apiKeys: [{ id, key: 'rotated-key', label: 'Renamed' }] });
+    expect(renamed.status).toBe(200);
+    expect(await (await routes.request('/overview/callers')).json()).toMatchObject(
+      expect.arrayContaining([{ id, label: 'Renamed', kind: 'key' }]),
+    );
   });
 });

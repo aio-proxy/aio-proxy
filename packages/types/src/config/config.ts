@@ -40,10 +40,12 @@ const StaticApiKeySchema = z
   );
 
 const ApiKeySchema = z.object({
+  id: z.uuid().optional(),
   key: StaticApiKeySchema,
   label: z.string().min(1).optional(),
 });
 const ApiKeyAuthoringSchema = z.object({
+  id: z.uuid().optional(),
   key: z.union([ConfigTemplateStringSchema, StaticApiKeySchema]),
   label: z.string().min(1).optional(),
 });

@@ -15,6 +15,7 @@ import type { SettingsFormApi } from './use-settings-form';
 
 interface ApiKeyRow {
   readonly id: string;
+  readonly callerId?: string;
   readonly key: string;
   readonly label: string;
 }
@@ -27,7 +28,12 @@ interface SettingsApiKeysGroupProps {
 }
 
 const rowsFromSettings = (settings: DashboardSettingsView): readonly ApiKeyRow[] =>
-  settings.apiKeys.map((entry, index) => ({ id: `stored-${index}`, key: entry.key, label: entry.label ?? '' }));
+  settings.apiKeys.map((entry, index) => ({
+    id: `stored-${index}`,
+    callerId: entry.id,
+    key: entry.key,
+    label: entry.label ?? '',
+  }));
 
 // A row left without a key but carrying a label cannot be saved, so it is reported as an error
 // rather than dropped. A row with nothing in it at all is just an unused Add click.
@@ -39,7 +45,7 @@ const mutationEntries = (rows: readonly ApiKeyRow[]): readonly DashboardApiKeyMu
   rows.flatMap((row): readonly DashboardApiKeyMutation[] => {
     if (row.key === '') return [];
     const label = row.label.trim();
-    return [{ key: row.key, ...(label === '' ? {} : { label }) }];
+    return [{ key: row.key, label, ...(row.callerId === undefined ? {} : { id: row.callerId }) }];
   });
 
 // The generated key never leaves the browser until the row is saved, so the platform CSPRNG
@@ -146,7 +152,6 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
                 {showLabels ? (
                   <Label htmlFor={`api-key-label-${row.id}`} className="text-xs">
                     {m['dashboard.settings.api_keys_label']()}
-                    <span className="font-normal text-muted-foreground">{m['dashboard.settings.optional']()}</span>
                   </Label>
                 ) : null}
                 <Input
@@ -155,8 +160,13 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
                   value={row.label}
                   disabled={disabled}
                   aria-label={showLabels ? undefined : m['dashboard.settings.api_keys_label']()}
+                  maxLength={40}
+                  required
                   onChange={(event) => patchRow(row.id, { label: event.target.value })}
                 />
+                {row.key !== '' && row.label.trim() === '' ? (
+                  <p className="text-xs text-destructive">{m['dashboard.callers.label_required']()}</p>
+                ) : null}
               </div>
               <Button
                 type="button"
@@ -173,6 +183,9 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
             </div>
           );
         })}
+        {!parsed.success && !rows.some((row) => row.key !== '' && row.label.trim() === '') ? (
+          <p className="text-xs text-destructive">{m['dashboard.callers.unique_label']()}</p>
+        ) : null}
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"

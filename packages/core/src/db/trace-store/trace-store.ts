@@ -2,6 +2,7 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { desktopUsage } from './desktop-usage';
 import { overviewDashboard, overviewDashboardActivity, overviewDashboardDiagnostics } from './overview';
+import { callerRanking } from './overview/caller-ranking';
 import { providerWindowCost } from './provider-window-cost';
 import { routingTraffic, routingTrafficBuckets } from './routing-traffic';
 import { findAffinity, markResponseAmbiguous, resolveResponse } from './session-state';
@@ -11,10 +12,14 @@ import { percentile } from './trace-percentile';
 import { find, list } from './trace-queries';
 import { summary } from './trace-summary';
 import type { TraceStore } from './types';
+import { resolveUsageCaller, usageCallers } from './usage-callers';
 import { overview } from './usage-overview';
 
 export function createTraceStore(db: BunSQLiteDatabase): TraceStore {
   return {
+    resolveUsageCaller: (entry) => resolveUsageCaller(db, entry),
+    usageCallers: () => usageCallers(db),
+    callerRanking: (query) => callerRanking(db, query),
     startRoot: (input) => startRoot(db, input),
     complete: (input) => complete(db, input),
     list: (query) => list(db, query),

@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 import { Pagination } from '@/components/data-table/pagination';
 import { ProviderLabel } from '@/components/provider-label';
 import { ProviderCatalogProvider } from '@/hooks/use-provider-catalog';
+import { usageCallerLabel } from '@/lib/usage-caller-label';
 
 import { useProviderCatalog } from '../../hooks/use-provider-catalog';
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
@@ -38,6 +39,11 @@ const tracesTableFeatures = tableFeatures({});
 type TraceColumn = ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>;
 
 const traceColumns = (): TraceColumn[] => [
+  {
+    id: 'caller',
+    header: () => m['dashboard.callers.label'](),
+    cell: ({ row }) => usageCallerLabel(row.original.caller),
+  },
   {
     accessorKey: 'startedAt',
     header: () => m['dashboard.traces.started_at'](),

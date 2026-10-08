@@ -6,6 +6,7 @@ import { Activity, ServerOff } from 'lucide-react';
 import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
+import { UsageCallerSelect } from '@/components/usage-caller-select';
 
 import { ModelUsageTrend } from '../../components/model-usage-trend';
 import { OverviewKpiGrid } from '../../components/overview-kpi-grid';
@@ -13,10 +14,12 @@ import { getOverviewRangeLabel, OverviewTimeWindow } from '../../components/over
 import { ProviderHealthTable } from '../../components/provider-health-table';
 import { TokenActivityHeatmap } from '../../components/token-activity-heatmap';
 import { TopModelRanking } from '../../components/top-model-ranking';
+import { UsageCallerRanking } from '../../components/usage-caller-ranking';
 import {
   useOverviewActivityQuery,
   useOverviewDiagnosticsQuery,
   useOverviewQuery,
+  useCallerRankingQuery,
 } from '../../hooks/use-overview-query';
 
 const loadingKpis = ['requests', 'tokens', 'cache', 'cost', 'rpm', 'tpm'] as const;
@@ -24,9 +27,20 @@ const loadingKpis = ['requests', 'tokens', 'cache', 'cost', 'rpm', 'tpm'] as con
 export const OverviewPage: React.FC = () => {
   const [range, setRange] = useState<DashboardOverviewRange>('24h');
   const [metric, setMetric] = useState<UsageOverviewMetric>('requests');
-  const overview = useOverviewQuery({ range });
-  const diagnostics = useOverviewDiagnosticsQuery({ range });
-  const activity = useOverviewActivityQuery();
+  const [callerId, setCallerId] = useState<string>();
+  const overview = useOverviewQuery({ range, callerId });
+  const diagnostics = useOverviewDiagnosticsQuery({ range, callerId });
+  const activity = useOverviewActivityQuery(callerId);
+  const ranking = useCallerRankingQuery({ range });
+  const callerBoard =
+    callerId === undefined ? (
+      <UsageCallerRanking
+        rows={ranking.data ?? []}
+        loading={ranking.isLoading}
+        error={ranking.isError}
+        onSelect={setCallerId}
+      />
+    ) : null;
   let content: React.ReactNode;
 
   if (
@@ -34,7 +48,8 @@ export const OverviewPage: React.FC = () => {
     overview.isPlaceholderData ||
     diagnostics.isLoading ||
     diagnostics.isPlaceholderData ||
-    activity.isLoading
+    activity.isLoading ||
+    activity.isPlaceholderData
   ) {
     content = (
       <>
@@ -89,20 +104,24 @@ export const OverviewPage: React.FC = () => {
     content = (
       <>
         {overview.data.summary.current.requestCount === 0n ? (
-          <Empty className="min-h-72 bg-card">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <Activity />
-              </EmptyMedia>
-              <EmptyTitle>
-                {m['dashboard.overview.no_requests_title']({ range: getOverviewRangeLabel(overview.data.range) })}
-              </EmptyTitle>
-              <EmptyDescription>{m['dashboard.overview.no_requests_description']()}</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+          <>
+            <Empty className="min-h-72 bg-card">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Activity />
+                </EmptyMedia>
+                <EmptyTitle>
+                  {m['dashboard.overview.no_requests_title']({ range: getOverviewRangeLabel(overview.data.range) })}
+                </EmptyTitle>
+                <EmptyDescription>{m['dashboard.overview.no_requests_description']()}</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+            {callerBoard}
+          </>
         ) : (
           <>
             <OverviewKpiGrid summary={overview.data.summary} />
+            {callerBoard}
             <ModelUsageTrend
               metric={metric}
               range={overview.data.range}
@@ -125,12 +144,17 @@ export const OverviewPage: React.FC = () => {
       title={m['dashboard.menus.dashboard']()}
       breadcrumbs={[{ label: m['dashboard.menus.observability']() }, { label: m['dashboard.menus.dashboard']() }]}
       extra={
-        <OverviewTimeWindow
-          isFetching={overview.isFetching}
-          range={range}
-          onRangeChange={setRange}
-          onRefresh={() => void Promise.all([overview.refetch(), diagnostics.refetch(), activity.refetch()])}
-        />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <UsageCallerSelect value={callerId} onChange={setCallerId} />
+          <OverviewTimeWindow
+            isFetching={overview.isFetching}
+            range={range}
+            onRangeChange={setRange}
+            onRefresh={() =>
+              void Promise.all([overview.refetch(), diagnostics.refetch(), activity.refetch(), ranking.refetch()])
+            }
+          />
+        </div>
       }
     >
       <div className="grid gap-3">{content}</div>

@@ -16,6 +16,7 @@ export const traceSearchSchema = z.object({
   startedAfter: z.iso.datetime({ offset: true }).optional().catch(undefined),
   startedBefore: z.iso.datetime({ offset: true }).optional().catch(undefined),
   traceId,
+  callerId: optionalString,
   requestId: optionalString,
   sessionSource: optionalString,
   sessionId: optionalString,

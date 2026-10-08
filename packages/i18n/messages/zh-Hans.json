@@ -1908,5 +1908,16 @@
       "docs": "接入文档",
       "revoke_failed": "授权未能撤销"
     }
-  }
+  },
+  "dashboard.callers.label": "使用者",
+  "dashboard.callers.all": "全部使用者",
+  "dashboard.callers.ranking": "使用者排名",
+  "dashboard.callers.anonymous": "匿名访问",
+  "dashboard.callers.legacy": "历史未归属",
+  "dashboard.callers.label_required": "每个密钥都必须填写标签。",
+  "dashboard.callers.unique_label": "标签、密钥和身份标识不能重复。",
+  "dashboard.callers.empty": "当前时间范围没有使用记录。",
+  "dashboard.callers.load_error": "无法加载使用者。",
+  "dashboard.callers.ranking_error": "无法加载使用者排名。",
+  "dashboard.callers.cost_note": "未定价请求计入请求数和 Token，费用仅包含已定价的使用量。"
 }

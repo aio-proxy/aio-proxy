@@ -91,6 +91,7 @@ const toSummaryFilters = (search: TraceSearch) => omit(search, ['pageSize', 'pag
 // object: a 12th filter field added to only one of them reads as "the table filtered, the chart
 // did not". Pagination and the date bounds stay at the call sites, where the two routes differ.
 const toFilterQuery = (search: TraceSearch) => ({
+  ...(search.callerId === undefined ? {} : { callerId: search.callerId }),
   ...(search.traceId === undefined ? {} : { traceId: search.traceId }),
   ...(search.requestId === undefined ? {} : { requestId: search.requestId }),
   ...(search.sessionSource === undefined ? {} : { sessionSource: search.sessionSource }),

@@ -85,6 +85,13 @@
       "when": 1790991197000,
       "tag": "0011_brave_moon_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1791476679359,
+      "tag": "0012_nosy_slayback",
+      "breakpoints": true
     }
   ]
 }

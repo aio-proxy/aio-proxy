@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render as renderRtl, screen, within } from '@testing-library/react';
 
 import { OverviewPage } from './overview-page';
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+const render: typeof renderRtl = (ui, options) =>
+  renderRtl(ui, {
+    ...options,
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  });
+queryClient.setQueryData(['overview', 'callers'], [{ id: 'alice', label: 'Alice', kind: 'key' }]);
 
 const mocks = rs.hoisted(() => ({
   activityRefetch: rs.fn(),
@@ -13,7 +22,22 @@ const mocks = rs.hoisted(() => ({
 }));
 
 rs.mock('../../hooks/use-overview-query', () => ({
-  useOverviewActivityQuery: () => mocks.useOverviewActivityQuery(),
+  useCallerRankingQuery: () => ({
+    data: [
+      {
+        id: 'alice',
+        label: 'Alice',
+        kind: 'key',
+        requestCount: '42',
+        totalTokens: '8192',
+        estimatedCostNanoUsd: '2500000000',
+      },
+    ],
+    isLoading: false,
+    isError: false,
+    refetch: () => {},
+  }),
+  useOverviewActivityQuery: (input: unknown) => mocks.useOverviewActivityQuery(input),
   useOverviewDiagnosticsQuery: (input: unknown) => mocks.useOverviewDiagnosticsQuery(input),
   useOverviewQuery: (input: unknown) => mocks.useOverviewQuery(input),
 }));
@@ -207,12 +231,12 @@ describe('overview page', () => {
     expect(mocks.diagnosticsRefetch).toHaveBeenCalledTimes(1);
     expect(mocks.activityRefetch).toHaveBeenCalledTimes(1);
 
-    expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith();
-    expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '24h' });
+    expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith(undefined);
+    expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '24h', callerId: undefined });
 
     fireEvent.click(screen.getByRole('tab', { name: /7d|7 天|7 日|7일/u }));
-    expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '7d' });
-    expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith();
+    expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '7d', callerId: undefined });
+    expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith(undefined);
   });
 
   test('keeps unwindowed diagnostics visible when the selected range has no requests', () => {
@@ -287,4 +311,16 @@ describe('overview page', () => {
     render(<OverviewPage />);
     expect(screen.getByText(/No requests in 24h|24 小时内暂无请求/u)).toBeInTheDocument();
   });
+});
+
+test('ranking is independent of model trend and selecting a user filters every dashboard source', () => {
+  render(<OverviewPage />);
+  expect(screen.getByRole('heading', { name: 'User ranking' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Model trend' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Alice' }));
+  expect(screen.queryByRole('heading', { name: 'User ranking' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Model trend' })).toBeInTheDocument();
+  expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '24h', callerId: 'alice' });
+  expect(mocks.useOverviewDiagnosticsQuery).toHaveBeenLastCalledWith({ range: '24h', callerId: 'alice' });
+  expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith('alice');
 });

@@ -11,6 +11,7 @@ import migration8Sql from "./migrations/0008_absent_dark_phoenix.sql?raw";
 import migration9Sql from "./migrations/0009_spooky_greymalkin.sql?raw";
 import migration10Sql from "./migrations/0010_tidy_bill_hollister.sql?raw";
 import migration11Sql from "./migrations/0011_brave_moon_knight.sql?raw";
+import migration12Sql from "./migrations/0012_nosy_slayback.sql?raw";
 export type Migration = {
     readonly version: number;
     readonly file: string;
@@ -89,6 +90,12 @@ export const MIGRATIONS: readonly Migration[] = [
         file: "0011_brave_moon_knight.sql",
         sha256: "2482bed76370ccaa6d538490518ae9ef633aab846dc7f3d21b54ddc9a54557b3",
         sql: migration11Sql
+    },
+    {
+        version: 13,
+        file: "0012_nosy_slayback.sql",
+        sha256: "d2f18772cdcc70d033444778a3ef06715d512f39286fc4a1676e283188349890",
+        sql: migration12Sql
     }
 ];
 export const COMPILED_SCHEMA_VERSION = MIGRATIONS.length;

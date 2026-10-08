@@ -46,10 +46,18 @@ const SELECT = `select local_day as bucket, model_dimension as dimension,
  * totals. That also matches `aggregation.ts`, which drops non-null termination
  * reasons from the cost and token charts.
  */
-export function dailyRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly RootRow[] {
-  const statement = (db as IterableDatabase).$client.query<RawDailyRow, SQLQueryBindings[]>(SELECT);
+export function dailyRows(db: BunSQLiteDatabase, range: ResolvedRange, callerId?: string): readonly RootRow[] {
+  const statement = (db as IterableDatabase).$client.query<RawDailyRow, SQLQueryBindings[]>(
+    callerId === undefined
+      ? SELECT
+      : SELECT.replace('from usage_daily', 'from usage_caller_daily') + ' and caller_id = ?',
+  );
   const rows: RootRow[] = [];
-  for (const row of statement.all(localDate(range.start), localDate(range.end))) {
+  for (const row of statement.all(
+    localDate(range.start),
+    localDate(range.end),
+    ...(callerId === undefined ? [] : [callerId]),
+  )) {
     const value = (column: (typeof COLUMNS)[number]) => parseSqliteInteger(row[column]);
     const cacheHitRateKnown = value('cacheHitRateAvailable') === 1n;
     const failureCount = value('errorCount') + value('interruptedCount');

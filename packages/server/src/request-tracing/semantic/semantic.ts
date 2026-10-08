@@ -112,6 +112,9 @@ export const eventName = {
 // OTel's incubating constants are marked deprecated and its cache/reasoning
 // suffixes differ from our projection, so we do not import them here.
 export const attributeName = {
+  callerId: 'aio_proxy.caller.id',
+  callerLabel: 'aio_proxy.caller.label',
+  callerKind: 'aio_proxy.caller.kind',
   requestId: 'aio_proxy.request.id',
   guardianParentRequestId: 'aio_proxy.guardian.parent_request_id',
   operation: 'aio_proxy.operation',
