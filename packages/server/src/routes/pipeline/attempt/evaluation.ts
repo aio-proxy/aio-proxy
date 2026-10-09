@@ -80,22 +80,6 @@ async function convertEvaluationCandidate<TRequest, TContext>(
     return discovered.evaluate(invocation, { modelId: candidate.modelId, signal: rawRequest.signal });
   });
 
-  // Serialize before settling so an egress refusal falls back like any other
-  // candidate failure instead of racing an already-resolved success. The response
-  // `model` is the requested slug, never the resolved upstream id.
-  let body: unknown;
-  try {
-    body = adapter.evaluationJson(result, { responseModelId: ctx.requestedModelId });
-  } catch (error) {
-    // Caught here so the refusal keeps its precise 501 `evaluation_distribution`:
-    // `errors.provider` maps an unrecognized throw to a generic upstream 502, which
-    // would describe an egress shape mismatch as an upstream fault. Either way the
-    // candidate falls back; this layer owns saying why.
-    if (!(error instanceof EvaluationDistributionError)) throw error;
-    return emitReject(ctx, slot, adapter.errors.unsupported('evaluation_distribution'), 'unsupported_feature');
-  }
-  const response = Response.json(body);
-  slot.spanRef.current = undefined;
   const configPrice = candidateConfigPrice(
     ctx.routerModels,
     publicSlug(ctx.requestedModelId, candidate),
@@ -112,6 +96,26 @@ async function convertEvaluationCandidate<TRequest, TContext>(
     requestedModelId: ctx.requestedModelId,
     ...(configPrice === undefined ? {} : { configPrice }),
   });
+
+  // Serialize before settling so an egress refusal falls back like any other
+  // candidate failure instead of racing an already-resolved success. The response
+  // `model` is the requested slug, never the resolved upstream id.
+  let body: unknown;
+  try {
+    body = adapter.evaluationJson(result, { responseModelId: ctx.requestedModelId }, request);
+  } catch (error) {
+    // Caught here so the refusal keeps its precise 501 `evaluation_distribution`:
+    // `errors.provider` maps an unrecognized throw to a generic upstream 502, which
+    // would describe an egress shape mismatch as an upstream fault. Either way the
+    // candidate falls back; this layer owns saying why.
+    if (!(error instanceof EvaluationDistributionError)) throw error;
+    const captured = await completion;
+    return emitReject(ctx, slot, adapter.errors.unsupported('evaluation_distribution'), 'unsupported_feature', {
+      ...(captured.outcome === 'success' && captured.usage !== undefined ? { usage: captured.usage } : {}),
+    });
+  }
+  const response = Response.json(body);
+  slot.spanRef.current = undefined;
   session.finishFrom(
     ctx.emitter.settleSuccess(
       attemptSpan,

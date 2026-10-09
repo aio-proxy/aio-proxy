@@ -11,6 +11,7 @@ export enum ProviderProtocol {
   OpenAIAudio = 'openai-audio',
   OpenAIVideo = 'openai-video',
   TypeSafeSystemOne = 'typesafe-systemone',
+  OpenAIDecisions = 'openai-decisions',
 }
 
 export const ProviderProtocolSchema = z

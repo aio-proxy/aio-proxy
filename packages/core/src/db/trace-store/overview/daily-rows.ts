@@ -39,12 +39,9 @@ const SELECT = `select local_day as bucket, model_dimension as dimension,
  * Pre-rolled day rows from `usage_daily`, which survives trace pruning and is
  * therefore the only source that covers the longer ranges.
  *
- * One rollup row mixes outcomes, but the aggregator keys off a single
- * `terminationReason`, so each row fans out into up to three. Tokens and cost
- * ride entirely on the success row: failed and cancelled requests are never
- * priced and carry no usage, so the rollup's mixed totals equal the success
- * totals. That also matches `aggregation.ts`, which drops non-null termination
- * reasons from the cost and token charts.
+ * A rollup mixes outcomes, so request counts fan out by terminal state.
+ * Consumption remains independent of outcome: when only billed failures exist,
+ * the usage row has requestCount zero and the failure row carries the requests.
  */
 export function dailyRows(db: BunSQLiteDatabase, range: ResolvedRange, callerId?: string): readonly RootRow[] {
   const statement = (db as IterableDatabase).$client.query<RawDailyRow, SQLQueryBindings[]>(
@@ -63,7 +60,7 @@ export function dailyRows(db: BunSQLiteDatabase, range: ResolvedRange, callerId?
     const failureCount = value('errorCount') + value('interruptedCount');
     const shared = { bucket: row.bucket, peakBucket: row.bucket, dimension: row.dimension, cacheHitRateKnown };
     const successCount = value('successCount');
-    if (successCount > 0n) {
+    if (successCount > 0n || value('usageRequestCount') > 0n) {
       rows.push({
         ...shared,
         terminationReason: null,

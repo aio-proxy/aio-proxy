@@ -4,6 +4,7 @@ import type { DesktopUsageRange } from '@aio-proxy/types';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { parseSqliteInteger } from '../../../usage-numbers';
+import { consumedUsageRows } from '../consumed-usage';
 import { type ResolvedRange, type RootRow, bucketKeys, rangeRows, resolveRange, shiftRangeBack } from '../overview';
 
 type IterableDatabase = BunSQLiteDatabase & { readonly $client: Database };
@@ -165,6 +166,17 @@ function providerBucketTotals(
       result.set(row.providerId, buckets);
     }
   });
+  for (const row of consumedUsageRows(db, range.start, range.end)) {
+    const index = starts.findLastIndex((start) => start <= row.endedAt);
+    if (index < 0) continue;
+    const buckets = result.get(row.usage.providerId) ?? new Map<number, Totals>();
+    const totals = buckets.get(index) ?? emptyTotals();
+    totals.input += row.inputTokens;
+    totals.output += row.outputTokens;
+    totals.cost += row.estimatedCostNanoUsd;
+    buckets.set(index, totals);
+    result.set(row.usage.providerId, buckets);
+  }
   return result;
 }
 
@@ -199,7 +211,15 @@ function previousHourTotals(db: BunSQLiteDatabase, range: ResolvedRange): Totals
     where parent_span_id is null and ended_at >= ? and ended_at <= ?`;
   const statement = (db as IterableDatabase).$client.query<RawAggregate, SQLQueryBindings[]>(sql);
   const row = statement.get(range.start.getTime(), range.end.getTime());
-  return row === null ? emptyTotals() : toBigTotals(row);
+  const totals = row === null ? emptyTotals() : toBigTotals(row);
+  for (const row of consumedUsageRows(db, range.start, range.end)) {
+    totals.input += row.inputTokens;
+    totals.output += row.outputTokens;
+    totals.cost += row.estimatedCostNanoUsd;
+    totals.priced += BigInt(row.priced);
+    totals.withUsage += BigInt(row.hasUsage);
+  }
+  return totals;
 }
 
 export function desktopUsage(db: BunSQLiteDatabase, query: DesktopUsageQuery): DesktopUsageResult {

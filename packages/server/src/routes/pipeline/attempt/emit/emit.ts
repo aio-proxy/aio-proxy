@@ -171,6 +171,17 @@ export function createAttemptEmitter({ session, capability, onAttemptEnd }: Atte
     }
     if (facts?.usage !== undefined) {
       attemptSpan.span.setAttributes(usageAttributes(facts.usage));
+      if (terminal.outcome !== 'success') {
+        attemptSpan.span.setAttribute(attributeName.consumedUsage, true);
+        if (facts.usage.priceModelId !== undefined)
+          attemptSpan.span.setAttribute(attributeName.usagePriceModelId, facts.usage.priceModelId);
+        if (facts.usage.totalTokens !== undefined)
+          attemptSpan.span.setAttribute(attributeName.genAiUsageTotalTokens, facts.usage.totalTokens);
+        if (facts.usage.priceSource !== undefined)
+          attemptSpan.span.setAttribute(attributeName.usagePriceSource, facts.usage.priceSource);
+        if (facts.usage.estimatedCostUsd !== undefined)
+          attemptSpan.span.setAttribute(attributeName.genAiUsageEstimatedCostUsd, facts.usage.estimatedCostUsd);
+      }
     }
     const begun = startedAt.get(attemptSpan);
     if (begun !== undefined) onAttemptEnd?.(Math.max(0, performance.now() - begun));

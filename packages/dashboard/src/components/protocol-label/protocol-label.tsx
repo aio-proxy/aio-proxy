@@ -47,6 +47,7 @@ const PROTOCOL_LABELS: Record<
     label: 'OpenAI Videos',
     icon: withLobeIcon('openai'),
   },
+  [ProviderProtocol.OpenAIDecisions]: { label: 'OpenAI Decisions', icon: withLobeIcon('openai') },
   [ProviderProtocol.TypeSafeSystemOne]: {
     label: 'TypeSafe System One',
     // Not a lobehub slug: `@lobehub/icons-static-*` publishes no TypeSafe asset,
@@ -74,6 +75,7 @@ export const PROTOCOL_ORDER: readonly ProviderProtocol[] = [
   ProviderProtocol.OpenAIImage,
   ProviderProtocol.OpenAIAudio,
   ProviderProtocol.OpenAIVideo,
+  ProviderProtocol.OpenAIDecisions,
   ProviderProtocol.TypeSafeSystemOne,
 ];
 

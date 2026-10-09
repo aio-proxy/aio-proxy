@@ -60,3 +60,5 @@ In the Dashboard models section, use the **Manual / Sync with upstream** switch.
 - [OpenAI Audio Protocol](./openai-audio.md)
 - [OpenAI Video Protocol](./openai-video.md)
 - [System One Evaluation Protocol](./typesafe-systemone.md)
+
+- [OpenAI Decisions (`openai-decisions`)](./openai-decisions.md)

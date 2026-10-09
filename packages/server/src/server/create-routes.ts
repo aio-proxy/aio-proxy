@@ -30,6 +30,7 @@ import { createGeminiGenerateContentRoutes } from '../routes/gemini-generate-con
 import { createGeminiInteractionsRoutes } from '../routes/gemini-interactions';
 import { createOpenAIAudioRoutes } from '../routes/openai-audio';
 import { createOpenAICompletionsRoutes } from '../routes/openai-completions';
+import { createOpenAIDecisionsRoutes } from '../routes/openai-decisions';
 import { createOpenAIEmbeddingsRoutes } from '../routes/openai-embeddings';
 import { createOpenAIImagesRoutes } from '../routes/openai-images';
 import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
@@ -358,6 +359,7 @@ export const createRoutes = (
     .route('/', openAIImagesRoutes)
     .route('/', openAIAudioRoutes)
     .route('/', systemOneRoutes)
+    .route('/', createOpenAIDecisionsRoutes(state))
     .route('/', videoRoutes)
     .route('/', realtimeRoutes)
     .route('/dashboard/api/auth', dashboardAuthRoutes)

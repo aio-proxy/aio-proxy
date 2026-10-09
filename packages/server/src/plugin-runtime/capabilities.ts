@@ -46,6 +46,7 @@ export const pluginProtocol = {
   'openai-audio': 'openai-audio',
   'openai-video': 'openai-video',
   'typesafe-systemone': 'typesafe-systemone',
+  'openai-decisions': 'openai-decisions',
 } as const satisfies Record<ProviderProtocol, ProtocolId>;
 
 export function catalogModelIds(

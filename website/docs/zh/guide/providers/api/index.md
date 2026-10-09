@@ -138,3 +138,5 @@ Dashboard 的模型区域提供**手动 / 与上游同步（Manual / Sync with u
 - [**OpenAI Audio 音频协议 (`openai-audio`)**](./openai-audio)
 - [**OpenAI Video 视频协议 (`openai-video`)**](./openai-video)
 - [**TypeSafe System One 评估协议 (`typesafe-systemone`)**](./typesafe-systemone)
+
+- [OpenAI Decisions (`openai-decisions`)](./openai-decisions.md)

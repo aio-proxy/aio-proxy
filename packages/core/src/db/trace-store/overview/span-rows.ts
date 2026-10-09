@@ -3,6 +3,7 @@ import type { Database, SQLQueryBindings } from 'bun:sqlite';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { parseSqliteInteger } from '../../../usage-numbers';
+import { consumedUsageRows } from '../consumed-usage';
 import type { OverviewRow } from '../usage-overview/aggregation';
 import type { ResolvedRange } from './range';
 
@@ -73,7 +74,7 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange, callerId?:
     ...(callerId === undefined ? [] : [callerId]),
   ];
   const statement = (db as IterableDatabase).$client.query<RawRootRow, SQLQueryBindings[]>(sql);
-  return statement.all(...(params as SQLQueryBindings[])).map((row) => {
+  const rows = statement.all(...(params as SQLQueryBindings[])).map((row) => {
     const inputTokens = parseSqliteInteger(row.inputTokens);
     const outputTokens = parseSqliteInteger(row.outputTokens);
     const cacheReadTokens = parseSqliteInteger(row.cacheReadTokens);
@@ -105,4 +106,21 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange, callerId?:
       cacheHitRateKnown: true,
     };
   });
+  return [
+    ...rows,
+    ...consumedUsageRows(db, range.start, range.end, callerId).map((row) => ({
+      ...row,
+      dimension: row.modelDimension,
+      bucket:
+        range.bucketUnit === 'hour'
+          ? Math.min(23, Math.floor((row.endedAt - range.start.getTime()) / 3600000))
+          : new Date(row.endedAt).toLocaleDateString('en-CA'),
+      peakBucket: Math.min(1439, Math.floor((row.endedAt - range.start.getTime()) / 60000)),
+      cacheReadTokens: 0n,
+      cacheWriteTokens: 0n,
+      normalizedCacheReadTokens: 0n,
+      normalizedPromptTokens: row.inputTokens,
+      cacheHitRateKnown: true,
+    })),
+  ];
 }

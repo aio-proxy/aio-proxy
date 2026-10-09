@@ -248,6 +248,7 @@ export type EvaluationInvocation = {
 };
 
 export type EvaluationAnswer =
+  | { readonly type: 'refusal' }
   | { readonly type: 'noul'; readonly noul: number }
   | {
       readonly type: 'choice';
@@ -264,7 +265,13 @@ export type EvaluationAnswer =
 
 export type EvaluationResult = {
   readonly answers: Readonly<Record<string, EvaluationAnswer>>;
-  readonly usage?: { readonly inputTokens?: number; readonly outputTokens?: number };
+  // Cache counts are inclusive subsets of inputTokens. An absent field was not reported.
+  readonly usage?: {
+    readonly inputTokens?: number;
+    readonly outputTokens?: number;
+    readonly cacheReadTokens?: number;
+    readonly cacheWriteTokens?: number;
+  };
 };
 
 export type EvaluationEgressContext = { readonly responseModelId: string };
@@ -283,7 +290,7 @@ export type EvaluationProtocolAdapter<TRequest, TContext> = Readonly<{
   wantsStream: (request: TRequest, context: TContext) => boolean;
   rawRequest: (raw: Request, request: TRequest, resolvedModel: string, context: TContext) => Promise<Request>;
   evaluationInvocation: (request: TRequest, context: TContext) => EvaluationInvocation;
-  evaluationJson: (result: EvaluationResult, context: EvaluationEgressContext) => unknown;
+  evaluationJson: (result: EvaluationResult, context: EvaluationEgressContext, request: TRequest) => unknown;
   errors: ProtocolErrorMapper;
 }>;
 
