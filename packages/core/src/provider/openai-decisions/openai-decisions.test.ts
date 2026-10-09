@@ -46,6 +46,28 @@ test('refuses duplicate answers even when every requested name appears', async (
   await expect(transport.evaluate(invocation, { modelId: 'judge' })).rejects.toThrow();
 });
 
+test('keeps cache subsets and drops null cache details when serving SystemOne', async () => {
+  const answers = [{ name: 'q', type: 'predicate', probability: 0.9 }];
+  const evaluate = (usage: unknown) =>
+    createOpenAIDecisionsEvaluate(config(), { fetch: async () => Response.json({ answers, usage }) }).evaluate(
+      invocation,
+      { modelId: 'judge' },
+    );
+  expect(
+    (
+      await evaluate({
+        input_tokens: 100,
+        output_tokens: 99,
+        input_tokens_details: { cached_tokens: 30, cache_write_tokens: 10 },
+      })
+    ).usage,
+  ).toEqual({ inputTokens: 100, outputTokens: 0, cacheReadTokens: 30, cacheWriteTokens: 10 });
+  expect((await evaluate({ input_tokens: 7, input_tokens_details: { cached_tokens: null } })).usage).toEqual({
+    inputTokens: 7,
+    outputTokens: 0,
+  });
+});
+
 test('records native input-only usage even when the upstream includes output tokens', async () => {
   const transport = createOpenAIDecisionsEvaluate(config(), {
     fetch: async () =>

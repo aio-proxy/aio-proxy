@@ -1,14 +1,21 @@
 import { z, ZodError } from 'zod';
 
+import { isHttpUrl } from '../../image-input';
 import { readJsonRequest, scanJsonBody } from '../request/index';
 
 const value = z.union([z.string(), z.boolean()]);
+const dataImageUrl = /^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+$/u;
+
+// Decisions accepts an inline data URL or a publicly accessible HTTP(S) URL.
+// file_id is not an image source. The proxy validates the URL and does not fetch it.
 const part = z.discriminatedUnion('type', [
   z.object({ type: z.literal('input_text'), text: z.string() }).loose(),
   z
     .object({
       type: z.literal('input_image'),
-      image_url: z.string().regex(/^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+$/u),
+      image_url: z.string().refine((imageUrl) => dataImageUrl.test(imageUrl) || isHttpUrl(imageUrl), {
+        message: 'Image URL must be a data URL or an HTTP(S) URL',
+      }),
     })
     .loose(),
 ]);

@@ -265,7 +265,13 @@ export type EvaluationAnswer =
 
 export type EvaluationResult = {
   readonly answers: Readonly<Record<string, EvaluationAnswer>>;
-  readonly usage?: { readonly inputTokens?: number; readonly outputTokens?: number };
+  // Cache counts are inclusive subsets of inputTokens. An absent field was not reported.
+  readonly usage?: {
+    readonly inputTokens?: number;
+    readonly outputTokens?: number;
+    readonly cacheReadTokens?: number;
+    readonly cacheWriteTokens?: number;
+  };
 };
 
 export type EvaluationEgressContext = { readonly responseModelId: string };

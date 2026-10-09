@@ -8,6 +8,13 @@ const body = {
   input: 'Hello',
   questions: [{ type: 'predicate', name: '__proto__', instructions: 'Greeting?' }],
 };
+const emptyUsage = {
+  input_tokens: 0,
+  output_tokens: 0,
+  total_tokens: 0,
+  input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
+  output_tokens_details: { reasoning_tokens: 0 },
+};
 const raw = (value: unknown, headers: Record<string, string> = {}) =>
   new Request('https://proxy.test/v1/decisions', { method: 'POST', headers, body: JSON.stringify(value) });
 
@@ -83,6 +90,7 @@ test('accepts label-only score levels and preserves rubric meaning and response 
           confidence: 0.8,
         },
       ],
+      usage: emptyUsage,
     });
   }
 });
@@ -112,7 +120,11 @@ test('keeps prototype-like question names as ordinary evaluation data', async ()
       { responseModelId: 'judge' },
       request,
     ),
-  ).toEqual({ model: 'judge', answers: [{ type: 'predicate', name: '__proto__', probability: 0.7 }] });
+  ).toEqual({
+    model: 'judge',
+    answers: [{ type: 'predicate', name: '__proto__', probability: 0.7 }],
+    usage: emptyUsage,
+  });
 });
 
 test('decompresses a request and removes stale length and encoding when rewriting the model', async () => {
@@ -176,6 +188,7 @@ test('keeps unnamed questions in request order without inventing wire names', as
       { type: 'predicate', name: null, probability: 0.9 },
       { type: 'predicate', name: 'named', probability: 0.1 },
     ],
+    usage: emptyUsage,
   });
 });
 
@@ -249,7 +262,7 @@ test('includes a null name on unnamed refusal answers', async () => {
       { responseModelId: 'judge' },
       request,
     ),
-  ).toEqual({ model: 'judge', answers: [{ type: 'refusal', name: null }] });
+  ).toEqual({ model: 'judge', answers: [{ type: 'refusal', name: null }], usage: emptyUsage });
 });
 
 test('rejects input messages without a user role', async () => {
@@ -268,6 +281,47 @@ test('rejects deeply nested extension fields with a protocol-shaped client error
     failure = error;
   }
   expect(openAIDecisionsAdapter.errors.requestError(failure)?.status).toBe(400);
+});
+
+test('accepts data and HTTP(S) image URLs and rejects other image sources', async () => {
+  const payload = (imageUrl: string) => ({
+    ...body,
+    input: [{ role: 'user', content: [{ type: 'input_image', image_url: imageUrl }] }],
+  });
+  for (const imageUrl of [
+    'data:image/png;base64,aGVsbG8=',
+    'https://example.com/image.png',
+    'http://cdn.example.com/a.jpg?size=1',
+  ]) {
+    await expect(openAIDecisionsAdapter.parse(raw(payload(imageUrl)))).resolves.toMatchObject({
+      input: [{ content: [{ image_url: imageUrl }] }],
+    });
+  }
+  for (const imageUrl of ['ftp://example.com/a.png', 'file-abc', 'data:text/plain,hi', 'https://']) {
+    await expect(openAIDecisionsAdapter.parse(raw(payload(imageUrl)))).rejects.toThrow();
+  }
+});
+
+test('emits the required Decisions usage object, including reported cache subsets', async () => {
+  const request = await openAIDecisionsAdapter.parse(raw(body), {});
+  expect(
+    openAIDecisionsAdapter.evaluationJson(
+      {
+        answers: Object.fromEntries([['__proto__', { type: 'noul', noul: 0.7 }]]),
+        usage: { inputTokens: 12, outputTokens: 3, cacheReadTokens: 4, cacheWriteTokens: 1 },
+      },
+      { responseModelId: 'judge' },
+      request,
+    ),
+  ).toMatchObject({
+    usage: {
+      input_tokens: 12,
+      output_tokens: 3,
+      total_tokens: 15,
+      input_tokens_details: { cached_tokens: 4, cache_write_tokens: 1 },
+      output_tokens_details: { reasoning_tokens: 0 },
+    },
+  });
 });
 
 test('includes null names on every unnamed decision answer type', async () => {

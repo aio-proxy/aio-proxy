@@ -4,7 +4,7 @@ title: OpenAI Decisions
 
 # OpenAI Decisions evaluation protocol (`openai-decisions`)
 
-`POST /v1/decisions` evaluates text or inline base64 images using `predicate`, `choice`, and `score` questions. See the [official OpenAI documentation](https://developers.openai.com/api/docs/guides/decisions). OpenAI currently supports `gpt-6-luna`; aio-proxy resolves configured models and aliases without hardcoding that restriction.
+`POST /v1/decisions` evaluates text or images using `predicate`, `choice`, and `score` questions. See the [official OpenAI documentation](https://developers.openai.com/api/docs/guides/decisions). OpenAI currently supports `gpt-6-luna`; aio-proxy resolves configured models and aliases without hardcoding that restriction.
 
 ```json
 {
@@ -49,6 +49,6 @@ Decisions and SystemOne share the `evaluation` capability, model routing, Provid
 - SystemOne can use native Decisions endpoints. Structured `state` becomes JSON text evidence; valid Decisions user messages retain multimodal inputs.
 - Converted Decisions choice/score answers require complete distributions and confidence. Unsupported results fall back to the next Provider. SystemOne cannot represent a Decisions refusal, so that candidate also falls back.
 
-The endpoint is non-streaming. Images must use inline `data:image/...;base64,...` URLs; hosted HTTP(S) URLs and `file_id` inputs are unsupported. Named questions must have unique names.
+The endpoint is non-streaming. Images use an inline `data:image/...;base64,...` URL or a publicly accessible HTTP(S) URL; `file_id` inputs are unsupported. Named questions must have unique names.
 
-Native Decisions usage records input tokens and zero output tokens. Converted calls record the actual upstream evaluation usage. Cost estimation uses the project's configured-price precedence; evaluation channels can have their own price overrides.
+Native Decisions usage records input tokens, cache subsets, and zero output tokens. Converted responses always include the full usage object and record the actual upstream evaluation usage, with zero for any count the provider did not report. Cost estimation uses the project's configured-price precedence; evaluation channels can have their own price overrides.

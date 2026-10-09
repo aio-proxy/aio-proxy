@@ -80,6 +80,25 @@ describe('evaluationCapture', () => {
 
   // jev prices input tokens only. The generic pricing path must bill that side
   // without an output price configured, rather than skipping the row.
+  it('prices cache subsets separately from the inclusive input total', async () => {
+    const completion = await evaluationCapture(
+      {
+        ...base,
+        usage: { inputTokens: 100, outputTokens: 0, cacheReadTokens: 30, cacheWriteTokens: 10 },
+        configPrice: { id: 'm', input: 10, cacheRead: 1, cacheWrite: 2 },
+      },
+      undefined,
+    );
+
+    expect(completion.usage).toMatchObject({
+      inputTokens: 100,
+      cacheReadTokens: 30,
+      cacheWriteTokens: 10,
+      estimatedCostUsd: 0.00065,
+      priceSource: 'config',
+    });
+  });
+
   it('prices an input-only configured price', async () => {
     const completion = await evaluationCapture(
       { ...base, usage: { inputTokens: 1_000_000, outputTokens: 48 }, configPrice: { id: 'm', input: 2 } },

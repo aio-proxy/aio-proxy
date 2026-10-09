@@ -97,24 +97,35 @@ function answerJson(question: OpenAIDecisionsQuestion, answer: EvaluationAnswer 
     confidence,
   };
 }
+// The Decisions response schema requires usage and both detail objects. Unreported
+// counts are zero on the wire; accounting still omits a count it never received.
+function wireCount(value: number | undefined): number {
+  return value !== undefined && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+function decisionsUsage(usage: EvaluationResult['usage']) {
+  const inputTokens = wireCount(usage?.inputTokens);
+  const outputTokens = wireCount(usage?.outputTokens);
+  return {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: inputTokens + outputTokens,
+    input_tokens_details: {
+      cached_tokens: wireCount(usage?.cacheReadTokens),
+      cache_write_tokens: wireCount(usage?.cacheWriteTokens),
+    },
+    output_tokens_details: { reasoning_tokens: 0 },
+  };
+}
 export function decisionsJson(
   result: EvaluationResult,
   context: EvaluationEgressContext,
   request: OpenAIDecisionsRequest,
 ): unknown {
-  const { inputTokens, outputTokens } = result.usage ?? {};
   return {
     model: context.responseModelId,
     answers: request.questions.map((question, index) =>
       answerJson(question, result.answers[decisionQuestionId(question, index, request.questions)]),
     ),
-    ...(result.usage === undefined
-      ? {}
-      : {
-          usage: {
-            ...(inputTokens === undefined ? {} : { input_tokens: inputTokens }),
-            ...(outputTokens === undefined ? {} : { output_tokens: outputTokens }),
-          },
-        }),
+    usage: decisionsUsage(result.usage),
   };
 }

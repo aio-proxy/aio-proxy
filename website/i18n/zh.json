@@ -222,8 +222,8 @@
     },
     "createDecision": {
       "title": "创建决策",
-      "summary": "使用条件、选项和评分问题评估文本及内联图片。",
-      "description": "评估文本和内联 base64 图片。同协议 Decisions 上游原始透传，其他具有评估能力的 Provider 通过统一评估管线转换。转换后的选项和评分结果必须具有概率分布和置信度。按配置模型选择 Provider 并在失败时回退。",
+      "summary": "使用条件、选项和评分问题评估文本及图片。",
+      "description": "评估文本和图片。图片使用内联 base64 data URL 或可公开访问的 HTTP(S) URL。同协议 Decisions 上游原始透传，其他具有评估能力的 Provider 通过统一评估管线转换。转换后的选项和评分结果必须具有概率分布和置信度。按配置模型选择 Provider 并在失败时回退。",
       "resource": "Decisions"
     }
   }

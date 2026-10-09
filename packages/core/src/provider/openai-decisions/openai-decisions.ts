@@ -37,10 +37,21 @@ const answerSchema = z.discriminatedUnion('type', [
     .loose(),
   z.object({ type: z.literal('refusal'), name: z.string().optional() }).loose(),
 ]);
+const tokenCount = z.number().int().nonnegative();
 const responseSchema = z
   .object({
     answers: z.array(answerSchema),
-    usage: z.object({ input_tokens: z.number().int().nonnegative().nullish() }).nullish(),
+    usage: z
+      .object({
+        input_tokens: tokenCount.nullish(),
+        input_tokens_details: z
+          .object({
+            cached_tokens: tokenCount.nullish(),
+            cache_write_tokens: tokenCount.nullish(),
+          })
+          .nullish(),
+      })
+      .nullish(),
   })
   .loose();
 
@@ -133,11 +144,21 @@ function resultFromResponse(body: unknown, invocation: EvaluationInvocation): Ev
   );
   if (Object.keys(answers).length !== Object.keys(invocation.questions).length)
     throw new EvaluationDistributionError('Decisions did not answer every question');
+  const reported = result.usage;
+  const cacheReadTokens = reported?.input_tokens_details?.cached_tokens;
+  const cacheWriteTokens = reported?.input_tokens_details?.cache_write_tokens;
   return {
     answers,
-    ...(result.usage?.input_tokens == null
+    ...(reported?.input_tokens == null
       ? {}
-      : { usage: { inputTokens: result.usage.input_tokens, outputTokens: 0 } }),
+      : {
+          usage: {
+            inputTokens: reported.input_tokens,
+            outputTokens: 0,
+            ...(cacheReadTokens == null ? {} : { cacheReadTokens }),
+            ...(cacheWriteTokens == null ? {} : { cacheWriteTokens }),
+          },
+        }),
   };
 }
 

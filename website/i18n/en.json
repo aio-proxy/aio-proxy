@@ -222,8 +222,8 @@
     },
     "createDecision": {
       "title": "Create a decision",
-      "summary": "Evaluate text and inline images with predicate, choice, and score questions.",
-      "description": "Evaluates text and inline base64 images. Native Decisions endpoints use raw passthrough; other evaluation-capable providers use the shared evaluation pipeline. Converted choice and score answers require probability distributions and confidence. Provider routing and fallback use the configured model.",
+      "summary": "Evaluate text and images with predicate, choice, and score questions.",
+      "description": "Evaluates text and images supplied as inline base64 data URLs or publicly accessible HTTP(S) URLs. Native Decisions endpoints use raw passthrough; other evaluation-capable providers use the shared evaluation pipeline. Converted choice and score answers require probability distributions and confidence. Provider routing and fallback use the configured model.",
       "resource": "Decisions"
     }
   }

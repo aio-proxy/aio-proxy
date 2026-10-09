@@ -85,6 +85,13 @@ test('converts a Decisions predicate through the existing SystemOne evaluation c
   expect(await response.json()).toMatchObject({
     model: 'judge',
     answers: [{ type: 'predicate', name: 'greeting', probability: 0.9 }],
+    usage: {
+      input_tokens: 3,
+      output_tokens: 0,
+      total_tokens: 3,
+      input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
+      output_tokens_details: { reasoning_tokens: 0 },
+    },
   });
 });
 
@@ -270,7 +277,26 @@ test('fails over from an upstream failure to another evaluation provider', async
   expect(await response.json()).toMatchObject({ answers: [{ probability: 0.8 }] });
 });
 
-test('rejects invalid questions and hosted image URLs before calling an upstream', async () => {
+test('raw passthrough forwards an HTTP(S) image URL without fetching it', async () => {
+  const input = [{ role: 'user', content: [{ type: 'input_image', image_url: 'https://example.com/image.png' }] }];
+  const baseURL = upstream(async (raw) => {
+    expect(await raw.json()).toEqual({ model: 'gpt-6-luna', input, questions: [predicate] });
+    return Response.json({
+      answers: [{ type: 'predicate', name: 'greeting', probability: 0.4 }],
+      usage: { input_tokens: 2 },
+    });
+  });
+  const app = await createServer({
+    config: {
+      providers: { judge: { kind: 'api', protocol: 'openai-decisions', baseURL, alias: { judge: 'gpt-6-luna' } } },
+    },
+  });
+  const response = await app.request('/v1/decisions', request({ model: 'judge', input, questions: [predicate] }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ answers: [{ probability: 0.4 }] });
+});
+
+test('rejects invalid questions and image URLs before calling an upstream', async () => {
   let calls = 0;
   const baseURL = upstream(() => {
     calls += 1;
@@ -292,7 +318,7 @@ test('rejects invalid questions and hosted image URLs before calling an upstream
     })),
     {
       model: 'judge',
-      input: [{ content: [{ type: 'input_image', image_url: 'https://example.com/image.png' }] }],
+      input: [{ role: 'user', content: [{ type: 'input_image', image_url: 'ftp://example.com/image.png' }] }],
       questions: [predicate],
     },
   ]) {
