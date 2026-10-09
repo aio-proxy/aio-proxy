@@ -1,24 +1,10 @@
-import type {
-  DashboardSettingsMutationInput,
-  DashboardSettingsMutationResponse,
-  DashboardSettingsView,
-} from '@aio-proxy/types';
-import { queryOptions } from '@tanstack/react-query';
+import type { DashboardSettingsMutationInput, DashboardSettingsMutationResponse } from '@aio-proxy/types';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
-import { queryKeys } from '@/lib/query-keys';
+
+export { settingsQueryOptions } from '@/lib/settings-query';
 
 const dashboardClient = createDashboardClient();
-
-export const settingsQueryOptions = () =>
-  queryOptions({
-    queryKey: queryKeys.settings,
-    queryFn: async (): Promise<DashboardSettingsView> => {
-      const response = await dashboardClient.dashboard.api.settings.$get();
-      if (!response.ok) throw new Error(`load settings failed: ${response.status}`);
-      return response.json();
-    },
-  });
 
 export type DashboardSettingsMutationSuccess = Extract<DashboardSettingsMutationResponse, { readonly ok: true }>;
 

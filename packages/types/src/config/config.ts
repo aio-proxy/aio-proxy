@@ -40,13 +40,30 @@ const StaticApiKeySchema = z
   );
 
 const ApiKeySchema = z.object({
+  id: z.uuid().optional(),
   key: StaticApiKeySchema,
   label: z.string().min(1).optional(),
 });
 const ApiKeyAuthoringSchema = z.object({
+  id: z.uuid().optional(),
   key: z.union([ConfigTemplateStringSchema, StaticApiKeySchema]),
   label: z.string().min(1).optional(),
 });
+
+function refineUniqueApiKeyIds(entries: readonly { readonly id?: string }[], context: z.RefinementCtx): void {
+  const ids = new Set<string>();
+  for (const [index, entry] of entries.entries()) {
+    if (entry.id === undefined) continue;
+    if (ids.has(entry.id)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'API key IDs must be unique',
+        path: [index, 'id'],
+      });
+    }
+    ids.add(entry.id);
+  }
+}
 
 export const ServerLoggingSchema = z.object({
   captureMaxBytes: z.number().int().min(0).max(67108864).default(67108864),
@@ -74,7 +91,11 @@ const ServerLoggingAuthoringSchema = ServerLoggingSchema.omit({ dir: true, level
 export const ServerConfigSchema = z.object({
   host: ServerHostSchema.default('127.0.0.1').describe('Host for the proxy API server.'),
   port: z.number().int().min(1).max(65_535).default(9_317).describe('HTTP port for the proxy API server.'),
-  apiKeys: z.array(ApiKeySchema).default([]).describe('Caller API keys for the proxy API server.'),
+  apiKeys: z
+    .array(ApiKeySchema)
+    .default([])
+    .superRefine(refineUniqueApiKeyIds)
+    .describe('Caller API keys for the proxy API server.'),
   requireApiKey: z
     .boolean()
     .optional()
@@ -91,7 +112,11 @@ const ServerConfigAuthoringSchema = ServerConfigSchema.omit({ host: true, loggin
     .union([ServerHostSchema, ConfigTemplateStringSchema])
     .default('127.0.0.1')
     .describe('Host for the proxy API server.'),
-  apiKeys: z.array(ApiKeyAuthoringSchema).default([]).describe('Caller API keys for the proxy API server.'),
+  apiKeys: z
+    .array(ApiKeyAuthoringSchema)
+    .default([])
+    .superRefine(refineUniqueApiKeyIds)
+    .describe('Caller API keys for the proxy API server.'),
   logging: ServerLoggingAuthoringSchema.prefault({}).optional(),
   otel: ServerOtelAuthoringSchema.prefault({}),
 });

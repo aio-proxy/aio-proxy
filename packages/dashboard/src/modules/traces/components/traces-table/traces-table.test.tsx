@@ -52,6 +52,7 @@ describe('traces table', () => {
 
     const headers = screen.getAllByRole('columnheader').map((header) => header.textContent);
     expect(headers).toEqual([
+      expect.stringMatching(/User|使用者/u),
       expect.stringMatching(/Started|开始/u),
       'Trace ID',
       expect.stringMatching(/Protocol|协议/u),
@@ -66,10 +67,10 @@ describe('traces table', () => {
     expect(screen.queryByRole('columnheader', { name: /Session|会话/u })).toBeNull();
 
     const cells = within(screen.getByRole('button', { name: new RegExp(trace.traceId, 'u') })).getAllByRole('cell');
-    expect(cells[0].querySelector('time')).toHaveAttribute('datetime', trace.startedAt);
-    expect(cells[1]).toHaveTextContent(trace.traceId);
-    expect(cells[2]).toHaveTextContent(trace.inboundProtocol);
-    expect(cells[2].querySelector('[data-slot="badge"]')).toBeNull();
+    expect(cells[1].querySelector('time')).toHaveAttribute('datetime', trace.startedAt);
+    expect(cells[2]).toHaveTextContent(trace.traceId);
+    expect(cells[3]).toHaveTextContent(trace.inboundProtocol);
+    expect(cells[3].querySelector('[data-slot="badge"]')).toBeNull();
     expect(view.container.querySelector('[data-column-controls]')).toBeNull();
   });
 
@@ -77,7 +78,7 @@ describe('traces table', () => {
     const view = renderTable();
     const modelCell = within(screen.getByRole('button', { name: new RegExp(trace.traceId, 'u') })).getAllByRole(
       'cell',
-    )[3];
+    )[4];
     expect(modelCell.children).toHaveLength(2);
     expect(modelCell).toHaveTextContent('requested-model');
     expect(modelCell).toHaveTextContent('upstream-model');
@@ -95,7 +96,7 @@ describe('traces table', () => {
     );
     const sameModelCell = within(screen.getByRole('button', { name: new RegExp(trace.traceId, 'u') })).getAllByRole(
       'cell',
-    )[3];
+    )[4];
     expect(sameModelCell.children).toHaveLength(1);
     expect(sameModelCell).toHaveTextContent('requested-model');
   });
@@ -286,13 +287,13 @@ describe('traces table', () => {
 
     const chatgptCell = within(screen.getByRole('button', { name: new RegExp(trace.traceId, 'u') })).getAllByRole(
       'cell',
-    )[4];
+    )[5];
     const grokCell = within(screen.getByRole('button', { name: new RegExp(grokTrace.traceId, 'u') })).getAllByRole(
       'cell',
-    )[4];
+    )[5];
     const openrouterCell = within(
       screen.getByRole('button', { name: new RegExp(openrouterTrace.traceId, 'u') }),
-    ).getAllByRole('cell')[4];
+    ).getAllByRole('cell')[5];
     expect(chatgptCell).toHaveTextContent('OpenAI ChatGPT');
     expect(chatgptCell).toHaveTextContent('shared@example.com');
     expect(grokCell).toHaveTextContent('xAI Grok');

@@ -1908,5 +1908,16 @@
       "docs": "セットアップガイド",
       "revoke_failed": "承認を取り消せませんでした"
     }
-  }
+  },
+  "dashboard.callers.label": "利用者",
+  "dashboard.callers.all": "すべての利用者",
+  "dashboard.callers.ranking": "利用者ランキング",
+  "dashboard.callers.anonymous": "匿名アクセス",
+  "dashboard.callers.legacy": "未分類の履歴",
+  "dashboard.callers.label_required": "各 API キーのラベルを入力してください。",
+  "dashboard.callers.unique_label": "ラベル、キー、ID は一意である必要があります。",
+  "dashboard.callers.empty": "この期間に利用記録はありません。",
+  "dashboard.callers.load_error": "利用者を読み込めませんでした。",
+  "dashboard.callers.ranking_error": "利用者ランキングを読み込めませんでした。",
+  "dashboard.callers.cost_note": "未課金のリクエストも件数と Token に含まれます。費用は価格設定済みの利用量のみです。"
 }

@@ -1908,5 +1908,16 @@
       "docs": "Setup guide",
       "revoke_failed": "The authorization was not revoked"
     }
-  }
+  },
+  "dashboard.callers.label": "User",
+  "dashboard.callers.all": "All users",
+  "dashboard.callers.ranking": "User ranking",
+  "dashboard.callers.anonymous": "Anonymous",
+  "dashboard.callers.legacy": "Unattributed history",
+  "dashboard.callers.label_required": "Enter a label for each API key.",
+  "dashboard.callers.unique_label": "Labels, keys and IDs must be unique.",
+  "dashboard.callers.empty": "No usage in this period.",
+  "dashboard.callers.load_error": "Could not load users.",
+  "dashboard.callers.ranking_error": "Could not load user ranking.",
+  "dashboard.callers.cost_note": "Unpriced requests are included in request and Token counts; cost only includes priced usage."
 }

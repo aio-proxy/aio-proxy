@@ -40,7 +40,7 @@ type RawRootRow = {
  * Per-request rows straight from `trace_span`. Exact, but bounded by the trace
  * retention window, so only the rolling hour-bucketed range uses it.
  */
-export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly RootRow[] {
+export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange, callerId?: string): readonly RootRow[] {
   const bucket =
     range.bucketUnit === 'hour'
       ? `min(23, cast((root.ended_at - ?) / 3600000 as integer))`
@@ -66,11 +66,12 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly 
     from trace_span root
     left join trace_span attempt on attempt.trace_id = root.trace_id
       and attempt.attempt_index is not null and attempt.termination_reason is null
-    where root.parent_span_id is null and root.ended_at >= ? and root.ended_at <= ?`;
+    where root.parent_span_id is null and root.ended_at >= ? and root.ended_at <= ? ${callerId === undefined ? '' : "and coalesce(root.caller_id, 'legacy') = ?"}`;
   const params = [
     ...(range.bucketUnit === 'hour' ? [range.start.getTime(), range.start.getTime()] : [range.start.getTime()]),
     range.start.getTime(),
     range.end.getTime(),
+    ...(callerId === undefined ? [] : [callerId]),
   ];
   const statement = (db as IterableDatabase).$client.query<RawRootRow, SQLQueryBindings[]>(sql);
   const rows = statement.all(...(params as SQLQueryBindings[])).map((row) => {
@@ -107,7 +108,7 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly 
   });
   return [
     ...rows,
-    ...consumedUsageRows(db, range.start, range.end).map((row) => ({
+    ...consumedUsageRows(db, range.start, range.end, callerId).map((row) => ({
       ...row,
       dimension: row.modelDimension,
       bucket:

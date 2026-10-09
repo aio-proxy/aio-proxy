@@ -17,6 +17,7 @@ import type { LogicalSessionResolution } from '../../logical-session-store';
 import { safeDiagnosticFields } from '../../request-logging/capture-policy';
 import { capturesRequestPayload } from '../../request-logging/context';
 import { logServerEvent, type ServerLogSink, serverErrorType } from '../../server-log';
+import { currentUsageCaller } from '../../usage-caller-context';
 import { getTraceRuntime } from '../runtime';
 import { attributeName, captureTraceDiagnostics } from '../semantic';
 import { applyTerminalAttributes, buildCompletion, captureTraceFinish } from './completion';
@@ -90,6 +91,7 @@ export function createRequestTraceRecorder(options: RequestTraceRecorderOptions)
       const rootAttributes = safeDiagnosticFields(
         {
           [attributeName.requestId]: requestId,
+          ...usageCallerAttributes(),
           [attributeName.inboundProtocol]: input.inboundProtocol,
           ...requestHttpAttributes(input.inboundRequest, input.inboundProtocol, input.httpRoute),
           ...(input.operation === 'token_count' ? { [attributeName.operation]: input.operation } : {}),
@@ -296,4 +298,15 @@ function persistSafely<T>(
     }
     return undefined;
   }
+}
+
+function usageCallerAttributes(): Attributes {
+  const caller = currentUsageCaller();
+  return caller === undefined
+    ? {}
+    : {
+        [attributeName.callerId]: caller.id,
+        [attributeName.callerLabel]: caller.label,
+        [attributeName.callerKind]: caller.kind,
+      };
 }

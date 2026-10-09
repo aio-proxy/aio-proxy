@@ -179,25 +179,25 @@ describe('traces page', () => {
     expect(screen.getByRole('columnheader', { name: /HTTP/u })).toBeTruthy();
     const modelCell = within(screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') })).getAllByRole(
       'cell',
-    )[3];
+    )[4];
     expect(modelCell).toHaveTextContent('gpt-5');
     expect(modelCell).toHaveTextContent('gpt-5.1');
     const terminalCells = within(
       screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') }),
     ).getAllByRole('cell');
-    expect(within(terminalCells[4]).getByTitle(longProviderId)).toHaveClass('max-w-48', 'truncate');
-    expect(terminalCells[8]).toHaveTextContent('26.6K');
-    expect(terminalCells[8]).toHaveTextContent('318');
-    expect(terminalCells[8]).toHaveTextContent('1K');
-    expect(terminalCells[8]).toHaveTextContent('64');
+    expect(within(terminalCells[5]).getByTitle(longProviderId)).toHaveClass('max-w-48', 'truncate');
+    expect(terminalCells[9]).toHaveTextContent('26.6K');
+    expect(terminalCells[9]).toHaveTextContent('318');
+    expect(terminalCells[9]).toHaveTextContent('1K');
+    expect(terminalCells[9]).toHaveTextContent('64');
     const runningTokenCell = within(
       screen.getByRole('button', { name: new RegExp(runningTrace.traceId, 'u') }),
-    ).getAllByRole('cell')[8];
+    ).getAllByRole('cell')[9];
     expect(runningTokenCell).toHaveTextContent('—');
     expect(runningTokenCell).not.toHaveTextContent('N/A');
     const toolOnlyDurationCell = within(
       screen.getByRole('button', { name: new RegExp(toolOnlyTrace.traceId, 'u') }),
-    ).getAllByRole('cell')[7];
+    ).getAllByRole('cell')[8];
     expect(toolOnlyDurationCell).toHaveTextContent('TTFT');
     expect(toolOnlyDurationCell).not.toHaveTextContent('N/A');
     expect(screen.getByText(/42 (ms|毫秒)/u)).toBeTruthy();

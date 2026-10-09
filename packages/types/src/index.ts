@@ -31,3 +31,5 @@ export * from './provider-sync-models/index';
 export * from './provider-transform/index';
 export * from './trace';
 export * from './usage';
+
+export * from './usage-caller';

@@ -215,7 +215,7 @@ export function recover(db: BunSQLiteDatabase, now: Date): number {
         .where(and(eq(traceSpan.traceId, row.traceId), eq(traceSpan.spanId, row.spanId)))
         .run();
     }
-    upsertInterruptedUsage(tx, running.length, now);
+    for (const row of running) upsertInterruptedUsage(tx, 1, now, row.callerId ?? 'legacy');
     return running.length;
   });
 }

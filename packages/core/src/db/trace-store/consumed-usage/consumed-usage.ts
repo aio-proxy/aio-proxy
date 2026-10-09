@@ -24,7 +24,7 @@ export function consumedUsage(span: Pick<StoredSpan, 'attributes'>) {
   return parsed.success ? parsed.data : undefined;
 }
 
-export function consumedUsageRows(db: BunSQLiteDatabase, start: Date, end: Date) {
+export function consumedUsageRows(db: BunSQLiteDatabase, start: Date, end: Date, callerId?: string) {
   const statement = (db as BunSQLiteDatabase & { $client: Database }).$client.query<
     {
       attributes: string;
@@ -49,10 +49,10 @@ export function consumedUsageRows(db: BunSQLiteDatabase, start: Date, end: Date)
     from trace_span child join trace_span root on child.trace_id = root.trace_id and root.parent_span_id is null
     where child.parent_span_id is not null and child.attempt_index is not null
       and json_extract(child.attributes_json, '$."aio_proxy.usage.consumed"') is not null
-      and root.ended_at >= ? and root.ended_at <= ?`);
+      and root.ended_at >= ? and root.ended_at <= ?${callerId === undefined ? '' : ` and coalesce(root.caller_id, 'legacy') = ?`}`);
   const seenUsage = new Set<string>();
   const seenPrice = new Set<string>();
-  return statement.all(start.getTime(), end.getTime()).flatMap((row) => {
+  return statement.all(start.getTime(), end.getTime(), ...(callerId === undefined ? [] : [callerId])).flatMap((row) => {
     const usage = consumedUsage({
       attributes: {
         ...JSON.parse(row.attributes),

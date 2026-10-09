@@ -101,6 +101,15 @@ function rowToSummary(row: typeof traceSpan.$inferSelect, now: Date, inferenceTt
       } as DashboardTraceSummary['usage']);
 
   return {
+    ...(row.callerId === null
+      ? {}
+      : {
+          caller: {
+            id: row.callerId,
+            label: row.callerLabel ?? '',
+            kind: (row.callerKind ?? 'key') as NonNullable<DashboardTraceSummary['caller']>['kind'],
+          },
+        }),
     traceId: row.traceId,
     rootSpanId: row.spanId,
     requestId: row.requestId ?? '',
@@ -135,6 +144,9 @@ function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean, now: Dat
   const setNum = (key: string, value: number | null): void => {
     if (value !== null) columns[key] = value;
   };
+  setStr('callerId', row.callerId);
+  setStr('callerLabel', row.callerLabel);
+  setStr('callerKind', row.callerKind);
   setStr('requestId', row.requestId);
   setStr('sessionSource', row.sessionSource);
   setStr('sessionId', row.sessionId);

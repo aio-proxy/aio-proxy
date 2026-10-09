@@ -3,11 +3,14 @@ import { AGENT_ACCESS_TOKEN_PREFIX, hasReservedAgentTokenPrefix } from '@aio-pro
 import type { MiddlewareHandler } from 'hono';
 
 import { agentCallerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
+import { withUsageCaller } from '../../usage-caller-context';
 import {
   authenticateStaticOrAnonymous,
   authenticationError,
   bearerToken,
   stripCallerCredentials,
+  type ApiKeyEntry,
+  type UsageCallerResolver,
 } from '../api-key-auth/api-key-auth';
 
 // Composed rather than redeclared: an independent `callerPrincipal` declaration would keep
@@ -23,7 +26,8 @@ export type ModelAuthenticationDeps = {
   /** Every authored key, enforced or not: a caller that presents one is identified by it even
    *  when `server.requireApiKey` is off, so ownership of a realtime call or a video job
    *  survives the switch. */
-  readonly apiKeys: () => readonly { readonly key: string }[];
+  readonly apiKeys: () => readonly ApiKeyEntry[];
+  readonly resolveCaller?: UsageCallerResolver;
   /** Whether a caller matching none of the keys is rejected. Off admits it anonymously. */
   readonly enforceApiKeys: () => boolean;
   readonly authenticateAgent: (token: string) => AgentAccessAuthentication;
@@ -40,8 +44,15 @@ export const requireModelAuthentication =
       context.set('agentGrant', result.grant);
       context.set('callerPrincipal', agentCallerPrincipal(result.grant.installationId));
       stripCallerCredentials(context);
-      await next();
+      await withUsageCaller(
+        {
+          id: `agent:${result.grant.installationId}`,
+          label: `${result.grant.target} · ${result.grant.installationId.slice(0, 8)}`,
+          kind: 'agent',
+        },
+        next,
+      );
       return;
     }
-    return authenticateStaticOrAnonymous(context, next, deps.apiKeys(), deps.enforceApiKeys());
+    return authenticateStaticOrAnonymous(context, next, deps.apiKeys(), deps.enforceApiKeys(), deps.resolveCaller);
   };

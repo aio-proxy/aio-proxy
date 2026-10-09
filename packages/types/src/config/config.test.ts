@@ -58,6 +58,39 @@ test.each(['0.0.0.0', '192.168.1.20', 'example.test', '127.0.0.1', '::1', 'local
   },
 );
 
+test('rejects a repeated explicit API key ID on runtime and authoring config', () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const duplicate = {
+    server: {
+      apiKeys: [
+        { id, key: 'sk-one', label: 'One' },
+        { id, key: 'sk-two', label: 'Two' },
+      ],
+    },
+    providers: {},
+  };
+  for (const schema of [ConfigSchema, ConfigAuthoringSchema]) {
+    const parsed = schema.safeParse(duplicate);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.some((issue) => issue.path.join('.') === 'server.apiKeys.1.id')).toBe(true);
+    }
+  }
+
+  const distinct = {
+    server: {
+      apiKeys: [
+        { id, key: 'sk-one' },
+        { id: '22222222-2222-4222-8222-222222222222', key: 'sk-two' },
+        { key: 'sk-three' },
+      ],
+    },
+    providers: {},
+  };
+  expect(ConfigSchema.safeParse(distinct).success).toBe(true);
+  expect(ConfigAuthoringSchema.safeParse(distinct).success).toBe(true);
+});
+
 test('accepts labeled caller API keys and authoring templates', () => {
   expect(
     ConfigSchema.parse({

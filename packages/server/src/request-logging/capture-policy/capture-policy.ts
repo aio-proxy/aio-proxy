@@ -32,6 +32,9 @@ const identifiers = new Set([
   attributeName.usagePriceModelId,
 ]);
 const localFields = new Set([
+  attributeName.callerId,
+  attributeName.callerLabel,
+  attributeName.callerKind,
   'event',
   'requestId',
   'inboundProtocol',

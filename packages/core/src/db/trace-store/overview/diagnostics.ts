@@ -31,15 +31,16 @@ export function overviewDashboardDiagnostics(
 ): DashboardOverviewDiagnosticsResponse {
   const range = resolveRange(query.range, query.now ?? new Date());
   return {
-    providerHealth: query.range === '90d' ? null : providerHealth(db, range),
-    topModelCosts: topModelCosts(db, range),
-    topModelTokens: topModelTokens(db, range),
+    providerHealth: query.range === '90d' ? null : providerHealth(db, range, query.callerId),
+    topModelCosts: topModelCosts(db, range, query.callerId),
+    topModelTokens: topModelTokens(db, range, query.callerId),
   };
 }
 
 function providerHealth(
   db: BunSQLiteDatabase,
   range: ResolvedRange,
+  callerId?: string,
 ): DashboardOverviewDiagnosticsResponse['providerHealth'] {
   const rows = all<RawHealthRow>(
     db,
@@ -49,9 +50,9 @@ function providerHealth(
       json_group_array(max(0, ended_at - started_at)) as durations
     from trace_span where attempt_index is not null and provider_id is not null
       and name != 'aio_proxy.token_count.candidate_skipped'
-      and ended_at >= ? and ended_at <= ?
+      and ended_at >= ? and ended_at <= ? ${callerId === undefined ? '' : "and trace_id in (select trace_id from trace_span where parent_span_id is null and coalesce(caller_id, 'legacy') = ?)"}
       group by provider_id order by provider_id`,
-    [range.start.getTime(), range.end.getTime()],
+    [range.start.getTime(), range.end.getTime(), ...(callerId === undefined ? [] : [callerId])],
   );
   const tokenTotals = new Map<string, bigint>();
   // Count input + output explicitly; upstream total_tokens can include other accounting.
@@ -62,13 +63,13 @@ function providerHealth(
       cast(coalesce(input_tokens, 0) as text) as inputTokens,
       cast(coalesce(output_tokens, 0) as text) as outputTokens
     from trace_span where parent_span_id is null and final_provider_id is not null
-      and ended_at >= ? and ended_at <= ?`,
-    [range.start.getTime(), range.end.getTime()],
+      and ended_at >= ? and ended_at <= ? ${callerId === undefined ? '' : "and trace_id in (select trace_id from trace_span where parent_span_id is null and coalesce(caller_id, 'legacy') = ?)"}`,
+    [range.start.getTime(), range.end.getTime(), ...(callerId === undefined ? [] : [callerId])],
   )) {
     const tokens = parseSqliteInteger(row.inputTokens) + parseSqliteInteger(row.outputTokens);
     tokenTotals.set(row.providerId, (tokenTotals.get(row.providerId) ?? 0n) + tokens);
   }
-  for (const row of consumedUsageRows(db, range.start, range.end)) {
+  for (const row of consumedUsageRows(db, range.start, range.end, callerId)) {
     tokenTotals.set(
       row.usage.providerId,
       (tokenTotals.get(row.usage.providerId) ?? 0n) + row.inputTokens + row.outputTokens,
@@ -90,6 +91,7 @@ function providerHealth(
 function topModelCosts(
   db: BunSQLiteDatabase,
   range: ResolvedRange,
+  callerId?: string,
 ): DashboardOverviewDiagnosticsResponse['topModelCosts'] {
   const totals = new Map<string, bigint>();
   const rows =
@@ -97,22 +99,22 @@ function topModelCosts(
       ? iterate<RawCostRow>(
           db,
           `select model_dimension as modelId, cast(estimated_cost_nano_usd as text) as estimatedCostNanoUsd
-          from usage_daily where local_day >= ? and local_day <= ?`,
-          [localDate(range.start), localDate(range.end)],
+          from ${callerId === undefined ? 'usage_daily' : 'usage_caller_daily'} where local_day >= ? and local_day <= ? ${callerId === undefined ? '' : 'and caller_id = ?'}`,
+          [localDate(range.start), localDate(range.end), ...(callerId === undefined ? [] : [callerId])],
         )
       : iterate<RawCostRow>(
           db,
           `select coalesce(requested_model_id, final_model_id, 'unknown') as modelId,
           cast(estimated_cost_nano_usd as text) as estimatedCostNanoUsd
           from trace_span where parent_span_id is null and estimated_cost_nano_usd is not null
-            and ended_at >= ? and ended_at <= ?`,
-          [range.start.getTime(), range.end.getTime()],
+            and ended_at >= ? and ended_at <= ? ${callerId === undefined ? '' : "and trace_id in (select trace_id from trace_span where parent_span_id is null and coalesce(caller_id, 'legacy') = ?)"}`,
+          [range.start.getTime(), range.end.getTime(), ...(callerId === undefined ? [] : [callerId])],
         );
   for (const row of rows) {
     totals.set(row.modelId, (totals.get(row.modelId) ?? 0n) + parseSqliteInteger(row.estimatedCostNanoUsd));
   }
   if (range.bucketUnit === 'hour')
-    for (const row of consumedUsageRows(db, range.start, range.end)) {
+    for (const row of consumedUsageRows(db, range.start, range.end, callerId)) {
       totals.set(row.modelDimension, (totals.get(row.modelDimension) ?? 0n) + row.estimatedCostNanoUsd);
     }
   return rankTopModels(totals).map(({ modelId, value }) => ({
@@ -124,14 +126,15 @@ function topModelCosts(
 function topModelTokens(
   db: BunSQLiteDatabase,
   range: ResolvedRange,
+  callerId?: string,
 ): DashboardOverviewDiagnosticsResponse['topModelTokens'] {
   const totals = new Map<string, bigint>();
   if (range.bucketUnit === 'day') {
     for (const row of iterate<Pick<RawTokenRow, 'modelId' | 'totalTokens'>>(
       db,
       `select model_dimension as modelId, cast(total_tokens as text) as totalTokens
-      from usage_daily where local_day >= ? and local_day <= ?`,
-      [localDate(range.start), localDate(range.end)],
+      from ${callerId === undefined ? 'usage_daily' : 'usage_caller_daily'} where local_day >= ? and local_day <= ? ${callerId === undefined ? '' : 'and caller_id = ?'}`,
+      [localDate(range.start), localDate(range.end), ...(callerId === undefined ? [] : [callerId])],
     )) {
       totals.set(row.modelId, (totals.get(row.modelId) ?? 0n) + parseSqliteInteger(row.totalTokens ?? '0'));
     }
@@ -142,8 +145,8 @@ function topModelTokens(
         cast(coalesce(input_tokens, 0) as text) as inputTokens,
         cast(coalesce(output_tokens, 0) as text) as outputTokens,
         cast(total_tokens as text) as totalTokens
-      from trace_span where parent_span_id is null and ended_at >= ? and ended_at <= ?`,
-      [range.start.getTime(), range.end.getTime()],
+      from trace_span where parent_span_id is null and ended_at >= ? and ended_at <= ? ${callerId === undefined ? '' : "and trace_id in (select trace_id from trace_span where parent_span_id is null and coalesce(caller_id, 'legacy') = ?)"}`,
+      [range.start.getTime(), range.end.getTime(), ...(callerId === undefined ? [] : [callerId])],
     )) {
       const tokens =
         row.totalTokens === null
@@ -153,7 +156,7 @@ function topModelTokens(
     }
   }
   if (range.bucketUnit === 'hour')
-    for (const row of consumedUsageRows(db, range.start, range.end)) {
+    for (const row of consumedUsageRows(db, range.start, range.end, callerId)) {
       totals.set(row.modelDimension, (totals.get(row.modelDimension) ?? 0n) + row.totalTokens);
     }
   return rankTopModels(totals, true).map(({ modelId, value }) => ({ modelId, totalTokens: value.toString() }));

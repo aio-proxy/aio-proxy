@@ -1908,5 +1908,16 @@
       "docs": "설정 가이드",
       "revoke_failed": "승인을 취소하지 못했습니다"
     }
-  }
+  },
+  "dashboard.callers.label": "사용자",
+  "dashboard.callers.all": "모든 사용자",
+  "dashboard.callers.ranking": "사용자 순위",
+  "dashboard.callers.anonymous": "익명 접근",
+  "dashboard.callers.legacy": "귀속되지 않은 기록",
+  "dashboard.callers.label_required": "각 API 키의 라벨을 입력하세요.",
+  "dashboard.callers.unique_label": "라벨, 키와 ID는 고유해야 합니다.",
+  "dashboard.callers.empty": "이 기간의 사용 기록이 없습니다.",
+  "dashboard.callers.load_error": "사용자를 불러올 수 없습니다.",
+  "dashboard.callers.ranking_error": "사용자 순위를 불러올 수 없습니다.",
+  "dashboard.callers.cost_note": "가격이 없는 요청도 요청 수와 Token에 포함됩니다. 비용에는 가격이 있는 사용량만 포함됩니다."
 }

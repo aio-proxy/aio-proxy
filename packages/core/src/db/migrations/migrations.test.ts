@@ -103,6 +103,10 @@ test('upgrading a version-two database removes legacy history and preserves trac
     expectCurrentPersistenceContract(handle.sqlite);
     expect(handle.sqlite.query('SELECT trace_id FROM trace_span').get()).toEqual({ trace_id: 'trace-1' });
     expect(handle.sqlite.query('SELECT request_count FROM usage_daily').get()).toEqual({ request_count: '1' });
+    expect(handle.sqlite.query('SELECT caller_id, request_count FROM usage_caller_daily').get()).toEqual({
+      caller_id: 'legacy',
+      request_count: '1',
+    });
     expect(
       handle.sqlite
         .query(

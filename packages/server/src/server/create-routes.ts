@@ -241,6 +241,7 @@ export const createRoutes = (
     // the config envelope transform — decides only whether an unmatched caller is rejected.
     apiKeys: () => state.currentConfig().server.apiKeys,
     enforceApiKeys: () => state.currentConfig().server.requireApiKey,
+    resolveCaller: (entry) => state.traceStore.resolveUsageCaller(entry),
     authenticateAgent: (token) => state.agentIdentity.authenticateAccessToken(token),
   });
   app.get(

@@ -6,6 +6,9 @@ import type { SpanAttributesJson } from '../../schema/trace-span';
  * `attributeName` map and the GenAI semantic-convention constants.
  */
 const ATTR = {
+  callerId: 'aio_proxy.caller.id',
+  callerLabel: 'aio_proxy.caller.label',
+  callerKind: 'aio_proxy.caller.kind',
   requestId: 'aio_proxy.request.id',
   operation: 'aio_proxy.operation',
   inboundProtocol: 'aio_proxy.protocol.inbound',
@@ -40,6 +43,9 @@ const ATTR = {
 
 /** Columns that receive projected values. `operation`/`prepareMode`/`egressMode` stay in JSON. */
 export type ProjectedColumns = {
+  callerId?: string;
+  callerLabel?: string;
+  callerKind?: string;
   requestId?: string;
   sessionSource?: string;
   sessionId?: string;
@@ -105,6 +111,15 @@ export function projectAttributes(
 
   for (const [key, value] of Object.entries(attributes)) {
     switch (key) {
+      case ATTR.callerId:
+        setStr('callerId', value);
+        break;
+      case ATTR.callerLabel:
+        setStr('callerLabel', value);
+        break;
+      case ATTR.callerKind:
+        setStr('callerKind', value);
+        break;
       case ATTR.requestId:
         setStr('requestId', value);
         break;
@@ -216,6 +231,9 @@ export function mergeAttributes(
     }
   };
 
+  set(ATTR.callerId, columns.callerId);
+  set(ATTR.callerLabel, columns.callerLabel);
+  set(ATTR.callerKind, columns.callerKind);
   set(ATTR.requestId, columns.requestId);
   set(ATTR.inboundProtocol, columns.inboundProtocol);
   set(ATTR.sessionSource, columns.sessionSource);
