@@ -1,5 +1,13 @@
 # @aio-proxy/pi-provider
 
+## 0.42.0
+
+### Patch Changes
+
+- Updated dependencies [[`3758dc9`](https://github.com/aio-proxy/aio-proxy/commit/3758dc9ed72259d33df567cf69e8ef86c59d5ca9), [`a2c3d0e`](https://github.com/aio-proxy/aio-proxy/commit/a2c3d0e304db29be37a7284202e17ac3373f0dbb)]:
+  - @aio-proxy/types@0.42.0
+  - @aio-proxy/agent-provider-runtime@0.42.0
+
 ## 0.41.1
 
 ### Patch Changes

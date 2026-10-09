@@ -1,5 +1,17 @@
 # @aio-proxy/plugin-sdk
 
+## 0.42.0
+
+### Minor Changes
+
+- [#498](https://github.com/aio-proxy/aio-proxy/pull/498) [`a2c3d0e`](https://github.com/aio-proxy/aio-proxy/commit/a2c3d0e304db29be37a7284202e17ac3373f0dbb) Thanks @baranwang - Add the OpenAI Decisions API for predicate, choice, and score evaluations. Same-protocol requests pass through, including inline and HTTP(S) images; other evaluation providers share SystemOne routing, fallback, and conversion. Usage includes cache pricing, converted responses always include the full usage object, and evaluations that cannot be converted are still billed. Plugins can recognize the new Decisions protocol.
+
+### Patch Changes
+
+- Updated dependencies [[`3758dc9`](https://github.com/aio-proxy/aio-proxy/commit/3758dc9ed72259d33df567cf69e8ef86c59d5ca9), [`a2c3d0e`](https://github.com/aio-proxy/aio-proxy/commit/a2c3d0e304db29be37a7284202e17ac3373f0dbb)]:
+  - @aio-proxy/types@0.42.0
+  - @aio-proxy/shared@0.42.0
+
 ## 0.41.1
 
 ### Patch Changes

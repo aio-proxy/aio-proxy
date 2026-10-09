@@ -1,5 +1,23 @@
 # @aio-proxy/server
 
+## 0.42.0
+
+### Minor Changes
+
+- [#499](https://github.com/aio-proxy/aio-proxy/pull/499) [`3758dc9`](https://github.com/aio-proxy/aio-proxy/commit/3758dc9ed72259d33df567cf69e8ef86c59d5ca9) Thanks @olivewind - Track shared proxy usage by named API key with an independent user ranking, whole-dashboard user filtering and caller attribution in traces. The ranking is shown when API key access is enabled, including for a single user. Saving keys requires unique labels, and a config file cannot reuse the same key ID. Caller identity survives key rotation and usage history remains available after traces expire.
+
+- [#498](https://github.com/aio-proxy/aio-proxy/pull/498) [`a2c3d0e`](https://github.com/aio-proxy/aio-proxy/commit/a2c3d0e304db29be37a7284202e17ac3373f0dbb) Thanks @baranwang - Add the OpenAI Decisions API for predicate, choice, and score evaluations. Same-protocol requests pass through, including inline and HTTP(S) images; other evaluation providers share SystemOne routing, fallback, and conversion. Usage includes cache pricing, converted responses always include the full usage object, and evaluations that cannot be converted are still billed. Plugins can recognize the new Decisions protocol.
+
+### Patch Changes
+
+- Updated dependencies [[`3758dc9`](https://github.com/aio-proxy/aio-proxy/commit/3758dc9ed72259d33df567cf69e8ef86c59d5ca9), [`a2c3d0e`](https://github.com/aio-proxy/aio-proxy/commit/a2c3d0e304db29be37a7284202e17ac3373f0dbb)]:
+  - @aio-proxy/core@0.42.0
+  - @aio-proxy/types@0.42.0
+  - @aio-proxy/i18n@0.42.0
+  - @aio-proxy/plugin-sdk@0.42.0
+  - @aio-proxy/logger@0.42.0
+  - @aio-proxy/shared@0.42.0
+
 ## 0.41.1
 
 ### Patch Changes
