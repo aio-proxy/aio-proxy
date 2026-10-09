@@ -125,3 +125,20 @@ test('preserves score distributions and choice keys when serving SystemOne', asy
     severity: { type: 'score', score: 0.7, probabilities: { '0': 0.3, '1': 0.7 }, confidence: 0.8 },
   });
 });
+
+test('serializes structured evidence arrays and preserves explicit user messages', async () => {
+  for (const { state, input } of [
+    { state: [{ content: 'evidence' }], input: '[{"content":"evidence"}]' },
+    { state: [{ role: 'user', content: 'evidence' }], input: [{ role: 'user', content: 'evidence' }] },
+  ]) {
+    const transport = createOpenAIDecisionsEvaluate(config(), {
+      fetch: async (url, init) => {
+        expect((await new Request(url, init).json()).input).toEqual(input);
+        return Response.json({ answers: [{ name: 'q', type: 'predicate', probability: 0.9 }] });
+      },
+    });
+    expect((await transport.evaluate({ ...invocation, state }, { modelId: 'judge' })).answers).toEqual({
+      q: { type: 'noul', noul: 0.9 },
+    });
+  }
+});

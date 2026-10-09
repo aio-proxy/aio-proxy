@@ -152,7 +152,7 @@ test('keeps unnamed questions in request order without inventing wire names', as
   ).toEqual({
     model: 'judge',
     answers: [
-      { type: 'predicate', probability: 0.9 },
+      { type: 'predicate', name: null, probability: 0.9 },
       { type: 'predicate', name: 'named', probability: 0.1 },
     ],
   });
@@ -215,4 +215,69 @@ test('accepts a named question that matches an unnamed question internal key', a
   const invocation = openAIDecisionsAdapter.evaluationInvocation(request, {});
   expect(Object.keys(invocation.questions)).toHaveLength(2);
   expect(invocation.questions['__decision_0']).toEqual({ type: 'noul', instructions: 'French?' });
+});
+
+test('includes a null name on unnamed refusal answers', async () => {
+  const request = await openAIDecisionsAdapter.parse(
+    raw({ ...body, questions: [{ type: 'predicate', instructions: 'Greeting?' }] }),
+    {},
+  );
+  expect(
+    openAIDecisionsAdapter.evaluationJson(
+      { answers: { __decision_0: { type: 'refusal' } } },
+      { responseModelId: 'judge' },
+      request,
+    ),
+  ).toEqual({ model: 'judge', answers: [{ type: 'refusal', name: null }] });
+});
+
+test('rejects input messages without a user role', async () => {
+  await expect(openAIDecisionsAdapter.parse(raw({ ...body, input: [{ content: 'evidence' }] }), {})).rejects.toThrow();
+});
+
+test('rejects deeply nested extension fields with a protocol-shaped client error', async () => {
+  const original = new Request('https://proxy.test/v1/decisions', {
+    method: 'POST',
+    body: JSON.stringify(body).slice(0, -1) + ',"extra":' + '{"nested":'.repeat(6000) + '0' + '}'.repeat(6000) + '}',
+  });
+  let failure: unknown;
+  try {
+    await openAIDecisionsAdapter.parse(original, {});
+  } catch (error) {
+    failure = error;
+  }
+  expect(openAIDecisionsAdapter.errors.requestError(failure)?.status).toBe(400);
+});
+
+test('includes null names on every unnamed decision answer type', async () => {
+  const request = await openAIDecisionsAdapter.parse(
+    raw({
+      ...body,
+      questions: [
+        { type: 'predicate', instructions: 'Greeting?' },
+        { type: 'choice', instructions: 'Team?', choices: [{ value: 'billing' }, { value: 'tech' }] },
+        { type: 'score', instructions: 'Severity?', levels: [{ label: 'Low' }, { label: 'High' }] },
+      ],
+    }),
+    {},
+  );
+  expect(
+    openAIDecisionsAdapter.evaluationJson(
+      {
+        answers: {
+          __decision_0: { type: 'noul', noul: 0.9 },
+          __decision_1: { type: 'choice', choice: '0', probabilities: { '0': 0.9, '1': 0.1 }, confidence: 0.8 },
+          __decision_2: { type: 'score', score: 0.75, probabilities: { '0': 0.25, '1': 0.75 }, confidence: 0.8 },
+        },
+      },
+      { responseModelId: 'judge' },
+      request,
+    ),
+  ).toMatchObject({
+    answers: [
+      { type: 'predicate', name: null },
+      { type: 'choice', name: null },
+      { type: 'score', name: null },
+    ],
+  });
 });

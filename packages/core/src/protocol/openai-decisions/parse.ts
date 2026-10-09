@@ -1,6 +1,6 @@
-import { z } from 'zod';
+import { z, ZodError } from 'zod';
 
-import { readJsonRequest } from '../request/index';
+import { readJsonRequest, scanJsonBody } from '../request/index';
 
 const value = z.union([z.string(), z.number().finite(), z.boolean()]);
 const part = z.discriminatedUnion('type', [
@@ -18,7 +18,7 @@ export const OpenAIDecisionsInputSchema = z.union([
     .array(
       z
         .object({
-          role: z.literal('user').optional(),
+          role: z.literal('user'),
           type: z.literal('message').optional(),
           content: z.union([z.string(), z.array(part).min(1)]),
         })
@@ -87,5 +87,8 @@ export function decisionQuestionId(
 }
 
 export async function parseOpenAIDecisions(raw: Request): Promise<OpenAIDecisionsRequest> {
-  return OpenAIDecisionsRequestSchema.parse(await readJsonRequest(raw));
+  const body = await readJsonRequest(raw);
+  const unacceptable = scanJsonBody(body);
+  if (unacceptable !== undefined) throw new ZodError([{ code: 'custom', path: [], message: unacceptable }]);
+  return OpenAIDecisionsRequestSchema.parse(body);
 }

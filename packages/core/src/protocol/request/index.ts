@@ -10,3 +10,4 @@ export {
 } from './errors';
 export { abortError, withAbortAndIdle } from './idle';
 export type { RequestBodyReadOptions } from './body-reader';
+export { scanJsonBody } from './json-body-scan';

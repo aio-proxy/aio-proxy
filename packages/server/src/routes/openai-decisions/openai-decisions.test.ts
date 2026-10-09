@@ -290,3 +290,34 @@ test('rejects duplicate question names and hosted image URLs before calling an u
     expect(await response.json()).toMatchObject({ error: { code: 'invalid_request' } });
   }
 });
+
+test('rejects deeply nested passthrough extensions before dispatch or fallback', async () => {
+  let calls = 0;
+  const baseURL = upstream(() => {
+    calls += 1;
+    return Response.json({ answers: [] });
+  });
+  const app = await createServer({
+    config: {
+      providers: {
+        first: { kind: 'api', protocol: 'openai-decisions', baseURL, models: ['judge'], priority: 10 },
+        second: { kind: 'api', protocol: 'openai-decisions', baseURL, models: ['judge'] },
+      },
+    },
+  });
+  const body =
+    JSON.stringify({ model: 'judge', input: 'Hello', questions: [predicate] }).slice(0, -1) +
+    ',"extra":' +
+    '{"nested":'.repeat(6000) +
+    '0' +
+    '}'.repeat(6000) +
+    '}';
+  const response = await app.request('/v1/decisions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body,
+  });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ error: { code: 'invalid_request' } });
+  expect(calls).toBe(0);
+});

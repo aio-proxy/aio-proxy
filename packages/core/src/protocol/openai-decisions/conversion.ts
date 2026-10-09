@@ -58,7 +58,7 @@ function probability(value: number | undefined): number {
 }
 function answerJson(question: OpenAIDecisionsQuestion, answer: EvaluationAnswer | undefined): unknown {
   if (answer === undefined) return fail('Evaluation did not answer every question');
-  const name = question.name === undefined ? {} : { name: question.name };
+  const name = { name: question.name ?? null };
   if (answer.type === 'refusal') return { type: 'refusal', ...name };
   if (question.type === 'predicate') {
     if (answer.type !== 'noul') return fail('Evaluation answer has the wrong type');
