@@ -1,5 +1,11 @@
 # @aio-proxy/i18n
 
+## 0.42.0
+
+### Minor Changes
+
+- [#499](https://github.com/aio-proxy/aio-proxy/pull/499) [`3758dc9`](https://github.com/aio-proxy/aio-proxy/commit/3758dc9ed72259d33df567cf69e8ef86c59d5ca9) Thanks @olivewind - Track shared proxy usage by named API key with an independent user ranking, whole-dashboard user filtering and caller attribution in traces. The ranking is shown when API key access is enabled, including for a single user. Saving keys requires unique labels, and a config file cannot reuse the same key ID. Caller identity survives key rotation and usage history remains available after traces expire.
+
 ## 0.41.1
 
 No changes in this release.
