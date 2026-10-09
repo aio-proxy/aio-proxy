@@ -2,7 +2,7 @@ import { z, ZodError } from 'zod';
 
 import { readJsonRequest, scanJsonBody } from '../request/index';
 
-const value = z.union([z.string(), z.number().finite(), z.boolean()]);
+const value = z.union([z.string(), z.boolean()]);
 const part = z.discriminatedUnion('type', [
   z.object({ type: z.literal('input_text'), text: z.string() }).loose(),
   z
@@ -33,7 +33,10 @@ export const OpenAIDecisionsQuestionSchema = z.discriminatedUnion('type', [
     .object({
       type: z.literal('choice'),
       ...shared,
-      choices: z.array(z.object({ value, description: z.string().optional() }).loose()).min(1),
+      choices: z
+        .array(z.object({ value, description: z.string().optional() }).loose())
+        .min(2)
+        .max(255),
     })
     .loose(),
   z

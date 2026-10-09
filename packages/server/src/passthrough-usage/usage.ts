@@ -193,5 +193,16 @@ function geminiUsage(value: unknown): UsageExtraction {
 function decisionsUsage(value: unknown): UsageExtraction {
   if (!isPlainObject(value) || !isPlainObject(value['usage'])) return { kind: 'absent' };
   const inputTokens = numberField(value['usage'], 'input_tokens', 'inputTokens');
-  return tokenUsage({ inputTokens, outputTokens: usageNumber(0, 'outputTokens'), totalTokens: inputTokens });
+  return tokenUsage({
+    inputTokens,
+    outputTokens: usageNumber(0, 'outputTokens'),
+    totalTokens: inputTokens,
+    cacheReadTokens: nestedNumberField(value['usage'], 'input_tokens_details', 'cached_tokens', 'cacheReadTokens'),
+    cacheWriteTokens: nestedNumberField(
+      value['usage'],
+      'input_tokens_details',
+      'cache_write_tokens',
+      'cacheWriteTokens',
+    ),
+  });
 }

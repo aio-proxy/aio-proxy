@@ -24,7 +24,7 @@ function projectQuestion(question: OpenAIDecisionsQuestion): EvaluationQuestion 
   switch (question.type) {
     case 'predicate':
       return { type: 'noul', instructions };
-    // Index keys preserve the difference between e.g. 1 and "1" across a string-keyed evaluation contract.
+    // Index keys preserve the difference between e.g. true and "true" across a string-keyed evaluation contract.
     case 'choice':
       return {
         type: 'choice',

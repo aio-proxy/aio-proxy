@@ -11,6 +11,27 @@ const body = {
 const raw = (value: unknown, headers: Record<string, string> = {}) =>
   new Request('https://proxy.test/v1/decisions', { method: 'POST', headers, body: JSON.stringify(value) });
 
+test('enforces choice value types and both option count boundaries', async () => {
+  const payload = (choices: unknown[]) => ({
+    ...body,
+    questions: [{ type: 'choice', instructions: 'Pick one', choices }],
+  });
+  for (const choices of [
+    [{ value: 'only' }],
+    [{ value: 1 }, { value: 'one' }],
+    Array.from({ length: 256 }, (_, index) => ({ value: String(index) })),
+  ]) {
+    await expect(openAIDecisionsAdapter.parse(raw(payload(choices)))).rejects.toThrow();
+  }
+  for (const choices of [
+    [{ value: true }, { value: 'true' }],
+    Array.from({ length: 255 }, (_, index) => ({ value: String(index) })),
+  ]) {
+    const parsed = await openAIDecisionsAdapter.parse(raw(payload(choices)));
+    expect(parsed.questions[0]).toMatchObject({ choices });
+  }
+});
+
 test('accepts label-only score levels and preserves rubric meaning and response labels', async () => {
   for (const { levels, criteria } of [
     { levels: [{ label: 'Low' }, { label: 'High' }], criteria: ['Low', 'High'] },

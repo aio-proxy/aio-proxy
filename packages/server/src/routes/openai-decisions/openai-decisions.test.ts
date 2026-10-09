@@ -88,10 +88,10 @@ test('converts a Decisions predicate through the existing SystemOne evaluation c
   });
 });
 
-test('preserves numeric and string choice values separately and score labels during conversion', async () => {
+test('preserves boolean and string choice values separately and score labels during conversion', async () => {
   const baseURL = upstream(async (raw) => {
     const body = (await raw.json()) as { questions: Record<string, { criteria: unknown }> };
-    expect(body.questions['category']?.criteria).toEqual({ '0': '1: Numeric', '1': '"1": String' });
+    expect(body.questions['category']?.criteria).toEqual({ '0': 'true: Boolean', '1': '"true": String' });
     expect(body.questions['severity']?.criteria).toEqual(['Low: Cosmetic', 'High: Blocked']);
     return Response.json({
       answers: {
@@ -114,8 +114,8 @@ test('preserves numeric and string choice values separately and score labels dur
           name: 'category',
           instructions: 'Category?',
           choices: [
-            { value: 1, description: 'Numeric' },
-            { value: '1', description: 'String' },
+            { value: true, description: 'Boolean' },
+            { value: 'true', description: 'String' },
           ],
         },
         {
@@ -135,10 +135,10 @@ test('preserves numeric and string choice values separately and score labels dur
     {
       type: 'choice',
       name: 'category',
-      choice: '1',
+      choice: 'true',
       probabilities: [
-        { value: 1, probability: 0.1 },
-        { value: '1', probability: 0.9 },
+        { value: true, probability: 0.1 },
+        { value: 'true', probability: 0.9 },
       ],
       confidence: 0.8,
     },
@@ -270,8 +270,10 @@ test('fails over from an upstream failure to another evaluation provider', async
   expect(await response.json()).toMatchObject({ answers: [{ probability: 0.8 }] });
 });
 
-test('rejects duplicate question names and hosted image URLs before calling an upstream', async () => {
+test('rejects invalid questions and hosted image URLs before calling an upstream', async () => {
+  let calls = 0;
   const baseURL = upstream(() => {
+    calls += 1;
     throw new Error('invalid request reached upstream');
   });
   const app = await createServer({
@@ -279,6 +281,15 @@ test('rejects duplicate question names and hosted image URLs before calling an u
   });
   for (const body of [
     { model: 'judge', input: 'Hello', questions: [predicate, predicate] },
+    ...[
+      [{ value: 'only' }],
+      [{ value: 1 }, { value: 'one' }],
+      Array.from({ length: 256 }, (_, index) => ({ value: String(index) })),
+    ].map((choices) => ({
+      model: 'judge',
+      input: 'Hello',
+      questions: [{ type: 'choice', instructions: 'Pick one', choices }],
+    })),
     {
       model: 'judge',
       input: [{ content: [{ type: 'input_image', image_url: 'https://example.com/image.png' }] }],
@@ -289,6 +300,7 @@ test('rejects duplicate question names and hosted image URLs before calling an u
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: { code: 'invalid_request' } });
   }
+  expect(calls).toBe(0);
 });
 
 test('rejects deeply nested passthrough extensions before dispatch or fallback', async () => {
