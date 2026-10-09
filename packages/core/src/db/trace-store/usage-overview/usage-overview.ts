@@ -6,6 +6,7 @@ import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { parseSqliteInteger } from '../../../usage-numbers';
 import { traceSpan } from '../../schema';
+import { consumedUsageRows } from '../consumed-usage';
 import type { UsageOverviewQuery } from '../types';
 import { usageColumns } from '../usage-fields';
 import { resolveUsageRange, usageBucketKeys } from '../usage-range';
@@ -35,7 +36,7 @@ export function overview(db: BunSQLiteDatabase, query: UsageOverviewQuery): Dash
   const { start, end, bucketUnit } = resolveUsageRange(query.range, now);
   const rangeFilter = and(gte(traceSpan.endedAt, start), lte(traceSpan.endedAt, end));
   const { summary, series, buckets } = aggregateRows(
-    overviewRows(db, query.groupBy, bucketUnit, start, rangeFilter),
+    overviewRows(db, query.groupBy, bucketUnit, start, end, rangeFilter),
     query.metric,
     usageBucketKeys(query.range, start, end),
     query.maxResults,
@@ -79,8 +80,19 @@ function* overviewRows(
   groupBy: UsageOverviewGroupBy,
   bucketUnit: 'hour' | 'day',
   start: Date,
+  end: Date,
   rangeFilter: ReturnType<typeof and>,
 ): IterableIterator<OverviewRow> {
+  for (const row of consumedUsageRows(db, start, end)) {
+    yield {
+      ...row,
+      dimension: groupBy === 'provider' ? row.usage.providerId : row.modelDimension,
+      bucket:
+        bucketUnit === 'hour'
+          ? Math.min(23, Math.floor((row.endedAt - start.getTime()) / 3600000))
+          : new Date(row.endedAt).toLocaleDateString('en-CA'),
+    };
+  }
   const bucket =
     bucketUnit === 'hour'
       ? sql<number>`min(23, cast((${traceSpan.endedAt} - ${start.getTime()}) / 3600000 as integer))`.as('bucket')

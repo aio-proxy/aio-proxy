@@ -5,6 +5,7 @@ import {
   GeminiGenerateContentRequestSchema,
   GeminiInteractionsBodySchema,
   OpenAIEmbeddingsRequestSchema,
+  OpenAIDecisionsRequestSchema,
   OpenAILegacyCompletionsRequestSchema,
   OpenAIResponsesCompactRequestSchema,
 } from '@aio-proxy/core';
@@ -212,6 +213,32 @@ export const additionalOperations = [
       textContent(
         'text/event-stream',
         `event: interaction.completed\ndata: ${JSON.stringify({ event_id: 'evt_1', event_type: 'interaction.completed', interaction: interactionReply })}\n\nevent: done\ndata: [DONE]\n\n`,
+      ),
+    ),
+  }),
+  operation('post', '/v1/decisions', 'createDecision', 'decisions', 'OpenAI', 34, {
+    requestVariants: [
+      jsonContent(
+        exampleSchema(OpenAIDecisionsRequestSchema, {
+          model: 'gpt-6-luna',
+          input: 'Hello.',
+          questions: [{ type: 'predicate', name: 'greeting', instructions: 'Is this a greeting?' }],
+        }),
+      ),
+    ],
+    responseVariants: ok(
+      jsonContent(
+        upstreamObject({
+          model: 'gpt-6-luna',
+          answers: [{ type: 'predicate', name: 'greeting', probability: 0.9 }],
+          usage: {
+            input_tokens: 3,
+            output_tokens: 0,
+            total_tokens: 3,
+            input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
+            output_tokens_details: { reasoning_tokens: 0 },
+          },
+        }),
       ),
     ),
   }),

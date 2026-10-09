@@ -1,5 +1,6 @@
 import {
   aiSdkPackagePrimaryProtocol,
+  createOpenAIDecisionsEvaluate,
   apiEndpointLoadOptions,
   loadAiSdkProvider,
   type ProviderFetch,
@@ -73,7 +74,15 @@ function apiEvaluation(
 ): EvaluationMaterialization | undefined {
   // `apiProviderEndpoints` puts the legacy protocol/baseURL pair first, which is
   // the same primary `endpointTransports` exposes.
-  const [primary] = apiProviderEndpoints(config);
+  const endpoints = apiProviderEndpoints(config);
+  if (endpoints.some((endpoint) => endpoint.protocol === ProviderProtocol.OpenAIDecisions)) {
+    const transport = createOpenAIDecisionsEvaluate(config, options);
+    return {
+      grantsCapability: true,
+      transport: { ...transport, discover: async () => ({ kind: 'supported', evaluate: transport.evaluate }) },
+    };
+  }
+  const [primary] = endpoints;
   if (!protocolSupportsEvaluation(primary.protocol)) return undefined;
   const packageName = EVALUATION_BRIDGE_PACKAGES[primary.protocol];
   if (packageName === undefined) return undefined;

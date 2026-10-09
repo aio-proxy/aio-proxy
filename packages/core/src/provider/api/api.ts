@@ -72,6 +72,7 @@ const SDK_VERSION_PREFIXES: Record<ProviderProtocol, string> = {
   [ProviderProtocol.OpenAIAudio]: '/v1',
   [ProviderProtocol.OpenAIVideo]: '/v1',
   [ProviderProtocol.TypeSafeSystemOne]: '/v1',
+  [ProviderProtocol.OpenAIDecisions]: '/v1',
 };
 
 function endpointTransport(

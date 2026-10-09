@@ -106,6 +106,7 @@ export function providerProbeRequest(
     // Evaluation is not a chat origin, so there is no cheap generative probe to
     // send: an evaluation request bills real work, exactly like video. Probe
     // connectivity only, matching the audio and video arms.
+    case ProviderProtocol.OpenAIDecisions:
     case ProviderProtocol.TypeSafeSystemOne:
       return { method: 'GET', path: '/v1/models' };
     default:

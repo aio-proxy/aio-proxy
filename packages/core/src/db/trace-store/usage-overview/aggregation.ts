@@ -36,6 +36,7 @@ export function aggregateRows(
   const valuesByBucket = new Map<string | number, BucketValues>();
   for (const row of rows) {
     addSummary(summary, row);
+    if (metric === 'requests' && row.requestCount === 0n) continue;
     if (metric !== 'requests' && row.terminationReason !== null) continue;
 
     let value = row.totalTokens;

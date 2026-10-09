@@ -5,6 +5,17 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { extractPassthroughObservation, extractPassthroughUsage } from './index';
 
 describe('passthrough usage extraction', () => {
+  test('preserves Decisions cache subsets and inclusive input usage', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIDecisions,
+        JSON.stringify({
+          usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 30, cache_write_tokens: 10 } },
+        }),
+      ),
+    ).toEqual({ inputTokens: 100, outputTokens: 0, totalTokens: 100, cacheReadTokens: 30, cacheWriteTokens: 10 });
+  });
+
   test('extracts Anthropic JSON usage', () => {
     expect(
       extractPassthroughUsage(
