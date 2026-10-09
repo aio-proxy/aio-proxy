@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { settingsQueryOptions } from '@/lib/settings-query';
+
 import {
   type OverviewQueryInput,
   callerRankingQueryOptions,
@@ -14,3 +16,6 @@ export const useOverviewDiagnosticsQuery = (input: OverviewQueryInput) =>
 export const useOverviewActivityQuery = (callerId?: string) => useQuery(overviewActivityQueryOptions(callerId));
 
 export const useCallerRankingQuery = (input: OverviewQueryInput) => useQuery(callerRankingQueryOptions(input));
+
+export const useApiKeyAccessQuery = () =>
+  useQuery({ ...settingsQueryOptions(), select: (settings) => settings.requireApiKey });

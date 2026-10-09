@@ -20,6 +20,7 @@ import {
   useOverviewDiagnosticsQuery,
   useOverviewQuery,
   useCallerRankingQuery,
+  useApiKeyAccessQuery,
 } from '../../hooks/use-overview-query';
 
 const loadingKpis = ['requests', 'tokens', 'cache', 'cost', 'rpm', 'tpm'] as const;
@@ -32,8 +33,9 @@ export const OverviewPage: React.FC = () => {
   const diagnostics = useOverviewDiagnosticsQuery({ range, callerId });
   const activity = useOverviewActivityQuery(callerId);
   const ranking = useCallerRankingQuery({ range });
+  const apiKeyAccess = useApiKeyAccessQuery();
   const callerBoard =
-    callerId === undefined ? (
+    callerId === undefined && apiKeyAccess.data === true ? (
       <UsageCallerRanking
         rows={ranking.data ?? []}
         loading={ranking.isLoading}

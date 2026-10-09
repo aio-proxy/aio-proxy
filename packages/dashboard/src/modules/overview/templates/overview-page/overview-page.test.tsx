@@ -16,31 +16,39 @@ const mocks = rs.hoisted(() => ({
   activityRefetch: rs.fn(),
   diagnosticsRefetch: rs.fn(),
   overviewRefetch: rs.fn(),
+  useCallerRankingQuery: rs.fn(),
+  useApiKeyAccessQuery: rs.fn(),
   useOverviewActivityQuery: rs.fn(),
   useOverviewDiagnosticsQuery: rs.fn(),
   useOverviewQuery: rs.fn(),
 }));
 
 rs.mock('../../hooks/use-overview-query', () => ({
-  useCallerRankingQuery: () => ({
-    data: [
-      {
-        id: 'alice',
-        label: 'Alice',
-        kind: 'key',
-        requestCount: '42',
-        totalTokens: '8192',
-        estimatedCostNanoUsd: '2500000000',
-      },
-    ],
-    isLoading: false,
-    isError: false,
-    refetch: () => {},
-  }),
+  useApiKeyAccessQuery: () => mocks.useApiKeyAccessQuery(),
+  useCallerRankingQuery: (input: unknown) => mocks.useCallerRankingQuery(input),
   useOverviewActivityQuery: (input: unknown) => mocks.useOverviewActivityQuery(input),
   useOverviewDiagnosticsQuery: (input: unknown) => mocks.useOverviewDiagnosticsQuery(input),
   useOverviewQuery: (input: unknown) => mocks.useOverviewQuery(input),
 }));
+
+const createCallerRankingData = () => [
+  {
+    id: 'alice',
+    label: 'Alice',
+    kind: 'key' as const,
+    requestCount: '42',
+    totalTokens: '8192',
+    estimatedCostNanoUsd: '2500000000',
+  },
+  {
+    id: 'bob',
+    label: 'Bob',
+    kind: 'key' as const,
+    requestCount: '21',
+    totalTokens: '4096',
+    estimatedCostNanoUsd: '1250000000',
+  },
+];
 
 const createOverviewData = () => ({
   range: '24h' as const,
@@ -125,6 +133,15 @@ beforeEach(() => {
   mocks.activityRefetch.mockReset();
   mocks.diagnosticsRefetch.mockReset();
   mocks.overviewRefetch.mockReset();
+  mocks.useCallerRankingQuery.mockReset();
+  mocks.useApiKeyAccessQuery.mockReset();
+  mocks.useApiKeyAccessQuery.mockReturnValue({ data: true });
+  mocks.useCallerRankingQuery.mockImplementation(() => ({
+    data: createCallerRankingData(),
+    isLoading: false,
+    isError: false,
+    refetch: () => {},
+  }));
   mocks.useOverviewActivityQuery.mockReset();
   mocks.useOverviewDiagnosticsQuery.mockReset();
   mocks.useOverviewQuery.mockReset();
@@ -323,4 +340,39 @@ test('ranking is independent of model trend and selecting a user filters every d
   expect(mocks.useOverviewQuery).toHaveBeenLastCalledWith({ range: '24h', callerId: 'alice' });
   expect(mocks.useOverviewDiagnosticsQuery).toHaveBeenLastCalledWith({ range: '24h', callerId: 'alice' });
   expect(mocks.useOverviewActivityQuery).toHaveBeenLastCalledWith('alice');
+});
+
+test('keeps the ranking visible for a single user when API key access is enabled', () => {
+  mocks.useCallerRankingQuery.mockReturnValue({
+    data: createCallerRankingData().slice(0, 1),
+    isLoading: false,
+    isError: false,
+    refetch: () => {},
+  });
+
+  render(<OverviewPage />);
+
+  expect(screen.getByRole('heading', { name: 'User ranking' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Alice' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Model trend' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Provider health' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Model ranking' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Heatmap' })).toBeInTheDocument();
+});
+
+test('hides the entire ranking when API key access is disabled and restores it when enabled', () => {
+  mocks.useApiKeyAccessQuery.mockReturnValue({ data: false });
+  const view = render(<OverviewPage />);
+  expect(screen.queryByRole('heading', { name: 'User ranking' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Alice' })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Model trend' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Provider health' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Model ranking' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Heatmap' })).toBeInTheDocument();
+
+  mocks.useApiKeyAccessQuery.mockReturnValue({ data: true });
+  view.rerender(<OverviewPage />);
+  expect(screen.getByRole('heading', { name: 'User ranking' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Alice' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Bob' })).toBeInTheDocument();
 });
