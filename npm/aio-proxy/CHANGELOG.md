@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.42.1
+
+### Patch Changes
+
+- [#501](https://github.com/aio-proxy/aio-proxy/pull/501) [`9c1470d`](https://github.com/aio-proxy/aio-proxy/commit/9c1470d72ccb347e9eaa3e2db5de4ca4f06b1050) Thanks @baranwang - Build and ship on Bun 1.4.3. Outbound TLS now checks the server certificate during the handshake and accepts only valid host names and canonical IP addresses. The Docker image runs on Alpine 3.24 so its libstdc++ matches the musl build.
+
 ## 0.42.0
 
 ### Minor Changes
