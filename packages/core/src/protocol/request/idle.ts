@@ -3,17 +3,20 @@ import { RequestBodyIdleTimeoutError } from './errors';
 export async function withAbortAndIdle<T>(
   task: Promise<T>,
   signal: AbortSignal | undefined,
-  idleTimeoutMs: number,
+  idleTimeoutMs?: number,
 ): Promise<T> {
-  if (signal?.aborted) throw abortError(signal.reason);
   let timer: ReturnType<typeof setTimeout> | undefined;
   let abort: (() => void) | undefined;
   try {
     return await new Promise<T>((resolve, reject) => {
-      timer = setTimeout(() => reject(new RequestBodyIdleTimeoutError()), idleTimeoutMs);
+      if (idleTimeoutMs !== undefined)
+        timer = setTimeout(() => reject(new RequestBodyIdleTimeoutError()), idleTimeoutMs);
       abort = () => reject(abortError(signal?.reason));
       signal?.addEventListener('abort', abort, { once: true });
       void task.then(resolve, reject);
+      // Already buffered reads may settle immediately even if the caller has
+      // aborted. Give the read that chance before cancelling a stalled upload.
+      if (signal?.aborted) queueMicrotask(abort);
     });
   } finally {
     if (timer !== undefined) clearTimeout(timer);

@@ -21,6 +21,30 @@ test('preflight uses adapter bodyLimits encoded, not the language 64 MiB constan
   );
 });
 
+test('an aborted upload settles its trace as cancelled', async () => {
+  const controller = new AbortController();
+  const provider = rawProvider({ id: 'raw' });
+  const harness = pipeline([provider], { adapter: openAIResponsesAdapter });
+  const request = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    signal: controller.signal,
+    body: new ReadableStream<Uint8Array>({
+      start(stream) {
+        stream.enqueue(new TextEncoder().encode('{"model":'));
+      },
+    }),
+  });
+
+  const pending = harness.run(request);
+  controller.abort();
+  await expect(pending).rejects.toBeInstanceOf(DOMException);
+
+  const root = harness.recording.spans.find((span) => span.parentSpanId == null);
+  expect(root?.attributes[attributeName.terminationReason]).toBe('cancelled');
+  expect(provider.calls.raw).toHaveLength(0);
+});
+
 test.each(['private-input', '-1', '1.5', 'Infinity'])(
   'rejects invalid Content-Length %s as 400 without logging the value',
   async (length) => {
