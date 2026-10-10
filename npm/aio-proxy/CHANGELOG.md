@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.42.2
+
+### Patch Changes
+
+- [#503](https://github.com/aio-proxy/aio-proxy/pull/503) [`12f70a5`](https://github.com/aio-proxy/aio-proxy/commit/12f70a55504b3023fabe38d90c64d2181bbe474f) Thanks @olivewind - Finish cancelled request uploads promptly so their traces no longer remain in progress after clients disconnect.
+
 ## 0.42.1
 
 ### Patch Changes

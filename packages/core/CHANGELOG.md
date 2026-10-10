@@ -1,5 +1,27 @@
 # @aio-proxy/core
 
+## 0.42.2
+
+### Patch Changes
+
+- [#503](https://github.com/aio-proxy/aio-proxy/pull/503) [`12f70a5`](https://github.com/aio-proxy/aio-proxy/commit/12f70a55504b3023fabe38d90c64d2181bbe474f) Thanks @olivewind - Finish cancelled request uploads promptly so their traces no longer remain in progress after clients disconnect.
+- Updated dependencies []:
+  - @aio-proxy/i18n@0.42.2
+  - @aio-proxy/logger@0.42.2
+  - @aio-proxy/plugin-sdk@0.42.2
+  - @aio-proxy/plugin-claude-code@0.42.2
+  - @aio-proxy/plugin-cursor@0.42.2
+  - @aio-proxy/plugin-github-copilot@0.42.2
+  - @aio-proxy/plugin-google-antigravity@0.42.2
+  - @aio-proxy/plugin-kimi-code@0.42.2
+  - @aio-proxy/plugin-muse-code@0.42.2
+  - @aio-proxy/plugin-openai-chatgpt@0.42.2
+  - @aio-proxy/plugin-opencode-go@0.42.2
+  - @aio-proxy/plugin-openrouter@0.42.2
+  - @aio-proxy/plugin-xai-grok@0.42.2
+  - @aio-proxy/shared@0.42.2
+  - @aio-proxy/types@0.42.2
+
 ## 0.42.1
 
 ### Patch Changes
