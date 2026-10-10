@@ -1,4 +1,5 @@
 import { expect, spyOn, test } from 'bun:test';
+import { connect } from 'node:net';
 import { brotliCompressSync, deflateRawSync, deflateSync } from 'node:zlib';
 
 import {
@@ -57,6 +58,66 @@ test('readJsonRequest parses requests without content encoding', async () => {
   const request = new Request('https://proxy.test/v1/responses', { method: 'POST', body: jsonBytes });
   expect(await readJsonRequest(request)).toEqual({ ok: true });
 });
+
+test('readJsonRequest stops waiting for a cloned body after the client disconnects', async () => {
+  const started = Promise.withResolvers<void>();
+  const finished = Promise.withResolvers<unknown>();
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    async fetch(request) {
+      started.resolve();
+      try {
+        await readJsonRequest(request);
+        finished.resolve('completed');
+      } catch (error) {
+        finished.resolve(error);
+      }
+      return new Response(null);
+    },
+  });
+  const socket = connect(server.port!, '127.0.0.1');
+  try {
+    await new Promise<void>((resolve, reject) => {
+      socket.once('connect', resolve);
+      socket.once('error', reject);
+    });
+    socket.write('POST /v1/responses HTTP/1.1\r\nHost: localhost\r\nContent-Length: 100\r\n\r\n{"input":');
+    await started.promise;
+    socket.destroy();
+
+    const result = await settleWithin(finished.promise, 1_000);
+    expect(result).toBeInstanceOf(DOMException);
+    expect((result as DOMException).name).toBe('AbortError');
+  } finally {
+    socket.destroy();
+    server.stop(true);
+  }
+}, 5_000);
+
+test.each(['identity', 'gzip'] as const)(
+  'decodedRequestStream stops waiting after %s upload aborts',
+  async (encoding) => {
+    const abort = new AbortController();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoding === 'gzip' ? Bun.gzipSync(jsonBytes).subarray(0, 5) : jsonBytes);
+      },
+    });
+    const request = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: encoding === 'gzip' ? { 'content-encoding': encoding } : undefined,
+      body,
+      signal: abort.signal,
+    });
+    const stream = await decodedRequestStream(request);
+    const reading = new Response(stream).arrayBuffer().catch((error: unknown) => error);
+    abort.abort();
+    const result = await settleWithin(reading, 1_000);
+    expect(result).toBeInstanceOf(DOMException);
+    expect((result as DOMException).name).toBe('AbortError');
+  },
+);
 
 test.each(['compress', 'gzip, br'])('readJsonRequest rejects unsupported coding %s', async (encoding) => {
   const warn = spyOn(console, 'warn').mockImplementation(() => {});

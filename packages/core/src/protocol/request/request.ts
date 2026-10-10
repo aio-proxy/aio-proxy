@@ -26,8 +26,9 @@ export async function decodedRequestStream(
 ): Promise<ReadableStream<Uint8Array> | null> {
   try {
     const encoding = requestContentEncoding(raw.headers.get('content-encoding'));
-    if (encoding === undefined) return boundedRequestStream(raw.body, limits, options);
-    return streamDecodeRequestBody(raw.body, encoding, limits, options);
+    const readOptions = { ...options, signal: options?.signal ?? raw.signal };
+    if (encoding === undefined) return boundedRequestStream(raw.body, limits, readOptions);
+    return streamDecodeRequestBody(raw.body, encoding, limits, readOptions);
   } catch (error) {
     await cancelRequestBody(raw, error);
     throw error;
@@ -46,7 +47,7 @@ export async function readRequestText(
     const encoding = requestContentEncoding(raw.headers.get('content-encoding'));
     const branch = raw.clone();
     branches.push(branch);
-    const encoded = await readRequestBytes(branch.body, limits.encoded);
+    const encoded = await readRequestBytes(branch.body, limits.encoded, { signal: raw.signal });
     if (encoding === undefined && encoded.byteLength > limits.decoded) {
       throw new RequestBodyTooLargeError('Request body too large', {
         stage: 'decoded',

@@ -49,7 +49,9 @@ export function streamDecodeRequestBody(
   const deflatePrefix: Uint8Array[] = [];
 
   const awaitDecoder = (task: Promise<void>): Promise<void> =>
-    options?.idleTimeoutMs === undefined ? task : withAbortAndIdle(task, options.signal, options.idleTimeoutMs);
+    options?.idleTimeoutMs === undefined && options?.signal === undefined
+      ? task
+      : withAbortAndIdle(task, options.signal, options.idleTimeoutMs);
 
   const writeEncoded = async (chunk: Uint8Array): Promise<void> => {
     encoded += chunk.byteLength;
@@ -79,7 +81,7 @@ export function streamDecodeRequestBody(
     try {
       for (;;) {
         const next =
-          options?.idleTimeoutMs === undefined
+          options?.idleTimeoutMs === undefined && options?.signal === undefined
             ? await reader.read()
             : await withAbortAndIdle(reader.read(), options.signal, options.idleTimeoutMs);
         if (next.done) {

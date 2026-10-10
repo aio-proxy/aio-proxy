@@ -16,10 +16,11 @@ export async function readRequestBytes(
   if (reader === undefined) return new Uint8Array();
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let interrupted = false;
   try {
     while (true) {
       const next =
-        options?.idleTimeoutMs === undefined
+        options?.idleTimeoutMs === undefined && options?.signal === undefined
           ? await reader.read()
           : await withAbortAndIdle(reader.read(), options.signal, options.idleTimeoutMs);
       if (next.done) break;
@@ -36,8 +37,21 @@ export async function readRequestBytes(
       }
       chunks.push(next.value);
     }
+  } catch (error) {
+    interrupted = true;
+    void reader
+      .cancel(error)
+      .finally(() => {
+        try {
+          reader.releaseLock();
+        } catch {}
+      })
+      .catch(() => undefined);
+    throw error;
   } finally {
-    reader.releaseLock();
+    // An abort can win while read() is pending; cancellation settles that read.
+    // Its lock cannot be released synchronously until the pending read settles.
+    if (!interrupted) reader.releaseLock();
   }
 
   const bytes = new Uint8Array(total);
@@ -67,7 +81,7 @@ export function boundedRequestStream(
     async pull(controller) {
       try {
         const next =
-          options?.idleTimeoutMs === undefined
+          options?.idleTimeoutMs === undefined && options?.signal === undefined
             ? await reader.read()
             : await withAbortAndIdle(reader.read(), options.signal, options.idleTimeoutMs);
         if (next.done) {
