@@ -1,5 +1,9 @@
 # @aio-proxy/infra
 
+## 0.42.2
+
+No changes in this release.
+
 ## 0.42.1
 
 No changes in this release.
