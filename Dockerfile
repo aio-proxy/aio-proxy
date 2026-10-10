@@ -10,13 +10,13 @@
 # builder, so buildx produces linux/amd64 and linux/arm64 without QEMU emulating
 # the build. Dashboard assets are embedded into the binary by the compiled entry,
 # so the runtime stage needs only the binary and its third-party notice.
-FROM --platform=$BUILDPLATFORM oven/bun:1.4.2-alpine AS prune
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.3-alpine AS prune
 WORKDIR /src
 COPY . .
 # bunx runs turbo without a global install layer; pin the repo's major.
 RUN bunx turbo@2 prune @aio-proxy/cli --docker
 
-FROM --platform=$BUILDPLATFORM oven/bun:1.4.2-alpine AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.3-alpine AS build
 ARG TARGETARCH
 WORKDIR /src
 # Manifests + lockfile only: this layer is cached until a package.json/lock changes.
@@ -32,9 +32,9 @@ RUN case "$TARGETARCH" in \
     esac; \
     bun packages/cli/scripts/build-binary.ts "$SUFFIX" /out/aio-proxy
 
-# Runtime stage: minimal alpine. bun --compile musl still needs libgcc/libstdc++
-# (same packages as oven/bun:alpine); it is not a static FROM scratch binary.
-FROM alpine:3.20
+# Runtime stage: minimal alpine. The compiled musl binary needs libgcc/libstdc++
+# from the same Alpine release as oven/bun:alpine. It is not a static scratch binary.
+FROM alpine:3.24
 # wget (busybox) drives the HEALTHCHECK; ca-certificates for upstream TLS.
 RUN apk add --no-cache ca-certificates libgcc libstdc++ \
     && adduser -D -u 10001 aioproxy \
