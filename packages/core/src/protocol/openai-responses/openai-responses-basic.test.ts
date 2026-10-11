@@ -5,8 +5,165 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { aiSdkPartStream } from '../../egress/openai-responses-test-support';
 import { openAIResponsesAdapter, writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../../index';
+import { RequestBodyTooLargeError, withRequestBodyLimits } from '../request';
 
 describe('openAIResponsesAdapter', () => {
+  test('buffered pre-aborted Requests retain parsing and raw forwarding behavior', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const body = { model: 'alias', input: 'hello' };
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      signal: controller.signal,
+      body: JSON.stringify(body),
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {});
+    expect(await forwarded.json()).toEqual({ ...body, model: 'upstream' });
+    expect(forwarded.signal.aborted).toBe(true);
+  });
+
+  test('Requests constructed from another Request remain replayable through model fallback', async () => {
+    const body = { model: 'alias', input: 'hello', beta_field: { keep: true } };
+    const source = new Request('https://client.test/v1/responses', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    const raw = new Request('https://proxy.test/v1/responses', source);
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    for (const model of ['first', 'fallback']) {
+      const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, model, new Set(), {});
+      expect(await forwarded.json()).toEqual({ ...body, model });
+    }
+  });
+
+  test('wire reuse rejects an externally locked body', async () => {
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      body: JSON.stringify({ model: 'alias', input: 'hello' }),
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    const reader = raw.body!.getReader();
+    try {
+      await expect(openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {})).rejects.toBeInstanceOf(
+        TypeError,
+      );
+    } finally {
+      reader.releaseLock();
+    }
+  });
+
+  test('wire rewrites retain prototype-named JSON fields without changing object prototypes', async () => {
+    const text = '{"model":"alias","input":"hello","beta_field":{"__proto__":{"polluted":true},"constructor":1}}';
+    const raw = new Request('https://proxy.test/v1/responses', { method: 'POST', body: text });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    expect(Object.getPrototypeOf(parsed.beta_field)).toBe(Object.prototype);
+    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {});
+    expect(await forwarded.json()).toEqual({ ...JSON.parse(text), model: 'upstream' });
+    expect(Reflect.get({}, 'polluted')).toBeUndefined();
+  });
+
+  test('wire rewrites preserve original unknown containers after parsed request mutation', async () => {
+    const body = {
+      model: 'alias',
+      input: [
+        { role: 'user', content: [{ type: 'input_image', image_url: 'https://image.test/1', detail: 'original' }] },
+      ],
+      metadata: { nested: { original: true } },
+      beta_field: { nested: [{ original: true }] },
+    };
+    const raw = new Request('https://proxy.test/v1/responses', { method: 'POST', body: JSON.stringify(body) });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    if (isPlainObject(parsed.metadata) && isPlainObject(parsed.metadata.nested))
+      parsed.metadata.nested.original = false;
+    if (isPlainObject(parsed.beta_field) && Array.isArray(parsed.beta_field.nested)) {
+      parsed.beta_field.nested.push({ mutated: true });
+    }
+    for (const model of ['upstream-a', 'upstream-b']) {
+      const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, model, new Set(), {});
+      expect(await forwarded.json()).toEqual({ ...body, model });
+    }
+  });
+
+  test('wire reuse never mixes documents from different inbound Requests', async () => {
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      body: JSON.stringify({ model: 'alias', input: 'first', beta_field: 1 }),
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    const other = new Request(raw.url, {
+      method: 'POST',
+      body: JSON.stringify({ model: 'alias', input: 'second', beta_field: 2 }),
+    });
+    const forwarded = await openAIResponsesAdapter.rawRequest(other, parsed, 'upstream', new Set(), {});
+    expect(await forwarded.json()).toEqual({ model: 'upstream', input: 'second', beta_field: 2 });
+  });
+
+  test('wire reuse still enforces a changed scoped body budget', async () => {
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      body: JSON.stringify({ model: 'alias', input: 'hello' }),
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    await expect(
+      withRequestBodyLimits({ encoded: 8, decoded: 8 }, () =>
+        openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {}),
+      ),
+    ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+  });
+
+  test.each([undefined, 'client disconnected'])(
+    'wire reuse does not forward a request aborted after parsing (%s)',
+    async (reason) => {
+      const controller = new AbortController();
+      const raw = new Request('https://proxy.test/v1/responses', {
+        method: 'POST',
+        signal: controller.signal,
+        body: JSON.stringify({ model: 'alias', input: 'hello' }),
+      });
+      const parsed = await openAIResponsesAdapter.parse(raw, {});
+      controller.abort(reason);
+      await expect(openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {})).rejects.toMatchObject({
+        name: 'AbortError',
+      });
+    },
+  );
+
+  test('wire reuse does not bypass a changed content encoding', async () => {
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-encoding': 'gzip' },
+      body: Bun.gzipSync(new TextEncoder().encode(JSON.stringify({ model: 'alias', input: 'hello' }))),
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    raw.headers.delete('content-encoding');
+    await expect(openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {})).rejects.toBeInstanceOf(
+      SyntaxError,
+    );
+  });
+
+  test('wire reuse does not bypass a consumed inbound body', async () => {
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      body: JSON.stringify({ model: 'alias', input: 'hello' }),
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    await raw.text();
+    await expect(openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {})).rejects.toBeInstanceOf(
+      TypeError,
+    );
+  });
+
+  test('deep unknown wire fields still pass through without recursive cloning', async () => {
+    const depth = 6_000;
+    const body =
+      '{"model":"same","input":"hello","beta_field":' + '{"next":'.repeat(depth) + '0' + '}'.repeat(depth) + '}';
+    const raw = new Request('https://proxy.test/v1/responses', { method: 'POST', body });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'same', new Set(), {});
+    expect(await forwarded.text()).toBe(body);
+  });
+
   test('defaults to non-stream and exposes routing, tools, and current writers', async () => {
     const raw = new Request('https://proxy.test/v1/responses', {
       method: 'POST',

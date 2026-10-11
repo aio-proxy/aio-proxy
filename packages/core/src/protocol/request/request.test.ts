@@ -8,11 +8,29 @@ import {
   REQUEST_BODY_LIMITS,
   RequestBodyTooLargeError,
   readJsonRequest,
+  readRequestText,
   rewriteJsonRequestModel,
   UnsupportedContentEncodingError,
 } from './index';
 
 const jsonBytes = new TextEncoder().encode(JSON.stringify({ ok: true }));
+
+test.each([1, 2, 7])('readRequestText preserves UTF-8 decoding across %i-byte upload chunks', async (chunkSize) => {
+  const bytes = new Uint8Array([239, 187, 191, ...new TextEncoder().encode('你好🌍'), 255, 65, 226, 130]);
+  const request = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+          controller.enqueue(bytes.subarray(offset, offset + chunkSize));
+        }
+        controller.close();
+      },
+    }),
+  });
+  expect(await readRequestText(request)).toBe(new TextDecoder().decode(bytes));
+  expect(new Uint8Array(await request.arrayBuffer())).toEqual(bytes);
+});
 
 test('rewriteJsonRequestModel preserves unknown fields and removes stale body encoding headers', async () => {
   const body = Bun.gzipSync(
