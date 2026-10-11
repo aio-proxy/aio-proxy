@@ -17,11 +17,19 @@ const (
 	OpenPanel
 	Service
 	OpenLogs
+	InstallCli
 	ToggleLogin
 	CheckForUpdates
 	Quit
 	MenuBarDisplay
 )
+
+// CliOffer is the Install aiop command item. The zero value stays hidden.
+type CliOffer struct {
+	Visible bool
+	Label   string
+	Enabled bool
+}
 
 type MenuCommand struct {
 	Kind   CommandKind
@@ -33,7 +41,7 @@ type MenuEntry struct {
 	Enabled, Checked, Check, Separator bool
 }
 
-func MenuEntries(offered policy.Offered, dashboard, busy, persistent bool, loginItem login.Status) []MenuEntry {
+func MenuEntries(offered policy.Offered, dashboard, busy, persistent bool, loginItem login.Status, cli CliOffer) []MenuEntry {
 	entries := []MenuEntry{{Command: MenuCommand{Kind: OpenDashboard}, Label: "Open Dashboard", Enabled: dashboard}, {Separator: true}}
 	services := []struct {
 		show   bool
@@ -52,13 +60,11 @@ func MenuEntries(offered policy.Offered, dashboard, busy, persistent bool, login
 			entries = append(entries, MenuEntry{Command: MenuCommand{Kind: Service, Action: s.action}, Label: s.label, Enabled: !busy})
 		}
 	}
-	if runtime.GOOS == "linux" {
-		entries = append(entries, MenuEntry{Command: MenuCommand{Kind: OpenPanel}, Label: "Open Panel", Enabled: true})
+	entries = append(entries, MenuEntry{Command: MenuCommand{Kind: OpenLogs}, Label: "Open logs", Enabled: true})
+	if cli.Visible {
+		entries = append(entries, MenuEntry{Command: MenuCommand{Kind: InstallCli}, Label: cli.Label, Enabled: cli.Enabled})
 	}
-	if runtime.GOOS == "darwin" {
-		entries = append(entries, MenuEntry{Command: MenuCommand{Kind: MenuBarDisplay}, Label: "Menu Bar Display", Enabled: true})
-	}
-	entries = append(entries, MenuEntry{Command: MenuCommand{Kind: OpenLogs}, Label: "Open logs", Enabled: true}, MenuEntry{Separator: true})
+	entries = append(entries, MenuEntry{Separator: true})
 	label := "Open at login"
 	if !persistent {
 		label += " (move to Applications first)"
@@ -78,7 +84,38 @@ func Entries(m *app.Model) []MenuEntry {
 	if m.Discovery != nil {
 		offered = policy.OfferedActions(m.Discovery, m.Persistent())
 	}
-	return MenuEntries(offered, !m.IsDown(), m.Action.IsBusy(), m.Persistent(), m.LoginItem)
+	return MenuEntries(offered, !m.IsDown(), m.Action.IsBusy(), m.Persistent(), m.LoginItem, cliOffer(m))
+}
+func cliOffer(m *app.Model) CliOffer {
+	if m.CLIInstalling {
+		return CliOffer{Visible: true, Label: "Installing aiop command…", Enabled: false}
+	}
+	if m.CLIProbe == nil || m.CLIProbe.Aiop {
+		return CliOffer{}
+	}
+	if !m.CanLinkCLI() {
+		label := "Install aiop command (unavailable from this location)"
+		if runtime.GOOS == "darwin" {
+			label = "Install aiop command (move to /Applications first)"
+		}
+		return CliOffer{Visible: true, Label: label}
+	}
+	if !m.CLIProbe.LinkDirOnPath {
+		label := "Install aiop command (~/.local/bin is not on your PATH)"
+		if runtime.GOOS == "darwin" {
+			label = "Install aiop command (/usr/local/bin is not on your PATH)"
+		}
+		return CliOffer{Visible: true, Label: label}
+	}
+	return CliOffer{Visible: true, Label: "Install aiop command", Enabled: true}
+}
+func TrayEntries(m *app.Model) []MenuEntry {
+	entries := Entries(m)
+	if runtime.GOOS == "linux" {
+		// Many status-notifier hosts ignore a left click, so the menu is the way in.
+		entries = append([]MenuEntry{{Command: MenuCommand{Kind: OpenPanel}, Label: "Open Panel", Enabled: true}}, entries...)
+	}
+	return entries
 }
 func Run(m *app.Model, command MenuCommand) {
 	switch command.Kind {
@@ -92,6 +129,8 @@ func Run(m *app.Model, command MenuCommand) {
 		m.RunUserAction(command.Action)
 	case OpenLogs:
 		m.OpenLogs()
+	case InstallCli:
+		m.InstallCLI()
 	case ToggleLogin:
 		m.ToggleLoginItem()
 	case CheckForUpdates:
@@ -105,16 +144,16 @@ func Run(m *app.Model, command MenuCommand) {
 		}
 	}
 }
-func nativeMenu(m *app.Model, entries []MenuEntry) *mygo.Menu {
+func nativeMenu(m *app.Model, entries []MenuEntry, withDisplay bool) *mygo.Menu {
 	items := make([]*mygo.MenuItem, 0, len(entries))
 	for _, entry := range entries {
 		if entry.Separator {
 			items = append(items, mygo.Separator())
 			continue
 		}
-		if entry.Command.Kind == MenuBarDisplay {
-			items = append(items, &mygo.MenuItem{Label: entry.Label, Submenu: displayMenu(m)})
-			continue
+		// The display submenu is the tray's, immediately before Open logs. The panel menu omits it.
+		if withDisplay && entry.Command.Kind == OpenLogs {
+			items = append(items, &mygo.MenuItem{Label: "Menu Bar Display", Submenu: displayMenu(m)})
 		}
 		item := &mygo.MenuItem{Label: entry.Label, Disabled: !entry.Enabled, Checked: entry.Checked}
 		if entry.Check {
@@ -132,4 +171,7 @@ func nativeMenu(m *app.Model, entries []MenuEntry) *mygo.Menu {
 	}
 	return mygo.NewMenu(items)
 }
-func NativeMenu(m *app.Model) *mygo.Menu { return nativeMenu(m, Entries(m)) }
+func NativeMenu(m *app.Model) *mygo.Menu { return nativeMenu(m, Entries(m), false) }
+func TrayNativeMenu(m *app.Model) *mygo.Menu {
+	return nativeMenu(m, TrayEntries(m), runtime.GOOS == "darwin")
+}

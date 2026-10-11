@@ -20,7 +20,7 @@ func displayMenu(m *app.Model) []*mygo.MenuItem {
 			},
 		}
 	}
-	items := []*mygo.MenuItem{
+	return []*mygo.MenuItem{
 		metric("Today Tokens", menubar.TodayTokens),
 		metric("Tokens per Second", menubar.TokensPerSecond),
 		metric("Today Cost", menubar.TodayCost),
@@ -34,8 +34,4 @@ func displayMenu(m *app.Model) []*mygo.MenuItem {
 			},
 		},
 	}
-	if m.MenuBarDisplayError != "" {
-		items = append(items, mygo.Separator(), &mygo.MenuItem{Label: m.MenuBarDisplayError, Disabled: true})
-	}
-	return items
 }

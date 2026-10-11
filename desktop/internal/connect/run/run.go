@@ -96,30 +96,23 @@ type wait struct {
 	expected *string
 }
 
-// RunAuto runs an automatic action. attempts is the launch-wide slot: it is spent before the first
-// mutation runs, so a failure is never retried this launch. The caller already decided the install
-// location is persistent.
+// RunAuto runs an automatic action on the discovery that decided it. It does not discover again
+// first: that discovery is already current, and a second CLI spawn only widens the wait. attempts is
+// the launch-wide slot: it is spent before the first mutation runs, so a failure is never retried
+// this launch. The caller already decided the install location is persistent.
 func RunAuto(host Host, decidedOn *discovery.Discovery, action policy.AutoAction, attempts *policy.AutoAttempts) (discovery.Discovery, error) {
 	if attempts.Used(action) {
 		return discovery.Discovery{}, ErrNotOffered
-	}
-	now, err := fresh(host, decidedOn)
-	if err != nil {
-		return discovery.Discovery{}, err
-	}
-	// The three-field check misses e.g. a hand-started instance appearing before a fresh install.
-	if again, ok := policy.AutomaticAction(&now, true, attempts); !ok || again != action {
-		return discovery.Discovery{}, ErrChanged
 	}
 	attempts.Mark(action)
 	var w wait
 	switch action {
 	case policy.AutoRestartForVersion:
-		w = restartWait(&now, new(now.BundledVersion))
+		w = restartWait(decidedOn, new(decidedOn.BundledVersion))
 	default:
-		w = startWait(&now)
+		w = startWait(decidedOn)
 	}
-	return execute(host, &now, policy.AutoMutations(action), w)
+	return execute(host, decidedOn, policy.AutoMutations(action), w)
 }
 
 func RunUser(host Host, rendered *discovery.Discovery, action policy.UserAction) (discovery.Discovery, error) {

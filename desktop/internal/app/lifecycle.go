@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"runtime"
+
+	"github.com/aio-proxy/aio-proxy/desktop/internal/clicommand"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/client/refresh"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/connect/cli"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/connect/discovery"
@@ -20,15 +23,29 @@ import (
 func (m *Model) Start() {
 	m.startLive()
 	paths, bundle := m.Paths, m.Bundle
+	// Discovery runs alongside the install step. Nothing automatic can start until that step lands:
+	// Persistent is false while Install is still nil.
+	m.Rediscover()
 	go func() {
 		state := install.Startup(paths, bundle)
 		m.post(func() {
 			logx.Infof("install: %+v", state)
+			// Only a newer stable copy changes which CLI discovers. Otherwise keep the discovery
+			// already taken, or the one still in flight.
+			rerun := state.Kind == install.StateReadOnly && state.Reason.Kind == install.ReadOnlyNewerCopy ||
+				(m.Discovery == nil && !m.discovering)
 			m.Install = &state
-			_ = login.Refresh()
+			if err := login.Refresh(); err != nil {
+				logx.Infof("login item refresh: %v", err)
+			}
 			m.LoginItem = login.Current()
 			m.notify()
-			m.Rediscover()
+			if rerun {
+				m.Rediscover()
+			} else {
+				m.maybeAutomatic()
+			}
+			m.probeCLI()
 		})
 	}()
 }
@@ -60,6 +77,9 @@ func (m *Model) Rediscover() {
 	}()
 }
 func (m *Model) applyAfter(after discovery.Discovery) {
+	if after.Instance.Reachable {
+		m.Health.MarkUp()
+	}
 	m.applyDiscovery(m.discoveryOrder.issue(), after, nil)
 }
 func (m *Model) applyDiscovery(seq uint64, d discovery.Discovery, err error) {
@@ -229,6 +249,69 @@ func (m *Model) OpenLogs() {
 	if m.RevealPath != nil {
 		m.RevealPath(filepath.Join(home, "logs"))
 	}
+}
+func (m *Model) CanLinkCLI() bool {
+	if runtime.GOOS != "darwin" {
+		return m.Persistent()
+	}
+	// /usr/local/bin/aiop is shared by every account, so it may only point into /Applications.
+	return m.Persistent() && strings.HasPrefix(m.Bundle, "/Applications")
+}
+func (m *Model) probeCLI() {
+	go func() {
+		probe := clicommand.Query()
+		m.post(func() {
+			logx.Infof("shell probe: %+v", probe)
+			m.CLIProbe = probe
+			m.notify()
+		})
+	}()
+}
+func (m *Model) InstallCLI() {
+	if !m.CanLinkCLI() || m.CLIInstalling {
+		return
+	}
+	target := m.Paths.Symlink
+	if runtime.GOOS == "darwin" {
+		if m.Bundle == "" {
+			return
+		}
+		// The command points at this bundle's CLI, which Sparkle updates in place.
+		target = install.SidecarOf(m.Bundle)
+	}
+	aiop := clicommand.AiopPath(m.Paths.Home, target)
+	m.CLIInstalling = true
+	m.notify()
+	go func() {
+		var installed bool
+		var installErr error
+		// The cached probe may date from launch. Ask again before changing anything.
+		if probe := clicommand.Query(); probe != nil && !probe.Aiop && probe.LinkDirOnPath {
+			installed, installErr = clicommand.Install(target, !probe.AioProxy)
+		}
+		m.post(func() {
+			logx.Infof("install aiop: %v %v", installed, installErr)
+			m.CLIInstalling = false
+			if !m.Action.IsBusy() {
+				switch {
+				case installErr != nil:
+					m.Action = ActionState{Kind: ActionFailed, Note: "Install aiop failed: " + installErr.Error()}
+				case installed:
+					m.Action = ActionState{Kind: ActionDone, Note: clicommand.InstalledNotice(aiop)}
+				}
+			}
+			m.notify()
+			m.probeCLI()
+		})
+	}()
+}
+func (m *Model) refreshLoginItem() {
+	status := login.Current()
+	if m.LoginItem == status {
+		return
+	}
+	m.LoginItem = status
+	m.notify()
 }
 func (m *Model) SetLoginItem(enabled bool) {
 	if !m.Persistent() {

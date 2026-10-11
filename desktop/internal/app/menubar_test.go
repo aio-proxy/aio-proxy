@@ -9,10 +9,9 @@ import (
 	"github.com/aio-proxy/aio-proxy/desktop/internal/menubar"
 )
 
-func TestDisplayWriteFailureKeepsSavedSelection(t *testing.T) {
+func TestDisplayWriteFailureKeepsTheNewSelection(t *testing.T) {
 	paths := install.PathsForHome(t.TempDir())
 	m := NewModel(paths, "")
-	original := m.MenuBarDisplay
 	if err := os.MkdirAll(filepath.Dir(paths.Support), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -20,18 +19,15 @@ func TestDisplayWriteFailureKeepsSavedSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.ToggleMenuBarMetric(menubar.TodayTokens)
-	if m.MenuBarDisplay != original || m.MenuBarDisplayError == "" {
-		t.Fatal("failed write changed selection or hid its error")
+	if !m.MenuBarDisplay.Has(menubar.TodayTokens) {
+		t.Fatal("failed write rolled the selection back")
 	}
 	if err := os.Remove(paths.Support); err != nil {
 		t.Fatal(err)
 	}
-	m.ToggleMenuBarMetric(menubar.TodayTokens)
-	if !m.MenuBarDisplay.Has(menubar.TodayTokens) || m.MenuBarDisplayError != "" {
-		t.Fatal("successful retry did not apply selection and clear error")
-	}
+	m.ToggleMenuBarMetric(menubar.TokensPerSecond)
 	reloaded := NewModel(paths, "")
-	if reloaded.MenuBarDisplay != m.MenuBarDisplay {
+	if !reloaded.MenuBarDisplay.Has(menubar.TodayTokens) || !reloaded.MenuBarDisplay.Has(menubar.TokensPerSecond) {
 		t.Fatal("retry was not persisted")
 	}
 }

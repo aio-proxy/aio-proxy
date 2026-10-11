@@ -19,7 +19,9 @@ func footer(c *ui.Context, m *app.Model) {
 		}
 		if m.UpdatePending != "" {
 			if ui.Button(c, fmt.Sprintf("Update to %s…", m.UpdatePending)).Key("update").Height(24).FontSize(12).FixedLineHeight(16).Padding(0, 8).Radius(6).Transition(controlColorTransition).Clicked() {
-				m.CheckUpdates()
+				if m.InstallUpdate != nil {
+					m.InstallUpdate()
+				}
 			}
 		}
 		ui.Box(c).Grow(1)

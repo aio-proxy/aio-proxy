@@ -9,7 +9,11 @@ import (
 	"github.com/aio-proxy/aio-proxy/desktop/internal/macos/sparkle"
 )
 
-func configureUpdates(m *app.Model) { m.CheckUpdates = sparkle.CheckNow }
+func configureUpdates(m *app.Model) {
+	// Sparkle's own alert installs, so the panel button brings that alert up.
+	m.CheckUpdates = sparkle.CheckNow
+	m.InstallUpdate = sparkle.CheckNow
+}
 
 func startUpdates(m *app.Model) {
 	sparkle.Start(func(v string) { m.UpdatePending = v; m.Changed() }, func() { m.UpdatePending = ""; m.Changed() })

@@ -26,13 +26,17 @@ func trendSeries(c *ui.Context, u *summary.Usage, providers []summary.Provider, 
 	stacked := usage.Stack(u.Buckets, cells, label, v.Metric)
 	out := make([]chartSeries, len(stacked))
 	for i, s := range stacked {
-		color := p.Chart[4-min(i, 3)]
-		if s.Other {
-			color = p.Chart[0]
-		}
-		out[i] = chartSeries{Series: s, Color: color}
+		out[i] = chartSeries{Series: s, Color: trendColor(p.Chart, i, s.Other)}
 	}
 	return out
+}
+
+// trendColor is largest-first and lightest, matching the Dashboard; Other is darkest.
+func trendColor(chart [5]ui.Color, index int, other bool) ui.Color {
+	if other {
+		return chart[4]
+	}
+	return chart[min(index, 3)]
 }
 
 func trendProviderLabel(providers []summary.Provider, id string) string {
@@ -149,8 +153,8 @@ func trendGroup(c *ui.Context, u *summary.Usage, series []chartSeries, v *viewSt
 			}
 			chartTooltip(c, bounds.X+x+12, bounds.Y+y, 240, float32(60+rows*22), func() {
 				ui.Text(c, labels[hovered]+" · "+per).FontSize(12).FontWeight(500)
-				for i := len(series) - 1; i >= 0; i-- {
-					s := series[i]
+				// Legend order is descending window usage, not the visual stack.
+				for _, s := range series {
 					if value := s.Values[hovered]; value > 0 {
 						tooltipSeriesRow(c, s.Color, s.Label, usage.FormatValue(value, metric))
 					}

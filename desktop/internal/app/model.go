@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/aio-proxy/aio-proxy/desktop/internal/clicommand"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/client/health"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/client/refresh"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/connect/discovery"
@@ -60,35 +61,38 @@ func (a *ActionState) ClearOutcome() {
 }
 
 type Model struct {
-	Paths               install.Paths
-	Bundle              string
-	Install             *install.InstallState
-	Discovery           *discovery.Discovery
-	DiscoveryError      string
-	Health              health.HealthTracker
-	Summary             SummaryState
-	SummaryError        string
-	SummaryErrorRange   summary.UsageRange
-	LastSummaryAt       time.Time
-	Action              ActionState
-	UpdatePending       string
-	LoginItem           login.Status
-	LoginItemError      string
-	UsageRange          summary.UsageRange
-	MenuBarDisplay      menubar.Preferences
-	MenuBarDisplayError string
-	Live                live.Display
-	LiveSchedule        live.Schedule
-	goneRediscovered    time.Time
+	Paths             install.Paths
+	Bundle            string
+	Install           *install.InstallState
+	Discovery         *discovery.Discovery
+	DiscoveryError    string
+	Health            health.HealthTracker
+	Summary           SummaryState
+	SummaryError      string
+	SummaryErrorRange summary.UsageRange
+	LastSummaryAt     time.Time
+	Action            ActionState
+	UpdatePending     string
+	LoginItem         login.Status
+	LoginItemError    string
+	UsageRange        summary.UsageRange
+	MenuBarDisplay    menubar.Preferences
+	Live              live.Display
+	// CLIProbe is nil when the shell could not say whether aiop resolves.
+	CLIProbe         *clicommand.Probe
+	CLIInstalling    bool
+	LiveSchedule     live.Schedule
+	goneRediscovered time.Time
 
 	// Set before Start. Post runs fn on the main thread. Changed synchronizes the tray and windows.
-	Post         func(func())
-	Changed      func()
-	OpenURL      func(string)
-	RevealPath   func(string)
-	CheckUpdates func()
-	OpenPanel    func()
-	Quit         func()
+	Post          func(func())
+	Changed       func()
+	OpenURL       func(string)
+	RevealPath    func(string)
+	CheckUpdates  func()
+	InstallUpdate func()
+	OpenPanel     func()
+	Quit          func()
 
 	usageCache            map[summary.UsageRange]*summary.Usage
 	attempts              policy.AutoAttempts

@@ -35,7 +35,7 @@ type Palette struct {
 	Warning ui.Color
 	Bar     ui.Color
 	// Chart is `--chart-1` .. `--chart-5`, lightest to darkest: the trend's
-	// series, Other first.
+	// largest series first, Other darkest.
 	Chart [5]ui.Color
 	// Heat is the heatmap levels 0 (no tokens) to 4.
 	Heat [5]ui.Color

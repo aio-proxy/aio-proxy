@@ -88,6 +88,18 @@ func TestOnlyTheLatestProbeCounts(t *testing.T) {
 	}
 }
 
+func TestAProbeInFlightBeforeAReachableDiscoveryCannotMarkItDown(t *testing.T) {
+	var h HealthTracker
+	h.MarkDown()
+	inFlight := h.Begin()
+	h.MarkUp()
+	s, ok := h.Finish(inFlight, false)
+	expect(t, "in flight", s, ok, 0, false)
+	if h.State() != Up {
+		t.Fatalf("state %v", h.State())
+	}
+}
+
 func TestAProbeInFlightBeforeAStopCannotBringTheProxyBack(t *testing.T) {
 	var h HealthTracker
 	up := h.Begin()

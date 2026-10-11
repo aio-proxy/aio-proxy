@@ -59,18 +59,17 @@ func iconImage(state State, mark image.Image) *image.NRGBA {
 }
 
 type Tray struct {
-	Icon         *mygo.Tray
-	state        State
-	icons        [3][]byte
-	entries      []MenuEntry
-	menu         *mygo.Menu
-	display      menubar.Preferences
-	displayError string
-	rows         [2]menubar.MetricRow
-	rowCount     int
-	showIcon     bool
-	dimmed       bool
-	marks        [3]image.Image
+	Icon     *mygo.Tray
+	state    State
+	icons    [3][]byte
+	entries  []MenuEntry
+	menu     *mygo.Menu
+	display  menubar.Preferences
+	rows     [2]menubar.MetricRow
+	rowCount int
+	showIcon bool
+	dimmed   bool
+	marks    [3]image.Image
 }
 
 func New(m *app.Model, toggle, hide func()) (*Tray, error) {
@@ -125,11 +124,10 @@ func (t *Tray) Sync(m *app.Model) {
 			t.state, t.rows, t.rowCount, t.showIcon, t.dimmed = state, rows, count, showIcon, dimmed
 		}
 	}
-	entries := Entries(m)
-	if !slices.Equal(entries, t.entries) || m.MenuBarDisplay != t.display || m.MenuBarDisplayError != t.displayError {
+	entries := TrayEntries(m)
+	if !slices.Equal(entries, t.entries) || m.MenuBarDisplay != t.display {
 		t.entries = entries
 		t.display = m.MenuBarDisplay
-		t.displayError = m.MenuBarDisplayError
-		t.menu = nativeMenu(m, entries)
+		t.menu = TrayNativeMenu(m)
 	}
 }

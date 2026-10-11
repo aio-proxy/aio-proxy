@@ -25,12 +25,10 @@ func (m *Model) saveDisplay(next menubar.Preferences) {
 	if next == m.MenuBarDisplay {
 		return
 	}
+	// The selection stays active even when the write fails; the menu has no room for that error.
+	m.MenuBarDisplay = next
 	if err := menubar.Save(m.Paths.Support, next); err != nil {
-		m.MenuBarDisplayError = "Cannot save Menu Bar Display: " + err.Error()
-		logx.Info(m.MenuBarDisplayError)
-	} else {
-		m.MenuBarDisplayError = ""
-		m.MenuBarDisplay = next
+		logx.Infof("cannot save preferences to %s: %v", menubar.Path(m.Paths.Support), err)
 	}
 	m.notify()
 }

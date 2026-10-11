@@ -77,6 +77,14 @@ func (h *HealthTracker) Record(ok bool) (HealthState, bool) {
 	return next, true
 }
 
+// MarkUp applies a reachable discovery that just finished an action. A probe already in flight
+// predates that discovery, so its failure must not mark the new instance down.
+func (h *HealthTracker) MarkUp() {
+	h.issued++
+	h.failures = 0
+	h.state = Up
+}
+
 // MarkDown applies a completed Stop, which already proved the proxy unreachable; no need to wait for
 // two probes.
 func (h *HealthTracker) MarkDown() {

@@ -46,7 +46,6 @@ import (
  "github.com/aio-proxy/aio-proxy/desktop/internal/connect/discovery"
  "github.com/aio-proxy/aio-proxy/desktop/internal/install"
  "github.com/aio-proxy/aio-proxy/desktop/internal/macos/foundation"
- "github.com/aio-proxy/aio-proxy/desktop/internal/menubar"
  "github.com/aio-proxy/aio-proxy/desktop/internal/panel"
  "github.com/aio-proxy/aio-proxy/desktop/internal/tray"
  "github.com/ebitengine/purego"
@@ -114,15 +113,7 @@ func main() {
   }},
   {Cmd:s("choose:"),Fn:func(_ objc.ID,_ objc.SEL,timer objc.ID){
    menu:=timer.Send(s("userInfo"))
-   display:=objc.ID(0)
-   for i,n:=uintptr(0),objc.Send[uintptr](menu,s("numberOfItems"));i<n;i++ {it:=menu.Send(s("itemAtIndex:"),i);if foundation.GoString(it.Send(s("title")))=="Menu Bar Display" {display=it.Send(s("submenu"));break}}
-   require(display!=0,"Menu Bar Display submenu missing")
-   require(objc.Send[bool](display.Send(s("itemAtIndex:"),uintptr(2)),s("isEnabled")),"cost metric disabled before two are selected")
-   require(objc.Send[bool](display.Send(s("itemAtIndex:"),uintptr(3)),s("isEnabled")),"in-flight metric disabled before two are selected")
-   display.Send(s("performActionForItemAtIndex:"),uintptr(0))
-   require(m.MenuBarDisplay.Has(menubar.TodayTokens)&&!m.MenuBarDisplay.Has(menubar.TokensPerSecond),"native display selection did not toggle independently")
-   loaded,err:=menubar.Load(m.Paths.Support);if err!=nil {panic(err)}
-   require(loaded==m.MenuBarDisplay,"native display selection was not persisted")
+   for i,n:=uintptr(0),objc.Send[uintptr](menu,s("numberOfItems"));i<n;i++ {it:=menu.Send(s("itemAtIndex:"),i);if foundation.GoString(it.Send(s("title")))=="Menu Bar Display" {panic("panel menu includes Menu Bar Display")}}
    found:=false
    for i,n:=uintptr(0),objc.Send[uintptr](menu,s("numberOfItems"));i<n;i++ {it:=menu.Send(s("itemAtIndex:"),i);if foundation.GoString(it.Send(s("title")))=="Check for Updates…" {menu.Send(s("performActionForItemAtIndex:"),i);found=true;break}}
    require(found,"update command missing");require(selected==opened,"native command was not dispatched once per opening")

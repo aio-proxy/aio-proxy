@@ -132,6 +132,9 @@ func (p *Preferences) UnmarshalJSON(data []byte) error {
 
 func preferencePath(support string) string { return filepath.Join(support, "preferences.json") }
 
+// Path is the preferences file for support.
+func Path(support string) string { return preferencePath(support) }
+
 // Load reads preferences.json. A missing or unreadable file is the default (icon only) and the
 // caller's error says not to overwrite a file this process could not parse.
 func Load(support string) (Preferences, error) {

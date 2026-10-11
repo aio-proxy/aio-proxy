@@ -10,6 +10,7 @@ import (
 func (m *Model) StartHealthTimer() {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.healthCancel = cancel
+	m.refreshLoginItem()
 	m.CheckHealth()
 	go func() {
 		ticker := time.NewTicker(health.HealthInterval)
@@ -19,7 +20,10 @@ func (m *Model) StartHealthTimer() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				m.post(m.CheckHealth)
+				m.post(func() {
+					m.refreshLoginItem()
+					m.CheckHealth()
+				})
 			}
 		}
 	}()

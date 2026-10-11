@@ -127,11 +127,20 @@ func wantNoMutations(t *testing.T, host *fake) {
 	}
 }
 
-func TestAUserStopBetweenDiscoveryAndAnAutomaticStartWins(t *testing.T) {
-	host := newFake(*fixture(t, stopped, set("job.disabled", true)))
-	_, err := RunAuto(host, fixture(t, stopped), policy.AutoStartNoProcess, &policy.AutoAttempts{})
-	wantErr(t, err, ErrChanged)
-	wantNoMutations(t, host)
+func TestAnAutomaticActionRunsOnItsDecidingDiscoveryWithoutRediscoveringFirst(t *testing.T) {
+	// The only scripted discovery is the one after the start. A re-check before mutating would read
+	// it as "an instance appeared" and abort the install.
+	host := newFake(*fixture(t))
+	after, err := RunAuto(host, fixture(t, noPlist), policy.AutoInstallAndStart, &policy.AutoAttempts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.Instance.Reachable {
+		t.Fatal("completion discovery was not the one after start")
+	}
+	if got := host.mutations(); !slices.Equal(got, []policy.Mutation{policy.Service("install"), policy.Service("start")}) {
+		t.Errorf("mutations %v", got)
+	}
 }
 
 func TestAClickIsRefusedWhenTheServiceChangedOwner(t *testing.T) {
@@ -228,17 +237,6 @@ func TestUnknownOwnersGetNoServiceAction(t *testing.T) {
 	outcome, err := RunReload(host, unknown)
 	if err != nil || outcome.Kind != policy.Reloaded {
 		t.Errorf("reload %+v %v", outcome, err)
-	}
-}
-
-func TestAHandStartedInstanceAppearingBeforeAFreshInstallAbortsIt(t *testing.T) {
-	host := newFake(*fixture(t, noPlist, set("instance.reachable", true)))
-	var attempts policy.AutoAttempts
-	_, err := RunAuto(host, fixture(t, noPlist), policy.AutoInstallAndStart, &attempts)
-	wantErr(t, err, ErrChanged)
-	wantNoMutations(t, host)
-	if attempts.Used(policy.AutoInstallAndStart) {
-		t.Error("nothing ran, so the attempt is not spent")
 	}
 }
 

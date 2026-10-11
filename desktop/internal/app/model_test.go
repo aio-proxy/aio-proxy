@@ -2,6 +2,7 @@ package app
 
 import (
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -36,6 +37,25 @@ func golden(t *testing.T) *summary.SummaryV1 {
 	}
 	return p.V1
 }
+func TestCanLinkCLIRequiresASharedApplicationsBundleOnMacOS(t *testing.T) {
+	persistent := install.InstallState{Kind: install.StatePersistent}
+	m := &Model{Install: &persistent, Bundle: "/Applications/AIO Proxy.app"}
+	if !m.CanLinkCLI() {
+		t.Fatal("shared Applications")
+	}
+	m.Bundle = "/Users/me/Applications/AIO Proxy.app"
+	if runtime.GOOS == "darwin" && m.CanLinkCLI() {
+		t.Fatal("a home Applications bundle must not own /usr/local/bin/aiop")
+	}
+	if runtime.GOOS != "darwin" && !m.CanLinkCLI() {
+		t.Fatal("off macOS a persistent copy is enough")
+	}
+	m.Install = nil
+	if m.CanLinkCLI() {
+		t.Fatal("a read-only copy")
+	}
+}
+
 func TestAutomaticChangedServiceIsNotAFailure(t *testing.T) {
 	if afterAutomaticFailure(policy.AutoRestartForVersion, run.ErrChanged).Kind != ActionIdle {
 		t.Fatal("a harmless race shows failure")

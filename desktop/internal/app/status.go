@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"github.com/aio-proxy/aio-proxy/desktop/internal/client/health"
@@ -65,22 +66,30 @@ func (m *Model) EndpointLine() string {
 	}
 	d := m.Discovery
 	address := strings.TrimRight(strings.TrimPrefix(d.Instance.ControlURL, "http://"), "/")
-	owner := ""
-	switch d.Unit.Owner {
-	case discovery.OwnerDesktop:
-		owner = "started by AIO Proxy"
-		if d.Job.Disabled {
-			owner = "stopped by you"
-		}
-	case discovery.OwnerExternal:
-		owner = "managed by the aio-proxy CLI"
-	case discovery.OwnerOrphaned:
-		owner = "left by an uninstalled aio-proxy CLI"
-	}
+	owner := endpointOwner(runtime.GOOS, d.Unit.Owner, d.Job.Disabled, d.Job.Loaded)
 	if owner != "" {
 		return address + " · " + owner
 	}
 	return address
+}
+func endpointOwner(goos string, owner discovery.Owner, disabled, loaded bool) string {
+	switch owner {
+	case discovery.OwnerDesktop:
+		// A disabled Linux unit that is not loaded was unreadable, not stopped by the user.
+		if disabled && !loaded && goos == "linux" {
+			return ""
+		}
+		if disabled {
+			return "stopped by you"
+		}
+		return "started by AIO Proxy"
+	case discovery.OwnerExternal:
+		return "managed by the aio-proxy CLI"
+	case discovery.OwnerOrphaned:
+		return "left by an uninstalled aio-proxy CLI"
+	default:
+		return ""
+	}
 }
 func (m *Model) Notice() string {
 	if m.LoginItemError != "" {
@@ -93,13 +102,13 @@ func (m *Model) Notice() string {
 		r := m.Install.Reason
 		switch r.Kind {
 		case install.ReadOnlyLocation:
-			return "Move AIO Proxy to Applications to let it manage the proxy."
+			return locationNotice(runtime.GOOS)
 		case install.ReadOnlyNewerCopy:
 			return fmt.Sprintf("A newer copy (%s) is installed at %s. This copy is read-only.", r.Version, r.App)
 		case install.ReadOnlyUnreadableCopy:
 			return fmt.Sprintf("Cannot read the version of %s. This copy is read-only.", r.App)
 		case install.ReadOnlySymlinkFailed:
-			return "Cannot update the service link: " + r.Err
+			return "Cannot update the " + copyFailureWhat(runtime.GOOS) + ": " + r.Err
 		}
 	}
 	if m.DiscoveryError != "" {
@@ -126,5 +135,21 @@ func (m *Model) Notice() string {
 		return "Couldn't refresh usage · " + err
 	}
 	return ""
+}
+func locationNotice(goos string) string {
+	switch goos {
+	case "linux":
+		return "AIO Proxy can't manage the proxy: its bundled command-line tool is missing, or ~/.local/share/aio-proxy-desktop isn't writable."
+	case "windows":
+		return "AIO Proxy can't manage the proxy: aio-proxy.exe is missing next to the app, or %LOCALAPPDATA%\\aio-proxy-desktop isn't writable."
+	default:
+		return "Move AIO Proxy to Applications to let it manage the proxy."
+	}
+}
+func copyFailureWhat(goos string) string {
+	if goos == "darwin" {
+		return "service link"
+	}
+	return "command-line copy"
 }
 func updatedMinutes(minutes int) string { return fmt.Sprintf("Updated %d min ago", minutes) }

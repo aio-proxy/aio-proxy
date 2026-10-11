@@ -6,7 +6,6 @@ import (
 
 	"github.com/aio-proxy/aio-proxy/desktop/internal/client/refresh"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/client/transport"
-	"github.com/aio-proxy/aio-proxy/desktop/internal/login"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/summary"
 )
 
@@ -18,7 +17,7 @@ func summaryPath(r summary.UsageRange, quota bool) string {
 	return path
 }
 func (m *Model) PanelOpened() {
-	m.LoginItem = login.Current()
+	m.refreshLoginItem()
 	m.dispatch(m.scheduler.Open(time.Now()))
 	m.CheckHealth()
 	m.Rediscover()
