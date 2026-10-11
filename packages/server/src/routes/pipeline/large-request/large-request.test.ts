@@ -76,7 +76,23 @@ test.each([
     adapter: openAIResponsesAdapter,
     config: config(2 * MiB),
   });
-  expect((await harness.run(request(JSON.stringify(document), compressed))).status).toBe(200);
+  // Exercise Bun's actual inbound upload/clone behavior, not just a buffered
+  // Request passed directly to the pipeline.
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    maxRequestBodySize: 2 * MiB,
+    fetch: (raw) => harness.run(raw),
+  });
+  try {
+    const response = await fetch(
+      new Request(new URL('/v1/responses', server.url), request(JSON.stringify(document), compressed)),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ id: 'resp_ok', status: 'completed' });
+  } finally {
+    server.stop(true);
+  }
   expect(seen).toHaveLength(2);
   expect(seen[0]).toEqual({ ...document, model: 'first-wire-model' });
   expect(seen[1]).toEqual(

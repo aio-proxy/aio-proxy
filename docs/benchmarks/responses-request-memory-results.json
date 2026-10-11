@@ -1,7 +1,7 @@
 {
   "baselineCommit": "e1102e01ceb62a3af25324c0640c9112263bece7",
   "bun": "1.4.3",
-  "fixtureBytes": 47499714,
+  "fixtureBytes": 47499715,
   "imageCount": 29,
   "samples": {
     "linux": [
@@ -632,5 +632,6 @@
         "trial": 6
       }
     ]
-  }
+  },
+  "fixtureSha256": "2dfd210933f9ede3fafc88e28a2f9fe4d73c2dfa550470de7641c1ebf9288a7c"
 }

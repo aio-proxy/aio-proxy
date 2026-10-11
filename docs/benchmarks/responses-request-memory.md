@@ -34,7 +34,7 @@ safe integer range. Provider replay and fallback remain supported.
 
 - Baseline: upstream commit `e1102e01ceb62a3af25324c0640c9112263bece7`.
 - Runtime: Bun 1.4.3 for both variants, fresh process for every sample.
-- Synthetic fixture: 47,499,714 bytes, 29 inline image URLs in 100 paired custom
+- Synthetic fixture: 47,499,715 bytes, 29 inline image URLs in 100 paired custom
   tool calls/results. It contains no captured production data.
 - Input is streamed in 64 KiB chunks. Each sample parses the request, prepares a
   raw provider request, drains it, then cancels the retained retry/ingress bodies.
@@ -103,13 +103,17 @@ upload-interruption, body-limit, and 65 MiB admission tests also apply.
 
 | Contract                                                | Verification                                                                                                                                                                                                    |
 | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Image/tool history and unknown fields survive rewriting | 29-image plain/gzip pipeline tests compare complete forwarded documents through failover and encrypted-content retry                                                                                            |
+| Image/tool history and unknown fields survive rewriting | 29-image plain/gzip tests upload over loopback HTTP to a real Bun server and compare complete forwarded documents through failover and encrypted-content retry                                                  |
 | Raw wire fidelity                                       | Existing create/compact no-op tests retain compressed bytes and unsafe-integer text; new reader tests retain original upload bytes                                                                              |
 | Request admission                                       | Exact byte limits, one-byte overflow, encoded/decoded diagnostics, compressed expansion errors, and the existing 65 MiB admission regression                                                                    |
 | Cancellation and cleanup                                | Actual TCP upload disconnect, stalled clone cancellation, retained-branch cancellation, post-parse abort with DOMException/string reasons, and pre-aborted buffered stream/non-stream server tests              |
 | Schema isolation                                        | Nested object/array mutations, 6,000-level unknown nesting, prototype-named fields, changed limits/encoding and separate Request identities                                                                     |
 | Provider/session/accounting behavior                    | Existing Guardian synthetic/original/retry/ordinary/failover accounting tests, raw response session ownership, retry and cross-protocol suites                                                                  |
 | Build and integration                                   | Full repository preflight passed: 58/58 tasks; 8,752 tests passed, zero failed; eight existing Windows-only tests skipped on macOS. Type-aware lint, formatting, package builds and artifact smoke tests passed |
+
+The root `test:e2e:api` command currently finds no package e2e scripts; its
+successful exit is not counted as additional request acceptance. The new image
+regressions exercise actual HTTP uploads and drained responses directly.
 
 All final benchmark rows use the submitted implementation, including its native
 `Response(body).text()` reader. The earlier exploratory timing figures were
