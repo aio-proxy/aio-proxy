@@ -169,19 +169,36 @@ async function assembleAppImage(image: string): Promise<void> {
   chmodSync(image, 0o755);
 }
 
+// type2-runtime 20251108. The continuous tag moves, so the digest is the GitHub release asset's.
+const appImageRuntimeSHA256: Record<string, string> = {
+  'runtime-aarch64': '00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444',
+  'runtime-x86_64': '2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d',
+};
+
 async function appImageRuntime(): Promise<string> {
   const name = process.arch === 'arm64' ? 'runtime-aarch64' : 'runtime-x86_64';
-  const path = join(desktop, '.cache', 'appimage', name);
-  if (!existsSync(path)) {
+  const digest = appImageRuntimeSHA256[name];
+  if (digest === undefined) throw new Error(`no pinned AppImage runtime for ${name}`);
+  const path = join(desktop, '.cache', 'appimage', `20251108-${name}`);
+  if (!existsSync(path) || (await sha256File(path)) !== digest) {
     mkdirSync(join(desktop, '.cache', 'appimage'), { recursive: true });
-    const url = `https://github.com/AppImage/type2-runtime/releases/download/continuous/${name}`;
+    const url = `https://github.com/AppImage/type2-runtime/releases/download/20251108/${name}`;
     step(`download ${url}`);
     const response = await fetch(url);
     if (!response.ok) throw new Error(`download ${url}: ${response.status}`);
     await Bun.write(path, new Uint8Array(await response.arrayBuffer()));
-    chmodSync(path, 0o755);
+    const got = await sha256File(path);
+    if (got !== digest) {
+      rmSync(path, { force: true });
+      throw new Error(`AppImage runtime ${name} sha256 ${got}, expected ${digest}`);
+    }
   }
+  chmodSync(path, 0o755);
   return path;
+}
+
+async function sha256File(path: string): Promise<string> {
+  return new Bun.CryptoHasher('sha256').update(await Bun.file(path).arrayBuffer()).digest('hex');
 }
 
 async function assembleNsis(image: string): Promise<void> {
@@ -209,6 +226,8 @@ Unicode true
 !define MAINBINARYNAME "aio-proxy-desktop"
 !define PRODUCTNAME "AIO Proxy"
 Name "AIO Proxy"
+!include "${join(desktop, 'packaging', 'install-ui.nsh').replaceAll('\\', '\\\\')}"
+!insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 LangString appRunning \${LANG_ENGLISH} "\${PRODUCTNAME} is running! Please close it first then try again."
 LangString appRunningOkKill \${LANG_ENGLISH} "\${PRODUCTNAME} is running!$\\nClick OK to kill it"
@@ -222,9 +241,11 @@ Section
   File /oname=aio-proxy.exe "${sidecar.replaceAll('\\', '\\\\')}"
   ${existsSync(notices) ? `File /oname=THIRD_PARTY_NOTICES "${notices.replaceAll('\\', '\\\\')}"` : ''}
   WriteUninstaller "$INSTDIR\\uninstall.exe"
+  !insertmacro AioProxyInstallShell
 SectionEnd
 !include "${cleanupPath.replaceAll('\\', '\\\\')}"
 Section Uninstall
+  !insertmacro AioProxyUninstallShell
   Delete "$INSTDIR\\aio-proxy-desktop.exe"
   Delete "$INSTDIR\\aio-proxy.exe"
   Delete "$INSTDIR\\THIRD_PARTY_NOTICES"

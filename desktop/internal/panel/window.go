@@ -65,7 +65,14 @@ func show(m *app.Model, x, y int, positioned bool) {
 }
 
 // ShowDetached opens the panel with no tray anchor. Linux uses it when no tray host is present.
-func ShowDetached(m *app.Model) { show(m, 0, 0, false) }
+// A panel that is already open is brought forward instead of replaced.
+func ShowDetached(m *app.Model) {
+	if panelWindow != nil {
+		panelWindow.Show()
+		return
+	}
+	show(m, 0, 0, false)
+}
 
 func Hide() {
 	if panelWindow != nil {

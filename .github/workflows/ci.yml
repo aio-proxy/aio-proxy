@@ -284,9 +284,7 @@ jobs:
 
       - name: Install NSIS
         if: runner.os == 'Windows'
-        run: |
-          choco install nsis --no-progress -y
-          echo "/c/Program Files (x86)/NSIS" >> "$GITHUB_PATH"
+        run: bash desktop/scripts/install-nsis.sh
 
       - uses: actions/setup-go@v7
         with:

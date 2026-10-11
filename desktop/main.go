@@ -70,6 +70,10 @@ func main() {
 	mygo.App.OnWindowAllClosed(func() {})
 	mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { m.Stop() })
 	mygo.App.WhenReady(func() {
+		if runtime.GOOS == "linux" {
+			openShell(m)
+			return
+		}
 		var status *tray.Tray
 		status, err := tray.New(m, func() { panel.Toggle(m, status.Icon) }, panel.Hide)
 		if err != nil {
@@ -79,6 +83,7 @@ func main() {
 				return
 			}
 			panel.NoteTray(false)
+			m.Changed = func() { panel.Invalidate() }
 			m.OpenPanel = func() { panel.ShowDetached(m) }
 			showWithoutTray(m)
 			startUpdates(m)
@@ -93,7 +98,10 @@ func main() {
 		if runtime.GOOS == "darwin" {
 			watchWake(m)
 		}
-		mygo.Theme.OnUpdated(panel.Invalidate)
+		mygo.Theme.OnUpdated(func() {
+			status.Recolor()
+			panel.Invalidate()
+		})
 		mygo.App.OnWillQuit(func(*mygo.QuitEvent) { status.Icon.Destroy() })
 		_ = exePath
 		m.Start()

@@ -16,13 +16,16 @@ func closeQuits() bool { return host.Close(currentTray) == host.CloseQuit }
 
 var currentTray = host.Tray
 
-func NoteTray(shown bool) {
-	mode, open := host.NextMode(currentTray, shown)
+// ShowingTray reports whether a status icon is the way back to a hidden panel.
+func ShowingTray() bool { return currentTray == host.Tray }
+
+// NoteTray records a tray-host change. open is true when the panel has to appear because the
+// icon can no longer be the way back.
+func NoteTray(shown bool) (open bool) {
+	var mode host.TrayMode
+	mode, open = host.NextMode(currentTray, shown)
 	currentTray = mode
-	if open {
-		// The caller opens the window; closing it then quits.
-		_ = open
-	}
+	return open
 }
 
 func newWindow(m *app.Model) *mygo.Window {

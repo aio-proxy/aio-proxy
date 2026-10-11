@@ -15,7 +15,7 @@ func configureUpdates(m *app.Model) {
 
 func startUpdates(m *app.Model) {
 	update.OnOutcome = func(note string, failed bool) {
-		apply := func() {
+		onMain(m, func() {
 			if m.Action.IsBusy() {
 				return
 			}
@@ -27,24 +27,31 @@ func startUpdates(m *app.Model) {
 			if m.Changed != nil {
 				m.Changed()
 			}
-		}
-		if m.Post != nil {
-			m.Post(apply)
-			return
-		}
-		apply()
+		})
 	}
 	update.Start(func(version string) {
-		m.UpdatePending = version
-		if m.Changed != nil {
-			m.Changed()
-		}
+		onMain(m, func() {
+			m.UpdatePending = version
+			if m.Changed != nil {
+				m.Changed()
+			}
+		})
 	}, func() {
-		m.UpdatePending = ""
-		if m.Changed != nil {
-			m.Changed()
-		}
+		onMain(m, func() {
+			m.UpdatePending = ""
+			if m.Changed != nil {
+				m.Changed()
+			}
+		})
 	})
+}
+
+func onMain(m *app.Model, fn func()) {
+	if m.Post != nil {
+		m.Post(fn)
+		return
+	}
+	fn()
 }
 
 func watchWake(*app.Model) {}

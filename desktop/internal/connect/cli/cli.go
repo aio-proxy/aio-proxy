@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -48,12 +50,29 @@ func NewSystemHost(paths install.Paths, bundle string) (*SystemHost, bool) {
 		if bundle == "" {
 			return nil, false
 		}
-		target = install.SidecarOf(bundle)
+		target = bundledSidecar(runtime.GOOS, bundle, os.Getenv("APPDIR"))
 	}
 	if !exists(target) {
 		return nil, false
 	}
 	return &SystemHost{Exec: target, DesktopExec: paths.Symlink, UID: currentUID()}, true
+}
+
+// bundledSidecar is the CLI shipped next to this host. macOS keeps the .app layout. Linux
+// prefers $APPDIR/usr/bin inside an AppImage; a relative or empty APPDIR is ignored. Windows
+// and a directly launched Linux binary use the executable's own directory.
+func bundledSidecar(goos, bundle, appDir string) string {
+	if goos == "darwin" {
+		return install.SidecarOf(bundle)
+	}
+	if goos == "linux" && filepath.IsAbs(appDir) {
+		return filepath.Join(appDir, "usr", "bin", "aio-proxy")
+	}
+	name := "aio-proxy"
+	if goos == "windows" {
+		name = "aio-proxy.exe"
+	}
+	return filepath.Join(filepath.Dir(bundle), name)
 }
 
 // exists follows symlinks, so a dangling symlink does not count.

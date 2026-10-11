@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -129,17 +130,44 @@ func TestPidAliveCountsOnlyExistingProcesses(t *testing.T) {
 	}
 }
 
+func TestBundledSidecarUsesThePlatformLayout(t *testing.T) {
+	if got := bundledSidecar("darwin", "/Applications/AIO Proxy.app", ""); got != "/Applications/AIO Proxy.app/Contents/MacOS/aio-proxy" {
+		t.Fatalf("darwin %s", got)
+	}
+	if got := bundledSidecar("linux", "/opt/aio-proxy-desktop", ""); got != "/opt/aio-proxy" {
+		t.Fatalf("linux beside the host %s", got)
+	}
+	if got := bundledSidecar("linux", "/opt/aio-proxy-desktop", "relative"); got != "/opt/aio-proxy" {
+		t.Fatalf("relative APPDIR %s", got)
+	}
+	if got := bundledSidecar("linux", "/opt/AIO.AppImage", "/tmp/mount"); got != "/tmp/mount/usr/bin/aio-proxy" {
+		t.Fatalf("APPDIR %s", got)
+	}
+	if got := bundledSidecar("windows", filepath.Join("/AIO Proxy", "aio-proxy-desktop.exe"), ""); filepath.Base(got) != "aio-proxy.exe" || filepath.Dir(got) != filepath.Dir(filepath.Join("/AIO Proxy", "aio-proxy-desktop.exe")) {
+		t.Fatalf("windows %s", got)
+	}
+}
+
 func TestNewSystemHostPrefersTheSymlinkThenTheBundledSidecar(t *testing.T) {
+	t.Setenv("APPDIR", "")
 	dir := t.TempDir()
 	paths := install.Paths{Symlink: filepath.Join(dir, "bin", "aio-proxy")}
 	bundle := filepath.Join(dir, "AIO Proxy.app")
+	sidecar := install.SidecarOf(bundle)
+	if runtime.GOOS != "darwin" {
+		bundle = filepath.Join(dir, "aio-proxy-desktop")
+		sidecar = filepath.Join(dir, "aio-proxy")
+		if runtime.GOOS == "windows" {
+			bundle += ".exe"
+			sidecar += ".exe"
+		}
+	}
 	if _, ok := NewSystemHost(paths, ""); ok {
 		t.Error("a host without any CLI")
 	}
 	if _, ok := NewSystemHost(paths, bundle); ok {
 		t.Error("a host with a missing sidecar")
 	}
-	sidecar := install.SidecarOf(bundle)
 	if err := os.MkdirAll(filepath.Dir(sidecar), 0o755); err != nil {
 		t.Fatal(err)
 	}

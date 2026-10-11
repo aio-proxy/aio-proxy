@@ -259,9 +259,7 @@ jobs:
       - run: bun install --frozen-lockfile --prefer-offline
 
       - name: Install NSIS
-        run: |
-          choco install nsis --no-progress -y
-          echo "/c/Program Files (x86)/NSIS" >> "$GITHUB_PATH"
+        run: bash desktop/scripts/install-nsis.sh
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

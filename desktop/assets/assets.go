@@ -5,3 +5,6 @@ import _ "embed"
 
 //go:embed tray-mark.png
 var TrayMark []byte
+
+//go:embed tray-mark-square.png
+var TrayMarkSquare []byte
