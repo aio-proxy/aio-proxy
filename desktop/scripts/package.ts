@@ -93,6 +93,8 @@ const onSignal = (signal: NodeJS.Signals): void => {
 };
 process.once('SIGINT', onSignal);
 process.once('SIGTERM', onSignal);
+// go build links this object when it is present. Removed in finally so a failed package does not leave it behind.
+const windowsSyso = join(desktop, 'rsrc_windows_amd64.syso');
 try {
   await Promise.all(manifests.map((path, i) => Bun.write(path, withVersion(originals[i] ?? '', version))));
 
@@ -101,6 +103,11 @@ try {
   await $`bun packages/cli/scripts/build-binary.ts ${build.sidecar} ${sidecar}`.cwd(root);
 
   step('4. go build');
+  if (build.format === 'nsis') {
+    await $`go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest none --icon packaging/icons/icon.ico --file-version ${version} --product-version ${version} --file-description ${'AIO Proxy'} --product-name ${'AIO Proxy'} --original-filename aio-proxy-desktop.exe --out rsrc`.cwd(
+      desktop,
+    );
+  }
   const ldflags = ['-s', '-w', `-X github.com/aio-proxy/aio-proxy/desktop/internal/version.App=${version}`];
   if (build.format === 'nsis') ldflags.push('-H=windowsgui');
   const feed = process.env['AIO_PROXY_DESKTOP_FEED_URL'];
@@ -119,6 +126,7 @@ try {
 } finally {
   process.off('SIGINT', onSignal);
   process.off('SIGTERM', onSignal);
+  rmSync(windowsSyso, { force: true });
   restore();
 }
 
@@ -202,19 +210,22 @@ async function sha256File(path: string): Promise<string> {
 }
 
 async function assembleNsis(image: string): Promise<void> {
+  // Windows checkouts may use CRLF, so the match cannot depend on a particular newline.
   const cleanup = readFileSync(join(desktop, 'packaging', 'uninstall-cleanup.nsh'), 'utf8')
     .replaceAll(
-      'nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"\n  Pop $R0',
-      'nsExec::ExecToLog \'cmd /c tasklist /NH /FI "IMAGENAME eq ${MAINBINARYNAME}.exe" | find /I "${MAINBINARYNAME}.exe"\'\n  Pop $R0',
+      'nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"',
+      'nsExec::ExecToLog \'cmd /c tasklist /NH /FI "IMAGENAME eq ${MAINBINARYNAME}.exe" | find /I "${MAINBINARYNAME}.exe"\'',
     )
     .replaceAll(
-      'nsis_tauri_utils::KillProcess "${MAINBINARYNAME}.exe"\n    Pop $R0',
-      "nsExec::ExecToLog 'taskkill /F /IM ${MAINBINARYNAME}.exe'\n    Pop $R0",
+      'nsis_tauri_utils::KillProcess "${MAINBINARYNAME}.exe"',
+      "nsExec::ExecToLog 'taskkill /F /IM ${MAINBINARYNAME}.exe'",
     );
+  if (cleanup.includes('nsis_tauri_utils')) throw new Error('uninstall cleanup still calls nsis_tauri_utils');
   const cleanupPath = join(packagerOut, 'cleanup.nsh');
   writeFileSync(cleanupPath, cleanup);
   const script = join(packagerOut, 'installer.nsi');
   const notices = join(sidecarDir, 'THIRD_PARTY_NOTICES');
+  const icon = join(desktop, 'packaging', 'icons', 'icon.ico').replaceAll('\\', '\\\\');
   writeFileSync(
     script,
     `
@@ -225,6 +236,8 @@ Unicode true
 !define MAINBINARYNAME "aio-proxy-desktop"
 !define PRODUCTNAME "AIO Proxy"
 Name "AIO Proxy"
+Icon "${icon}"
+UninstallIcon "${icon}"
 !include "${join(desktop, 'packaging', 'install-ui.nsh').replaceAll('\\', '\\\\')}"
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
