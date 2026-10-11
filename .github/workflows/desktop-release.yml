@@ -81,11 +81,12 @@ jobs:
 
       - run: bun install --frozen-lockfile --prefer-offline
 
-      - name: Install the pinned Rust toolchain
-        working-directory: desktop
-        run: |
-          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --target aarch64-apple-darwin
+      # No cache, like bun install above: the job holding the release secrets builds from fresh
+      # downloads (checked against go.sum), not from state other workflow runs saved.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache: false
 
       # Signing material comes from the organization's APPLE_* secrets; the scripts keep their own
       # names (also used for local releases), mapped here.

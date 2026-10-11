@@ -1,5 +1,7 @@
 // Parsers for the bundle checks. A parse miss must fail the check, never pass it.
 
+// The host's minos comes from Go's internal linker, not MACOSX_DEPLOYMENT_TARGET: Go 1.27 writes 13.0
+// for darwin/arm64, so a toolchain bump that raises it fails the check below.
 export const MINIMUM_MACOS = '13.0';
 
 /** Every `minos` in `vtool -show-build` output; one per architecture slice. */

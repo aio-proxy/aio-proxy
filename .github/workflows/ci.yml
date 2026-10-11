@@ -54,7 +54,7 @@ jobs:
     if: github.event_name == 'push' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     outputs:
-      rust: ${{ steps.diff.outputs.rust }}
+      go: ${{ steps.diff.outputs.go }}
       bundle: ${{ steps.diff.outputs.bundle }}
     steps:
       - uses: actions/checkout@v7
@@ -73,37 +73,37 @@ jobs:
               echo true
             fi
           }
-          echo "rust=$(changed desktop npm/aio-proxy/package.json packages/types/src/desktop-summary/fixtures .github/workflows/ci.yml)" >> "$GITHUB_OUTPUT"
+          echo "go=$(changed desktop npm/aio-proxy/package.json packages/types/src/desktop-summary/fixtures .github/workflows/ci.yml)" >> "$GITHUB_OUTPUT"
           # Server and dashboard changes are left out to spare macOS minutes; the release desktop job
           # always runs the full runtime smoke before signing (spec "CI").
           echo "bundle=$(changed desktop packages/cli/scripts packages/brand/src/app-icon.icon .github/workflows bun.lock .bun-version)" >> "$GITHUB_OUTPUT"
 
-  rust:
+  go:
     needs: desktop-changes
-    if: needs.desktop-changes.outputs.rust == 'true'
+    if: needs.desktop-changes.outputs.go == 'true'
     runs-on: macos-15
     defaults:
       run:
         working-directory: desktop
+    env:
+      CGO_ENABLED: '0'
     steps:
       - uses: actions/checkout@v7
-      - name: Install the pinned Rust toolchain
-        run: |
-          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy --target aarch64-apple-darwin
-      - uses: actions/cache@v6
+      # Reads the toolchain line of go.mod and caches the module and build caches.
+      - uses: actions/setup-go@v7
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            desktop/target
-          key: ${{ runner.os }}-desktop-${{ hashFiles('desktop/rust-toolchain.toml', 'desktop/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-desktop-
-      - run: cargo fmt --check
-      - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt -l lists unformatted files:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+      - run: go vet ./...
+      - run: go test ./...
 
   bundle-smoke:
     needs: desktop-changes
@@ -129,22 +129,10 @@ jobs:
 
       - run: bun install --frozen-lockfile --prefer-offline
 
-      - name: Install the pinned Rust toolchain
-        working-directory: desktop
-        run: |
-          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --target aarch64-apple-darwin
-
-      - uses: actions/cache@v6
+      - uses: actions/setup-go@v7
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            desktop/target
-          key: ${{ runner.os }}-desktop-bundle-${{ hashFiles('desktop/rust-toolchain.toml', 'desktop/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-desktop-bundle-
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
 
       # Build, Mach-O checks, runtime smoke, ad-hoc hardened signature, then the signed smoke with
       # the JIT check.

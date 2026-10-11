@@ -37,21 +37,36 @@ them to the names the scripts read (the same names a local release sets).
    again. Keep one offline backup, and never change it once a version has shipped.
 
    ```bash
-   desktop/vendor/sparkle-2.10.0/bin/generate_keys --account aio-proxy-desktop
-   desktop/vendor/sparkle-2.10.0/bin/generate_keys --account aio-proxy-desktop -x sparkle-private.key
+   desktop/.cache/sparkle-2.10.0/bin/generate_keys --account aio-proxy-desktop
+   desktop/.cache/sparkle-2.10.0/bin/generate_keys --account aio-proxy-desktop -x sparkle-private.key
    ```
 
-   (`bun run desktop:bundle --unsigned` downloads `desktop/vendor` first.)
+   (`bun run desktop:bundle --unsigned` downloads `desktop/.cache` first.)
    - Repository variable `SPARKLE_PUBLIC_ED_KEY`: the printed public key.
    - Repository secret `SPARKLE_ED_PRIVATE_KEY`: the contents of `sparkle-private.key`. Delete the file afterwards.
 
    CI passes the key to `generate_appcast` only on stdin. Do not use `--account` in automation:
    it blocks on a Keychain prompt.
 
+## Native development
+
+The desktop host is a Go module using MyGo native UI, not a web frontend. Its minimum platform remains macOS 13 on Apple silicon. Install the pinned Go toolchain with `mise -C desktop install`; `mise -C desktop exec -- go test ./...` runs the desktop tests. A bundled build injects the product version from `npm/aio-proxy/package.json`; plain `go run .` reports `0.0.0-dev` and runs read-only outside an installed bundle. Rust is no longer needed.
+
+The native panel tests include real Metal corner coverage in light and dark modes. That test uses an isolated temporary SDK adapter and never modifies the installed MyGo module or shipped binary; only a missing Metal device skips it. `CapturePage` renders the last scene on the CPU, so it is not proof of native GPU clipping.
+
+The footer menu regression opens a real AppKit window and menu, sends a native mouse press to the footer, and selects a command. It checks that menu tracking starts after the surface frame returns, disabled commands stay disabled, and selection dispatches once; it also exercises and reloads a Menu Bar Display choice in an isolated home. Run it in a graphical macOS session; it needs no Accessibility permission and does not start or stop the proxy.
+
+Menu Bar Display preferences persist independently of service-install permissions. When Today Tokens or Tokens per Second is selected, an independent 15-second authenticated summary poll keeps the menu-bar text current with the panel closed. Tokens per Second measures accounted-token throughput between samples, not partial-stream generation speed. Icon-only mode stops those polls; requests are cancelled on app exit or instance change.
+
+Menu-bar text uses AppKit's monospaced-digit system font in a template image: 9 pt stacked TPS/TOK rows or one centered 12 pt row. Verify it on the actual menu bar, including one-metric and hidden-icon states; the native status-item title remains empty, and the image remains 18 pt high. Neither a software panel capture nor a formatted string proves this layout.
+
+The bundle layout, Icon Composer assets, Bun sidecar, Sparkle appcast and signing keys stay unchanged. Sparkle and ServiceManagement are loaded through purego at runtime. Native framework downloads live in `desktop/.cache`, not `vendor` (which Go reserves for module vendoring).
+
 ## Local rehearsal (no publishing)
 
 Bundling needs Xcode 26 on macOS 26 (its `actool` compiles the app icon); select it with
-`xcode-select` or `DEVELOPER_DIR`. Store the notary credentials once, with
+`xcode-select` or `DEVELOPER_DIR`. It also needs the Go toolchain named in `desktop/go.mod`
+(`mise -C desktop install` provides it; use `mise -C desktop exec -- bun run desktop:bundle` if Go is not on your PATH). Store the notary credentials once, with
 `xcrun notarytool store-credentials aio-proxy-notary --apple-id <id> --team-id <TEAMID>`, then run:
 
 ```bash

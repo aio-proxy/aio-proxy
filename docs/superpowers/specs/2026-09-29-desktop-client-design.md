@@ -3,6 +3,8 @@
 Date: 2026-09-29
 Status: draft (rev 4, after two review rounds and the Phase 0 spike; results in `2026-09-29-desktop-spike-findings.md`)
 
+Runtime update (2026-10-09): the desktop host now uses Go and MyGo native UI, with no webview or cgo. Service ownership, protocol, credential, bundle identity, and Sparkle release contracts are unchanged. The initial Rust spike and its measurements below are historical, not measurements of the Go host.
+
 ## Goal
 
 Ship a lightweight macOS menu-bar companion for aio-proxy. A user installs one `.app`, gets a running proxy without installing Bun or the CLI, and sees a summary panel anchored to a menu-bar icon: proxy status, last-24h usage, Provider health and quota, a 7-day trend, an activity heatmap, and quick actions.
@@ -25,24 +27,24 @@ Windows and Linux are committed follow-ups. Phase 1 is macOS on Apple Silicon on
 
 - Architecture: `arm64` only.
 - Minimum macOS: **13.0**, set by `SMAppService.mainApp` (launch at login).
-- The value is propagated to `MACOSX_DEPLOYMENT_TARGET` (Rust build), `LSMinimumSystemVersion` (`Info.plist`), and `sparkle:minimumSystemVersion` (appcast), and the bundle step checks every Mach-O's `minos` (`vtool -show-build`) is ≤ 13.0, including the prebuilt Bun sidecar and Sparkle.
+- The value is propagated to `LSMinimumSystemVersion` (`Info.plist`) and `sparkle:minimumSystemVersion` (appcast). The bundle step checks every Mach-O's `minos` (`vtool -show-build`) is ≤ 13.0, including the Go host, prebuilt Bun sidecar, and Sparkle; upgrading Go must not silently raise the deployment baseline.
 - Install location: the app only performs persistent operations (symlink, service, login item) when it runs from `/Applications` or `~/Applications` on a writable volume. Anywhere else (a mounted DMG, Downloads, a translocated path) it shows "Move to Applications" and runs read-only. This is a location policy, not translocation detection, which Apple provides no supported API for.
 
 ## Stack
 
 | Concern | Choice | Why |
 | --- | --- | --- |
-| Panel UI | GPUI Kit (`gpui-kit` 0.7, Longbridge; formerly `gpui-component`) on GPUI `gpui-pre =0.3.7` | Cross-platform GPU UI with built-in area/bar/line charts and a plot layer; used in Longbridge Pro |
-| Menu-bar icon | `tray-icon` crate | Neither GPUI nor GPUI Kit exposes a status item. `tray-icon` reports the icon rect on click (needed for anchoring) and covers Windows/Linux later |
-| Panel window | GPUI `WindowKind::PopUp` | In gpui-pre 0.3.7 this is a non-activating `NSPanel` subclass at `NSPopUpWindowLevel` that joins all Spaces (titled with a full-size content view, not borderless); hide on deactivation via GPUI window-activation observation (hide-on-click-away still awaits a human check) |
-| No Dock / Cmd+Tab | `LSUIElement` in `Info.plist` | Native, zero code. GPUI forces the `Regular` activation policy at launch, so the host also sets `Accessory` in its `run` callback |
-| App launch at login | `SMAppService.mainApp` via objc2 | Native API, macOS 13+ |
-| Updates | Sparkle 2.10.0, archive SHA-256 `c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c`, via objc2 (`SPUStandardUpdaterController`) | Standard for non-App-Store apps; EdDSA-verified. Updates always go through Sparkle's "Install and Relaunch", never a silent install (see Release job and feed) |
-| Local HTTP | A minimal HTTP/1.1 client over std `TcpStream` on a thread, cancelled by `shutdown` from a drop guard owned by the GPUI task | Spike check 2: the only measured stack meeting every transport rule. GPUI's `ReqwestClient` always starts its own tokio runtime, which costs one permanent thread, about 3 MiB RSS and 1.9 MB footprint, plus about 6 MiB of binary; `reqwest::blocking` cannot be cancelled |
+| Panel UI | MyGo v0.3.5 native UI (`ui`) | Go-only GPU rendering with Metal on macOS; custom stacked bars and heatmap, no webview |
+| Menu-bar icon | `mygo.Tray` | Template icons, left-click toggle, native right-click menu, and screen-space bounds for anchoring |
+| Panel window | MyGo frameless transparent window with `VibrancyPopover` | AppKit popup level, `CanJoinAllSpaces | FullScreenAuxiliary`, close on blur, and no open/close animation |
+| No Dock / Cmd+Tab | `LSUIElement` and `ActivationPolicyAccessory` | Native menu-bar application policy |
+| App launch at login | `SMAppService.mainAppService` via purego/objc | Preserves approval status and System Settings navigation on macOS 13+ |
+| Updates | Sparkle 2.10.0, archive SHA-256 `c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c`, via purego/objc | Keeps the existing EdDSA key and appcast; installs only through Sparkle's Install and Relaunch |
+| Local HTTP | HTTP/1.1 over Go `net.Conn` on a goroutine, cancelled by context closing the socket | Keeps the same-user listener gate, framing, size limits, and one total deadline; never uses system or environment proxies |
 | Proxy | The existing Bun standalone binary from `packages/cli/scripts/build-binary.ts` (`darwin-arm64`) | Already built and resigned in CI |
-| Toolchain | Root `mise.toml` for local dev, reading `.bun-version` and `desktop/rust-toolchain.toml` | Each tool keeps one version source; CI reads the same files |
+| Toolchain | Root `mise.toml`, reading `.bun-version` and `desktop/go.mod` | Each tool keeps one version source; CI reads the same files |
 
-GPUI Kit pins an exact `gpui-pre` snapshot because snapshots break API. The desktop crate pins `gpui-kit` exactly and bumps it deliberately.
+MyGo is pinned in `desktop/go.mod`; upgrades are deliberate. Unauthenticated remote icons use a separate NSURLSession client so system proxy and HTTP cache behavior is preserved.
 
 ## Service model
 
@@ -52,7 +54,7 @@ The desktop app does not spawn the proxy. The proxy runs as the existing launchd
 
 - The `.app` ships `Contents/MacOS/aio-proxy` next to `Contents/MacOS/aio-proxy-desktop`.
 - A desktop-owned plist points at `~/Library/Application Support/aio-proxy-desktop/bin/aio-proxy`, a symlink to a bundled binary, never into a bundle directly. After a Sparkle update the symlink already resolves to the new binary; the running process keeps its old inode until restart.
-- **Single instance:** the app takes an exclusive `flock` on `~/Library/Application Support/aio-proxy-desktop/instance.lock` at launch. A second copy exits.
+- **Single instance:** `mygo.App.RequestSingleInstanceLock()` at launch. A second copy exits; the old flock implementation is removed.
 - **No downgrade:** before re-pointing, the app runs `<current target> --version`. It re-points only when the target is missing or not newer than its own bundled version. If an installed copy is newer, this copy runs read-only with a notice naming that copy's path.
 - Re-pointing is create-temp-symlink + `rename`, and only happens after the install-location check passes.
 
@@ -157,7 +159,7 @@ The launchd plist uses a conditional `KeepAlive` (`SuccessfulExit = false`); the
 | Lifetime | Loaded by the server once at boot. Persistent across restarts, reinstalls, and app updates. Rotation = replace the file and restart the proxy |
 | Transport to the app | The stdout pipe of `__desktop-connect`. Never an environment variable or URL |
 | Transport to the server | `Authorization: Bearer` |
-| Logging | The Rust token type has a redacting `Debug`; the app never logs `__desktop-connect` stdout or `Authorization` |
+| Logging | The Go token type redacts formatted and JSON output; the app never logs `__desktop-connect` stdout or `Authorization` |
 
 This is a same-user local credential, not proof that the caller is the official app.
 
@@ -236,7 +238,7 @@ Sources:
 | `providers` | `state.providerSummaries({ probe: false })` (`state.status` + `diagnostic`, `enabled`) + `quotaCache.status()`; quota items map 1:1 to windows. Probe-only fields (`last_status`, `last_latency`) are omitted because they are `unknown` without a probe |
 | `alerts` | A provider diagnostic, or any quota window with `remainingRatio === 0` |
 
-Compatibility: Rust parses `protocolVersion` first and only then the body; unknown fields are ignored; unknown enum values map to an `Unknown` variant. "Today" is the existing rolling 24h window. One Provider's quota failure is reported on that Provider and never fails the response.
+Compatibility: the desktop parses `protocolVersion` first and only then the body; unknown fields are ignored; unknown enum values map to an `Unknown` variant. "Today" is the existing rolling 24h window. One Provider's quota failure is reported on that Provider and never fails the response.
 
 `?refresh=true` calls `quotaCache.refresh()` for quota-capable Providers and returns immediately with current state.
 
@@ -280,35 +282,35 @@ Only the 24h overview reads spans, at about 0.8 µs per request in the window, s
 ### Local HTTP transport rules
 
 - A dedicated client for the local instance: no proxy (ignores system and environment proxy settings), no redirects, connect timeout 1s, request timeout 5s.
-- It is the std `TcpStream` HTTP/1.1 client from the Stack table; it speaks only to `127.0.0.1`/`::1` over plain HTTP. The 5s limit is a total deadline raced against the whole request, not a per-read socket timeout. It decodes `Transfer-Encoding: chunked` and caps the response size.
+- It is the Go `net.Conn` HTTP/1.1 client from the Stack table; it speaks only to literal loopback IPs over plain HTTP. The 5s limit is an absolute socket deadline across connect, write, and every read, not a per-read timeout. It decodes `Transfer-Encoding: chunked` and caps response size.
 - The token is attached only when the URL host is a literal loopback IP (any of `127.0.0.0/8`, as the CLI and server accept, or `::1`; not an IPv4-mapped IPv6 address); never to a hostname, never to a non-loopback address.
 - The token is never set as a default header on any client.
 
 ## Desktop app structure
 
-One Cargo binary crate at `desktop/`, outside the Bun workspace.
+One Go module at `desktop/`, outside the Bun workspace.
 
 | Module | Responsibility |
 | --- | --- |
-| `main.rs` | GPUI application, single-instance lock, tray creation, wake notification, `--version` |
-| `tray.rs` | `tray-icon` setup; left click toggles the panel with the icon rect; right click opens a native menu carrying every service action (contents: `2026-10-01-desktop-panel-design.md`, Right-click menu); three icon states |
-| `panel/` | PopUp placement (below the menu bar, centered on the icon, clamped to the icon's screen) and views: header, then one scrolling body of Usage (window switch, metric cards, trend, Top models, By Provider), Quota and Last 12 months groups, and a footer (layout: `2026-10-01-desktop-panel-design.md`) |
-| `install.rs` | Install-location policy, symlink maintenance and no-downgrade rule |
-| `connect.rs` | `__desktop-connect` invocation and parsing, automatic-action table, user actions with completion conditions |
-| `client.rs` | Local HTTP transport and the refresh policy |
-| `summary.rs` | `DesktopSummaryV1` types; version-first parsing |
-| `login_item.rs` | `SMAppService.mainApp` register/unregister/status |
-| `updater.rs` | Sparkle controller on the main thread. Implements `SPUStandardUserDriverDelegate` gentle-reminder support: Sparkle warns that a background (`LSUIElement`) app gets no gentle reminders, and every update goes through the UI dialog |
+| `main.go` | MyGo application, single-instance lock, tray creation, wake notification, `--version` |
+| `internal/tray/` | Template icon states, left-click toggle, native right-click menu and shared footer commands |
+| `internal/panel/` | Anchored popup, header, scrolling Usage/Quota/activity cards, sticky headings, and footer |
+| `internal/app/` | Main-thread model, discovery ordering, background workers, action completion and refresh dispatch |
+| `internal/install/` | Install-location policy, symlink maintenance and no-downgrade rule |
+| `internal/connect/` | `__desktop-connect`, ownership policy, automatic/user actions and completion conditions |
+| `internal/client/` | Local HTTP transport, listener trust, health tracker and pure refresh scheduler |
+| `internal/summary/` | `DesktopSummaryV1` types and version-first parsing |
+| `internal/macos/` | SMAppService, Sparkle gentle reminders, system-proxy icon requests and native menu measurement |
 
 Panel details:
 
 - No arrow, matching arrowless system menu-bar popovers such as Control Center.
-- The heatmap is a plain grid of cells; GPUI Kit has no heatmap component and a fixed 365-cell grid does not need one.
-- Window lifecycle on close: **hybrid** (PROVISIONAL until the human flash and on-screen latency checks, and the unlocked 100-cycle run of hybrid with animation None, which the spike did not measure).
-  - Destroy the window and its Metal surface. Keep the summary model and last response in an app-level entity, so a reopen renders the last numbers at once.
-  - Set `NSWindowAnimationBehaviorNone` on the GPUI panel right after creation, reached through `HasWindowHandle`. AppKit's default utility-window animation otherwise runs on its own thread for every open and close.
+- The heatmap and stacked bars are painted by MyGo's `ui.Painter` with immediate hover overlays.
+- Window lifecycle on close: **hybrid**.
+  - Destroy the window and its Metal surface. Keep the summary model and last response, so reopening can render cached numbers immediately.
+  - Set `NSWindowAnimationBehaviorNone` on the MyGo window through `NativeHandle` before showing it.
   - If the checks argue against hybrid, fall back to plain destroy (the same code without the cached model). Hide/show fails the closed-panel budget.
-- Anchor the panel only from a click (or on a later runloop turn): the status item's frame is zero right after `tray-icon` builds it.
+- Anchor the panel only from a click (or a later runloop turn): the status item's frame is zero immediately after creating the tray icon.
 - "Open logs" (right-click menu) reveals `$AIO_PROXY_HOME/logs` in Finder. The app's own log goes to `~/Library/Logs/aio-proxy-desktop/`.
 - An instance whose `desktop-summary` is missing (404, older version) or has an unsupported `protocolVersion` gets a degraded panel: status, endpoint, Open Dashboard, Reload.
 
@@ -318,10 +320,10 @@ Panel details:
 
 `bun run desktop:bundle` (`desktop/scripts/bundle.ts`) is the only entry point for CI and release:
 
-1. Verify tools (`cargo`, `codesign`, `xcrun actool`, `xcrun notarytool`, `xcrun stapler`, `vtool`, pinned Sparkle tools) and fail fast.
+1. Verify tools (`go`, `codesign`, `xcrun actool`, `xcrun notarytool`, `xcrun stapler`, `vtool`, pinned Sparkle tools) and fail fast.
 2. `bun run build` (includes the dashboard `dist` the compiled entry embeds).
 3. `build-binary.ts darwin-arm64 <out>`; require `THIRD_PARTY_NOTICES` next to it.
-4. `cargo build --release --target aarch64-apple-darwin` with `MACOSX_DEPLOYMENT_TARGET=13.0`. `build.rs` links `Sparkle.framework` and adds the rpath `@loader_path/../Frameworks`.
+4. `CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build`, linking the product version and MyGo package identity with `-ldflags`. Sparkle and ServiceManagement are loaded at runtime through purego, with no framework link step or Rust toolchain.
 5. Assemble the `.app`:
    - `Contents/MacOS/aio-proxy-desktop`, `Contents/MacOS/aio-proxy`
    - `Contents/Frameworks/Sparkle.framework`, from the pinned `Sparkle-2.10.0.tar.xz` (SHA-256 checked on the archive), extracted with `tar -xJf` and copied with `ditto` so symlinks stay intact
@@ -376,7 +378,7 @@ Order:
 
 ### Release job and feed
 
-- The macOS build is `.github/workflows/desktop-release.yml`: dispatch-only with a `tag` input, on the pinned arm64 label `macos-26` (the runner is per job, so it cannot be a step in the existing Linux job). It sets up Bun from `.bun-version` and Rust from `desktop/rust-toolchain.toml` with `rustup target add aarch64-apple-darwin`, and holds the job-level `desktop-feed` concurrency group because every run replaces the same `appcast.xml`. Before checking anything out it verifies the tag: a non-draft, non-prerelease Release whose commit is on `main` (GitHub's compare reports `ahead` or `identical`); it then checks out that commit, not the movable tag, since the later steps run the tag's scripts with the signing identity, the notary key and the Sparkle private key. The job runs only from `main` in the `desktop-release` environment, whose deployment branches allow only `main` and which holds the release secrets, because a dispatch runs the chosen ref's copy of the workflow. Before the feed is touched, the `.dmg` (built or reused from the Release), the app and its CLI must all be signed by the Team ID in `DEVELOPER_ID_IDENTITY`: Sparkle accepts a new code-signing identity under a valid EdDSA signature, so a foreign-team build placed on the Release must never be signed into the feed. `bun run desktop:publish --version X.Y.Z` is its build step; `desktop/RELEASING.md` is the maintainer runbook.
+- The macOS build is `.github/workflows/desktop-release.yml`: dispatch-only with a `tag` input on `macos-26`. It sets up Bun from `.bun-version` and Go from `desktop/go.mod`, and holds the job-level `desktop-feed` concurrency group. Before checkout it verifies a published release whose commit is on `main`, then checks out that immutable commit. The `desktop-release` environment holds the signing, notarization and Sparkle secrets and permits only `main`. Before the feed is touched, the DMG, app and CLI must all have the Team ID in `DEVELOPER_ID_IDENTITY`; Sparkle's valid EdDSA signature alone must never authorize a foreign-team build from the Release. `bun run desktop:publish --version X.Y.Z` is its build step; `desktop/RELEASING.md` is the maintainer runbook.
 - `release.yml`'s `desktop` job (`needs: release`, gated on `published`) only dispatches it: `gh workflow run desktop-release.yml --ref main -f tag=v<version>`. The desktop publish therefore runs as its own workflow run and never holds the release concurrency group for the ~90-minute build, and its failure does not fail the release run. Dispatching the workflow again with the tag resumes a failed publish for the same immutable version without re-running the npm publish.
 - Idempotence: if `aio-proxy-<version>-arm64.dmg` already exists on the tag's Release, the job downloads it and re-verifies it instead of rebuilding; it never uploads different bytes under the same name.
 - **Feed.** `SUFeedURL` is `https://github.com/aio-proxy/aio-proxy/releases/download/desktop-feed/appcast.xml`: a dedicated prerelease tag `desktop-feed` that never becomes "latest" and holds only `appcast.xml`. The Changesets Release becoming latest therefore never affects the feed.
@@ -395,7 +397,7 @@ Order:
 
 | Job | Paths | Runs |
 | --- | --- | --- |
-| Rust | `desktop/**` | `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test` |
+| Go | `desktop/**` | `gofmt -l` must be empty, `go vet ./...`, `go test ./...`, all with `CGO_ENABLED=0` |
 | Bundle smoke | `desktop/**`, `packages/cli/scripts/**`, `.github/workflows/**`, `bun.lock`, `.bun-version` | `bun run desktop:bundle --unsigned` (includes the runtime smoke) |
 
 Server and dashboard changes can break the compiled sidecar without changing the bundle layout. They are not in the PR smoke paths to spare macOS minutes, but the release `desktop` job always runs the full runtime smoke before signing, so a broken sidecar blocks only the desktop publish, which is resumable by tag.
@@ -451,7 +453,7 @@ Each automated test guards one concrete failure.
   - A server with no resolvable home, or whose token file fails the checks, still boots and answers 401 on `desktop-summary`.
   - `desktop-summary` returns promptly with `loading` quota when the quota reader never resolves (guards the measured 1.3s stall); a first-read failure shows `failed`, not `loading`; one Provider's failure leaves the response 200, including a plugin that returns invalid window values (a `NaN` `resetsAt`, a ratio outside 0..1), which marks only that Provider `failed`.
   - A never-settling quota read is aborted by the host: already covered by `plugin-quota/read.test.ts` ("aborts a plugin read that ignores its signal…"); the cache's `finally` then clears `inFlight`.
-  - The DTO: golden fixture shared with the Rust tests; internal fields added to Provider summaries do not appear in the response.
+  - The DTO: golden fixture shared with the Go tests; internal fields added to Provider summaries do not appear in the response.
 - **CLI**
   - `__desktop-connect`: `owner` for desktop, external, unrecognized-wrapper, and absent plists; `home` taken from the plist, not the environment; wildcard bind mapped to loopback; non-loopback bind yields `controlUrl: null`; stdout is exactly one JSON object when the command fails partway, and one with `owner: "unknown"` and no token when discovery throws; a helper process that outlives the time budget is killed.
   - `serviceStart` enables the job and then kickstarts an already-loaded one or bootstraps an unloaded one. It fails when `launchctl print` does not show the job afterwards, even though every launchctl call exited 0. `serviceRestart` boots out before bootstrapping, waits while `launchctl print` still finds the job after bootout, and fails without starting anything when the job never goes away (manager calls injected).
@@ -460,13 +462,13 @@ Each automated test guards one concrete failure.
   - With `AIO_PROXY_DESKTOP_EXEC` set, the written plist targets that exact path (not its realpath) and carries both env markers; a rewrite from a process that inherited the markers keeps them.
   - `runUpgradeCommand` refuses for a desktop-marked process and for an executable inside a `.app`, without invoking any installer. A CLI upgrade with a desktop-owned plist installed never restarts the service. A desktop-managed sidecar's auto-update hooks carry no `applyUpdate` or notification.
   - The launchd wrapper exits 0 when its executable is missing, asserted by executing the wrapper.
-- **Rust**
+- **Go**
   - Panel placement clamps to the screen for icons near an edge.
   - Summary parsing: unknown fields ignored, unknown enum values map to `Unknown`, unsupported `protocolVersion` selects the degraded panel; the golden fixture parses.
   - The automatic-action table: every row, including never acting on external/unknown/mismatched instances and never downgrading.
   - Refresh scheduler: responses from a closed session, another instance, or an older counter are discarded; the 15s floor holds under a trigger storm; closing cancels everything.
   - Transport: the token is not attached to a hostname, a non-loopback IP, or a redirect target; proxy environment variables are ignored. A server that drips bytes slower than the read timeout is still cut off at the 5s total deadline. Chunked responses decode, and an oversized response is refused. Dropping the request shuts its socket.
   - Install policy and symlink: outside `/Applications` nothing persistent happens; a newer installed copy is never re-pointed to an older one; a second instance exits.
-  - The token type's `Debug` output is redacted.
+  - The token type's formatted and JSON output is redacted.
 - **Release.** The bundle script fails the job for: arm64 and `minos` for every Mach-O; the JIT check, which is unconditional in both `--unsigned` and `--release` (the signed sidecar must show a `JS JIT Generated Code` region in `vmmap` while serving, with `sudo -n vmmap` as the fallback; a missing `allow-jit` does not fail any functional check); `codesign --verify --strict`; post-notarization `syspolicy_check`/`spctl` for the `.app` and `.dmg`; `stapler validate` for both. `desktop:publish` fails the job for: a private key, `SPARKLE_PUBLIC_ED_KEY` and DMG `SUPublicEDKey` that do not match (before the build and before the upload); the feed listing the version while the DMG is not on the Release; the versioned `.dmg` URL not answering 200 with the DMG's length before the feed is replaced; the regenerated feed's new item lacking an Ed25519 signature that verifies against `SUPublicEDKey`, or lacking `sparkle:minimumSystemVersion` 13.0; prior items changed; an empty or unreadable `desktop-feed`. Whether `vmmap` can read a Developer ID hardened sidecar on CI is a human check (rehearsal R1/R6), not a condition in the code.
 - **Manual acceptance (UI and lifecycle):** toggle via icon; click outside hides; not in Dock or Cmd+Tab; second display with a different scale factor; full-screen app in another Space; sleep/wake with panel open and closed; each user action per ownership with its completion condition; an external service is never changed without a click and never has its plist rewritten; a user-stopped desktop service stays stopped across app relaunch; quit leaves the proxy running; a Sparkle update restarts a desktop-owned proxy onto the new version; opening an older app copy does not downgrade; app deleted leaves launchd quiet and restoring it recovers.

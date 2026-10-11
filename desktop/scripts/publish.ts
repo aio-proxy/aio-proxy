@@ -45,7 +45,7 @@ const checkout = ((await Bun.file(join(root, 'npm/aio-proxy/package.json')).json
 if (checkout !== version) throw new Error(`this checkout is ${checkout}, not ${version}: check out tag v${version}`);
 
 // The update root of trust and the write token are kept out of child-process environments (the build:
-// cargo build scripts, bun lifecycle scripts); the key only ever goes to generate_appcast's stdin. This
+// go build, bun lifecycle scripts); the key only ever goes to generate_appcast's stdin. This
 // is hygiene, not an isolation boundary: a same-user process can still read an ancestor's environment.
 // A reused .dmg is whatever sits on the Release under its name; anyone with asset write access could
 // have put another team's notarized build there, and signing it into the feed would ship it to every
@@ -162,7 +162,7 @@ try {
       await $`gh release create ${FEED_TAG} --repo ${REPO} --prerelease --latest=false --title ${'Desktop update feed'} --notes ${'Holds only appcast.xml, the macOS app update feed. Not a product release.'}`;
     }
     copyFileSync(dmg, join(feedDir, name));
-    const sparkle = await fetchSparkle(join(desktop, 'vendor'));
+    const sparkle = await fetchSparkle(join(desktop, '.cache'));
     const generate = Bun.spawn(
       [
         join(sparkle, 'bin/generate_appcast'),
