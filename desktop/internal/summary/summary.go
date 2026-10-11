@@ -1,7 +1,7 @@
 // Package summary is `DesktopSummaryV1` (packages/types/src/desktop-summary) as the app reads it:
 // `protocolVersion` first, unknown fields ignored, unknown enum values mapped to Unknown.
 //
-// Counts are decimal integer strings on the wire (they can exceed 2^53), decoded as uint64.
+// Counts are decimal integer strings on the wire. They are unbounded; see Count.
 package summary
 
 import "sort"
@@ -85,19 +85,19 @@ type TrendCell struct {
 }
 
 type UsageTotals struct {
-	Requests             uint64   `json:"requests,string"`
-	FailedRequests       uint64   `json:"failedRequests,string"`
-	InputTokens          uint64   `json:"inputTokens,string"`
-	OutputTokens         uint64   `json:"outputTokens,string"`
-	EstimatedCostNanoUSD uint64   `json:"estimatedCostNanoUsd,string"`
+	Requests             Count    `json:"requests"`
+	FailedRequests       Count    `json:"failedRequests"`
+	InputTokens          Count    `json:"inputTokens"`
+	OutputTokens         Count    `json:"outputTokens"`
+	EstimatedCostNanoUSD Count    `json:"estimatedCostNanoUsd"`
 	PricingCoverage      *float64 `json:"pricingCoverage"`
 }
 
 type UsageSlice struct {
-	Requests             uint64 `json:"requests,string"`
-	FailedRequests       uint64 `json:"failedRequests,string"`
-	TotalTokens          uint64 `json:"totalTokens,string"`
-	EstimatedCostNanoUSD uint64 `json:"estimatedCostNanoUsd,string"`
+	Requests             Count `json:"requests"`
+	FailedRequests       Count `json:"failedRequests"`
+	TotalTokens          Count `json:"totalTokens"`
+	EstimatedCostNanoUSD Count `json:"estimatedCostNanoUsd"`
 }
 
 // UsageBucket, ModelUsage and ProviderUsage carry their UsageSlice fields flattened on the wire.
@@ -119,14 +119,14 @@ type ProviderUsage struct {
 
 type ActivityDay struct {
 	Date        string `json:"date"`
-	TotalTokens uint64 `json:"totalTokens,string"`
+	TotalTokens Count  `json:"totalTokens"`
 	// Models are the day's largest models by tokens.
 	Models []ActivityModel `json:"models"`
 }
 
 type ActivityModel struct {
 	ModelID     string `json:"modelId"`
-	TotalTokens uint64 `json:"totalTokens,string"`
+	TotalTokens Count  `json:"totalTokens"`
 }
 
 type Provider struct {

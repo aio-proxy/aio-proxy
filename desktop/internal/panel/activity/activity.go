@@ -5,7 +5,6 @@ package activity
 
 import (
 	"fmt"
-	"math/bits"
 
 	"github.com/aio-proxy/aio-proxy/desktop/internal/panel/format"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/summary"
@@ -30,7 +29,7 @@ type HeatCell struct {
 	// nothing; the other fields are then zero.
 	Shown  bool
 	Day    int64
-	Tokens uint64
+	Tokens summary.Count
 	Level  uint8
 }
 
@@ -43,7 +42,7 @@ type HeatGrid struct {
 	Weeks       [][7]HeatCell
 	Months      []MonthLabel
 	ActiveDays  int
-	TotalTokens uint64
+	TotalTokens summary.Count
 	// Models is each day's model split, for the hover card.
 	Models map[int64][]summary.ActivityModel
 }
@@ -78,19 +77,23 @@ func LongDate(day int64) string {
 }
 
 // level is 0 for no tokens, else 1..4 scaled to the busiest day.
-func level(t, busiest uint64) uint8 {
-	if t == 0 || busiest == 0 {
+func level(t, busiest summary.Count) uint8 {
+	if t.IsZero() || busiest.IsZero() {
 		return 0
 	}
-	// t*3/busiest without overflowing: the quotient is at most 3.
-	hi, lo := bits.Mul64(t, 3)
-	q, _ := bits.Div64(hi, lo, busiest)
-	return uint8(min(1+q, 4))
+	q := t.Mul(3).Quo(busiest)
+	n := 0
+	if q.Cmp(summary.CountOf(3)) > 0 {
+		n = 3
+	} else if !q.IsZero() {
+		n = int(q.Float64())
+	}
+	return uint8(min(1+n, 4))
 }
 
 func Grid(activity []summary.ActivityDay, today int64) HeatGrid {
 	first := today - int64(weekday(today)) - (Weeks-1)*7
-	var tokens [Weeks * 7]uint64
+	var tokens [Weeks * 7]summary.Count
 	models := map[int64][]summary.ActivityModel{}
 	for _, entry := range activity {
 		date, ok := format.ParseDate(entry.Date)
@@ -102,14 +105,16 @@ func Grid(activity []summary.ActivityDay, today int64) HeatGrid {
 			models[date] = entry.Models
 		}
 	}
-	var busiest uint64
+	var busiest summary.Count
 	grid := HeatGrid{Weeks: make([][7]HeatCell, Weeks), Models: models}
 	for _, t := range tokens {
-		busiest = max(busiest, t)
-		if t > 0 {
+		if t.Cmp(busiest) > 0 {
+			busiest = t
+		}
+		if !t.IsZero() {
 			grid.ActiveDays++
 		}
-		grid.TotalTokens += t
+		grid.TotalTokens = grid.TotalTokens.Add(t)
 	}
 	for week := range Weeks {
 		for slot := range 7 {

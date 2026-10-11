@@ -175,3 +175,26 @@ func TestStaleSummaryAfterRangeChangeDoesNotOverwrite(t *testing.T) {
 		m.timer.Stop()
 	}
 }
+
+func TestASummaryConnectFailureRediscoversOncePerGap(t *testing.T) {
+	m := testModel(t, nil)
+	now := time.Now()
+	order := m.scheduler.Open(now)
+	m.finishFetch(*order, transport.Response{}, transport.ErrConnect)
+	if m.DiscoveryError == "" {
+		t.Fatal("a connection failure left the discovered instance in place")
+	}
+	m.DiscoveryError = ""
+	again := m.scheduler.Trigger(refresh.Manual, now.Add(time.Second))
+	m.finishFetch(*again, transport.Response{}, transport.ErrConnect)
+	if m.DiscoveryError != "" {
+		t.Fatal("rediscovered again inside the gap")
+	}
+	m.finishFetch(*m.scheduler.Trigger(refresh.Manual, now.Add(5*time.Second)), transport.Response{}, transport.ErrTimeout)
+	if m.DiscoveryError != "" {
+		t.Fatal("a timeout rediscovered")
+	}
+	if m.timer != nil {
+		m.timer.Stop()
+	}
+}

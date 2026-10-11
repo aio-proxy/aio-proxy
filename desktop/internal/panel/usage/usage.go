@@ -75,12 +75,12 @@ func (t Tone) String() string {
 	}
 }
 
-func MetricTotal(t *summary.UsageTotals, m Metric) uint64 {
+func MetricTotal(t *summary.UsageTotals, m Metric) summary.Count {
 	switch m {
 	case MetricFailed:
 		return t.FailedRequests
 	case MetricTokens:
-		return t.InputTokens + t.OutputTokens
+		return t.InputTokens.Add(t.OutputTokens)
 	case MetricCost:
 		return t.EstimatedCostNanoUSD
 	default:
@@ -88,7 +88,7 @@ func MetricTotal(t *summary.UsageTotals, m Metric) uint64 {
 	}
 }
 
-func SliceValue(s *summary.UsageSlice, m Metric) uint64 {
+func SliceValue(s *summary.UsageSlice, m Metric) summary.Count {
 	switch m {
 	case MetricFailed:
 		return s.FailedRequests
@@ -101,11 +101,11 @@ func SliceValue(s *summary.UsageSlice, m Metric) uint64 {
 	}
 }
 
-func FormatValue(value uint64, m Metric) string {
+func FormatValue(value summary.Count, m Metric) string {
 	if m == MetricCost {
-		return format.USD(value)
+		return format.USDDigits(value.String())
 	}
-	return format.Compact(value)
+	return format.CompactDigits(value.String())
 }
 
 func CardValue(t *summary.UsageTotals, m Metric) string {
@@ -116,35 +116,35 @@ func CardValue(t *summary.UsageTotals, m Metric) string {
 	case t.PricingCoverage == nil:
 		return "—"
 	case *t.PricingCoverage < 1:
-		return "≈" + format.USDShort(t.EstimatedCostNanoUSD)
+		return "≈" + format.USDShortDigits(t.EstimatedCostNanoUSD.String())
 	default:
-		return format.USDShort(t.EstimatedCostNanoUSD)
+		return format.USDShortDigits(t.EstimatedCostNanoUSD.String())
 	}
 }
 
-func Delta(current, previous uint64, m Metric) (string, Tone) {
-	if previous == 0 {
-		if current == 0 {
+func Delta(current, previous summary.Count, m Metric) (string, Tone) {
+	if previous.IsZero() {
+		if current.IsZero() {
 			return "—", ToneNeutral
 		}
 		return "new", ToneNeutral
 	}
 	tone := ToneNeutral
 	if m.risingIsBad() {
-		switch {
-		case current > previous:
+		switch current.Cmp(previous) {
+		case 1:
 			tone = ToneBad
-		case current < previous:
+		case -1:
 			tone = ToneGood
 		}
 	}
 	if m == MetricFailed {
-		if current >= previous {
-			return fmt.Sprintf("+%d", current-previous), tone
+		if current.Cmp(previous) >= 0 {
+			return "+" + current.Sub(previous).String(), tone
 		}
-		return fmt.Sprintf("−%d", previous-current), tone
+		return "−" + previous.Sub(current).String(), tone
 	}
-	change := (float64(current) - float64(previous)) / float64(previous) * 100
+	change := (current.Float64() - previous.Float64()) / previous.Float64() * 100
 	arrow := "↑"
 	if change < 0 {
 		arrow = "↓"
@@ -195,7 +195,7 @@ type Series struct {
 	Label string
 	Other bool
 	// Values is the metric per bucket.
-	Values []uint64
+	Values []summary.Count
 }
 
 // Stack returns the trend's series, bottom first: the top [Stacked] keys by
@@ -205,42 +205,42 @@ type Series struct {
 func Stack(buckets []summary.UsageBucket, cells []summary.TrendCell, label func(string) string, m Metric) []Series {
 	type total struct {
 		key   string
-		value uint64
+		value summary.Count
 	}
 	var totals []total
 	for i := range cells {
 		value := SliceValue(&cells[i].Slice, m)
 		if j := slices.IndexFunc(totals, func(t total) bool { return t.key == cells[i].Key }); j >= 0 {
-			totals[j].value += value
+			totals[j].value = totals[j].value.Add(value)
 		} else {
 			totals = append(totals, total{cells[i].Key, value})
 		}
 	}
-	totals = slices.DeleteFunc(totals, func(t total) bool { return t.value == 0 })
+	totals = slices.DeleteFunc(totals, func(t total) bool { return t.value.IsZero() })
 	slices.SortFunc(totals, func(a, b total) int {
-		return cmp.Or(cmp.Compare(b.value, a.value), cmp.Compare(a.key, b.key))
+		return cmp.Or(b.value.Cmp(a.value), cmp.Compare(a.key, b.key))
 	})
 	totals = totals[:min(len(totals), Stacked)]
 
 	series := make([]Series, 0, len(totals)+1)
 	for _, t := range totals {
-		values := make([]uint64, len(buckets))
+		values := make([]summary.Count, len(buckets))
 		for i := range cells {
 			if b := cells[i].Bucket; cells[i].Key == t.key && b >= 0 && b < len(values) {
-				values[b] += SliceValue(&cells[i].Slice, m)
+				values[b] = values[b].Add(SliceValue(&cells[i].Slice, m))
 			}
 		}
 		series = append(series, Series{Key: t.key, Label: label(t.key), Values: values})
 	}
-	other := make([]uint64, len(buckets))
+	other := make([]summary.Count, len(buckets))
 	anyOther := false
 	for i := range buckets {
-		var named uint64
+		var named summary.Count
 		for _, s := range series {
-			named += s.Values[i]
+			named = named.Add(s.Values[i])
 		}
-		if v := SliceValue(&buckets[i].Slice, m); v > named {
-			other[i] = v - named
+		if v := SliceValue(&buckets[i].Slice, m); v.Cmp(named) > 0 {
+			other[i] = v.Sub(named)
 			anyOther = true
 		}
 	}

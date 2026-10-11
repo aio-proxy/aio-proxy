@@ -30,9 +30,9 @@ func TestTheGridIs52SundayFirstWeeksEndingInTheWeekOfToday(t *testing.T) {
 func TestLevelsScaleToTheBusiestDayAndCountActiveDays(t *testing.T) {
 	today := day(2026, 10, 1)
 	activity := []summary.ActivityDay{
-		{Date: "2026-10-01", TotalTokens: 400},
-		{Date: "2026-09-30", TotalTokens: 100},
-		{Date: "2025-01-01", TotalTokens: 999_999}, // older than the grid
+		{Date: "2026-10-01", TotalTokens: summary.CountOf(400)},
+		{Date: "2026-09-30", TotalTokens: summary.CountOf(100)},
+		{Date: "2025-01-01", TotalTokens: summary.CountOf(999_999)}, // older than the grid
 	}
 	grid := Grid(activity, today)
 	cell := func(d int64) HeatCell {
@@ -51,14 +51,14 @@ func TestLevelsScaleToTheBusiestDayAndCountActiveDays(t *testing.T) {
 			t.Errorf("level(%d) = %d, want %d", d-today, got, want)
 		}
 	}
-	if grid.ActiveDays != 2 || grid.TotalTokens != 500 {
-		t.Errorf("active %d total %d", grid.ActiveDays, grid.TotalTokens)
+	if grid.ActiveDays != 2 || !grid.TotalTokens.EqualUint(500) {
+		t.Errorf("active %d total %s", grid.ActiveDays, grid.TotalTokens)
 	}
 }
 
 func TestLevelsDoNotOverflowOnHugeCounts(t *testing.T) {
-	huge := ^uint64(0)
-	if level(huge, huge) != 4 || level(huge/2, huge) != 2 || level(1, huge) != 1 {
+	huge := summary.CountOf(^uint64(0))
+	if level(huge, huge) != 4 || level(huge.Quo(summary.CountOf(2)), huge) != 2 || level(summary.CountOf(1), huge) != 1 {
 		t.Error("levels overflow near the top of uint64")
 	}
 }

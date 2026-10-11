@@ -139,6 +139,13 @@ func (m *Model) finishFetch(order refresh.FetchOrder, result transport.Response,
 	m.fetchCancel = nil
 	retry := false
 	if err != nil {
+		now := time.Now()
+		// A connect failure or a stranger on the port means the discovered instance is gone.
+		// Live polls rediscover on their own; with an empty menu bar they never run.
+		if rediscoversAfter(err, m.goneRediscovered, now) {
+			m.goneRediscovered = now
+			retry = true
+		}
 		m.show(SummaryState{Kind: SummaryUnavailable, Error: "desktop summary: " + err.Error()}, order.Range)
 	} else {
 		switch outcome.Kind {

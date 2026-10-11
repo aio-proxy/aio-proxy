@@ -67,19 +67,19 @@ func TestTheGoldenFixtureParses(t *testing.T) {
 	if usage.Range != D7 || usage.BucketUnit != BucketUnitDay {
 		t.Errorf("range/bucketUnit = %v/%v", usage.Range, usage.BucketUnit)
 	}
-	if usage.Current.Requests != 257 || usage.Current.EstimatedCostNanoUSD != 20_521_353_840 {
+	if !usage.Current.Requests.EqualUint(257) || !usage.Current.EstimatedCostNanoUSD.EqualUint(20_521_353_840) {
 		t.Errorf("current = %+v", usage.Current)
 	}
 	if usage.Previous.PricingCoverage == nil || *usage.Previous.PricingCoverage != 0.5 {
 		t.Errorf("previous.pricingCoverage = %v", usage.Previous.PricingCoverage)
 	}
-	if usage.Buckets[0].Slice.FailedRequests != 53 {
+	if !usage.Buckets[0].Slice.FailedRequests.EqualUint(53) {
 		t.Errorf("buckets[0] = %+v", usage.Buckets[0])
 	}
 	if usage.ByModel[0].ModelID != "gpt-5.2-codex" || usage.ByProvider[0].Name != "Codex" {
 		t.Errorf("byModel/byProvider = %+v / %+v", usage.ByModel[0], usage.ByProvider[0])
 	}
-	if cell := usage.TrendByModel[0]; cell.Bucket != 0 || cell.Key != "gpt-5.2-codex" || cell.Slice.TotalTokens != 14_859_707 {
+	if cell := usage.TrendByModel[0]; cell.Bucket != 0 || cell.Key != "gpt-5.2-codex" || !cell.Slice.TotalTokens.EqualUint(14_859_707) {
 		t.Errorf("trendByModel[0] = %+v", cell)
 	}
 	if cell := usage.TrendByProvider[0]; cell.Key != "codex" {
@@ -209,8 +209,18 @@ func TestACountBeyond2Pow53Survives(t *testing.T) {
 	body := mutated(t, func(root map[string]any) {
 		at(root, "usage", "current")["inputTokens"] = "18014398509481985"
 	})
-	if got := v1(t, body).Usage.Current.InputTokens; got != 18_014_398_509_481_985 {
-		t.Fatalf("got %d", got)
+	if got := v1(t, body).Usage.Current.InputTokens; !got.EqualUint(18_014_398_509_481_985) {
+		t.Fatalf("got %s", got)
+	}
+}
+
+func TestACountBeyondUint64Survives(t *testing.T) {
+	const huge = "1844674407370955161618446744073709551616"
+	body := mutated(t, func(root map[string]any) {
+		at(root, "usage", "current")["inputTokens"] = huge
+	})
+	if got := v1(t, body).Usage.Current.InputTokens.String(); got != huge {
+		t.Fatalf("got %s", got)
 	}
 }
 

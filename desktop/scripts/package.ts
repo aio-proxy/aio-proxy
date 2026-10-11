@@ -236,6 +236,7 @@ OutFile "${image.replaceAll('\\', '\\\\')}"
 InstallDir "$LOCALAPPDATA\\AIO Proxy"
 RequestExecutionLevel user
 Section
+  !insertmacro AioProxyCloseRunning
   SetOutPath $INSTDIR
   File "${app.replaceAll('\\', '\\\\')}"
   File /oname=aio-proxy.exe "${sidecar.replaceAll('\\', '\\\\')}"

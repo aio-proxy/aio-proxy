@@ -10,8 +10,10 @@ import (
 	"github.com/aio-proxy/aio-proxy/desktop/internal/summary"
 )
 
+func n(v uint64) summary.Count { return summary.CountOf(v) }
+
 func totals(requests, failed, cost uint64, coverage *float64) summary.UsageTotals {
-	return summary.UsageTotals{Requests: requests, FailedRequests: failed, InputTokens: 60, OutputTokens: 40, EstimatedCostNanoUSD: cost, PricingCoverage: coverage}
+	return summary.UsageTotals{Requests: n(requests), FailedRequests: n(failed), InputTokens: n(60), OutputTokens: n(40), EstimatedCostNanoUSD: n(cost), PricingCoverage: coverage}
 }
 
 func TestDeltasColorFailedAndCostButNotTraffic(t *testing.T) {
@@ -28,7 +30,7 @@ func TestDeltasColorFailedAndCostButNotTraffic(t *testing.T) {
 		{105, 100, MetricCost, "↑ 5%", ToneBad},
 		{95, 100, MetricCost, "↓ 5%", ToneGood},
 	} {
-		text, tone := Delta(test.current, test.previous, test.metric)
+		text, tone := Delta(n(test.current), n(test.previous), test.metric)
 		if text != test.text || tone != test.tone {
 			t.Errorf("Delta(%d,%d,%v) = (%q,%v), want (%q,%v)", test.current, test.previous, test.metric, text, tone, test.text, test.tone)
 		}
@@ -36,10 +38,10 @@ func TestDeltasColorFailedAndCostButNotTraffic(t *testing.T) {
 }
 
 func TestAZeroPreviousWindowReadsNewOrDash(t *testing.T) {
-	if text, tone := Delta(4, 0, MetricRequests); text != "new" || tone != ToneNeutral {
+	if text, tone := Delta(n(4), n(0), MetricRequests); text != "new" || tone != ToneNeutral {
 		t.Errorf("new = (%q,%v)", text, tone)
 	}
-	if text, tone := Delta(0, 0, MetricCost); text != "—" || tone != ToneNeutral {
+	if text, tone := Delta(n(0), n(0), MetricCost); text != "—" || tone != ToneNeutral {
 		t.Errorf("empty = (%q,%v)", text, tone)
 	}
 }
@@ -67,7 +69,7 @@ func TestAZeroPercentChangeHasNoColor(t *testing.T) {
 		current uint64
 		text    string
 	}{{1004, "↑ 0%"}, {996, "↓ 0%"}} {
-		if text, tone := Delta(test.current, 1000, MetricCost); text != test.text || tone != ToneNeutral {
+		if text, tone := Delta(n(test.current), n(1000), MetricCost); text != test.text || tone != ToneNeutral {
 			t.Errorf("Delta(%d,1000,Cost) = (%q,%v)", test.current, text, tone)
 		}
 	}
@@ -120,7 +122,7 @@ func TestDailyBucketsUseWeekdaysFor7dAndMonthDayFor30d(t *testing.T) {
 	}
 }
 
-func requests(n uint64) summary.UsageSlice { return summary.UsageSlice{Requests: n} }
+func requests(v uint64) summary.UsageSlice { return summary.UsageSlice{Requests: n(v)} }
 
 func TestTheTrendStacksTheTopFourAndFoldsTheRestIntoOther(t *testing.T) {
 	buckets := []summary.UsageBucket{{Slice: requests(30)}, {Slice: requests(12)}}
@@ -133,22 +135,22 @@ func TestTheTrendStacksTheTopFourAndFoldsTheRestIntoOther(t *testing.T) {
 	}
 	series := Stack(buckets, cells, strings.ToUpper, MetricRequests)
 	want := []Series{
-		{Key: "a", Label: "A", Values: []uint64{10, 0}},
-		{Key: "b", Label: "B", Values: []uint64{6, 4}},
-		{Key: "d", Label: "D", Values: []uint64{4, 2}},
-		{Key: "c", Label: "C", Values: []uint64{5, 0}},
-		{Label: "Other", Other: true, Values: []uint64{5, 6}},
+		{Key: "a", Label: "A", Values: []summary.Count{n(10), n(0)}},
+		{Key: "b", Label: "B", Values: []summary.Count{n(6), n(4)}},
+		{Key: "d", Label: "D", Values: []summary.Count{n(4), n(2)}},
+		{Key: "c", Label: "C", Values: []summary.Count{n(5), n(0)}},
+		{Label: "Other", Other: true, Values: []summary.Count{n(5), n(6)}},
 	}
 	if !reflect.DeepEqual(series, want) {
 		t.Fatalf("series = %+v, want %+v", series, want)
 	}
 	for i, bucket := range buckets {
-		var sum uint64
+		var sum summary.Count
 		for _, s := range series {
-			sum += s.Values[i]
+			sum = sum.Add(s.Values[i])
 		}
-		if sum != bucket.Slice.Requests {
-			t.Errorf("bucket %d stacks to %d, want %d", i, sum, bucket.Slice.Requests)
+		if sum.Cmp(bucket.Slice.Requests) != 0 {
+			t.Errorf("bucket %d stacks to %s, want %s", i, sum, bucket.Slice.Requests)
 		}
 	}
 }

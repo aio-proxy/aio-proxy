@@ -5,56 +5,88 @@ package format
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
 )
 
 // Compact abbreviates a count with K, M, B or T and one decimal, flooring.
-func Compact(n uint64) string {
-	units := [...]struct {
-		scale uint64
+func Compact(n uint64) string { return CompactDigits(strconv.FormatUint(n, 10)) }
+
+// CompactDigits is Compact for an arbitrary-width decimal.
+func CompactDigits(digits string) string {
+	n := decimal(digits)
+	ten := big.NewInt(10)
+	thousand := big.NewInt(1_000)
+	for _, u := range []struct {
+		scale string
 		unit  string
-	}{{1_000_000_000_000, "T"}, {1_000_000_000, "B"}, {1_000_000, "M"}, {1_000, "K"}}
-	for _, u := range units {
-		if n >= u.scale {
-			// n/scale*10 + the tenth: n*10 would overflow near the top of uint64.
-			tenths := n/u.scale*10 + n%u.scale*10/u.scale
-			if tenths >= 1_000 {
-				return fmt.Sprintf("%d%s", tenths/10, u.unit)
-			}
-			return fmt.Sprintf("%d.%d%s", tenths/10, tenths%10, u.unit)
+	}{{"1000000000000", "T"}, {"1000000000", "B"}, {"1000000", "M"}, {"1000", "K"}} {
+		scale, _ := new(big.Int).SetString(u.scale, 10)
+		if n.Cmp(scale) < 0 {
+			continue
 		}
+		q, r := new(big.Int).QuoRem(n, scale, new(big.Int))
+		tenths := new(big.Int).Mul(q, ten)
+		frac := new(big.Int).Quo(new(big.Int).Mul(r, ten), scale)
+		tenths.Add(tenths, frac)
+		if tenths.Cmp(thousand) >= 0 {
+			return new(big.Int).Quo(tenths, ten).String() + u.unit
+		}
+		whole, rem := new(big.Int).QuoRem(tenths, ten, new(big.Int))
+		return whole.String() + "." + rem.String() + u.unit
 	}
-	return strconv.FormatUint(n, 10)
+	return n.String()
+}
+
+func decimal(digits string) *big.Int {
+	if digits == "" {
+		return new(big.Int)
+	}
+	n, ok := new(big.Int).SetString(digits, 10)
+	if !ok {
+		return new(big.Int)
+	}
+	return n
 }
 
 // USD is nano-USD to dollars, two decimals; a non-zero amount below a cent
 // reads `<$0.01`.
-func USD(nano uint64) string {
-	cents := nano / 10_000_000
-	if cents == 0 && nano > 0 {
+func USD(nano uint64) string { return USDDigits(strconv.FormatUint(nano, 10)) }
+
+// USDDigits is USD for an arbitrary-width decimal of nano-USD.
+func USDDigits(digits string) string {
+	nano := decimal(digits)
+	cents := new(big.Int).Quo(nano, big.NewInt(10_000_000))
+	if cents.Sign() == 0 && nano.Sign() > 0 {
 		return "<$0.01"
 	}
-	return fmt.Sprintf("$%d.%02d", cents/100, cents%100)
+	dollars, rem := new(big.Int).QuoRem(cents, big.NewInt(100), new(big.Int))
+	return fmt.Sprintf("$%s.%02d", dollars.String(), rem.Int64())
 }
 
 // USDShort is the Cost card's amount: three significant digits, so `≈` and the
 // amount fit the card (`$7.46`, `$74.6`, `$746`, `$1.2K`). Floors, as [USD]
 // and [Compact] do.
-func USDShort(nano uint64) string {
-	cents := nano / 10_000_000
+func USDShort(nano uint64) string { return USDShortDigits(strconv.FormatUint(nano, 10)) }
+
+// USDShortDigits is USDShort for an arbitrary-width decimal of nano-USD.
+func USDShortDigits(digits string) string {
+	nano := decimal(digits)
+	cents := new(big.Int).Quo(new(big.Int).Set(nano), big.NewInt(10_000_000))
 	switch {
-	case cents == 0 && nano > 0:
+	case cents.Sign() == 0 && nano.Sign() > 0:
 		return "<$0.01"
-	case cents <= 999:
-		return USD(nano)
-	case cents <= 9_999:
-		return fmt.Sprintf("$%d.%d", cents/100, cents%100/10)
-	case cents <= 99_999:
-		return fmt.Sprintf("$%d", cents/100)
+	case cents.Cmp(big.NewInt(999)) <= 0:
+		return USDDigits(digits)
+	case cents.Cmp(big.NewInt(9_999)) <= 0:
+		dollars, rem := new(big.Int).QuoRem(cents, big.NewInt(100), new(big.Int))
+		return fmt.Sprintf("$%s.%d", dollars.String(), new(big.Int).Quo(rem, big.NewInt(10)).Int64())
+	case cents.Cmp(big.NewInt(99_999)) <= 0:
+		return "$" + new(big.Int).Quo(cents, big.NewInt(100)).String()
 	default:
-		return "$" + Compact(cents/100)
+		return "$" + CompactDigits(new(big.Int).Quo(cents, big.NewInt(100)).String())
 	}
 }
 

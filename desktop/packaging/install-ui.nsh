@@ -32,6 +32,27 @@ Function .onInstSuccess
   ${EndIf}
 FunctionEnd
 
+; Close a running companion before File replaces aio-proxy-desktop.exe. Windows locks a
+; running executable, so a manual upgrade fails unless this runs first. Passive and silent
+; installs kill it; an interactive install asks.
+!macro AioProxyCloseRunning
+  nsExec::ExecToLog 'cmd /c tasklist /NH /FI "IMAGENAME eq ${MAINBINARYNAME}.exe" | find /I "${MAINBINARYNAME}.exe"'
+  Pop $R0
+  ${If} $R0 = 0
+    ${If} $PassiveMode = 1
+    ${OrIf} ${Silent}
+      Goto aiop_kill_app
+    ${EndIf}
+    MessageBox MB_OKCANCEL "$(appRunningOkKill)" IDOK aiop_kill_app
+    Abort "$(appRunning)"
+    aiop_kill_app:
+    nsExec::ExecToLog 'taskkill /F /IM ${MAINBINARYNAME}.exe'
+    Pop $R0
+    Sleep 500
+    ${IfThen} $R0 <> 0 ${|} Abort "$(failedToKillApp)" ${|}
+  ${EndIf}
+!macroend
+
 !macro AioProxyInstallShell
   WriteRegStr HKCU "${AIOP_UNINSTALL_KEY}" "DisplayName" "${PRODUCTNAME}"
   WriteRegStr HKCU "${AIOP_UNINSTALL_KEY}" "Publisher" "${PRODUCTNAME}"

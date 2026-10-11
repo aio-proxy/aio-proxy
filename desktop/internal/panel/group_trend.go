@@ -99,13 +99,15 @@ func trendGroup(c *ui.Context, u *summary.Usage, series []chartSeries, v *viewSt
 			start, step, _ := trendBand(bounds.W, len(labels))
 			hovered = min(len(labels)-1, max(0, int(math.Round(float64((x-start)/step)))))
 		}
-		var maximum uint64
+		var maximum summary.Count
 		for i := range labels {
-			var total uint64
+			var total summary.Count
 			for _, s := range series {
-				total += s.Values[i]
+				total = total.Add(s.Values[i])
 			}
-			maximum = max(maximum, total)
+			if total.Cmp(maximum) > 0 {
+				maximum = total
+			}
 		}
 		chart.Draw(func(painter *ui.Painter, r ui.Rect) {
 			plotHeight := r.H - 18
@@ -119,18 +121,18 @@ func trendGroup(c *ui.Context, u *summary.Usage, series []chartSeries, v *viewSt
 					painter.RichText(r.X+start+float32(i)*step+band/2-tw/2, r.Y+plotHeight+4, 0, span)
 				}
 			}
-			if maximum > 0 {
+			if !maximum.IsZero() {
 				// One running base per bucket without allocating scratch storage in Draw.
 				for i := range labels {
-					var base uint64
+					var base summary.Count
 					for _, s := range series {
 						value := s.Values[i]
-						if value > 0 {
-							y0 := plotHeight - float32(float64(base)/float64(maximum))*(plotHeight-2)
-							y1 := plotHeight - float32(float64(base+value)/float64(maximum))*(plotHeight-2)
+						if !value.IsZero() {
+							y0 := plotHeight - float32(base.Float64()/maximum.Float64())*(plotHeight-2)
+							y1 := plotHeight - float32(base.Add(value).Float64()/maximum.Float64())*(plotHeight-2)
 							painter.Fill(ui.Rect{X: r.X + start + float32(i)*step, Y: r.Y + y1, W: band, H: y0 - y1}, s.Color, 0)
 						}
-						base += value
+						base = base.Add(value)
 					}
 				}
 			}
@@ -144,18 +146,18 @@ func trendGroup(c *ui.Context, u *summary.Usage, series []chartSeries, v *viewSt
 		})
 		if hovered >= 0 {
 			rows := 0
-			var total uint64
+			var total summary.Count
 			for _, s := range series {
-				if s.Values[hovered] > 0 {
+				if !s.Values[hovered].IsZero() {
 					rows++
-					total += s.Values[hovered]
+					total = total.Add(s.Values[hovered])
 				}
 			}
 			chartTooltip(c, bounds.X+x+12, bounds.Y+y, 240, float32(60+rows*22), func() {
 				ui.Text(c, labels[hovered]+" · "+per).FontSize(12).FontWeight(500)
 				// Legend order is descending window usage, not the visual stack.
 				for _, s := range series {
-					if value := s.Values[hovered]; value > 0 {
+					if value := s.Values[hovered]; !value.IsZero() {
 						tooltipSeriesRow(c, s.Color, s.Label, usage.FormatValue(value, metric))
 					}
 				}

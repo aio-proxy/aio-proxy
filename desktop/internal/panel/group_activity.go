@@ -37,8 +37,8 @@ func activityGridHeader(c *ui.Context, grid activity.HeatGrid) {
 		ui.Text(c, activityTotalsText(grid.ActiveDays, grid.TotalTokens)).FontSize(12).TextColor(p.MutedForeground)
 	})
 }
-func activityTotalsText(days int, tokens uint64) string {
-	return fmt.Sprintf("%d active days · %s tokens", days, format.Compact(tokens))
+func activityTotalsText(days int, tokens summary.Count) string {
+	return fmt.Sprintf("%d active days · %s tokens", days, format.CompactDigits(tokens.String()))
 }
 
 func activityGroup(c *ui.Context, s *summary.SummaryV1, v *viewState) {
@@ -116,7 +116,7 @@ func activityGroup(c *ui.Context, s *summary.SummaryV1, v *viewState) {
 func activityDayCard(c *ui.Context, cell activity.HeatCell, models []summary.ActivityModel) {
 	p := theme.ForDark(c.Theme().Dark)
 	ui.Text(c, activity.LongDate(cell.Day)).FontSize(13).FontWeight(500)
-	ui.Text(c, format.Compact(cell.Tokens)+" Token").FontSize(13)
+	ui.Text(c, format.CompactDigits(cell.Tokens.String())+" Token").FontSize(13)
 	if len(models) == 0 {
 		return
 	}
@@ -124,13 +124,13 @@ func activityDayCard(c *ui.Context, cell activity.HeatCell, models []summary.Act
 		ui.Text(c, "Model breakdown").FontSize(12).FontWeight(500).TextColor(p.MutedForeground)
 		for _, model := range models {
 			share := float64(0)
-			if cell.Tokens != 0 {
-				share = float64(model.TotalTokens) / float64(cell.Tokens)
+			if !cell.Tokens.IsZero() {
+				share = model.TotalTokens.Float64() / cell.Tokens.Float64()
 			}
 			ui.Column(c).Gap(4).Children(func() {
 				ui.Row(c).Gap(6).FontSize(12).Children(func() {
 					ui.Text(c, model.ModelID).Grow(1).MinWidth(0).SingleLine()
-					ui.Text(c, format.Compact(model.TotalTokens)).Shrink(0).TextColor(p.MutedForeground)
+					ui.Text(c, format.CompactDigits(model.TotalTokens.String())).Shrink(0).TextColor(p.MutedForeground)
 					ui.Text(c, fmt.Sprintf("%.0f%%", share*100)).Shrink(0)
 				})
 				ui.Box(c).FillWidth().Height(6).Draw(func(painter *ui.Painter, r ui.Rect) {

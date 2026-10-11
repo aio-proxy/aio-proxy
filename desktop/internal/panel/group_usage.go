@@ -35,7 +35,7 @@ func usageCard(c *ui.Context, u *summary.Usage, metric usage.Metric, v *viewStat
 		ui.Column(c).FillWidth().Gap(0).Children(func() {
 			ui.Text(c, metric.Label()).FontSize(10).FixedLineHeight(15).TextColor(p.MutedForeground)
 			ui.Text(c, value).Font("monospace").FontSize(15).FixedLineHeight(22.5).FontWeight(600).SingleLine()
-			if u != nil && u.Previous.Requests != 0 {
+			if u != nil && !u.Previous.Requests.IsZero() {
 				text, tone := usage.CardDelta(&u.Current, &u.Previous, metric)
 				color := p.MutedForeground
 				if tone == usage.ToneBad {
@@ -78,12 +78,12 @@ func usageGroup(c *ui.Context, m *app.Model, v *viewState) {
 			return
 		}
 		caption := "Compared with the previous "
-		if u.Previous.Requests == 0 {
+		if u.Previous.Requests.IsZero() {
 			caption = "No usage in the previous "
 		}
 		ui.Text(c, caption+m.UsageRange.Label()).Margin(4, 0, 0, 0).FontSize(10).TextColor(p.MutedForeground)
 		total := usage.MetricTotal(&u.Current, v.Metric)
-		if total == 0 {
+		if total.IsZero() {
 			ui.Column(c).FillWidth().Padding(20, 8).AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Icon(c, inboxIcon).Size(24, 24).TextColor(p.MutedForeground)
 				ui.Text(c, v.Metric.EmptyText()).FontSize(12).FontWeight(500)
@@ -104,17 +104,20 @@ func usageGroup(c *ui.Context, m *app.Model, v *viewState) {
 	})
 }
 
-func usageBreakdown(c *ui.Context, series []chartSeries, split usage.Split, metric usage.Metric, total uint64) {
+func usageBreakdown(c *ui.Context, series []chartSeries, split usage.Split, metric usage.Metric, total summary.Count) {
 	p := theme.ForDark(c.Theme().Dark)
 	ui.Column(c).Margin(12, 0, 0, 0).Gap(5).Children(func() {
 		for _, s := range series {
-			var value uint64
+			var value summary.Count
 			for _, x := range s.Values {
-				value += x
+				value = value.Add(x)
 			}
-			share := float64(value) / float64(total)
+			share := 0.0
+			if !total.IsZero() {
+				share = value.Float64() / total.Float64()
+			}
 			percentage := format.Percent(share)
-			if value > 0 && share < .01 {
+			if !value.IsZero() && share < .01 {
 				percentage = "<1%"
 			}
 			ui.Row(c).Gap(8).FontSize(11).Children(func() {
