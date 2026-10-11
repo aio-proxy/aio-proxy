@@ -16,6 +16,88 @@ const MiB = 1_024 * 1_024;
 const success = () => Response.json({ id: 'resp_ok', status: 'completed', output: [] });
 const config = (maxBytes: number) => ConfigSchema.parse({ server: { requestBody: { maxBytes } }, providers: {} });
 
+test.each([
+  ['fallback', false],
+  ['fallback', true],
+  ['encrypted-retry', false],
+  ['encrypted-retry', true],
+] as const)('preserves 29 image tool results through %s with compressed=%s', async (mode, compressed) => {
+  const input = [
+    ...(mode === 'encrypted-retry'
+      ? [
+          {
+            type: 'agent_message',
+            author: '/root',
+            recipient: '/root/child',
+            content: [{ type: 'encrypted_content', encrypted_content: 'repair me' }],
+          },
+        ]
+      : []),
+    ...Array.from({ length: 29 }, (_, index) => [
+      { type: 'custom_tool_call', call_id: `call_${index}`, name: 'screenshot', input: '{}' },
+      {
+        type: 'custom_tool_call_output',
+        call_id: `call_${index}`,
+        output: [
+          {
+            type: 'input_image',
+            image_url: `data:image/png;base64,${'AAAA'.repeat(8_192)}`,
+            detail: 'original',
+          },
+        ],
+      },
+    ]).flat(),
+  ];
+  const document = { model: REQUESTED_MODEL, input, beta_field: { nested: [{ retained: true }] } };
+  const seen: unknown[] = [];
+  const primary = rawProvider({
+    id: 'primary',
+    modelId: 'first-wire-model',
+    protocol: ProviderProtocol.OpenAIResponse,
+    priority: 1,
+    invoke: async (upstream) => {
+      seen.push(await upstream.json());
+      if (mode === 'fallback') return new Response('unavailable', { status: 503 });
+      if (seen.length === 1)
+        return Response.json({ error: { code: 'invalid_encrypted_content', message: 'x' } }, { status: 400 });
+      return success();
+    },
+  });
+  const backup = rawProvider({
+    id: 'backup',
+    modelId: 'second-wire-model',
+    protocol: ProviderProtocol.OpenAIResponse,
+    invoke: async (upstream) => {
+      seen.push(await upstream.json());
+      return success();
+    },
+  });
+  const harness = pipeline(mode === 'fallback' ? [primary, backup] : [primary], {
+    adapter: openAIResponsesAdapter,
+    config: config(2 * MiB),
+  });
+  expect((await harness.run(request(JSON.stringify(document), compressed))).status).toBe(200);
+  expect(seen).toHaveLength(2);
+  expect(seen[0]).toEqual({ ...document, model: 'first-wire-model' });
+  expect(seen[1]).toEqual(
+    mode === 'fallback'
+      ? { ...document, model: 'second-wire-model' }
+      : {
+          ...document,
+          model: 'first-wire-model',
+          input: [
+            {
+              type: 'agent_message',
+              author: '/root',
+              recipient: '/root/child',
+              content: [{ type: 'input_text', text: 'repair me' }],
+            },
+            ...input.slice(1),
+          ],
+        },
+  );
+});
+
 function body(padding = MiB + 100, encrypted = false) {
   return JSON.stringify({
     model: REQUESTED_MODEL,

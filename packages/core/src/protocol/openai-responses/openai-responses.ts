@@ -20,11 +20,11 @@ import { warnOpenAIResponsesDegradation } from '../../transform/openai-responses
 import { defineProtocolAdapter } from '../adapter';
 import { openAIResponsesErrors } from '../errors';
 import { clampSdkReasoning, normalizeEffort, reasoningSettings } from '../reasoning-effort/index';
-import { readJsonRequest, readRequestText } from '../request/index';
 import type { SessionCandidate } from '../session';
 import { functionToolSet } from '../tools';
 import { openAIResponsesRawRetry } from './encrypted-content-retry';
 import { repairOpenAIResponsesCallIdlessToolOutputs } from './tool-pairing-retry';
+import { readResponsesValidationBody, readResponsesWireBody } from './wire-body';
 
 export type OpenAIResponsesContext = { readonly operation?: 'create' | 'compact' };
 
@@ -34,7 +34,7 @@ export const openAIResponsesAdapter = defineProtocolAdapter<
 >({
   protocol: ProviderProtocol.OpenAIResponse,
   async parse(raw, context) {
-    const body = await readJsonRequest(raw);
+    const body = await readResponsesValidationBody(raw);
     return context.operation === 'compact' ? parseOpenAIResponsesCompact(body) : parseOpenAIResponses(body);
   },
   model: (request) => request.model,
@@ -225,8 +225,7 @@ async function rewriteOpenAIResponsesCompactRequest(raw: Request, resolvedModel:
   // Inspect the decoded body once to decide whether rewriting is necessary.
   // A no-op preserves the original encoded bytes and headers, including integers
   // that would lose precision during a JSON round-trip.
-  const bodyText = await readRequestText(raw);
-  const body = jsonObjectSchema.parse(JSON.parse(bodyText));
+  const body = jsonObjectSchema.parse(await readResponsesWireBody(raw));
   const headers = new Headers(raw.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
@@ -249,8 +248,7 @@ async function rewriteOpenAIResponsesRequest(
   // Inspect the decoded body once to decide whether rewriting is necessary.
   // A no-op preserves the original encoded bytes and headers, including integers
   // that would lose precision during a JSON round-trip.
-  const bodyText = await readRequestText(raw);
-  const { background: _background, ...body } = jsonObjectSchema.parse(JSON.parse(bodyText));
+  const { background: _background, ...body } = jsonObjectSchema.parse(await readResponsesWireBody(raw));
   const reasoning = body['reasoning'];
   const nextReasoning =
     typeof reasoning === 'object' &&

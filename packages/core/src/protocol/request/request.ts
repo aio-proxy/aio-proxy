@@ -4,7 +4,6 @@ import { boundedRequestStream, cancelRequestBody, readRequestBytes, type Request
 import { requestContentEncoding } from './content-encoding';
 import { decodeRequestBytes } from './decode-bytes';
 import { streamDecodeRequestBody } from './decode-stream';
-import { RequestBodyTooLargeError } from './errors';
 import { currentRequestBodyLimits, type RequestBodyLimits } from './limits';
 
 const jsonObjectSchema = z.object({}).catchall(z.unknown());
@@ -47,16 +46,14 @@ export async function readRequestText(
     const encoding = requestContentEncoding(raw.headers.get('content-encoding'));
     const branch = raw.clone();
     branches.push(branch);
-    const encoded = await readRequestBytes(branch.body, limits.encoded, { signal: raw.signal });
-    if (encoding === undefined && encoded.byteLength > limits.decoded) {
-      throw new RequestBodyTooLargeError('Request body too large', {
-        stage: 'decoded',
-        limitBytes: limits.decoded,
-        measurement: 'observed_lower_bound',
-        bytes: encoded.byteLength,
-      });
+    if (encoding === undefined) {
+      const body = boundedRequestStream(branch.body, limits, { signal: raw.signal });
+      // Bun's native text reader avoids retaining chunks plus a second,
+      // concatenated byte buffer before UTF-8 decoding.
+      return body === null ? '' : await new Response(body).text();
     }
-    const bytes = encoding === undefined ? encoded : await decodeRequestBytes(encoded, encoding, limits.decoded);
+    const encoded = await readRequestBytes(branch.body, limits.encoded, { signal: raw.signal });
+    const bytes = await decodeRequestBytes(encoded, encoding, limits.decoded);
     return new TextDecoder().decode(bytes);
   } catch (error) {
     await Promise.all(branches.map((request) => cancelRequestBody(request, error)));
