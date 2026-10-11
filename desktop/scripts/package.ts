@@ -108,13 +108,22 @@ try {
       desktop,
     );
   }
-  const ldflags = ['-s', '-w', `-X github.com/aio-proxy/aio-proxy/desktop/internal/version.App=${version}`];
+  // Same production identity as desktop/scripts/bundle.ts. A direct go build otherwise keeps
+  // MyGo's development defaults and compiles the inspector in.
+  const ldflags = [
+    '-s -w',
+    '-X github.com/egoist/mygo.production=1',
+    `-X 'github.com/egoist/mygo.packageName=AIO Proxy'`,
+    `-X github.com/egoist/mygo.packageVersion=${version}`,
+    '-X github.com/egoist/mygo.packageIdentifier=com.aio-proxy.desktop',
+    `-X github.com/aio-proxy/aio-proxy/desktop/internal/version.App=${version}`,
+  ];
   if (build.format === 'nsis') ldflags.push('-H=windowsgui');
   const feed = process.env['AIO_PROXY_DESKTOP_FEED_URL'];
   const key = process.env['AIO_PROXY_DESKTOP_UPDATE_KEY'];
   if (feed !== undefined) ldflags.push(`-X github.com/aio-proxy/aio-proxy/desktop/internal/update.FeedURL=${feed}`);
   if (key !== undefined) ldflags.push(`-X github.com/aio-proxy/aio-proxy/desktop/internal/update.PublicKeyB64=${key}`);
-  await $`go build -trimpath -ldflags=${ldflags.join(' ')} -o ${app} .`
+  await $`go build -trimpath -tags mygo_noinspector -ldflags ${ldflags.join(' ')} -o ${app} .`
     .cwd(desktop)
     .env({ ...process.env, CGO_ENABLED: '0' });
 
@@ -162,6 +171,11 @@ async function assembleAppImage(image: string): Promise<void> {
   copyFileSync(sidecar, join(bin, 'aio-proxy'));
   chmodSync(join(bin, 'aio-proxy-desktop'), 0o755);
   chmodSync(join(bin, 'aio-proxy'), 0o755);
+  const notices = join(sidecarDir, 'THIRD_PARTY_NOTICES');
+  if (!existsSync(notices)) throw new Error(`${notices} is missing`);
+  const noticeDir = join(appDir, 'usr', 'share', 'doc', 'aio-proxy-desktop');
+  mkdirSync(noticeDir, { recursive: true });
+  copyFileSync(notices, join(noticeDir, 'THIRD_PARTY_NOTICES'));
   copyFileSync(join(desktop, 'packaging', 'icons', '512x512.png'), join(iconDir, 'aio-proxy-desktop.png'));
   symlinkSync('usr/share/icons/hicolor/512x512/apps/aio-proxy-desktop.png', join(appDir, 'aio-proxy-desktop.png'));
   symlinkSync('aio-proxy-desktop.png', join(appDir, '.DirIcon'));
@@ -210,16 +224,7 @@ async function sha256File(path: string): Promise<string> {
 }
 
 async function assembleNsis(image: string): Promise<void> {
-  // Windows checkouts may use CRLF, so the match cannot depend on a particular newline.
-  const cleanup = readFileSync(join(desktop, 'packaging', 'uninstall-cleanup.nsh'), 'utf8')
-    .replaceAll(
-      'nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"',
-      'nsExec::ExecToLog \'cmd /c tasklist /NH /FI "IMAGENAME eq ${MAINBINARYNAME}.exe" | find /I "${MAINBINARYNAME}.exe"\'',
-    )
-    .replaceAll(
-      'nsis_tauri_utils::KillProcess "${MAINBINARYNAME}.exe"',
-      "nsExec::ExecToLog 'taskkill /F /IM ${MAINBINARYNAME}.exe'",
-    );
+  const cleanup = readFileSync(join(desktop, 'packaging', 'uninstall-cleanup.nsh'), 'utf8');
   if (cleanup.includes('nsis_tauri_utils')) throw new Error('uninstall cleanup still calls nsis_tauri_utils');
   const cleanupPath = join(packagerOut, 'cleanup.nsh');
   writeFileSync(cleanupPath, cleanup);

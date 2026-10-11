@@ -17,20 +17,9 @@ Section un.AioProxyCleanup
   ${GetOptions} $CMDLINE "/P" $R0
   IfErrors 0 cleanup_done
 
-  ; The template's own check comes after this section; the app must be gone first, because it holds
-  ; its lock file under AIOP_SUPPORT and would restart the proxy.
-  nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
-  Pop $R0
-  ${If} $R0 = 0
-    IfSilent kill 0
-    MessageBox MB_OKCANCEL "$(appRunningOkKill)" IDOK kill
-    Abort "$(appRunning)"
-    kill:
-    nsis_tauri_utils::KillProcess "${MAINBINARYNAME}.exe"
-    Pop $R0
-    Sleep 500
-    ${IfThen} $R0 <> 0 ${|} Abort "$(failedToKillApp)" ${|}
-  ${EndIf}
+  ; The app must be gone first, because it holds its lock file under AIOP_SUPPORT and would
+  ; restart the proxy. Only this install's executable is stopped.
+  !insertmacro AioProxyCloseRunning
 
   ; Same rule as the CLI's readDesktopOwnedUnit: a unit is the app's when its program is the path the
   ; app recorded as AIO_PROXY_DESKTOP_EXEC. A service the user installed from the CLI stays.

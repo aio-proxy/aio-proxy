@@ -32,21 +32,21 @@ Function .onInstSuccess
   ${EndIf}
 FunctionEnd
 
-; Close a running companion before File replaces aio-proxy-desktop.exe. Windows locks a
-; running executable, so a manual upgrade fails unless this runs first. Passive and silent
-; installs kill it; an interactive install asks.
+; Close this install's companion before File replaces it, or before a user uninstall deletes
+; it. Match the full path: taskkill /IM would also stop another session's aio-proxy-desktop.exe.
+; Passive and silent installs kill it; an interactive one asks. No named labels, so the macro
+; can be inserted from both the installer and the uninstaller.
 !macro AioProxyCloseRunning
-  nsExec::ExecToLog 'cmd /c tasklist /NH /FI "IMAGENAME eq ${MAINBINARYNAME}.exe" | find /I "${MAINBINARYNAME}.exe"'
+  System::Call 'kernel32::SetEnvironmentVariable(t "AIO_PROXY_DESKTOP_EXE", t "$INSTDIR\${MAINBINARYNAME}.exe")'
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "$$want = $$env:AIO_PROXY_DESKTOP_EXE; $$ids = @(Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -and ($$_.ExecutablePath -ieq $$want) }); if ($$ids.Count -eq 0) { exit 1 }; exit 0"'
   Pop $R0
   ${If} $R0 = 0
-    ${If} $PassiveMode = 1
-    ${OrIf} ${Silent}
-      Goto aiop_kill_app
+    ${IfNot} $PassiveMode = 1
+    ${AndIfNot} ${Silent}
+      MessageBox MB_OKCANCEL "$(appRunningOkKill)" IDOK +2
+      Abort "$(appRunning)"
     ${EndIf}
-    MessageBox MB_OKCANCEL "$(appRunningOkKill)" IDOK aiop_kill_app
-    Abort "$(appRunning)"
-    aiop_kill_app:
-    nsExec::ExecToLog 'taskkill /F /IM ${MAINBINARYNAME}.exe'
+    nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -Command "$$want = $$env:AIO_PROXY_DESKTOP_EXE; $$ids = @(Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -and ($$_.ExecutablePath -ieq $$want) } | ForEach-Object ProcessId); foreach ($$id in $$ids) { Stop-Process -Id $$id -Force -ErrorAction Stop }"'
     Pop $R0
     Sleep 500
     ${IfThen} $R0 <> 0 ${|} Abort "$(failedToKillApp)" ${|}
