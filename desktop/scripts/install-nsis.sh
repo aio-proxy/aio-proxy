@@ -7,7 +7,9 @@ url='https://downloads.sourceforge.net/project/nsis/NSIS%203/3.13/nsis-3.13-setu
 want='db9a1038bbc0e53fef24f423fd609979bd578e942f1be1198db186d1c42652a3'
 dest="${RUNNER_TEMP:-/tmp}/nsis-3.13-setup.exe"
 curl -fsSL -L -o "$dest" "$url"
-got=$(sha256sum "$dest" | awk '{print $1}')
+# GNU sha256sum prefixes the line with a backslash when the path contains one,
+# which Windows RUNNER_TEMP does. The digest is the first field either way.
+got=$(sha256sum "$dest" | awk '{sub(/^\\/, "", $1); print $1}')
 if [ "$got" != "$want" ]; then
   echo "nsis-3.13-setup.exe sha256 $got, expected $want" >&2
   exit 1
@@ -16,7 +18,8 @@ fi
 if [ "$(uname -s)" = "Linux" ]; then
   exit 0
 fi
-powershell.exe -NoProfile -Command "& '$dest' /S"
+# Git bash would rewrite /S into a filesystem path.
+MSYS_NO_PATHCONV=1 powershell.exe -NoProfile -Command "& '$dest' /S"
 if [ -n "${GITHUB_PATH:-}" ]; then
   printf '%s\n' 'C:\Program Files (x86)\NSIS' >> "$GITHUB_PATH"
 fi
