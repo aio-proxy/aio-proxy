@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
+import type { DashboardRoutingModel, DashboardRoutingProvider, RouterSelection } from '@aio-proxy/types';
 import { cn } from '@aio-proxy/ui/lib/utils';
 import { useMemo } from 'react';
 
@@ -33,6 +33,7 @@ interface RoutingBoardCanvasProps {
   readonly rows: readonly RoutingFormProviderRow[];
   readonly writable: boolean;
   readonly actual?: readonly RoutingTierShare[] | undefined;
+  readonly selection?: RouterSelection;
 }
 
 type Placement =
@@ -65,7 +66,14 @@ const blockedReason = (provider: DashboardRoutingProvider): string =>
     ? m['dashboard.routing.editor.provider_unavailable']()
     : m['dashboard.routing.editor.provider_disabled']();
 
-export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, model, rows, writable, actual }) => {
+export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({
+  form,
+  model,
+  rows,
+  writable,
+  actual,
+  selection = 'weighted',
+}) => {
   const board = useMemo(() => buildRoutingBoard(model.providers, rows), [model.providers, rows]);
   const actualByProviderId = useMemo(
     () => (actual === undefined ? undefined : new Map(actual.map((entry) => [entry.providerId, entry]))),
@@ -203,6 +211,7 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
             shareLabel={placement.kind === 'tier' ? placement.shareLabel : undefined}
             configuredShare={comparableShares.has(item.providerId) ? item.share : null}
             actual={actualByProviderId?.get(item.providerId)}
+            selection={selection}
             parkedReason={
               placement.kind === 'unused'
                 ? m['dashboard.routing.editor.disabled_for_model']()

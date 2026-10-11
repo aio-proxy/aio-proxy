@@ -62,6 +62,8 @@ export ANTHROPIC_API_KEY="sk-aio-proxy"
 claude
 ```
 
+如果不想每次导出环境变量，可运行 `aio-proxy agent configure claude-code` 一次性写入全局配置，详见 [Claude Code 接入指南](./agents/claude-code.md)。
+
 ---
 
 ## 桌面与 Web 对话客户端 (Cherry Studio, NextChat, LobeChat)

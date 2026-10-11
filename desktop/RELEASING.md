@@ -1,9 +1,24 @@
-# Releasing the macOS app
+# Releasing the desktop app
 
 The app ships from CI. After Changesets publishes a release, `release.yml` dispatches
-`desktop-release.yml`, which builds, signs, notarizes and uploads
-`aio-proxy-<version>-arm64.dmg` to the `v<version>` Release, then replaces the Sparkle feed
-`appcast.xml` on the `desktop-feed` prerelease. Canary releases never ship the app.
+`desktop-release.yml`, which runs two independent paths. Canary releases never ship the app.
+
+- macOS: builds, signs, notarizes and uploads `aio-proxy-<version>-arm64.dmg` to the
+  `v<version>` Release, then replaces the Sparkle feed `appcast.xml` on the `desktop-feed`
+  prerelease. When that version is the feed's newest, it also replaces `aio-proxy-arm64.dmg`
+  there, the unversioned copy the website's download button links to.
+- Linux and Windows: `verify` checks the tag, then `build-linux` (x86_64 on `ubuntu-22.04`,
+  aarch64 on `ubuntu-22.04-arm`) and `build-windows` build unsigned bytes with no secrets.
+  `publish-assets` (environment `desktop-release`) signs them with minisign and uploads
+  `aio-proxy-<version>-x86_64.AppImage`, `aio-proxy-<version>-aarch64.AppImage` and
+  `aio-proxy-<version>-x64-setup.exe`, each with a `.minisig`, to the `v<version>` Release. `feed`
+  then points `latest.json` on `desktop-feed` at the highest version whose three assets all verify,
+  first uploading that version's three builds there under unversioned names
+  (`aio-proxy-x86_64.AppImage`, `aio-proxy-aarch64.AppImage`, `aio-proxy-x64-setup.exe`) for the
+  website's download buttons.
+
+The Linux/Windows build jobs use no caches on purpose: bytes that get signed must not come from a
+cache. Cold builds are slow (90 minute timeout).
 
 ## One-time setup
 
@@ -43,20 +58,25 @@ them to the names the scripts read (the same names a local release sets).
 
    (`bun run desktop:bundle --unsigned` downloads `desktop/.cache` first.)
    - Repository variable `SPARKLE_PUBLIC_ED_KEY`: the printed public key.
-   - Repository secret `SPARKLE_ED_PRIVATE_KEY`: the contents of `sparkle-private.key`. Delete the file afterwards.
+   - `desktop-release` environment secret `SPARKLE_ED_PRIVATE_KEY` (see step 0): the contents of `sparkle-private.key`. Delete the file afterwards.
+
+   The same key signs the Linux and Windows assets. `publish-assets` wraps the Sparkle Ed25519 key
+   as a minisign key (prehashed `ED` signatures, trusted comment `aio-proxy-desktop <version> <target> <asset>`), so
+   there is one update root of trust and no second secret. The Linux/Windows updater embeds the
+   matching public key.
 
    CI passes the key to `generate_appcast` only on stdin. Do not use `--account` in automation:
    it blocks on a Keychain prompt.
 
 ## Native development
 
-The desktop host is a Go module using MyGo native UI, not a web frontend. Its minimum platform remains macOS 13 on Apple silicon. Install the pinned Go toolchain with `mise -C desktop install`; `mise -C desktop exec -- go test ./...` runs the desktop tests. A bundled build injects the product version from `npm/aio-proxy/package.json`; plain `go run .` reports `0.0.0-dev` and runs read-only outside an installed bundle. Rust is no longer needed.
+The desktop host is a Go module using MyGo native UI, not a web frontend. macOS stays 13 or newer on Apple silicon. Linux and Windows use the same module: `CGO_ENABLED=0 go test ./...` is the check CI runs on all three. Install the pinned Go toolchain with `mise -C desktop install`. A bundled build injects the product version from `npm/aio-proxy/package.json`; plain `go run .` reports `0.0.0-dev` and, on macOS, runs read-only outside an installed bundle. Rust is no longer needed.
 
 The native panel tests include real Metal corner coverage in light and dark modes. That test uses an isolated temporary SDK adapter and never modifies the installed MyGo module or shipped binary; only a missing Metal device skips it. `CapturePage` renders the last scene on the CPU, so it is not proof of native GPU clipping.
 
 The footer menu regression opens a real AppKit window and menu, sends a native mouse press to the footer, and selects a command. It checks that menu tracking starts after the surface frame returns, disabled commands stay disabled, and selection dispatches once; it also exercises and reloads a Menu Bar Display choice in an isolated home. Run it in a graphical macOS session; it needs no Accessibility permission and does not start or stop the proxy.
 
-Menu Bar Display preferences persist independently of service-install permissions. When Today Tokens or Tokens per Second is selected, an independent 15-second authenticated summary poll keeps the menu-bar text current with the panel closed. Tokens per Second measures accounted-token throughput between samples, not partial-stream generation speed. Icon-only mode stops those polls; requests are cancelled on app exit or instance change.
+Menu Bar Display preferences live in `preferences.json` and survive relaunch. Up to two of Today Tokens, Tokens per Second, Today Cost, and Requests in Flight can be shown; an empty selection keeps the icon. While any metric is selected and the proxy is up, the app polls `/dashboard/api/desktop-live` (every second for throughput or in-flight requests, otherwise every 15 seconds) even with the panel closed. A failed poll keeps the last value dimmed, and the third failure shows dashes. Linux and Windows trays stay icon-only.
 
 Menu-bar text uses AppKit's monospaced-digit system font in a template image: 9 pt stacked TPS/TOK rows or one centered 12 pt row. Verify it on the actual menu bar, including one-metric and hidden-icon states; the native status-item title remains empty, and the image remains 18 pt high. Neither a software panel capture nor a formatted string proves this layout.
 
@@ -104,3 +124,50 @@ derived from `SPARKLE_ED_PRIVATE_KEY`, `SPARKLE_PUBLIC_ED_KEY` and the DMG's `SU
 all be equal. It also refuses to upload when the feed already lists the version but the DMG is not
 on the Release, and to replace the feed when the new item has no valid EdDSA signature
 (`generate_appcast` itself only warns when the key does not match).
+
+## Windows code signing (optional)
+
+Without signing, the installer triggers SmartScreen ("More info" then "Run anyway"); the README
+says so. To sign, set `WINDOWS_SIGN_COMMAND` in the environment of the `build-windows` packaging
+step. `desktop:package` runs it through `cmd /c` with `%1` replaced by the file path, on the app and
+then the installer. Either of these works:
+
+- Azure Artifact Signing: `signtool sign /dlib <Azure.CodeSigning.Dlib.dll> /dmdf <metadata.json> /fd SHA256 /tr <timestamp-url> /td SHA256 %1`
+- A certificate in the runner's store: `signtool sign /sha1 <thumbprint> /fd SHA256 /tr <timestamp-url> /td SHA256 %1`
+
+The script signs the app and the installer, but not the sidecar `aio-proxy.exe` inside the install
+directory. The build job has no secrets today, so adding signing
+means giving it the credentials (or moving the Windows package step behind the `desktop-release`
+environment) deliberately.
+
+## Resuming a failed Linux/Windows publish
+
+Re-dispatch the tag the same way (`gh workflow run desktop-release.yml -f tag=v<version>`). The
+workflow YAML always comes from `main` (the dispatch runs `--ref main` and the jobs refuse any other
+ref), but the build and publish scripts are the tag's checkout, so a script fix on `main` does not
+reach an older tag. "Re-run failed jobs" reuses the same run's artifacts; a fresh dispatch rebuilds.
+
+`publish-assets` is resumable and never replaces a published asset. For each asset it signs and
+uploads (`.minisig` first), or re-verifies a pair already on the Release. When only the `.minisig`
+exists (a run died between the two uploads), it uploads this run's asset if it verifies against that
+`.minisig` — always the case on "Re-run failed jobs", which reuses the same bytes — and otherwise
+stops: a fresh dispatch rebuilt different bytes, so delete the orphan `.minisig` and dispatch again:
+
+```bash
+gh release delete-asset v<version> aio-proxy-<version>-x86_64.AppImage.minisig --repo aio-proxy/aio-proxy --yes
+```
+
+`feed` never creates `desktop-feed` (the macOS job does, and `feed` waits for that job whatever its outcome) and never moves the feed down;
+a `latest.json` that does not parse fails the job. A failed or incomplete newer version leaves the
+feed on the previous complete one.
+
+A fork rehearsal must change the hard-coded `REPO` in `publish-assets.ts`, `publish-latest.ts` and
+`publish.ts`; the `v<version>` Release and the `desktop-feed` prerelease must exist in the fork.
+
+## Platform notes
+
+- Windows installs per user to `%LOCALAPPDATA%\AIO Proxy`. A user uninstall removes the desktop-owned
+  service, the `aiop` shims and the launch-at-login value; an upgrade (passive, silent or the
+  interactive "uninstall before installing") keeps them.
+- Linux has no uninstaller: run `aio-proxy service uninstall` before deleting the AppImage,
+  otherwise the managed service keeps pointing at a file that is gone.

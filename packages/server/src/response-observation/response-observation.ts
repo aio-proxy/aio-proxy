@@ -1,5 +1,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
+import type { Context } from '@opentelemetry/api';
+
+import { normalizeContentEncoding } from './content-encoding';
+import { createSendResponseObservation, observedResponseSend, type SendResponseObservation } from './send-observation';
+
 export type TransportObservation = 'sse' | 'body' | 'unavailable' | 'ambiguous';
 
 export type AttemptResponseSnapshot = {
@@ -19,6 +24,7 @@ export type AttemptResponseSnapshot = {
   // onLanguageModelCallStart fires outside its retry() wrapper -- so the HTTP
   // layer is the only place they can be counted.
   readonly httpSends?: number;
+  readonly responseSendIndex?: number;
   readonly serverAddress?: string;
   readonly serverPort?: number;
 };
@@ -32,8 +38,12 @@ export type ResponseBodyObservation = {
 };
 
 export type AttemptResponseObservation = {
+  readonly parentContext?: Context | undefined;
+  readonly bindParentContext?: (context: Context) => void;
   readonly markTransportUnavailable: () => void;
-  readonly observeFetchStart: (endpoint?: AttemptResponseEndpoint) => void;
+  readonly observeFetchStart: (endpoint?: AttemptResponseEndpoint) => SendResponseObservation | void;
+  readonly selectResponse?: (response: Response) => void;
+  readonly finishSends?: (succeeded?: boolean) => void;
   readonly observeResponse: (
     response: Response,
     options: { readonly controlledStream: boolean },
@@ -57,6 +67,7 @@ const storage = new AsyncLocalStorage<AttemptResponseObservation>();
 export function createAttemptResponseObservation(options: {
   readonly startedAt: number;
   readonly now?: () => number;
+  readonly parentContext?: Context;
 }): AttemptResponseObservation {
   const now = options.now ?? performance.now.bind(performance);
   const gapBuckets = new Uint32Array(GAP_BUCKET_UPPER_BOUNDS.length + 1);
@@ -74,14 +85,37 @@ export function createAttemptResponseObservation(options: {
   let lastContentAt: number | undefined;
   let gapCount = 0;
   let overflowMax = 0;
+  const sends: SendResponseObservation[] = [];
+  let responseSendIndex: number | undefined;
+  let explicitResponse = false;
+  let contentObserved = false;
+  let sendsFinished = false;
+  let parentContext = options.parentContext;
+  const selectContentSource = (content = false) => {
+    if (explicitResponse) return;
+    let eligible = sends.filter((send) => send.isContentSource());
+    // A decoder may have queued content before a body failure became visible.
+    // Content still identifies its sole response; failed earlier retries do not
+    // compete with a viable response that actually produced the current output.
+    if (content && eligible.length === 0) eligible = sends.filter((send) => send.isContentSource(true));
+    responseSendIndex = eligible.length === 1 ? eligible[0]!.index : undefined;
+    if (content && responseSendIndex !== undefined) sends[responseSendIndex]?.observeContent();
+  };
 
   const elapsed = (at: number) => Math.round(Math.max(0, at - options.startedAt));
 
   return {
+    get parentContext() {
+      return parentContext;
+    },
+    bindParentContext(context) {
+      parentContext ??= context;
+    },
     markTransportUnavailable() {
       if (responseCount === 0) transportObservation = 'unavailable';
     },
     observeFetchStart(target) {
+      if (sendsFinished) return;
       sendCount++;
       if (target !== undefined && !endpointAmbiguous) {
         if (endpoint === undefined) endpoint = target;
@@ -91,6 +125,24 @@ export function createAttemptResponseObservation(options: {
         }
       }
       if (transportObservation === 'unavailable') transportObservation = undefined;
+      const send = createSendResponseObservation(sendCount - 1);
+      sends.push(send);
+      return send;
+    },
+    selectResponse(response) {
+      explicitResponse = true;
+      const send = observedResponseSend(response);
+      responseSendIndex = send !== undefined && sends.includes(send) ? send.index : undefined;
+    },
+    finishSends(succeeded = false) {
+      if (sendsFinished) return;
+      sendsFinished = true;
+      if (contentObserved || succeeded) selectContentSource();
+      for (const send of sends) {
+        if (send.index === responseSendIndex) send.select();
+        send.finish();
+      }
+      sends.length = 0;
     },
     observeResponse(response, { controlledStream }) {
       responseCount++;
@@ -121,6 +173,8 @@ export function createAttemptResponseObservation(options: {
       }
     },
     observeContent(at = now()) {
+      contentObserved = true;
+      selectContentSource(true);
       firstContentMs ??= elapsed(at);
       if (lastContentAt !== undefined) {
         const gap = Math.max(0, at - lastContentAt);
@@ -147,6 +201,7 @@ export function createAttemptResponseObservation(options: {
         ...(raw && maxSseFramesPerRead !== undefined ? { maxSseFramesPerRead } : {}),
         ...(raw && contentEncoding !== undefined ? { contentEncoding } : {}),
         ...(sendCount === 0 ? {} : { httpSends: sendCount }),
+        ...(responseSendIndex === undefined ? {} : { responseSendIndex }),
         ...(endpoint === undefined ? {} : endpoint),
       };
     },
@@ -163,23 +218,6 @@ export function currentAttemptResponseObservation(): AttemptResponseObservation 
 
 function isSse(response: Response): boolean {
   return response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() === 'text/event-stream';
-}
-
-function normalizeContentEncoding(value: string | null): ContentEncoding {
-  const encodings = (value ?? '')
-    .split(',')
-    .map((encoding) => encoding.trim().toLowerCase())
-    .filter(Boolean);
-  if (encodings.length === 0) return 'identity';
-  if (encodings.length > 1) return 'multiple';
-  const encoding = encodings[0];
-  return encoding === 'identity' ||
-    encoding === 'gzip' ||
-    encoding === 'deflate' ||
-    encoding === 'br' ||
-    encoding === 'zstd'
-    ? encoding
-    : 'other';
 }
 
 function gapBucket(gap: number): number {

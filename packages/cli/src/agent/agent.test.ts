@@ -215,6 +215,28 @@ function commandFixture(
         preservedPaths: [],
       }),
     },
+    claudeCode: {
+      detected: () => true,
+      configure: async () => {
+        throw new Error('claude-code stub not configured');
+      },
+      plan: async () => ({ configPath: '/tmp/claude/settings.json', keyChoices: [] }),
+      list: async () => ({
+        target: 'claude-code',
+        integration: 'static-config',
+        configPath: '/tmp/claude/settings.json',
+        status: 'absent',
+        connection: 'not_checked',
+        changedPaths: [],
+      }),
+      remove: async () => ({
+        target: 'claude-code',
+        integration: 'static-config',
+        configPath: '/tmp/claude/settings.json',
+        status: 'absent',
+        preservedPaths: [],
+      }),
+    },
     grok: {
       configure: grokConfigure,
       inspect: grokInspect,

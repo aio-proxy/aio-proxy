@@ -9,6 +9,7 @@ import {
   type GrokAgentListTargetResult,
   type PluginAgentListTargetResult,
 } from './agent';
+import type { ClaudeCodeListResult } from './claude-code';
 import type { CodexListResult } from './codex';
 import type { AgentPluginLocation } from './hosts';
 import type { LocalIntegrationStatus } from './managed-installation';
@@ -178,6 +179,19 @@ export async function agentList(
       changedPaths: [],
     };
   }
+  let claudeCode: ClaudeCodeListResult;
+  try {
+    claudeCode = await resolved.claudeCode.list(options.check === true, configuredEndpoint);
+  } catch {
+    claudeCode = {
+      target: 'claude-code',
+      integration: 'static-config',
+      configPath: '',
+      status: 'conflict',
+      connection: 'not_checked',
+      changedPaths: [],
+    };
+  }
   const targets: AgentListTargetResult[] = [];
   for (const target of PLUGIN_TARGETS) {
     targets.push(await listPluginTarget(target, configuredEndpoint, resolved));
@@ -185,14 +199,14 @@ export async function agentList(
   targets.push(await listGrokTarget(configuredEndpoint, resolved));
 
   const online = options.check === true || options.authorizations === true;
-  if (!online) return { targets, server: 'not_checked', codex };
+  if (!online) return { targets, server: 'not_checked', codex, claudeCode };
 
-  if (configuredEndpoint === undefined) return { targets, server: 'unreachable', codex };
+  if (configuredEndpoint === undefined) return { targets, server: 'unreachable', codex, claudeCode };
   let snapshot: AgentAdminSnapshot;
   try {
     snapshot = await resolved.readSnapshot(configuredEndpoint);
   } catch {
-    return { targets, server: 'unreachable', codex };
+    return { targets, server: 'unreachable', codex, claudeCode };
   }
 
   return {
@@ -202,5 +216,6 @@ export async function agentList(
     catalogSchemaVersions: snapshot.catalogSchemaVersions,
     ...(options.authorizations === true ? { authorizations: authorizationItems(targets, snapshot, codex) } : {}),
     codex,
+    claudeCode,
   };
 }

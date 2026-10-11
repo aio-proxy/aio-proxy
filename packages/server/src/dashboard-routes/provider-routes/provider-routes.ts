@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { validator } from 'hono/validator';
 
 import { OAuthQuotaCapabilityUnavailableError } from '../../plugin-quota';
+import { isSyncedProvider } from '../../provider-model-sync';
 import type { ServerState } from '../../server-state';
 import { providerPackageQueryValidator, providerPackageStatus } from '../provider-package-metadata';
 import { quotaWindowEstimates } from '../provider-quota-estimates';
@@ -26,16 +27,23 @@ const readEditView = async (state: ServerState, id: string, refreshCatalog: bool
   // Real values on purpose: the editor round-trips this entry straight back
   // through the mutation endpoint, and every masked field it had to restore
   // was a source of Bearer '****' bugs. GET /config and the CLI still mask.
-  const provider = state.currentConfig().providers.find((entry) => entry.id === id);
-  if (provider === undefined) return undefined;
+  const initialProvider = state.currentConfig().providers.find((entry) => entry.id === id);
+  if (initialProvider === undefined) return undefined;
   // The stored catalog is all this view can read, so the editor's reload button asks for the
   // rediscovery here rather than redrawing the same rows until the plugin's TTL expires.
-  const refreshed = provider.kind === 'oauth' && refreshCatalog ? await state.refreshProviderCatalog(id) : undefined;
+  const refreshed =
+    refreshCatalog && (initialProvider.kind === 'oauth' || isSyncedProvider(initialProvider))
+      ? await state.refreshProviderCatalog(id)
+      : undefined;
+  const provider = state.currentConfig().providers.find((entry) => entry.id === id);
+  if (provider === undefined) return undefined;
   const oauth = provider.kind === 'oauth' ? state.oauthProviderEditView(id) : undefined;
+  const sync = state.syncedProviderEditView(id);
   const routing = await state.modelRouting.providerNumberViews(id);
   return {
     provider,
     ...(oauth === undefined ? {} : { oauth }),
+    ...(sync === undefined ? {} : { sync }),
     ...(routing === undefined ? {} : { routing }),
     // A boolean, not the scheduler's outcome: `'failed'` (discovery refused) and `'unknown'` (no
     // catalog job, i.e. account preparation failed) are both "the models below are still the old

@@ -5,12 +5,10 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/aio-proxy/aio-proxy/desktop/internal/client/health"
@@ -55,7 +53,7 @@ func NewSystemHost(paths install.Paths, bundle string) (*SystemHost, bool) {
 	if !exists(target) {
 		return nil, false
 	}
-	return &SystemHost{Exec: target, DesktopExec: paths.Symlink, UID: uint32(os.Getuid())}, true
+	return &SystemHost{Exec: target, DesktopExec: paths.Symlink, UID: currentUID()}, true
 }
 
 // exists follows symlinks, so a dangling symlink does not count.
@@ -69,6 +67,7 @@ func exists(path string) bool {
 // restart` think it runs inside the launchd job. home ("" for none) is the plist's AIO_PROXY_HOME.
 func (h *SystemHost) CLI(args []string, home string) *exec.Cmd {
 	cmd := exec.Command(h.Exec, args...)
+	prepareCommand(cmd)
 	env := make([]string, 0, len(os.Environ())+2)
 	for _, kv := range os.Environ() {
 		if !controlled(kv) {
@@ -123,19 +122,13 @@ func (h *SystemHost) Mutate(mutation policy.Mutation, home string) error {
 		_, err := check(h.CLI([]string{"service", mutation.Verb}, home), ServiceTimeout, "service "+mutation.Verb)
 		return err
 	case policy.MutationKickstart:
-		cmd := exec.Command("/bin/launchctl", "kickstart", "-k", fmt.Sprintf("gui/%d/%s", h.UID, LaunchdLabel))
-		_, err := check(cmd, ServiceTimeout, "launchctl kickstart -k")
-		return err
+		return h.kickstart(home)
 	default:
 		return fmt.Errorf("unknown mutation %v", mutation)
 	}
 }
 
-func (h *SystemHost) PidAlive(pid uint32) bool {
-	// Signal 0 only checks existence; EPERM means it exists under another user.
-	err := syscall.Kill(int(pid), 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
-}
+func (h *SystemHost) PidAlive(pid uint32) bool { return pidAlive(pid) }
 
 func (h *SystemHost) HealthVersion(controlURL string) (string, bool) {
 	report, ok := health.Check(context.Background(), controlURL)

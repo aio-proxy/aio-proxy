@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useReducer, useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
+import { UsageCallerSelect } from '@/components/usage-caller-select';
 import { queryKeys } from '@/lib/query-keys';
 
 import { TracesEvents } from '../../components/traces-events';
@@ -116,6 +117,12 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
   return (
     <PageContainer
       title={m['dashboard.traces.title']()}
+      extra={
+        <UsageCallerSelect
+          value={search.callerId}
+          onChange={(callerId) => onSearchChange(withTraceFilters(search, { callerId }))}
+        />
+      }
       breadcrumbs={[{ label: m['dashboard.menus.observability']() }, { label: m['dashboard.traces.title']() }]}
       classNames={{
         root: cn('flex flex-col overflow-hidden'),

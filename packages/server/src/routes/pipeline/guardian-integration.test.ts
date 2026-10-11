@@ -25,13 +25,12 @@ const { createOpenAIChatGPTPlugin, englishPresentationText } =
   await import('../../../../plugins/openai-chatgpt/src/plugin');
 
 const sentinel = 'GUARDIAN_SENTINEL_7fbc4e';
-const rationale = 'The action poses critical risk under the supplied policy.';
+const rationale = 'The supplied Guardian policy assessment denies this action.';
 function answer(deny = false) {
   const selected: Record<string, string> = {
     risk_level: deny ? 'critical' : 'low',
     user_authorization: 'unknown',
     outcome: deny ? 'deny' : 'allow',
-    reason: deny ? 'critical_risk' : 'low_risk',
   };
   return {
     id: sentinel,

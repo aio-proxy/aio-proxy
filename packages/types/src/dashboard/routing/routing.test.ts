@@ -75,10 +75,19 @@ const model = {
 describe('dashboard routing contracts', () => {
   test('parses a complete routing models response', () => {
     const response = schema('DashboardRoutingModelsResponseSchema');
-    const value = { writable: true, models: [model] };
+    const value = { writable: true, selection: 'weighted', models: [model] };
 
     expect(response.parse(value)).toEqual(value);
+    expect(response.safeParse({ writable: true, models: [model] }).success).toBe(false);
     expect(schema('DashboardRoutingNumberSchema').parse(inheritedNumber)).toEqual(inheritedNumber);
+  });
+
+  test('a selection mutation names exactly one known policy', () => {
+    const mutation = schema('DashboardRoutingSelectionMutationSchema');
+    expect(mutation.parse({ selection: 'quota-reset' })).toEqual({ selection: 'quota-reset' });
+    expect(mutation.safeParse({}).success).toBe(false);
+    expect(mutation.safeParse({ selection: 'soonest' }).success).toBe(false);
+    expect(mutation.safeParse({ selection: 'weighted', extra: true }).success).toBe(false);
   });
 
   test('normalizes mutation overrides and requires unique baseline ids', () => {
@@ -127,15 +136,23 @@ describe('dashboard routing contracts', () => {
     const response = schema('DashboardRoutingModelsResponseSchema');
     const { catalog: _catalog, ...withoutCatalog } = model;
 
-    expect(response.parse({ writable: true, models: [withoutCatalog] })).toEqual({
+    expect(response.parse({ writable: true, selection: 'weighted', models: [withoutCatalog] })).toEqual({
       writable: true,
+      selection: 'weighted',
       models: [withoutCatalog],
     });
     expect(
-      response.safeParse({ writable: true, models: [{ ...model, catalog: { releaseDate: '2026-06' } }] }).success,
+      response.safeParse({
+        writable: true,
+        selection: 'weighted',
+        models: [{ ...model, catalog: { releaseDate: '2026-06' } }],
+      }).success,
     ).toBe(false);
-    expect(response.parse({ writable: true, models: [{ ...model, catalog: { lab: 'openai' } }] })).toEqual({
+    expect(
+      response.parse({ writable: true, selection: 'weighted', models: [{ ...model, catalog: { lab: 'openai' } }] }),
+    ).toEqual({
       writable: true,
+      selection: 'weighted',
       models: [{ ...model, catalog: { lab: 'openai' } }],
     });
   });

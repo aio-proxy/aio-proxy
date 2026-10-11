@@ -60,6 +60,10 @@ function quotaItems(payload: MuseCodeKeyResponse): readonly OAuthQuotaItem[] {
   return items;
 }
 
+/**
+ * Both subscription windows are account-wide: once either is spent Muse Code refuses every model
+ * until it resets, so each is scoped to the whole account for routing.
+ */
 function usageItem(value: unknown, kind: 'window' | 'weekly'): OAuthQuotaItem | undefined {
   if (!isPlainObject(value)) return undefined;
   const percent = usedPercent(Reflect.get(value, 'used_percent'));
@@ -74,6 +78,7 @@ function usageItem(value: unknown, kind: 'window' | 'weekly'): OAuthQuotaItem | 
       // The name says a week and the upstream reports no duration for this one, so it is the length.
       windowMinutes: 7 * 24 * 60,
       ...(resets === undefined ? {} : { resetsAt: resets }),
+      scope: 'account',
     };
   }
   const { id, displayName, windowMinutes } = windowIdentity(Reflect.get(value, 'window_duration_mins'));
@@ -83,6 +88,7 @@ function usageItem(value: unknown, kind: 'window' | 'weekly'): OAuthQuotaItem | 
     remainingRatio,
     ...(windowMinutes === undefined ? {} : { windowMinutes }),
     ...(resets === undefined ? {} : { resetsAt: resets }),
+    scope: 'account',
   };
 }
 

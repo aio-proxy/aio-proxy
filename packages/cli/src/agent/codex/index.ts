@@ -17,3 +17,8 @@ export {
 } from './dashboard-setup';
 export { resolveCodexExecutable } from './codex';
 export { restoreMigrationResult } from './runtime';
+// The static-config credential rule (placeholder without proxy keys, an explicit choice with them) is
+// shared with the other static-config targets.
+export { CredentialError, inspectProxyKeys, probeProxyApiKey } from './credentials';
+export { createCredentialDeps } from './runtime';
+export type { KeyChoice, KeySelection, KeySnapshot } from './contracts';

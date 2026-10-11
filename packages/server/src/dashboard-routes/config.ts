@@ -51,7 +51,7 @@ export const createDashboardRoutes = (
       const hit = await lookupCachedModel(id);
       return context.json(hit === undefined ? { slug: null, metadata: null } : hit);
     })
-    .get('/oauth/capabilities', (context) => context.json({ capabilities: state.oauthCapabilities() }))
+    .get('/oauth/capabilities', async (context) => context.json({ capabilities: await state.oauthCapabilities() }))
     .route('/oauth', createDashboardOAuthLoginRoutes(state))
     .route('/', createDashboardProviderReadRoutes(state))
     .route('/', createDashboardProviderDraftRoutes(state))

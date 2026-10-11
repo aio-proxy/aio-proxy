@@ -1,5 +1,5 @@
 import type { UpgradeTarget } from './constants';
-import { interpreterSafePath } from './methods';
+import { interpreterSafePath, spawnableCommand } from './methods';
 import {
   AgentPostUpgradeItemResultsSchema,
   type AgentPostUpgradeItemResult,
@@ -41,8 +41,11 @@ async function collectChild(
 
 export async function resolveNewAgentBinary(target: UpgradeTarget, installedVersion: string): Promise<string> {
   const binary = target.method === 'binary' ? target.path : target.bin;
+  // A package manager's launcher on Windows is a `.cmd` shim, which only cmd.exe can run.
+  const version = spawnableCommand([binary, '--version']);
   const checked = await collectChild(
-    Bun.spawn([binary, '--version'], {
+    Bun.spawn(version.cmd, {
+      windowsVerbatimArguments: version.windowsVerbatimArguments,
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
@@ -70,7 +73,9 @@ export async function invokeAgentPostUpgrade(
   payload: AgentPostUpgradePayload,
   options: { readonly timeoutMs?: number } = {},
 ): Promise<readonly AgentPostUpgradeItemResult[]> {
-  const child = Bun.spawn([binary, '__agent-post-upgrade'], {
+  const spawnable = spawnableCommand([binary, '__agent-post-upgrade']);
+  const child = Bun.spawn(spawnable.cmd, {
+    windowsVerbatimArguments: spawnable.windowsVerbatimArguments,
     stdin: 'pipe',
     stdout: 'pipe',
     stderr: 'pipe',

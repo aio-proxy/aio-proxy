@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { OpenAIVideosInvalidRequestError } from '../../error';
-import { UnsupportedContentEncodingError } from '../../protocol/request';
+import { UnsupportedContentEncodingError } from '../../protocol/request/index';
 import { multipartSpoolPath } from '../multipart';
 import {
   isJsonRequest,

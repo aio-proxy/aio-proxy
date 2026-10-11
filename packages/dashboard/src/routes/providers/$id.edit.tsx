@@ -89,6 +89,7 @@ const EditProviderPage: React.FC = () => {
       kind={provider.kind}
       providerId={id}
       initial={initial}
+      sync={data.sync}
       sessionId={session}
       onSessionIdChange={onSessionIdChange}
     />

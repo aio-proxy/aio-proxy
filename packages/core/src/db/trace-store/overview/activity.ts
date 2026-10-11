@@ -11,15 +11,15 @@ type RawActivityRow = { readonly date: string; readonly modelId: string; readonl
 
 export function overviewDashboardActivity(
   db: BunSQLiteDatabase,
-  options: { readonly now?: Date } = {},
+  options: { readonly now?: Date; readonly callerId?: string } = {},
 ): DashboardOverviewActivityResponse {
   const { from, to } = activityRange(options.now ?? new Date());
   const tokensByDate = new Map<string, Map<string, bigint>>();
   for (const row of all<RawActivityRow>(
     db,
-    `select local_day as date, model_dimension as modelId, cast(total_tokens as text) as totalTokens from usage_daily
-      where local_day >= ? and local_day <= ?`,
-    [from, to],
+    `select local_day as date, model_dimension as modelId, cast(total_tokens as text) as totalTokens from ${options.callerId === undefined ? 'usage_daily' : 'usage_caller_daily'}
+      where local_day >= ? and local_day <= ? ${options.callerId === undefined ? '' : 'and caller_id = ?'}`,
+    [from, to, ...(options.callerId === undefined ? [] : [options.callerId])],
   )) {
     const tokensByModel = tokensByDate.get(row.date) ?? new Map<string, bigint>();
     tokensByModel.set(row.modelId, (tokensByModel.get(row.modelId) ?? 0n) + parseSqliteInteger(row.totalTokens));

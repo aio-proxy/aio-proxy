@@ -14,6 +14,11 @@ export const traceSpanName = {
 // OTel attribute keys copied verbatim from `attributeName` in the same module.
 export const traceAttribute = {
   attemptIndex: 'aio_proxy.attempt.index',
+  sendIndex: 'aio_proxy.upstream.send_index',
+  httpSends: 'aio_proxy.attempt.http_sends',
+  responseSendIndex: 'aio_proxy.attempt.response_send_index',
+  firstByteMs: 'aio_proxy.upstream.first_byte_ms',
+  firstSseEventMs: 'aio_proxy.upstream.first_sse_event_ms',
   requestId: 'aio_proxy.request.id',
   inboundProtocol: 'aio_proxy.protocol.inbound',
   sessionSource: 'aio_proxy.session.source',
@@ -47,4 +52,6 @@ export const traceAttribute = {
 // 唯一的例外是 token-count 的「跳过的候选」span —— 它也带 index，但它是被略过的候选而不是
 // 一次尝试，靠名字排掉。
 export const isAttemptSpan = (span: DashboardTraceSpan): boolean =>
-  span.attributes[traceAttribute.attemptIndex] !== undefined && span.name !== traceSpanName.candidateSkipped;
+  span.attributes[traceAttribute.attemptIndex] !== undefined &&
+  span.attributes[traceAttribute.sendIndex] === undefined &&
+  span.name !== traceSpanName.candidateSkipped;

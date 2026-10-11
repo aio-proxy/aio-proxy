@@ -1,10 +1,13 @@
 import { timingSafeEqual } from 'node:crypto';
 
+import type { UsageCaller } from '@aio-proxy/types';
 import type { Context, MiddlewareHandler } from 'hono';
 
 import { ANONYMOUS_CALLER, type CallerPrincipalEnv, staticKeyCallerPrincipal } from '../../caller-principal';
+import { withUsageCaller } from '../../usage-caller-context';
 
-type ApiKeyEntry = { readonly key: string };
+export type ApiKeyEntry = { readonly key: string; readonly id?: string; readonly label?: string };
+export type UsageCallerResolver = (entry: ApiKeyEntry) => UsageCaller;
 
 export const requireApiKey =
   (apiKeys: () => readonly ApiKeyEntry[]): MiddlewareHandler =>
@@ -22,6 +25,7 @@ export async function authenticateStaticOrAnonymous(
   next: () => Promise<void>,
   configuredKeys: readonly ApiKeyEntry[],
   enforce: boolean,
+  resolveCaller?: UsageCallerResolver,
 ): Promise<Response | void> {
   const candidates = [
     bearerToken(context.req.header('authorization')),
@@ -49,13 +53,15 @@ export async function authenticateStaticOrAnonymous(
     // routes registered after it, and a route registered ahead of it would otherwise read
     // as this same anonymous principal on a key-protected proxy.
     context.set('callerPrincipal', ANONYMOUS_CALLER);
-    await next();
+    await withUsageCaller({ id: 'anonymous', label: '', kind: 'anonymous' }, next);
     return;
   }
 
   context.set('callerPrincipal', staticKeyCallerPrincipal(matched.key));
+  const caller = resolveCaller?.(matched);
   stripCallerCredentials(context);
-  await next();
+  if (caller === undefined) await next();
+  else await withUsageCaller(caller, next);
 }
 
 export function stripCallerCredentials(context: Context): void {

@@ -35,6 +35,9 @@ export const traceSpan = sqliteTable(
     errorType: text('error_type'),
     errorCode: text('error_code'),
 
+    callerId: text('caller_id'),
+    callerLabel: text('caller_label'),
+    callerKind: text('caller_kind'),
     requestId: text('request_id').unique(),
     sessionSource: text('session_source'),
     sessionId: text('session_id'),
@@ -75,6 +78,7 @@ export const traceSpan = sqliteTable(
       foreignColumns: [table.traceId, table.spanId],
     }).onDelete('cascade'),
     uniqueIndex('trace_span_one_root_idx').on(table.traceId).where(sql.raw('parent_span_id IS NULL')),
+    index('trace_span_caller_ended_idx').on(table.callerId, table.parentSpanId, table.endedAt),
     index('trace_span_root_started_idx').on(table.parentSpanId, table.startedAt),
     // Keep the parent equality so SQLite prefers this range lookup over the Provider index.
     index('trace_span_root_ended_idx').on(table.parentSpanId, table.endedAt).where(sql.raw('parent_span_id IS NULL')),

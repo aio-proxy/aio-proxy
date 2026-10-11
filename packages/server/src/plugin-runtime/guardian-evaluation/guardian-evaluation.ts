@@ -312,7 +312,7 @@ export async function dispatchPrivateEvaluation(input: {
         );
         const completion = source.usageCapture.evaluation({ ...usageOptions, usage: result.usage });
         try {
-          const value = typeSafeSystemOneAdapter.evaluationJson(result, { responseModelId: body.model });
+          const value = typeSafeSystemOneAdapter.evaluationJson(result, { responseModelId: body.model }, request);
           validateResponse(value);
           signal.throwIfAborted();
           return value;

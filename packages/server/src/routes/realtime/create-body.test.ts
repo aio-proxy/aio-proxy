@@ -489,7 +489,7 @@ test('a multipart session too deeply nested to re-serialize is 400, not a reject
   // `encodeJson` guard under test from the parse branch that precedes it.
   expect(body.error.message).toBe('The multipart realtime offer could not be parsed.');
   expect(body.error.message).not.toContain('v=0');
-});
+}, 30_000); // the million-deep payload takes 1-5.5s on CI, straddling bun's 5s default
 
 test('withUpstreamModel returns the body unchanged when the payload cannot be re-serialized', async () => {
   const read = await readRealtimeCreateBody(jsonRequest(undefined, deeplyNestedJson()));
@@ -499,7 +499,7 @@ test('withUpstreamModel returns the body unchanged when the payload cannot be re
   const rewritten = withUpstreamModel(read, 'gpt-live-1-codex');
 
   expect(rewritten).toBe(read);
-});
+}, 30_000); // the million-deep payload takes 1-5.5s on CI, straddling bun's 5s default
 
 /** Deep enough that `JSON.parse` accepts it but `JSON.stringify` overflows the stack. The
  *  self-check separates the two throws: a future engine that also failed the parse would

@@ -1,3 +1,5 @@
+//go:build darwin
+
 // Package images preserves Cocoa's remote-icon transport and fallback bitmap codecs. It is separate
 // from the bearer-authenticated, proxy-free loopback transport.
 package images

@@ -18,7 +18,7 @@ import {
 import { defineProtocolAdapter } from '../adapter';
 import { geminiGenerateContentErrors } from '../errors';
 import { clampSdkReasoning, normalizeEffort, reasoningSettings } from '../reasoning-effort/index';
-import { readJsonRequest, readRequestText } from '../request';
+import { readJsonRequest, readRequestText } from '../request/index';
 import type { SessionCandidate } from '../session';
 import { functionToolSet } from '../tools';
 

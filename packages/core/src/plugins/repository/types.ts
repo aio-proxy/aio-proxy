@@ -15,6 +15,7 @@ export type StoredAccount = {
   readonly runtimeRevision: number;
   readonly label?: string;
   readonly expiresAt?: number;
+  readonly localSignIn?: { readonly consumed?: string };
   readonly updatedAt: number;
 };
 
@@ -62,6 +63,7 @@ export type AccountWrite = {
   readonly credential: unknown;
   readonly label?: string;
   readonly expiresAt?: number;
+  readonly localSignIn?: { readonly consumed?: string };
   readonly catalog:
     | { readonly kind: 'replace'; readonly value: CatalogWrite }
     | { readonly kind: 'preserve'; readonly diagnostic: Diagnostic }
@@ -123,6 +125,6 @@ export type PluginRepository = {
     expectedRevision: number,
     leaseOwner: string,
     credential: unknown,
-    metadata?: { readonly label?: string; readonly expiresAt?: number },
+    metadata?: { readonly label?: string; readonly expiresAt?: number; readonly localSignInConsumed?: string },
   ) => StoredAccount | null;
 };

@@ -3,19 +3,26 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileS
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { CliExit } from '../exit';
+import { CliExit, EXIT } from '../exit';
 import { resolveStableManagedExec } from '../upgrade/detect';
 import {
   renderLaunchdPlist,
   renderSystemdUnit,
   launchdDomain,
   launchdJobTarget,
+  managedServicePath,
   readDesktopOwnedUnit,
   resolveExec,
+  resolveUnitOptions,
   serviceRestart,
+  serviceInstall,
   serviceStart,
+  serviceStop,
+  serviceUninstall,
   writeManagedUnit,
 } from './service';
+import { parseSystemdUnit } from './systemd';
+import { uninstallMarkerPath } from './uninstall-marker';
 import { LAUNCHD_EXEC_WRAPPER } from './unit-templates';
 
 // A stand-in for launchd: `print` reports the job loaded after bootstrap or kickstart and unloaded
@@ -70,7 +77,7 @@ for (const platform of ['linux', 'darwin'] as const) {
       });
       expect(launchd.calls).toEqual(
         platform === 'linux'
-          ? ['install', 'systemctl --user start aio-proxy.service']
+          ? ['install', 'systemctl --user enable --now aio-proxy.service']
           : [
               'install',
               `launchctl enable ${launchdJobTarget()}`,
@@ -105,12 +112,25 @@ for (const platform of ['linux', 'darwin'] as const) {
   }
 }
 
-test('serviceStart on linux starts an installed service through its manager', async () => {
+// On a Windows host this would reach the real Task Scheduler and LOCALAPPDATA.
+test.skipIf(process.platform === 'win32')(
+  "serviceStart on Windows never installs before consulting the task, even without a spec at today's path",
+  async () => {
+    const install = mock(async () => {});
+    // The task query itself fails off Windows; the point is that install never ran first.
+    await serviceStart({ platform: 'win32', unitInstalled: () => false, install, runManager: async () => 1 }).catch(
+      () => undefined,
+    );
+    expect(install).not.toHaveBeenCalled();
+  },
+);
+
+test('serviceStart on linux enables an installed service through its manager', async () => {
   const runManager = mock(async () => 0);
   const install = mock(async () => {});
   await serviceStart({ platform: 'linux', unitInstalled: () => true, runManager, install });
   expect(install).not.toHaveBeenCalled();
-  expect(runManager).toHaveBeenCalledWith(['systemctl', '--user', 'start', 'aio-proxy.service']);
+  expect(runManager).toHaveBeenCalledWith(['systemctl', '--user', 'enable', '--now', 'aio-proxy.service']);
 });
 
 test('serviceStart bootstraps an unloaded launchd job after clearing the override a stop leaves', async () => {
@@ -399,26 +419,34 @@ test('rewriting an older launchd unit restores user Agent directories from a min
   expect(contents).toContain(join(homedir(), '.npm-global/bin'));
 });
 
-test('resolveStableManagedExec maps a Cellar path to the stable Homebrew launcher', () => {
-  expect(resolveStableManagedExec('/opt/homebrew/Cellar/aio-proxy/0.3.0/bin/aio-proxy')).toBe(
-    '/opt/homebrew/bin/aio-proxy',
-  );
-  expect(resolveStableManagedExec('/home/linuxbrew/.linuxbrew/Cellar/aio-proxy/1.10.0/bin/aio-proxy')).toBe(
-    '/home/linuxbrew/.linuxbrew/bin/aio-proxy',
-  );
-});
+// POSIX-only: Homebrew Cellar layout with forward-slash prefixes.
+test.skipIf(process.platform === 'win32')(
+  'resolveStableManagedExec maps a Cellar path to the stable Homebrew launcher',
+  () => {
+    expect(resolveStableManagedExec('/opt/homebrew/Cellar/aio-proxy/0.3.0/bin/aio-proxy')).toBe(
+      '/opt/homebrew/bin/aio-proxy',
+    );
+    expect(resolveStableManagedExec('/home/linuxbrew/.linuxbrew/Cellar/aio-proxy/1.10.0/bin/aio-proxy')).toBe(
+      '/home/linuxbrew/.linuxbrew/bin/aio-proxy',
+    );
+  },
+);
 
-test('resolveExec maps a Cellar execPath to the stable Homebrew launcher when PATH is empty', () => {
-  const versioned = '/opt/homebrew/Cellar/aio-proxy/0.3.0/bin/aio-proxy';
-  expect(
-    resolveExec(
-      () => null,
-      versioned,
-      (p) => p,
-      () => true,
-    ),
-  ).toBe('/opt/homebrew/bin/aio-proxy');
-});
+// POSIX-only: Homebrew Cellar layout with forward-slash prefixes.
+test.skipIf(process.platform === 'win32')(
+  'resolveExec maps a Cellar execPath to the stable Homebrew launcher when PATH is empty',
+  () => {
+    const versioned = '/opt/homebrew/Cellar/aio-proxy/0.3.0/bin/aio-proxy';
+    expect(
+      resolveExec(
+        () => null,
+        versioned,
+        (p) => p,
+        () => true,
+      ),
+    ).toBe('/opt/homebrew/bin/aio-proxy');
+  },
+);
 
 test('writeManagedUnit persists npm when ExecStart is the native cli-* binary and PATH has the shim', async () => {
   const prefix = join(tmpdir(), `aio-npm-unit-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -539,35 +567,39 @@ test('writeManagedUnit does not persist npm for a standalone binary that only si
   expect(contents).not.toContain('AIO_PROXY_UPGRADE_METHOD');
 });
 
-test('writeManagedUnit persists npm from the PATH shim when the native cli-* prefix has no manager', async () => {
-  const nativeRoot = join(tmpdir(), `aio-native-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const pathRoot = join(tmpdir(), `aio-path-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const native = join(nativeRoot, 'node_modules', '@aio-proxy', 'cli-linux-x64', 'bin', 'aio-proxy');
-  const shim = join(pathRoot, 'bin', 'aio-proxy');
-  mkdirSync(join(native, '..'), { recursive: true });
-  mkdirSync(join(pathRoot, 'bin'), { recursive: true });
-  writeFileSync(native, '#!/bin/sh\n');
-  writeFileSync(shim, '#!/bin/sh\n');
-  writeFileSync(join(pathRoot, 'bin', 'npm'), '#!/bin/sh\n');
-  chmodSync(native, 0o755);
-  chmodSync(shim, 0o755);
-  chmodSync(join(pathRoot, 'bin', 'npm'), 0o755);
+// POSIX-only: extensionless shebang shims and a `:`-delimited PATH.
+test.skipIf(process.platform === 'win32')(
+  'writeManagedUnit persists npm from the PATH shim when the native cli-* prefix has no manager',
+  async () => {
+    const nativeRoot = join(tmpdir(), `aio-native-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const pathRoot = join(tmpdir(), `aio-path-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const native = join(nativeRoot, 'node_modules', '@aio-proxy', 'cli-linux-x64', 'bin', 'aio-proxy');
+    const shim = join(pathRoot, 'bin', 'aio-proxy');
+    mkdirSync(join(native, '..'), { recursive: true });
+    mkdirSync(join(pathRoot, 'bin'), { recursive: true });
+    writeFileSync(native, '#!/bin/sh\n');
+    writeFileSync(shim, '#!/bin/sh\n');
+    writeFileSync(join(pathRoot, 'bin', 'npm'), '#!/bin/sh\n');
+    chmodSync(native, 0o755);
+    chmodSync(shim, 0o755);
+    chmodSync(join(pathRoot, 'bin', 'npm'), 0o755);
 
-  const plistPath = join(pathRoot, 'LaunchAgents', 'com.aio-proxy.agent.plist');
-  const previous = process.env['PATH'];
-  process.env['PATH'] = `${join(pathRoot, 'bin')}:/usr/bin:/bin`;
-  try {
-    await writeManagedUnit('darwin', native, plistPath);
-  } finally {
-    if (previous === undefined) delete process.env['PATH'];
-    else process.env['PATH'] = previous;
-  }
+    const plistPath = join(pathRoot, 'LaunchAgents', 'com.aio-proxy.agent.plist');
+    const previous = process.env['PATH'];
+    process.env['PATH'] = `${join(pathRoot, 'bin')}:/usr/bin:/bin`;
+    try {
+      await writeManagedUnit('darwin', native, plistPath);
+    } finally {
+      if (previous === undefined) delete process.env['PATH'];
+      else process.env['PATH'] = previous;
+    }
 
-  const contents = readFileSync(plistPath, 'utf8');
-  expect(contents).toContain('<key>AIO_PROXY_UPGRADE_METHOD</key>');
-  expect(contents).toContain('<string>npm</string>');
-  expect(contents).toContain(`<string>${native}</string>`);
-});
+    const contents = readFileSync(plistPath, 'utf8');
+    expect(contents).toContain('<key>AIO_PROXY_UPGRADE_METHOD</key>');
+    expect(contents).toContain('<string>npm</string>');
+    expect(contents).toContain(`<string>${native}</string>`);
+  },
+);
 
 test('systemd and launchd templates persist AIO_PROXY_UPGRADE_METHOD when known', () => {
   const unit = renderSystemdUnit({
@@ -723,21 +755,29 @@ test('serviceRestart restarts the old plist when the staged one cannot replace i
 const runWrapper = (exec: string) =>
   Bun.spawnSync(['/bin/sh', '-c', LAUNCHD_EXEC_WRAPPER, exec], { stdout: 'ignore', stderr: 'ignore' }).exitCode;
 
-test('the launchd wrapper exits cleanly when its executable is gone, so KeepAlive does not respawn it', () => {
-  expect(runWrapper(join(tmpdir(), 'aio-proxy-missing', 'aio-proxy'))).toBe(0);
-});
+// POSIX-only: executes the launchd /bin/sh wrapper.
+test.skipIf(process.platform === 'win32')(
+  'the launchd wrapper exits cleanly when its executable is gone, so KeepAlive does not respawn it',
+  () => {
+    expect(runWrapper(join(tmpdir(), 'aio-proxy-missing', 'aio-proxy'))).toBe(0);
+  },
+);
 
-test('the launchd wrapper still reports real failures and remaps only exit 1', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'aio-wrapper-'));
-  const exitsWith = (code: number) => {
-    const path = join(dir, `exit-${code}`);
-    writeFileSync(path, `#!/bin/sh\nexit ${code}\n`);
-    chmodSync(path, 0o755);
-    return path;
-  };
-  expect(runWrapper(exitsWith(3))).toBe(3);
-  expect(runWrapper(exitsWith(1))).toBe(0);
-});
+// POSIX-only: executes the launchd /bin/sh wrapper with shebang scripts.
+test.skipIf(process.platform === 'win32')(
+  'the launchd wrapper still reports real failures and remaps only exit 1',
+  () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aio-wrapper-'));
+    const exitsWith = (code: number) => {
+      const path = join(dir, `exit-${code}`);
+      writeFileSync(path, `#!/bin/sh\nexit ${code}\n`);
+      chmodSync(path, 0o755);
+      return path;
+    };
+    expect(runWrapper(exitsWith(3))).toBe(3);
+    expect(runWrapper(exitsWith(1))).toBe(0);
+  },
+);
 
 test.skipIf(process.platform !== 'darwin')(
   'a desktop-owned unit keeps the symlink path and carries both desktop markers',
@@ -770,3 +810,198 @@ test.skipIf(process.platform !== 'darwin')(
     expect(readDesktopOwnedUnit(join(dir, 'missing.plist'))).toBe(false);
   },
 );
+
+test('managed service PATH uses the platform delimiter and keeps Windows paths', () => {
+  const path = managedServicePath('C:\\Users\\Zoë Chen', 'C:\\Windows\\System32;C:\\Tools', ';');
+  expect(path.split(';').slice(0, 2)).toEqual(['C:\\Windows\\System32', 'C:\\Tools']);
+  expect(path).not.toContain(':/usr/bin');
+});
+
+test('the Windows unit keeps the entries of a `Path` variable split on semicolons', async () => {
+  const unit = await resolveUnitOptions('win32', 'C:\\aio\\aio-proxy.exe', { Path: 'C:\\Windows\\System32;D:\\Tools' });
+  expect(unit.path?.split(';').slice(0, 2)).toEqual(['C:\\Windows\\System32', 'D:\\Tools']);
+});
+
+// Points XDG_CONFIG_HOME at a temp dir so the unit and marker land there; `run` records the manager commands.
+const withLinuxHome = async (
+  body: (
+    home: string,
+    calls: string[][],
+    io: {
+      platform: 'linux';
+      runManager: (cmd: readonly string[]) => Promise<number>;
+      systemdUserProblem: () => Promise<null>;
+    },
+  ) => Promise<void>,
+) => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-linux-'));
+  const previous = process.env['XDG_CONFIG_HOME'];
+  process.env['XDG_CONFIG_HOME'] = home;
+  const calls: string[][] = [];
+  const runManager = async (cmd: readonly string[]) => {
+    calls.push([...cmd]);
+    return 0;
+  };
+  try {
+    await body(home, calls, { platform: 'linux', runManager, systemdUserProblem: async () => null });
+  } finally {
+    if (previous === undefined) delete process.env['XDG_CONFIG_HOME'];
+    else process.env['XDG_CONFIG_HOME'] = previous;
+  }
+};
+
+test('linux stop disables and start enables, so a stop survives a reboot', async () => {
+  await withLinuxHome(async (_home, calls, io) => {
+    await serviceStop(io);
+    expect(calls).toEqual([['systemctl', '--user', 'disable', '--now', 'aio-proxy.service']]);
+    calls.length = 0;
+    await serviceStart({ ...io, unitInstalled: () => true });
+    expect(calls).toContainEqual(['systemctl', '--user', 'enable', '--now', 'aio-proxy.service']);
+  });
+});
+
+test('linux restart rewrites the unit, then enables before restarting', async () => {
+  const calls: string[] = [];
+  await serviceRestart({
+    platform: 'linux',
+    unitInstalled: () => true,
+    writeManagedUnit: async () => {
+      calls.push('write');
+      return '/tmp/unused';
+    },
+    runManager: async (cmd) => {
+      calls.push(cmd.slice(2).join(' '));
+      return 0;
+    },
+  });
+  expect(calls).toEqual(['write', 'enable aio-proxy.service', 'restart aio-proxy.service']);
+});
+
+test('linux uninstall leaves the marker and install clears it', async () => {
+  await withLinuxHome(async (home, calls, io) => {
+    const marker = uninstallMarkerPath('linux', { XDG_CONFIG_HOME: home });
+    await serviceInstall({}, () => {}, { ...io, exec: '/opt/aio-proxy/bin/aio-proxy' });
+    expect(existsSync(join(home, 'systemd', 'user', 'aio-proxy.service'))).toBe(true);
+    await serviceUninstall(() => {}, io);
+    expect(existsSync(marker!)).toBe(true);
+    expect(existsSync(join(home, 'systemd', 'user', 'aio-proxy.service'))).toBe(false);
+    expect(calls).toContainEqual(['systemctl', '--user', 'disable', '--now', 'aio-proxy.service']);
+    await serviceInstall({}, () => {}, { ...io, exec: '/opt/aio-proxy/bin/aio-proxy' });
+    expect(existsSync(marker!)).toBe(false);
+  });
+});
+
+test('linux install without a systemd user manager fails before writing anything', async () => {
+  await withLinuxHome(async (home, calls, io) => {
+    const install = serviceInstall({}, () => {}, {
+      ...io,
+      exec: '/opt/aio-proxy/bin/aio-proxy',
+      systemdUserProblem: async () => 'systemd_user_unavailable',
+    });
+    await expect(install).rejects.toMatchObject({ code: EXIT.unrecoverable });
+    expect(existsSync(join(home, 'systemd', 'user', 'aio-proxy.service'))).toBe(false);
+    expect(calls).toEqual([]);
+  });
+});
+
+test('a linux reinstall the manager rejects puts the previous unit back', async () => {
+  await withLinuxHome(async (home, _calls, io) => {
+    const unit = join(home, 'systemd', 'user', 'aio-proxy.service');
+    await serviceInstall({}, () => {}, { ...io, exec: '/opt/aio-proxy/bin/aio-proxy' });
+    const before = readFileSync(unit, 'utf8');
+    const install = serviceInstall({}, () => {}, {
+      ...io,
+      exec: '/opt/other/bin/aio-proxy',
+      runManager: async (cmd) => {
+        if (cmd.includes('enable')) throw new CliExit(EXIT.transient, 'enable failed');
+        return 0;
+      },
+    });
+    await expect(install).rejects.toBeInstanceOf(CliExit);
+    expect(readFileSync(unit, 'utf8')).toBe(before);
+  });
+});
+
+test('linux uninstall keeps the unit when systemd cannot stop it, and goes on when it is already inactive', async () => {
+  await withLinuxHome(async (home, _calls, io) => {
+    const unit = join(home, 'systemd', 'user', 'aio-proxy.service');
+    await serviceInstall({}, () => {}, { ...io, exec: '/opt/aio-proxy/bin/aio-proxy' });
+    const manager = (activeCode: number) => async (cmd: readonly string[]) =>
+      cmd.includes('disable') ? 1 : cmd.includes('is-active') ? activeCode : 0;
+    await expect(serviceUninstall(() => {}, { ...io, runManager: manager(0) })).rejects.toBeInstanceOf(CliExit);
+    expect(existsSync(unit)).toBe(true);
+    await expect(serviceUninstall(() => {}, { ...io, runManager: manager(1) })).rejects.toBeInstanceOf(CliExit);
+    expect(existsSync(unit)).toBe(true);
+    await serviceUninstall(() => {}, { ...io, runManager: manager(3) });
+    expect(existsSync(unit)).toBe(false);
+  });
+});
+
+test('a linux install the manager rejects leaves no unit behind', async () => {
+  await withLinuxHome(async (home, _calls, io) => {
+    const install = serviceInstall({}, () => {}, {
+      ...io,
+      exec: '/opt/aio-proxy/bin/aio-proxy',
+      runManager: async (cmd) => {
+        if (cmd.includes('enable')) throw new CliExit(EXIT.transient, 'enable failed');
+        return 0;
+      },
+    });
+    await expect(install).rejects.toThrow('enable failed');
+    expect(existsSync(join(home, 'systemd', 'user', 'aio-proxy.service'))).toBe(false);
+  });
+});
+
+test('a systemd unit round-trips paths with quotes, backslashes and percent signs', () => {
+  const exec = '/opt/we ird/"q"\\b/100%/aio-proxy';
+  const unit = renderSystemdUnit({ exec, configPath: '/h/a b/config.jsonc', path: '/usr/bin:/bin' });
+  expect(parseSystemdUnit(unit)).toEqual({
+    exec,
+    env: { AIO_PROXY_HOME: '/h/a b', AIO_PROXY_MANAGED: '1', PATH: '/usr/bin:/bin' },
+  });
+  expect(parseSystemdUnit('[Service]\n')).toEqual({ exec: null, env: {} });
+});
+
+test('a desktop-owned systemd unit carries its own marker and is recognized', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-systemd-owned-'));
+  const link = join(dir, 'aio-proxy-desktop', 'bin', 'aio-proxy');
+  const file = (name: string, unit: string) => {
+    writeFileSync(join(dir, name), unit);
+    return join(dir, name);
+  };
+  const desktop = renderSystemdUnit({ exec: link, configPath: '/h/config.jsonc', desktopExec: link });
+  expect(parseSystemdUnit(desktop)).toMatchObject({ exec: link, env: { AIO_PROXY_DESKTOP_EXEC: link } });
+  expect(readDesktopOwnedUnit(file('desktop.service', desktop), 'linux')).toBe(true);
+  const cli = renderSystemdUnit({ exec: '/usr/bin/aio-proxy', configPath: '/h/config.jsonc' });
+  expect(readDesktopOwnedUnit(file('cli.service', cli), 'linux')).toBe(false);
+  const retargeted = renderSystemdUnit({
+    exec: '/usr/bin/aio-proxy',
+    configPath: '/h/config.jsonc',
+    desktopExec: link,
+  });
+  expect(readDesktopOwnedUnit(file('moved.service', retargeted), 'linux')).toBe(false);
+  expect(readDesktopOwnedUnit(join(dir, 'missing.service'), 'linux')).toBe(false);
+});
+
+test('a desktop-owned Windows spec is recognized by the same rule', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-spec-owned-'));
+  const spec = join(dir, 'service.json');
+  writeFileSync(
+    spec,
+    JSON.stringify({ exec: 'C:\\d\\aio-proxy.exe', env: { AIO_PROXY_DESKTOP_EXEC: 'C:\\d\\aio-proxy.exe' } }),
+  );
+  expect(readDesktopOwnedUnit(spec, 'win32')).toBe(true);
+  writeFileSync(spec, JSON.stringify({ exec: 'C:\\cli.exe', env: { AIO_PROXY_DESKTOP_EXEC: 'C:\\d\\aio-proxy.exe' } }));
+  expect(readDesktopOwnedUnit(spec, 'win32')).toBe(false);
+  writeFileSync(spec, 'not json');
+  expect(readDesktopOwnedUnit(spec, 'win32')).toBe(false);
+});
+
+test('the systemd unit path ignores a relative XDG_CONFIG_HOME, as the XDG spec requires', async () => {
+  const { systemdUnitPath } = await import('./systemd');
+  const home = (await import('node:os')).homedir();
+  expect(systemdUnitPath({ XDG_CONFIG_HOME: 'relative/config' })).toBe(
+    join(home, '.config', 'systemd', 'user', 'aio-proxy.service'),
+  );
+  expect(systemdUnitPath({ XDG_CONFIG_HOME: '/xdg' })).toBe(join('/xdg', 'systemd', 'user', 'aio-proxy.service'));
+});

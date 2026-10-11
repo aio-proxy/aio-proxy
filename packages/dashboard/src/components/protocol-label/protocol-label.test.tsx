@@ -7,7 +7,7 @@ import { PROTOCOL_ORDER, ProtocolLabel } from '@/components/protocol-label';
 test('shows the protocol icon only when enabled', () => {
   const { container, rerender } = render(<ProtocolLabel protocol={ProviderProtocol.OpenAIResponse} />);
 
-  expect(screen.getByText('OpenAI Response')).toBeInTheDocument();
+  expect(screen.getByText('OpenAI Responses')).toBeInTheDocument();
   expect(container.querySelector('img')).toBeNull();
 
   rerender(<ProtocolLabel protocol={ProviderProtocol.OpenAIResponse} showIcon />);

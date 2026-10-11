@@ -20,11 +20,22 @@ const CHATGPT_CODEX_IMAGE_GENERATIONS_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/imag
 const CHATGPT_CODEX_IMAGE_EDITS_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/images/edits` as const;
 const PLACEHOLDER_CREDENTIAL = 'dynamic-credential' as const;
 
+type JsonRequestReader = (request: Request) => Promise<unknown>;
+type ChatGPTRuntimeContext = RuntimeContext<ChatGPTCredential, Record<string, unknown>> & {
+  // The built-in host owns decoding and request-scoped admission; avoid a core dependency here.
+  readonly __aioReadJsonRequest?: JsonRequestReader;
+};
+
 export async function createOpenAIChatGPTRuntime(
-  context: RuntimeContext<ChatGPTCredential, Record<string, unknown>>,
+  context: ChatGPTRuntimeContext,
   pluginOptions?: Partial<ChatGPTPluginOptions>,
 ): Promise<OAuthRuntimeResult> {
-  const dynamicFetch = createOpenAIChatGPTDynamicFetch(context.credentials, context.fetch, pluginOptions);
+  const dynamicFetch = createOpenAIChatGPTDynamicFetch(
+    context.credentials,
+    context.fetch,
+    pluginOptions,
+    context.__aioReadJsonRequest,
+  );
   const openAI = createOpenAI({
     name: 'openai-chatgpt',
     baseURL: CHATGPT_CODEX_BASE_URL,
@@ -64,6 +75,7 @@ export function createOpenAIChatGPTDynamicFetch(
   credentials: CredentialPort<ChatGPTCredential>,
   fetcher: RuntimeFetch = globalThis.fetch,
   pluginOptions?: Partial<ChatGPTPluginOptions>,
+  readJsonRequest: JsonRequestReader = (request) => request.json(),
 ): OpenAIStreamFetch {
   const fetchOpenAIResponses = createOpenAIStreamFetch('openai-response', fetcher, {
     acceptEncoding: 'identity',
@@ -88,7 +100,9 @@ export function createOpenAIChatGPTDynamicFetch(
       (await resolveChatGPTRequestIdentity(pluginOptions, headers.get('user-agent'), fetcher)).userAgent,
     );
     headers.set('session-id', crypto.randomUUID());
-    const body = shouldRewriteResponsesBody(request) ? await rewriteResponsesBody(request, headers) : request.body;
+    const body = shouldRewriteResponsesBody(request)
+      ? await rewriteResponsesBody(request, headers, readJsonRequest)
+      : request.body;
     const url = rewriteCodexUrl(request.url);
     const upstreamInit = {
       method: request.method,
@@ -122,8 +136,12 @@ function shouldRewriteResponsesBody(request: Request): boolean {
   );
 }
 
-async function rewriteResponsesBody(request: Request, headers: Headers): Promise<string> {
-  const value: unknown = await request.json();
+async function rewriteResponsesBody(
+  request: Request,
+  headers: Headers,
+  readJsonRequest: JsonRequestReader,
+): Promise<string> {
+  const value = await readJsonRequest(request);
   if (!isPlainObject(value)) {
     throw new TypeError('ChatGPT Codex Responses request body must be an object');
   }
@@ -157,6 +175,7 @@ export async function currentCredential(
         fetch: fetcher,
         signal,
         ...(value.email === undefined ? {} : { email: value.email }),
+        ...(value.idToken === undefined ? {} : { idToken: value.idToken }),
       });
       return {
         value: refreshed,

@@ -44,7 +44,7 @@ test('a failed operation explains the closed error code', () => {
       deciding={false}
     />,
   );
-  expect(screen.getByRole('alert').textContent).toMatch(/Codex/u);
+  expect(screen.getByRole('alert').textContent).toMatch(/filling in the form|填写表单/u);
 });
 
 test.each([

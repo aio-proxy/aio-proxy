@@ -6,7 +6,7 @@ import {
   InvalidCompressedRequestBodyError,
   RequestBodyTooLargeError,
   UnsupportedContentEncodingError,
-} from '../request';
+} from '../request/index';
 import { EvaluationDistributionError } from './egress';
 import { systemOneErrors } from './errors';
 import { parseSystemOneBody, SystemOneParseError } from './parse';

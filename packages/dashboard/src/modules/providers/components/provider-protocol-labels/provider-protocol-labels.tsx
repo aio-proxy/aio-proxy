@@ -11,7 +11,7 @@ interface ProviderProtocolLabelsProps {
 
 /**
  * One protocol reads as its own name; several collapse to a single word with the list on hover.
- * The card's detail line must stay one line at any card width, and "OpenAI Compatible, Anthropic,
+ * The card's detail line must stay one line at any card width, and "OpenAI Chat Completions, Anthropic Messages,
  * Gemini Interactions" cannot — truncating it would cut a protocol name mid-word instead.
  */
 export const ProviderProtocolLabels: React.FC<ProviderProtocolLabelsProps> = ({ protocols }) => {

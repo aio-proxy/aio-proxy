@@ -1,6 +1,8 @@
 import {
   type DashboardRoutingModelMutation,
   DashboardRoutingModelMutationSchema,
+  type DashboardRoutingSelectionMutation,
+  DashboardRoutingSelectionMutationSchema,
   UsageOverviewRangeSchema,
 } from '@aio-proxy/types';
 import type { MiddlewareHandler } from 'hono';
@@ -21,6 +23,18 @@ const routingMutationValidator = validator('json', (raw, context) => {
   {
     in: { json: DashboardRoutingModelMutation };
     out: { json: DashboardRoutingModelMutation };
+  }
+>;
+
+const selectionMutationValidator = validator('json', (raw, context) => {
+  const parsed = DashboardRoutingSelectionMutationSchema.safeParse(raw);
+  return parsed.success ? parsed.data : context.json({ error: 'validation_failed' } as const, 400);
+}) as unknown as MiddlewareHandler<
+  Record<string, never>,
+  string,
+  {
+    in: { json: DashboardRoutingSelectionMutation };
+    out: { json: DashboardRoutingSelectionMutation };
   }
 >;
 
@@ -52,6 +66,15 @@ export const createDashboardRoutingRoutes = (state: ServerState) =>
       } catch (error) {
         if (error instanceof ConfigPathMissingError) return context.json({ error: 'config_unavailable' }, 409);
         if (error instanceof ModelRoutingStaleRevisionError) return context.json({ error: 'stale_revision' }, 409);
+        if (error instanceof ConfigReloadRejectedError) return context.json({ error: 'validation_failed' }, 422);
+        throw error;
+      }
+    })
+    .put('/routing/selection', selectionMutationValidator, async (context) => {
+      try {
+        return context.json(await state.modelRouting.updateSelection(context.req.valid('json')));
+      } catch (error) {
+        if (error instanceof ConfigPathMissingError) return context.json({ error: 'config_unavailable' }, 409);
         if (error instanceof ConfigReloadRejectedError) return context.json({ error: 'validation_failed' }, 422);
         throw error;
       }

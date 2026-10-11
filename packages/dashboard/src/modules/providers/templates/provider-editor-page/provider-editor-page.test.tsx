@@ -5,7 +5,7 @@ import type {
   DashboardOAuthSession,
   OAuthProvider,
 } from '@aio-proxy/types';
-import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { ProviderKind, ProviderMutationBodySchema, ProviderProtocol } from '@aio-proxy/types';
 import { Toaster, toast } from '@aio-proxy/ui/components/toast';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -51,13 +51,22 @@ const mocks = rs.hoisted(() => ({
   refetch: rs.fn(async () => ({ data: { trusted: true, state: 'bundled' }, error: null })),
   session: undefined as DashboardOAuthSession | undefined,
   sessionError: false,
+  localSignIn: false,
 }));
 
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
   useQuery: (options: { queryKey: readonly string[] }) => {
     let data: unknown;
-    if (options.queryKey[0] === 'oauth-capabilities') data = { capabilities: [capability] };
+    if (options.queryKey[0] === 'oauth-capabilities')
+      data = {
+        capabilities: [
+          {
+            ...capability,
+            ...(mocks.localSignIn ? { localSignIn: { source: { default: 'Vendor CLI', en: 'Codex' } } } : {}),
+          },
+        ],
+      };
     else if (options.queryKey[0] === 'oauth-session' && mocks.session !== undefined) data = { session: mocks.session };
     else if (options.queryKey[0] === 'providers' && options.queryKey.length === 1) data = { providers: [] };
     return {
@@ -153,6 +162,7 @@ afterEach(() => {
   mocks.refetch.mockImplementation(async () => ({ data: { trusted: true, state: 'bundled' }, error: null }));
   mocks.session = undefined;
   mocks.sessionError = false;
+  mocks.localSignIn = false;
 });
 
 const renderPage = (props: React.ComponentProps<typeof ProviderEditorPage>) =>
@@ -183,7 +193,7 @@ const fillBaseURL = (value: string) => {
 
 const pickProtocol = async () => {
   fireEvent.click(within(screen.getByTestId('provider-form-field-protocol')).getByRole('combobox'));
-  fireEvent.keyDown(await screen.findByRole('option', { name: 'OpenAI Compatible' }), { key: 'Enter' });
+  fireEvent.keyDown(await screen.findByRole('option', { name: 'OpenAI Chat Completions' }), { key: 'Enter' });
 };
 
 const saveButton = () => screen.getByRole('button', { name: /Save/u });
@@ -202,10 +212,114 @@ const selectOAuthCapability = async () => {
   fireEvent.click(await screen.findByRole('option', { name: /Example OAuth/u }));
 };
 
+const renderLocalSignInPage = async (mode: ProviderFormMode) => {
+  renderPage({
+    mode,
+    kind: ProviderKind.OAuth,
+    ...(mode === ProviderFormMode.Edit
+      ? {
+          providerId: 'existing',
+          provider: oauthProvider,
+          oauth,
+          initial: { id: 'existing', enabled: true },
+        }
+      : { initial: { enabled: true } }),
+    onSessionIdChange: rs.fn(),
+  });
+  if (mode === ProviderFormMode.Create) await selectOAuthCapability();
+};
+
+test.each([ProviderFormMode.Create, ProviderFormMode.Edit])(
+  'local sign-in button is absent without capability.localSignIn in %s',
+  async (mode) => {
+    await renderLocalSignInPage(mode);
+    expect(screen.queryByTestId('connection-local-sign-in')).toBeNull();
+  },
+);
+
+test.each([ProviderFormMode.Create, ProviderFormMode.Edit])(
+  'confirming local sign-in in %s starts the matching session without opening a window',
+  async (mode) => {
+    mocks.localSignIn = true;
+    const open = rs.spyOn(window, 'open').mockReturnValue(null);
+    await renderLocalSignInPage(mode);
+    fireEvent.change(screen.getByLabelText('Tenant'), { target: { value: 'local-work' } });
+    fireEvent.change(screen.getByLabelText('Token'), { target: { value: 'entered-option' } });
+
+    fireEvent.click(screen.getByTestId('connection-local-sign-in'));
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByRole('heading')).toHaveTextContent('Use the Codex sign-in on this machine?');
+    expect(dialog).toHaveTextContent(
+      'aio-proxy will read the sign-in Codex keeps on this machine and keep it in sync when tokens refresh. Removing this Provider will not sign Codex out.',
+    );
+    expect(mocks.start).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Use Codex sign-in' }));
+    await waitFor(() => expect(mocks.start).toHaveBeenCalledTimes(1));
+    expect(mocks.start.mock.calls[0]?.[0]).toMatchObject({
+      localSignIn: true,
+      publicValues: { tenant: 'local-work' },
+      secrets: { token: 'entered-option' },
+      ...(mode === ProviderFormMode.Create
+        ? { capability: { plugin: '@example/oauth', capability: 'default' } }
+        : { targetProviderId: 'existing' }),
+    });
+    expect(open).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  },
+);
+
+test.each([ProviderFormMode.Create, ProviderFormMode.Edit])(
+  'cancelling local sign-in in %s starts nothing',
+  async (mode) => {
+    mocks.localSignIn = true;
+    const open = rs.spyOn(window, 'open').mockReturnValue(null);
+    await renderLocalSignInPage(mode);
+    fireEvent.click(screen.getByTestId('connection-local-sign-in'));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: m['common.cancel']() }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(mocks.start).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  },
+);
+
 // The removed `footer_saved` copy, in all five locales. Fully anchored: the page's own "Ready to
 // save." / "Save provider" and the zh success toasts all contain 保存/儲存 as a substring, and a loose
 // matcher would go green on those instead of on the line under test.
 const SAVED_LINE = /^(Saved|保存しました|저장됨|已保存|已儲存)$/u;
+
+test('editor page saves a synced Provider', async () => {
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.Api,
+    providerId: 'synced',
+    initial: {
+      id: 'synced',
+      protocol: ProviderProtocol.OpenAICompatible,
+      baseURL: 'https://api.example/v1',
+      syncModels: true,
+      models: [],
+      excludedModels: ['b'],
+      alias: { fast: { model: 'b', preserve: false } },
+    },
+    sync: { models: ['a', 'b'] },
+    onSessionIdChange: rs.fn(),
+  });
+
+  expect(saveButton()).toBeEnabled();
+  fireEvent.click(saveButton());
+  await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+  const input = mocks.update.mock.calls[0]?.[0] as { body: unknown };
+  expect(input.body).toMatchObject({ syncModels: true, models: [], excludedModels: ['b'] });
+  expect(ProviderMutationBodySchema.safeParse(input.body).success).toBe(true);
+  expect(screen.getByTestId('exposure-panel')).toHaveTextContent('a');
+  expect(screen.getByRole('combobox', { name: m['dashboard.providers.editor.validate_model']() })).toHaveTextContent(
+    'a',
+  );
+});
 
 // The success confirmation is the mutation hook's transient toast; the page keeps no "Saved" line of
 // its own, which used to sit there permanently while the footer went back to blocking the next save.

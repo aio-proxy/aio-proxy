@@ -1,2 +1,2 @@
 export { fetchCodexCatalog, type CodexCatalogFetchInput } from './fetch-catalog';
-export { createLocalCodexCatalogSync, type LocalCodexCatalogSyncOptions } from './model-catalog';
+export { CODEX_CATALOG_EMPTY, createLocalCodexCatalogSync, type LocalCodexCatalogSyncOptions } from './model-catalog';

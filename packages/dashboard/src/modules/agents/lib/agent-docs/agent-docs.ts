@@ -9,6 +9,7 @@ const PAGES: Readonly<Record<AgentTarget, string>> = {
   omp: 'pi-omp',
   codex: 'codex',
   grok: 'grok',
+  'claude-code': 'claude-code',
 };
 
 /** The Agent's setup guide; the docs site is published in English and Simplified Chinese only. */

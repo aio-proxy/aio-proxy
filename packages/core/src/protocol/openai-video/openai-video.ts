@@ -10,11 +10,12 @@ import {
   parseOpenAIVideoEdit,
   replaySpooledMultipartRaw,
   replaySpooledVideoFormData,
+  VIDEO_REQUEST_BODY_LIMITS,
   type OpenAIVideoOperation,
   type OpenAIVideoRequest,
 } from '../../ingress/openai-video';
 import { stripHopHeaders } from '../headers';
-import { readJsonRequest, readRequestText, REQUEST_BODY_LIMITS } from '../request';
+import { readJsonRequest, readRequestText } from '../request/index';
 import { defineVideoProtocolAdapter } from '../video-adapter';
 import { openAIVideosErrors } from './errors';
 
@@ -24,14 +25,14 @@ export type OpenAIVideoContext = {
 
 export const openAIVideosAdapter = defineVideoProtocolAdapter<OpenAIVideoRequest, OpenAIVideoContext>({
   protocol: ProviderProtocol.OpenAIVideo,
-  bodyLimits: () => REQUEST_BODY_LIMITS,
+  bodyLimits: () => VIDEO_REQUEST_BODY_LIMITS,
   async parse(raw, context) {
     if (context.operation !== 'create' && isMultipartRequest(raw)) {
       throw new OpenAIVideosInvalidRequestError('content_type');
     }
     if (context.operation === 'create' && isMultipartRequest(raw)) return parseOpenAIVideoCreateMultipart(raw);
     if (!isJsonRequest(raw) && !isMultipartRequest(raw)) throw new OpenAIVideosInvalidRequestError('content_type');
-    const body = await readJsonRequest(raw, REQUEST_BODY_LIMITS);
+    const body = await readJsonRequest(raw, VIDEO_REQUEST_BODY_LIMITS);
     return context.operation === 'create' ? parseOpenAIVideoCreate(body) : parseOpenAIVideoEdit(body);
   },
   model: (request) => request.model,
@@ -47,7 +48,7 @@ export const openAIVideosAdapter = defineVideoProtocolAdapter<OpenAIVideoRequest
       return rewriteMultipartRawRequest(raw, form, resolvedModel);
     }
     if (!rewrite) return raw.clone();
-    const bodyText = await readRequestText(raw, REQUEST_BODY_LIMITS);
+    const bodyText = await readRequestText(raw, VIDEO_REQUEST_BODY_LIMITS);
     return new Request(raw, {
       method: raw.method,
       body: JSON.stringify({ ...(JSON.parse(bodyText) as Record<string, unknown>), model: resolvedModel }),

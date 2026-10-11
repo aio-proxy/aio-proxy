@@ -85,6 +85,15 @@ describe('OpenAI Responses early request observability', () => {
           statusCode: scenario.statusCode,
           errorCode: scenario.errorCode,
           errorType: scenario.errorType,
+          ...('contentLength' in scenario
+            ? {
+                bodyBytes: REQUEST_BODY_LIMITS.encoded + 1,
+                bodyLimitBytes: REQUEST_BODY_LIMITS.encoded,
+                bodyLimitStage: 'encoded',
+                bodyMeasurement: 'declared',
+                bodyContentEncoding: 'identity',
+              }
+            : {}),
         },
       ]);
     });

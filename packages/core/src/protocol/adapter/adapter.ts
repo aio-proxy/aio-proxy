@@ -2,7 +2,7 @@ import type { ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
 import type { AliasDimensions, ProviderProtocol } from '@aio-proxy/types';
 
 import type { AiSdkCallSettings, ModelMessage, TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
-import { REQUEST_BODY_LIMITS, type RequestBodyLimits } from '../request';
+import { currentRequestBodyLimits, type RequestBodyLimits } from '../request/index';
 import type { ProtocolSessionHints } from '../session';
 
 export type EmptyProtocolContext = Readonly<Record<never, never>>;
@@ -140,7 +140,7 @@ export type ProtocolAdapterDefinition<TRequest, TContext> = Omit<
 const noDimensions = (): AliasDimensions => ({});
 const noRequestDiagnostics = (): readonly ProtocolRequestDiagnostic[] => [];
 const sameModelInvocation = (invocation: ModelInvocation): ModelInvocation => invocation;
-const defaultBodyLimits = (): RequestBodyLimits => REQUEST_BODY_LIMITS;
+const defaultBodyLimits = (): RequestBodyLimits => currentRequestBodyLimits();
 
 export function defineProtocolAdapter<TRequest, TContext>(
   definition: ProtocolAdapterDefinition<TRequest, TContext>,
@@ -248,6 +248,7 @@ export type EvaluationInvocation = {
 };
 
 export type EvaluationAnswer =
+  | { readonly type: 'refusal' }
   | { readonly type: 'noul'; readonly noul: number }
   | {
       readonly type: 'choice';
@@ -264,7 +265,13 @@ export type EvaluationAnswer =
 
 export type EvaluationResult = {
   readonly answers: Readonly<Record<string, EvaluationAnswer>>;
-  readonly usage?: { readonly inputTokens?: number; readonly outputTokens?: number };
+  // Cache counts are inclusive subsets of inputTokens. An absent field was not reported.
+  readonly usage?: {
+    readonly inputTokens?: number;
+    readonly outputTokens?: number;
+    readonly cacheReadTokens?: number;
+    readonly cacheWriteTokens?: number;
+  };
 };
 
 export type EvaluationEgressContext = { readonly responseModelId: string };
@@ -283,7 +290,7 @@ export type EvaluationProtocolAdapter<TRequest, TContext> = Readonly<{
   wantsStream: (request: TRequest, context: TContext) => boolean;
   rawRequest: (raw: Request, request: TRequest, resolvedModel: string, context: TContext) => Promise<Request>;
   evaluationInvocation: (request: TRequest, context: TContext) => EvaluationInvocation;
-  evaluationJson: (result: EvaluationResult, context: EvaluationEgressContext) => unknown;
+  evaluationJson: (result: EvaluationResult, context: EvaluationEgressContext, request: TRequest) => unknown;
   errors: ProtocolErrorMapper;
 }>;
 

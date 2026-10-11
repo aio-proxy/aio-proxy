@@ -15,4 +15,6 @@ require (
 require (
 	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/sergeymakinen/go-bmp v1.0.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 )

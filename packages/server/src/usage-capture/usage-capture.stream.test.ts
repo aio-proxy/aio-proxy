@@ -1,10 +1,14 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 
 import type { TextStreamPart, ToolSet } from '@aio-proxy/core';
 
+import { createLiveMetrics } from '../live-metrics';
+import { liveModelKey } from '../live-metrics';
 import { createAttemptResponseObservation } from '../response-observation';
 import { createUsageCapture } from './index';
-import { drain, settle } from './test-support';
+import { clearPriceCatalog, drain, finishPart, seedPriceCatalog, settle, textStream } from './test-support';
+
+const KEY = liveModelKey('p', 'm');
 
 describe('usage capture stream', () => {
   test('model capture records every content delta and ignores metadata and tool deltas', async () => {
@@ -132,4 +136,142 @@ describe('usage capture stream', () => {
     await expect(drain(captured.value)).rejects.toBe(expected);
     await expect(captured.completion).resolves.toEqual({ outcome: 'cancelled' });
   });
+});
+
+describe('stream live throughput', () => {
+  beforeEach(() => seedPriceCatalog([]));
+  afterEach(() => clearPriceCatalog());
+
+  test.each([true, false, undefined])('records and calibrates only when live is enabled: %s', async (live) => {
+    const liveMetrics = createLiveMetrics();
+    const record = spyOn(liveMetrics, 'recordContent');
+    const calibrate = spyOn(liveMetrics, 'calibrate');
+    const finish = {
+      type: 'finish',
+      finishReason: 'stop',
+      rawFinishReason: 'stop',
+      totalUsage: {
+        inputTokens: 1,
+        outputTokens: 3,
+        totalTokens: 4,
+        inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 1 },
+        outputTokenDetails: { reasoningTokens: 1, textTokens: 2 },
+      },
+    } satisfies TextStreamPart<ToolSet>;
+    const captured = createUsageCapture({ liveMetrics }).stream({
+      providerId: 'p',
+      modelId: 'm',
+      ...(live === undefined ? {} : { live }),
+      stream: textStream([
+        { type: 'text-delta', id: 't', text: 'hello' },
+        { type: 'text-delta', id: 't', text: '世界' },
+        { type: 'reasoning-delta', id: 'r', text: 'ab' },
+        finish,
+      ]),
+    });
+    await drain(captured.value);
+    expect((await captured.completion).outcome).toBe('success');
+    expect(record.mock.calls).toEqual(
+      live
+        ? [
+            [KEY, 5],
+            [KEY, 2],
+            [KEY, 2],
+          ]
+        : [],
+    );
+    expect(calibrate.mock.calls).toEqual(live ? [[KEY, 9, 3]] : []);
+  });
+
+  test.each([
+    ['tool delta', { type: 'tool-input-delta', id: 'tool', delta: '{}' }, 0, undefined],
+    ['tool call', { type: 'tool-call', toolCallId: 'tool', toolName: 'run', input: {} }, 0, undefined],
+    [
+      'provider tool',
+      { type: 'tool-call', toolCallId: 'tool', toolName: 'run', input: {}, providerExecuted: true },
+      0,
+      10,
+    ],
+    ['empty tool delta', { type: 'tool-input-delta', id: 'tool', delta: '' }, 0, 10],
+    ['hidden reasoning', undefined, 4, 6],
+    ['visible reasoning', { type: 'reasoning-delta', id: 'r', text: '中😀' }, 4, 10],
+  ] as const)('calibrates only matching output: %s', async (_name, part, reasoningTokens, expectedTokens) => {
+    const liveMetrics = createLiveMetrics();
+    const calibrate = spyOn(liveMetrics, 'calibrate');
+    const record = spyOn(liveMetrics, 'recordContent');
+    const captured = createUsageCapture({ liveMetrics }).stream({
+      providerId: 'p',
+      modelId: 'm',
+      live: true,
+      stream: textStream([
+        { type: 'text-delta', id: 't', text: 'hello' },
+        ...(part === undefined ? [] : [part]),
+        {
+          type: 'finish',
+          finishReason: 'stop',
+          rawFinishReason: 'stop',
+          totalUsage: {
+            inputTokens: 1,
+            outputTokens: 10,
+            totalTokens: 11,
+            inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 1 },
+            outputTokenDetails: { reasoningTokens, textTokens: 10 - reasoningTokens },
+          },
+        },
+      ]),
+    });
+    await drain(captured.value);
+    expect((await captured.completion).outcome).toBe('success');
+    const visibleReasoning = part?.type === 'reasoning-delta';
+    expect(record.mock.calls).toEqual(
+      visibleReasoning
+        ? [
+            [KEY, 5],
+            [KEY, 2],
+          ]
+        : [[KEY, 5]],
+    );
+    expect(calibrate.mock.calls).toEqual(
+      expectedTokens === undefined ? [] : [[KEY, visibleReasoning ? 7 : 5, expectedTokens]],
+    );
+  });
+
+  test.each(['failure', 'cancel', 'idle', 'after-finish'] as const)(
+    'calibration follows upstream success: %s',
+    async (mode) => {
+      const liveMetrics = createLiveMetrics();
+      const calibrate = spyOn(liveMetrics, 'calibrate');
+      let upstream!: ReadableStreamDefaultController<TextStreamPart<ToolSet>>;
+      const captured = createUsageCapture({ liveMetrics }).stream({
+        providerId: 'p',
+        modelId: 'm',
+        live: true,
+        idleTimeoutMs: 10,
+        stream: new ReadableStream({
+          start(controller) {
+            upstream = controller;
+            controller.enqueue({ type: 'text-delta', id: 't', text: 'hello' });
+          },
+        }),
+      });
+      const reader = captured.value.getReader();
+      await reader.read();
+      if (mode === 'after-finish') {
+        upstream.enqueue(finishPart());
+        await reader.read();
+        expect((await captured.completion).outcome).toBe('success');
+        await reader.cancel();
+        expect(calibrate.mock.calls).toEqual([[KEY, 5, 3]]);
+      } else {
+        if (mode === 'failure') {
+          upstream.error(new Error('upstream failed'));
+          await expect(reader.read()).rejects.toThrow('upstream failed');
+        }
+        if (mode === 'cancel') await reader.cancel();
+        if (mode === 'idle') await expect(reader.read()).rejects.toThrow('stream_idle_timeout');
+        expect((await captured.completion).outcome).toBe(mode === 'cancel' ? 'cancelled' : 'failure');
+        expect(calibrate).not.toHaveBeenCalled();
+      }
+    },
+  );
 });

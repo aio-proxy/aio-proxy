@@ -94,7 +94,7 @@ func loadTextDrawing() error {
 
 // AppKit rasterizes the same 18-point, 2x template image as the reference app.
 // Text is 9 pt for two rows, 12 pt for one; labels share a column with left-aligned values.
-func metricsPNG(rows []menubar.MetricRow, mark image.Image) (data []byte, err error) {
+func metricsPNG(rows []menubar.MetricRow, mark image.Image, dimmed bool) (data []byte, err error) {
 	foundation.WithPool(func() {
 		if err = loadTextDrawing(); err != nil {
 			return
@@ -157,6 +157,11 @@ func metricsPNG(rows []menubar.MetricRow, mark image.Image) (data []byte, err er
 		im := &image.NRGBA{Pix: pixels, Stride: width * 4, Rect: image.Rect(0, 0, width, IconHeight)}
 		if mark != nil {
 			draw.Draw(im, image.Rect(0, 0, IconWidth, IconHeight), mark, image.Point{}, draw.Src)
+		}
+		if dimmed {
+			for i := 3; i < len(im.Pix); i += 4 {
+				im.Pix[i] = uint8(math.Round(float64(im.Pix[i]) * 0.4))
+			}
 		}
 		var output bytes.Buffer
 		err = png.Encode(&output, im)

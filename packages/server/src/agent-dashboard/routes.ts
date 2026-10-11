@@ -68,7 +68,7 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
       if (host === undefined) throw new AgentOperationError('unknown');
       const result =
         request.kind === 'configure'
-          ? await host.configure(request.target, request.codex, events)
+          ? await host.configure(request.target, request, events)
           : request.kind === 'remove'
             ? await host.remove(request.target, events)
             : await host.restoreCodexMigration(request.operationId, events);
@@ -178,6 +178,14 @@ export const createAgentDashboardRoutes = (input: AgentDashboardRouteInput) => {
     .get('/codex/plan', requireLocalHost, async (context) => {
       try {
         return context.json(await host!.codexPlan());
+      } catch (error) {
+        if (error instanceof AgentOperationError) return context.json({ error: error.code }, 409);
+        throw error;
+      }
+    })
+    .get('/claude-code/plan', requireLocalHost, async (context) => {
+      try {
+        return context.json(await host!.claudeCodePlan());
       } catch (error) {
         if (error instanceof AgentOperationError) return context.json({ error: error.code }, 409);
         throw error;

@@ -1,10 +1,5 @@
-import {
-  type DiagnosticFactory,
-  type PluginLogSink,
-  type PluginRepository,
-  validateModelCatalog,
-} from '@aio-proxy/core';
-import { CATALOG_DISCOVERY_TIMEOUT_MS, type ModelCatalog } from '@aio-proxy/plugin-sdk';
+import type { PluginLogSink } from '@aio-proxy/core';
+import { CATALOG_DISCOVERY_TIMEOUT_MS } from '@aio-proxy/plugin-sdk';
 
 import type { CatalogJobDescriptor } from '../plugin-runtime';
 
@@ -25,8 +20,6 @@ type ActiveJob = {
 };
 
 export type CatalogSchedulerOptions = {
-  readonly repository: PluginRepository;
-  readonly diagnostics: DiagnosticFactory;
   readonly rebuild: (reason: 'catalog') => Promise<unknown>;
   readonly now?: () => number;
   readonly discoveryTimeoutMs?: number;
@@ -106,8 +99,7 @@ export class CatalogScheduler {
   async refreshNow(providerId: string): Promise<CatalogRefreshOutcome> {
     if (this.#closed) return 'unknown';
     const active = this.#jobs.get(providerId);
-    // No job means account preparation failed for this Provider (bad credential, missing plugin,
-    // invalid account options) or it is not an OAuth Provider at all. Nothing to run.
+    // No job means catalog discovery is not configured or account preparation failed. Nothing to run.
     if (active === undefined) return 'unknown';
     // Joins whatever is already in the air, whether a timer fired it or a previous click did: a
     // second concurrent discovery would hit upstream twice for one intended refresh.
@@ -164,7 +156,6 @@ export class CatalogScheduler {
   async #runOnce(active: ActiveJob): Promise<CatalogRunOutcome> {
     if (!this.#current(active)) return 'failed';
     active.timer = undefined;
-    const startedAt = (this.#options.now ?? Date.now)();
     const controller = new AbortController();
     active.controller = controller;
     const deadline = setTimeout(
@@ -179,36 +170,17 @@ export class CatalogScheduler {
     const onAbort = () => rejectAbort(controller.signal.reason);
     controller.signal.addEventListener('abort', onAbort, { once: true });
     const discovery = Promise.resolve().then(() => active.descriptor.discover(controller.signal));
-    let catalog: ModelCatalog | undefined;
-    let swapped: { readonly ok: false } | { readonly ok: true; readonly revision: number } | undefined;
+    let committed = false;
     try {
-      catalog = validateModelCatalog(await Promise.race([discovery, aborted]));
+      const commit = await Promise.race([discovery, aborted]);
       if (!this.#current(active) || controller.signal.aborted) return 'failed';
-      swapped = this.#options.repository.compareAndSwapCatalog({
-        providerId: active.descriptor.providerId,
-        catalog,
-        refreshedAt: (this.#options.now ?? Date.now)(),
-        startedAt,
-        plugin: active.descriptor.plugin,
-        capability: active.descriptor.capability,
-        accountRuntimeRevision: active.descriptor.accountRuntimeRevision,
-      });
+      committed = commit();
     } catch (error) {
       if (!this.#current(active) || (controller.signal.aborted && this.#closed)) return 'failed';
-      const wrote = this.#options.repository.writeCatalogUnavailableIfCurrent({
-        providerId: active.descriptor.providerId,
-        plugin: active.descriptor.plugin,
-        capability: active.descriptor.capability,
-        accountRuntimeRevision: active.descriptor.accountRuntimeRevision,
-        diagnostic: this.#options.diagnostics('CATALOG_UNAVAILABLE', {
-          providerId: active.descriptor.providerId,
-          retryable: true,
-        }),
-      });
+      const wrote = active.descriptor.markUnavailable(error);
       if (!this.#current(active)) return 'failed';
       if (wrote) await this.#options.rebuild('catalog').catch(() => {});
       this.#scheduleCatalogRetry(active);
-      void error;
       return 'failed';
     } finally {
       clearTimeout(deadline);
@@ -216,11 +188,13 @@ export class CatalogScheduler {
       if (active.controller === controller) active.controller = undefined;
     }
     if (!this.#current(active)) return 'failed';
-    if (swapped?.ok !== true || catalog === undefined) {
+    if (!committed) {
       this.#scheduleCatalogRetry(active);
       return 'failed';
     }
     try {
+      // Request the rebuild in the same turn as the synchronous commit: yielding would let a
+      // concurrent config commit install an old-catalog snapshot and replace this job first.
       await this.#options.rebuild('catalog');
     } catch {
       this.#scheduleRebuildRetry(active);

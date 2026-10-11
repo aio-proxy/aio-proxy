@@ -1,17 +1,20 @@
 package tray
 
 import (
+	"runtime"
+
 	"github.com/egoist/mygo"
 
 	"github.com/aio-proxy/aio-proxy/desktop/internal/app"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/connect/policy"
-	"github.com/aio-proxy/aio-proxy/desktop/internal/macos/loginitem"
+	"github.com/aio-proxy/aio-proxy/desktop/internal/login"
 )
 
 type CommandKind int
 
 const (
 	OpenDashboard CommandKind = iota
+	OpenPanel
 	Service
 	OpenLogs
 	ToggleLogin
@@ -30,7 +33,7 @@ type MenuEntry struct {
 	Enabled, Checked, Check, Separator bool
 }
 
-func MenuEntries(offered policy.Offered, dashboard, busy, persistent bool, login loginitem.LoginItemStatus) []MenuEntry {
+func MenuEntries(offered policy.Offered, dashboard, busy, persistent bool, loginItem login.Status) []MenuEntry {
 	entries := []MenuEntry{{Command: MenuCommand{Kind: OpenDashboard}, Label: "Open Dashboard", Enabled: dashboard}, {Separator: true}}
 	services := []struct {
 		show   bool
@@ -49,15 +52,21 @@ func MenuEntries(offered policy.Offered, dashboard, busy, persistent bool, login
 			entries = append(entries, MenuEntry{Command: MenuCommand{Kind: Service, Action: s.action}, Label: s.label, Enabled: !busy})
 		}
 	}
-	entries = append(entries, MenuEntry{Command: MenuCommand{Kind: MenuBarDisplay}, Label: "Menu Bar Display", Enabled: true}, MenuEntry{Command: MenuCommand{Kind: OpenLogs}, Label: "Open logs", Enabled: true}, MenuEntry{Separator: true})
+	if runtime.GOOS == "linux" {
+		entries = append(entries, MenuEntry{Command: MenuCommand{Kind: OpenPanel}, Label: "Open Panel", Enabled: true})
+	}
+	if runtime.GOOS == "darwin" {
+		entries = append(entries, MenuEntry{Command: MenuCommand{Kind: MenuBarDisplay}, Label: "Menu Bar Display", Enabled: true})
+	}
+	entries = append(entries, MenuEntry{Command: MenuCommand{Kind: OpenLogs}, Label: "Open logs", Enabled: true}, MenuEntry{Separator: true})
 	label := "Open at login"
 	if !persistent {
 		label += " (move to Applications first)"
-	} else if login == loginitem.RequiresApproval {
+	} else if loginItem == login.RequiresApproval {
 		label += " (needs approval)"
 	}
 	entries = append(entries,
-		MenuEntry{Command: MenuCommand{Kind: ToggleLogin}, Label: label, Check: true, Checked: persistent && (login == loginitem.Enabled || login == loginitem.RequiresApproval), Enabled: persistent},
+		MenuEntry{Command: MenuCommand{Kind: ToggleLogin}, Label: label, Check: true, Checked: persistent && (loginItem == login.Enabled || loginItem == login.RequiresApproval), Enabled: persistent},
 		MenuEntry{Command: MenuCommand{Kind: CheckForUpdates}, Label: "Check for Updates…", Enabled: true},
 		MenuEntry{Separator: true},
 		MenuEntry{Command: MenuCommand{Kind: Quit}, Label: "Quit AIO Proxy", Enabled: true},
@@ -75,6 +84,10 @@ func Run(m *app.Model, command MenuCommand) {
 	switch command.Kind {
 	case OpenDashboard:
 		m.OpenDashboard()
+	case OpenPanel:
+		if m.OpenPanel != nil {
+			m.OpenPanel()
+		}
 	case Service:
 		m.RunUserAction(command.Action)
 	case OpenLogs:
@@ -112,7 +125,7 @@ func nativeMenu(m *app.Model, entries []MenuEntry) *mygo.Menu {
 			// The native menu toggles before the callback; approval pending or a failed change may leave
 			// the model unchanged. Restore the real state rather than caching that native toggle.
 			if entry.Check {
-				it.SetChecked(m.Persistent() && (m.LoginItem == loginitem.Enabled || m.LoginItem == loginitem.RequiresApproval))
+				it.SetChecked(m.Persistent() && (m.LoginItem == login.Enabled || m.LoginItem == login.RequiresApproval))
 			}
 		}
 		items = append(items, item)

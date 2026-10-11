@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import { releaseMultipartSpool } from '../../ingress/multipart';
+import { withRequestBodyLimits, RequestBodyTooLargeError } from '../request/index';
 import { openAISpeechAdapter, openAITranscriptionAdapter } from './openai-audio';
 
 function speechRequest(body: Record<string, unknown>): Request {
@@ -305,5 +306,27 @@ describe('openAITranscriptionAdapter', () => {
     );
     expect(await response.json()).toEqual({ text: 'hello' });
     await releaseMultipartSpool(raw);
+  });
+});
+
+test('explicit audio budgets ignore a tiny injected generic budget', async () => {
+  await withRequestBodyLimits({ encoded: 8, decoded: 8 }, async () => {
+    const speech = await openAISpeechAdapter.parse(speechRequest({ input: 'hi', voice: 'alloy' }), {
+      operation: 'speech',
+    });
+    expect(speech.input).toBe('hi');
+    const raw = transcriptionRequest('whisper-1');
+    try {
+      const transcription = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
+      expect(transcription.model).toBe('whisper-1');
+    } finally {
+      await releaseMultipartSpool(raw);
+    }
+  });
+  await withRequestBodyLimits({ encoded: 536_870_912, decoded: 536_870_912 }, async () => {
+    const raw = speechRequest({ input: 'x'.repeat(65_536), voice: 'alloy' });
+    await expect(openAISpeechAdapter.parse(raw, { operation: 'speech' })).rejects.toBeInstanceOf(
+      RequestBodyTooLargeError,
+    );
   });
 });

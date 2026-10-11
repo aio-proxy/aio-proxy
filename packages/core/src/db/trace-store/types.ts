@@ -19,10 +19,13 @@ import type {
   UsageOverviewMetric,
   UsageOverviewRange,
   UsageRow,
+  UsageCaller,
+  UsageCallerRanking,
 } from '@aio-proxy/types';
 
 import type { SpanAttributesJson, SpanEventJson, SpanLinkJson } from '../schema/trace-span';
 import type { DesktopUsageQuery, DesktopUsageResult } from './desktop-usage';
+import type { TodayUsageResult } from './today-usage';
 import type { TraceFilters } from './trace-filters';
 
 export type StoredSpan = {
@@ -108,6 +111,7 @@ export type TraceCursor = {
 };
 
 export type TracesQuery = {
+  readonly callerId?: string;
   readonly pageSize: DashboardTracePageSize;
   readonly cursor?: TraceCursor;
   readonly startedAfter?: Date;
@@ -147,6 +151,7 @@ export type UsageOverviewQuery = {
 };
 
 export type DashboardOverviewQuery = {
+  readonly callerId?: string;
   readonly range: DashboardOverviewRange;
   readonly now?: Date;
 };
@@ -167,6 +172,13 @@ export type RoutingTrafficBucketsQuery = RoutingTrafficQuery & {
 };
 
 export type TraceStore = {
+  readonly resolveUsageCaller: (entry: {
+    readonly key: string;
+    readonly label?: string;
+    readonly id?: string;
+  }) => UsageCaller;
+  readonly usageCallers: () => UsageCaller[];
+  readonly callerRanking: (query: DashboardOverviewQuery) => UsageCallerRanking[];
   readonly startRoot: (input: TraceRootStart) => void;
   readonly complete: (input: TraceCompletion) => boolean;
   readonly list: (query: TracesQuery) => TracesPage;
@@ -176,8 +188,12 @@ export type TraceStore = {
   readonly overview: (query: UsageOverviewQuery) => DashboardUsageOverviewResponse;
   readonly overviewDashboard: (query: DashboardOverviewQuery) => DashboardOverviewResponse;
   readonly overviewDashboardDiagnostics: (query: DashboardOverviewQuery) => DashboardOverviewDiagnosticsResponse;
-  readonly overviewDashboardActivity: (options?: { readonly now?: Date }) => DashboardOverviewActivityResponse;
+  readonly overviewDashboardActivity: (options?: {
+    readonly now?: Date;
+    readonly callerId?: string;
+  }) => DashboardOverviewActivityResponse;
   readonly desktopUsage: (query: DesktopUsageQuery) => DesktopUsageResult;
+  readonly todayUsage: (now: Date) => TodayUsageResult;
   readonly resolveResponse: (responseId: string, now: Date) => SessionResponseResolution | undefined;
   readonly markResponseAmbiguous: (responseId: string, now: Date) => void;
   readonly findAffinity: (

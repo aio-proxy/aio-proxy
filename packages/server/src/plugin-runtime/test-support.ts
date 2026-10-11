@@ -7,6 +7,7 @@ import {
   createPluginRepository,
   type DiagnosticFactory,
   type PluginRepository,
+  type StoredAccount,
 } from '@aio-proxy/core';
 import { type OpenDbHandle, openDb } from '@aio-proxy/core/db';
 import { type ModelCatalog, type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
@@ -81,6 +82,8 @@ export function runtimeFixture(
     readonly quota?: OAuthAdapter['quota'];
     readonly refreshCredential?: OAuthAdapter['refreshCredential'];
     readonly supportsProxy?: boolean;
+    readonly localSignIn?: OAuthAdapter['localSignIn'];
+    readonly accountLocalSignIn?: StoredAccount['localSignIn'];
   } = {},
 ): {
   readonly repository: PluginRepository;
@@ -105,6 +108,7 @@ export function runtimeFixture(
       options: {},
       secrets: {},
       credential: { token: 'secret' },
+      ...(overrides.accountLocalSignIn === undefined ? {} : { localSignIn: overrides.accountLocalSignIn }),
       catalog:
         fixtureCatalog === null
           ? {
@@ -125,6 +129,7 @@ export function runtimeFixture(
     ...(overrides.supportsProxy === undefined ? {} : { supportsProxy: overrides.supportsProxy }),
     ...(overrides.quota === undefined ? {} : { quota: overrides.quota }),
     ...(overrides.refreshCredential === undefined ? {} : { refreshCredential: overrides.refreshCredential }),
+    ...(overrides.localSignIn === undefined ? {} : { localSignIn: overrides.localSignIn }),
     account: { options: { schema: overrides.accountOptionsSchema ?? zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {

@@ -124,6 +124,7 @@ const PROTOCOL_CAPABILITIES: Readonly<Record<ProviderProtocol, readonly InboundC
   [ProviderProtocol.OpenAIAudio]: ['speech', 'transcription'],
   [ProviderProtocol.OpenAIVideo]: ['video'],
   [ProviderProtocol.TypeSafeSystemOne]: ['evaluation'],
+  [ProviderProtocol.OpenAIDecisions]: ['evaluation'],
 };
 
 // The optional chain is load-bearing despite the total Record type: a protocol
@@ -220,7 +221,11 @@ function hasProtocol(input: CapabilityIndexInput, protocol: ProviderProtocol): b
  *   non-System-One endpoint, so the candidate could only ever answer 501.
  */
 function synthesizesEvaluation(input: CapabilityIndexInput): boolean {
-  return input.hasEvaluationTransport === true || hasProtocol(input, ProviderProtocol.TypeSafeSystemOne);
+  return (
+    input.hasEvaluationTransport === true ||
+    hasProtocol(input, ProviderProtocol.TypeSafeSystemOne) ||
+    hasProtocol(input, ProviderProtocol.OpenAIDecisions)
+  );
 }
 
 export function supportsLanguage(index: ModelCapabilityIndex, modelId: string): boolean {

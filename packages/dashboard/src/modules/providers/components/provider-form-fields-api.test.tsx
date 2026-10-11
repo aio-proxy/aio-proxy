@@ -46,7 +46,7 @@ describe('API provider form fields', () => {
     },
   );
 
-  test('opens on OpenAI Compatible, with a placeholder and icons in the options and selected value', async () => {
+  test('opens on OpenAI Chat Completions, with a placeholder and icons in the options and selected value', async () => {
     const { result } = renderHook(() => useProviderEditorForm({ kind: ProviderKind.Api }));
 
     render(<ProviderFormFieldsApi form={result.current} hasApiKey={false} />);
@@ -57,14 +57,14 @@ describe('API provider form fields', () => {
     expect(trigger).toHaveTextContent(m['dashboard.providers.form.placeholder_protocol']());
 
     fireEvent.click(trigger);
-    // The list leads with OpenAI Compatible, not with `Object.values(ProviderProtocol)`'s
-    // `openai-response`: OpenAI Compatible is what most third-party gateways speak.
+    // The list leads with OpenAI Chat Completions, not with `Object.values(ProviderProtocol)`'s
+    // `openai-response`: OpenAI Chat Completions is what most third-party gateways speak.
     const [option] = await screen.findAllByRole('option');
-    expect(option).toHaveTextContent('OpenAI Compatible');
+    expect(option).toHaveTextContent('OpenAI Chat Completions');
     expect(option?.querySelector('img')).toHaveAttribute('alt', '');
     fireEvent.click(option as HTMLElement);
 
-    await waitFor(() => expect(trigger).toHaveTextContent('OpenAI Compatible'));
+    await waitFor(() => expect(trigger).toHaveTextContent('OpenAI Chat Completions'));
     expect(trigger.querySelector('img')).toHaveAttribute('alt', '');
   });
 

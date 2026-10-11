@@ -112,3 +112,31 @@ When an upstream attempt returns a retryable error (HTTP 5xx, network timeout, r
 1. The error details and latency are recorded in trace diagnostics.
 2. The pipeline advances to the next candidate in the queue.
 3. Only when all candidates in all tiers fail will AIO Proxy return the final failure response to the client.
+
+---
+
+## 6. Cooldown and Subscription Quota Skipping
+
+Before any attempt, AIO Proxy removes candidates that cannot serve right now, even when response owner or session affinity put them first:
+
+- **Cooldown**: after an upstream 429 with a usable `Retry-After`, that Provider cools down for the model until the window passes.
+- **Exhausted subscription quota**: when the cached quota snapshot shows the window covering this model exhausted with a known reset, the subscription Provider is skipped until the reset. Plugins declare which models each window covers; Kimi Code, Muse Code, ChatGPT, and Cursor do today.
+- Quota that is unknown, failed to read, or older than 10 minutes never removes a candidate, and the request path never waits on a quota read.
+- If every candidate is removed, the client gets a 429 whose `Retry-After` is the earliest reset.
+- The request trace attribute `aio_proxy.route.skipped_candidates` lists each removed candidate with its reason (`cooldown` or `quota_exhausted`).
+
+### Spending the subscription that resets soonest
+
+By default, candidates in one priority tier share traffic by weight. Set `router.selection` to `"quota-reset"` (or turn on **Spend the subscription that resets soonest first** on the Dashboard Routing page) to spend the allowance that would otherwise expire unused:
+
+```jsonc title="config.jsonc"
+{
+  "router": { "selection": "quota-reset" },
+}
+```
+
+- Within each tier, subscriptions whose quota snapshot is fresh go first, ordered by when their allowance resets. The allowance is the longest window covering the model (a weekly window, not a 5-hour one).
+- Providers without usable quota data (API Providers, plugins that report none, stale snapshots) follow in their weighted order.
+- Response owner and session affinity still go first, so prompt caches stay warm.
+- Token counting and generation share one order when config, stable session, and quota cache state match; the cache is not pinned per session, so refreshes, failed reads, window resets, or crossing the 10-minute age bound between requests can change it.
+- A reordered attempt records `aio_proxy.route.selection_source = quota_reset`. The Routing page stops flagging traffic deviation, since a lopsided tier is the policy working.

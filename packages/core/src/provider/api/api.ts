@@ -1,4 +1,5 @@
 import type { RawTransportOptions } from '@aio-proxy/plugin-sdk';
+import { inheritUpstreamResponseIdentity } from '@aio-proxy/shared';
 import { type ApiProvider, apiProviderEndpoints, type NormalizedApiEndpoint, ProviderProtocol } from '@aio-proxy/types';
 
 import { wrapOpenAIProtocolFetch } from '../openai-stream-fetch';
@@ -71,6 +72,7 @@ const SDK_VERSION_PREFIXES: Record<ProviderProtocol, string> = {
   [ProviderProtocol.OpenAIAudio]: '/v1',
   [ProviderProtocol.OpenAIVideo]: '/v1',
   [ProviderProtocol.TypeSafeSystemOne]: '/v1',
+  [ProviderProtocol.OpenAIDecisions]: '/v1',
 };
 
 function endpointTransport(
@@ -100,11 +102,14 @@ function endpointTransport(
       );
 
       if (trace === undefined || response.body === null) {
-        return new Response(response.body, decodedBodyResponseInit(response));
+        return inheritUpstreamResponseIdentity(
+          response,
+          new Response(response.body, decodedBodyResponseInit(response)),
+        );
       }
       const [returnedBody, tracedBody] = response.body.tee();
       void recordTrace(trace, response.status, tracedBody);
-      return new Response(returnedBody, decodedBodyResponseInit(response));
+      return inheritUpstreamResponseIdentity(response, new Response(returnedBody, decodedBodyResponseInit(response)));
     },
   };
 }

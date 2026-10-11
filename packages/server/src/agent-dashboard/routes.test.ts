@@ -64,6 +64,7 @@ async function fixture(options: { readonly host?: Partial<AgentHostPort> | false
     codexPlan: async () => {
       throw new AgentOperationError('recovery_required');
     },
+    claudeCodePlan: async () => ({ configPath: '/home/.claude/settings.json', keyChoices: [] }),
     restoreCodexMigration: async () => ({ target: 'codex', status: 'unchanged' }),
     ...(options.host === false ? {} : options.host),
   };
@@ -156,6 +157,7 @@ test('remote and cross-origin requests cannot start operations', async () => {
       .status,
   ).toBe(403);
   expect((await f.request('/codex/plan', undefined, remoteServer)).status).toBe(404);
+  expect((await f.request('/claude-code/plan', undefined, remoteServer)).status).toBe(404);
   expect(f.calls).toEqual([]);
 });
 
@@ -261,6 +263,25 @@ test('classified host failures surface their code; codex plan maps errors to 409
   const plan = await f.request('/codex/plan');
   expect(plan.status).toBe(409);
   expect(await plan.json()).toEqual({ error: 'recovery_required' });
+});
+
+test('a claude-code configure hands the chosen key to the host, never a default', async () => {
+  const received: unknown[] = [];
+  const f = await fixture({
+    host: {
+      configure: async (target, input): Promise<AgentOperationResult> => {
+        received.push(input.claudeCode);
+        return { target, status: 'configured' };
+      },
+    },
+  });
+  const claudeCode = { key: { kind: 'existing', id: 'choice-1' } };
+  expect((await f.request('/operations', post({ kind: 'configure', target: 'claude-code' }))).status).toBe(400);
+  const { operationId } = (await (
+    await f.request('/operations', post({ kind: 'configure', target: 'claude-code', claudeCode }))
+  ).json()) as AgentOperationState;
+  await f.until(operationId, 'succeeded');
+  expect(received).toEqual([claudeCode]);
 });
 
 test('pending login lookup only answers for installations configured on this machine', async () => {

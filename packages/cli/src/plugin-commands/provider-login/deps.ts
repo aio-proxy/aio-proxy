@@ -13,6 +13,7 @@ import {
   type recoverPendingAccountOperations,
 } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
+import { m } from '@aio-proxy/i18n';
 import type { AuthorizationPort } from '@aio-proxy/plugin-sdk';
 
 import { openBrowser } from '../../open-browser';
@@ -37,6 +38,7 @@ export type ProviderLoginDeps = {
   readonly registry: PluginRegistry;
   readonly isTTY: boolean;
   readonly selectCapability: (choices: readonly CapabilityChoice[]) => Promise<string>;
+  readonly selectMethod: (source: string, signal: AbortSignal) => Promise<'browser' | 'local'>;
   readonly renderAccountOptions: LoginOAuthAccountOptions['renderAccountOptions'];
   readonly createAuthorization: (signal: AbortSignal) => AuthorizationPort;
   readonly diagnostics: DiagnosticFactory;
@@ -80,10 +82,27 @@ function createDefaultAuthorization(prompts: PluginFormPrompts): (signal: AbortS
     });
 }
 
+export function createProviderLoginMethodSelector(
+  prompt: PluginFormPrompts['select'],
+): ProviderLoginDeps['selectMethod'] {
+  return (source, signal) =>
+    prompt(
+      {
+        message: m['cli.provider_login.method_prompt'](),
+        choices: [
+          { value: 'browser', label: m['cli.provider_login.method_browser']() },
+          { value: 'local', label: m['cli.provider_login.method_local']({ source }) },
+        ],
+      },
+      { signal },
+    );
+}
+
 export function applyProviderLoginSession(base: ProviderLoginDeps, session: CommandSession): ProviderLoginDeps {
   return {
     ...base,
     selectCapability: createCapabilitySelector(session.prompts.select),
+    selectMethod: createProviderLoginMethodSelector(session.prompts.select),
     renderAccountOptions: ({ spec, currentPublicValues, currentSecrets, signal }) =>
       renderConfigSpec(spec, { prompts: session.prompts, currentPublicValues, currentSecrets, signal }),
     createAuthorization: (signal) =>
@@ -138,6 +157,7 @@ export async function createProviderLoginDefaultDeps(
       registry: snapshot.registry,
       isTTY: interactive,
       selectCapability: createCapabilitySelector(prompts.select),
+      selectMethod: createProviderLoginMethodSelector(prompts.select),
       renderAccountOptions: ({ spec, currentPublicValues, currentSecrets, signal }) =>
         renderConfigSpec(spec, { prompts, currentPublicValues, currentSecrets, signal }),
       createAuthorization: createDefaultAuthorization(prompts),

@@ -14,6 +14,7 @@ import { ZodError } from 'zod';
 
 import { ConfigPathMissingError, ConfigReloadRejectedError } from '../../config-store';
 import type { ServerState } from '../../server-state';
+import { withCallerIds } from './caller-ids';
 
 const defaultLogging = ServerLoggingSchema.parse({});
 
@@ -50,12 +51,19 @@ async function authoredServer(state: ServerState): Promise<Record<string, unknow
 
 async function currentSettingsView(state: ServerState): Promise<DashboardSettingsView> {
   const config = state.currentConfig();
+  const callers = config.server.apiKeys.map((entry) => state.traceStore.resolveUsageCaller(entry));
   const server = await authoredServer(state);
-  if (server === undefined) return settingsView(config, config.server.apiKeys, config.server.otel.destinations);
+  if (server === undefined)
+    return settingsView(config, config.server.apiKeys, config.server.otel.destinations, callers);
   const otel = server['otel'];
   const destinations = isPlainObject(otel) ? otel['destinations'] : undefined;
   const keys = server['apiKeys'];
-  return settingsView(config, Array.isArray(keys) ? keys : [], Array.isArray(destinations) ? destinations : []);
+  return settingsView(
+    config,
+    Array.isArray(keys) ? keys : [],
+    Array.isArray(destinations) ? destinations : [],
+    callers,
+  );
 }
 
 // Same policy as provider credentials: this endpoint sits behind the dashboard password (or
@@ -63,12 +71,21 @@ async function currentSettingsView(state: ServerState): Promise<DashboardSetting
 // here would write the mask over the credential. Only `/config` and the CLI mask.
 // A non-string key is dropped rather than coerced: it enforces nothing, and the authored file it
 // came from is already rejected by the schema.
-function apiKeysView(authored: readonly unknown[]): DashboardSettingsView['apiKeys'] {
-  return authored.flatMap((entry) => {
+function apiKeysView(
+  authored: readonly unknown[],
+  callers: readonly { id: string }[],
+): DashboardSettingsView['apiKeys'] {
+  return authored.flatMap((entry, index) => {
     const key = isPlainObject(entry) ? entry['key'] : undefined;
     if (typeof key !== 'string' || key === '') return [];
     const label = isPlainObject(entry) ? entry['label'] : undefined;
-    return [{ key, ...(typeof label === 'string' && label !== '' ? { label } : {}) }];
+    return [
+      {
+        key,
+        ...(callers[index] === undefined ? {} : { id: callers[index].id }),
+        ...(typeof label === 'string' && label !== '' ? { label } : {}),
+      },
+    ];
   });
 }
 
@@ -100,10 +117,11 @@ function settingsView(
   config: Config,
   authored: readonly unknown[],
   destinations: readonly unknown[],
+  callers: readonly { id: string }[],
 ): DashboardSettingsView {
   const logging = config.server.logging ?? defaultLogging;
   return {
-    apiKeys: apiKeysView(authored),
+    apiKeys: apiKeysView(authored, callers),
     hasPassword: config.server.password !== undefined,
     host: config.server.host,
     logging: {
@@ -219,7 +237,7 @@ export const createDashboardSettingsRoute = (state: ServerState) =>
       let restartRequired = false;
       try {
         await state.configStore.mutateConfig(async (current) => {
-          const result = await applySettingsMutation(current, mutation);
+          const result = await applySettingsMutation(current, withCallerIds(current, mutation, state));
           restartRequired = result.restartRequired;
           return result.next;
         });

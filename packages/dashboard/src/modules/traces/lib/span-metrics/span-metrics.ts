@@ -13,6 +13,11 @@ export interface SpanMetrics {
   readonly inputTokens: number | undefined;
   readonly outputTokens: number | undefined;
   readonly attemptCount: number | undefined;
+  readonly sendIndex?: number | undefined;
+  readonly httpSends?: number | undefined;
+  readonly responseSendIndex?: number | undefined;
+  readonly firstByteMs?: number | undefined;
+  readonly firstSseEventMs?: number | undefined;
 }
 
 type SpanAttributes = DashboardTraceSpan['attributes'];
@@ -98,7 +103,8 @@ export const readSpanMetrics = (input: {
       (ownerAttributes === undefined
         ? (trace.finalModelId ?? trace.requestedModelId)
         : (stringAttribute(ownerAttributes, traceAttribute.attemptModelId) ??
-          stringAttribute(ownerAttributes, traceAttribute.responseModel))),
+          stringAttribute(ownerAttributes, traceAttribute.responseModel) ??
+          stringAttribute(ownerAttributes, traceAttribute.requestModel))),
     durationMs: span.durationMs,
     ttftMs:
       numberAttribute(attributes, traceAttribute.attemptTtftMs) ??
@@ -119,5 +125,10 @@ export const readSpanMetrics = (input: {
     outputTokens:
       numberAttribute(attributes, traceAttribute.outputTokens) ?? (isRoot ? trace.usage?.outputTokens : undefined),
     attemptCount: attemptCount === 0 ? undefined : attemptCount,
+    sendIndex: numberAttribute(attributes, traceAttribute.sendIndex),
+    httpSends: numberAttribute(attributes, traceAttribute.httpSends),
+    responseSendIndex: numberAttribute(attributes, traceAttribute.responseSendIndex),
+    firstByteMs: numberAttribute(attributes, traceAttribute.firstByteMs),
+    firstSseEventMs: numberAttribute(attributes, traceAttribute.firstSseEventMs),
   };
 };

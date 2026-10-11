@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { DashboardOAuthFormFieldSchema } from '../dashboard-oauth';
+import { DashboardOAuthFormFieldSchema } from '../dashboard-oauth/index';
 import { ProviderKind, ProviderProtocol } from '../provider';
 import { DashboardOverviewRangeSchema, UsageOverviewRangeSchema } from '../usage';
 import {
@@ -104,6 +104,31 @@ test('preserves configured API and AI SDK display fields in dashboard summaries'
   expect(DashboardProviderSummarySchema.parse(api)).toEqual(api);
   expect(DashboardProviderSummarySchema.parse(aiSdk)).toEqual(aiSdk);
   expect(DashboardProviderSummarySchema.parse(aiSdk).protocols).toEqual([]);
+});
+
+test('preserves the localized local sign-in source in Provider responses', () => {
+  const provider = {
+    id: 'person',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    passthrough: false,
+    last_status: 'unknown',
+    last_latency: null,
+    clientModels: [],
+    protocols: [],
+    hasQuota: false,
+    canRefreshCredential: false,
+    state: { status: 'ready' },
+    localSignInSource: { default: 'Example Tool', 'zh-CN': '示例工具' },
+  } as const;
+
+  expect(DashboardProvidersResponseSchema.parse({ providers: [provider], routingRevision: 'revision' })).toEqual({
+    providers: [provider],
+    routingRevision: 'revision',
+  });
+  expect(
+    DashboardProviderSummarySchema.safeParse({ ...provider, localSignInSource: { en: 'Example Tool' } }).success,
+  ).toBe(false);
 });
 
 test('dashboard OAuth form keeps provider targets and strict conditions', () => {

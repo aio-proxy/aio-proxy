@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
+import type { DashboardRoutingModel, DashboardRoutingProvider, RouterSelection } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -25,7 +25,7 @@ const mutationMocks = rs.hoisted(() => ({
 }));
 
 const routingQueryMocks = rs.hoisted(() => ({
-  data: { writable: true, models: [] as DashboardRoutingModel[] },
+  data: { selection: 'weighted' as RouterSelection, writable: true, models: [] as DashboardRoutingModel[] },
   isLoading: false,
   isError: false,
   refetch: rs.fn(),
@@ -194,7 +194,7 @@ const modelFixture = (modelId: string): DashboardRoutingModel => ({
 });
 
 const renderAt = (pathname: string, models: readonly DashboardRoutingModel[]) => {
-  routingQueryMocks.data = { writable: true, models: [...models] };
+  routingQueryMocks.data = { selection: 'weighted', writable: true, models: [...models] };
   routingQueryMocks.isLoading = false;
   routingQueryMocks.isError = false;
   trafficMocks.traffic = undefined;
@@ -223,6 +223,7 @@ interface RenderPageOptions {
   readonly writable?: boolean;
   readonly isLoading?: boolean;
   readonly isError?: boolean;
+  readonly traffic?: RoutingTrafficData;
 }
 
 const renderPage = (options: RenderPageOptions) => {
@@ -233,12 +234,13 @@ const renderPage = (options: RenderPageOptions) => {
   );
   const modelId = options.modelId ?? 'sonnet';
   routingQueryMocks.data = {
+    selection: 'weighted',
     writable: options.writable ?? true,
     models: [...options.models],
   };
   routingQueryMocks.isLoading = options.isLoading ?? false;
   routingQueryMocks.isError = options.isError ?? false;
-  trafficMocks.traffic = undefined;
+  trafficMocks.traffic = options.traffic;
 
   const rootRoute = createRootRoute();
   const listRoute = createRoute({
@@ -304,6 +306,43 @@ test('resolves an id with more than two segments', async () => {
   renderAt('/routing/openrouter/mistralai/mistral-large', [modelFixture('openrouter/mistralai/mistral-large')]);
 
   expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('openrouter/mistralai/mistral-large');
+});
+
+test('updates detail-page deviation styling when the routing selection changes', async () => {
+  renderPage({
+    models: [modelFixture('sonnet')],
+    traffic: {
+      range: '24h',
+      rangeStart: '',
+      rangeEnd: '',
+      models: [
+        {
+          modelId: 'sonnet',
+          providers: [
+            { providerId: 'a', finalCount: 93n, attemptCount: 93n, successCount: 93n, p95LatencyMs: 100 },
+            { providerId: 'b', finalCount: 7n, attemptCount: 7n, successCount: 7n, p95LatencyMs: 100 },
+          ],
+        },
+      ],
+    },
+  });
+  const row = within(await screen.findByTestId('routing-row-a'));
+  expect(await row.findByText('93%')).toHaveClass('text-destructive');
+
+  act(() => {
+    routingQueryMocks.data = { ...routingQueryMocks.data, selection: 'quota-reset' };
+    rerenderRoutingQuery();
+  });
+
+  expect(row.getByText('93%')).not.toHaveClass('text-destructive');
+  expect(row.getByTestId('routing-share-a')).toHaveTextContent('50%');
+
+  act(() => {
+    routingQueryMocks.data = { ...routingQueryMocks.data, selection: 'weighted' };
+    rerenderRoutingQuery();
+  });
+
+  expect(row.getByText('93%')).toHaveClass('text-destructive');
 });
 
 test('names the part holding unsaved work in the save bar', async () => {
@@ -438,7 +477,7 @@ test('keeps the editor and its draft when a refetch drops the model', async () =
   dirtyTopology();
 
   act(() => {
-    routingQueryMocks.data = { writable: true, models: [] };
+    routingQueryMocks.data = { selection: 'weighted', writable: true, models: [] };
     rerenderRoutingQuery();
   });
 

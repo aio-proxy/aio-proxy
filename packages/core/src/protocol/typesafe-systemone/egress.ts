@@ -3,6 +3,8 @@ import type { EvaluationAnswer, EvaluationEgressContext, EvaluationResult } from
 export class EvaluationDistributionError extends Error {}
 
 const answerJson = (id: string, answer: EvaluationAnswer): Record<string, unknown> => {
+  if (answer.type === 'refusal')
+    throw new EvaluationDistributionError(`Answer ${id} was refused, which System One cannot represent`);
   if (answer.type === 'noul') return { type: 'noul', noul: answer.noul };
   if (answer.probabilities === undefined) {
     throw new EvaluationDistributionError(

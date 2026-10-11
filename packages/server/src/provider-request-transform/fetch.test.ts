@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { openAIResponsesAdapter, RequestBodyTooLargeError, withRequestBodyLimits } from '@aio-proxy/core';
 import {
   ConfigSchema,
   type Provider,
@@ -440,4 +441,93 @@ describe('createProviderRequestTransformFetch', () => {
     expect(JSON.stringify(error)).not.toContain('secret-operand');
     expect(calls).toHaveLength(0);
   });
+});
+
+test.each(['create', 'compact'] as const)(
+  'decodes compressed Responses %s for body reads and writes, clearing rebuilt encoding',
+  async (operation) => {
+    const original = Bun.gzipSync(Buffer.from(JSON.stringify({ model: 'upstream-model', input: 'TAIL', store: true })));
+    const raw = new Request(`https://provider.test/v1/responses${operation === 'compact' ? '/compact' : ''}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-encoding': 'gzip',
+        'content-length': String(original.length),
+      },
+      body: original,
+    });
+    const context = { operation };
+    const parsed = await openAIResponsesAdapter.parse(raw, context);
+    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream-model', new Set(), context);
+    const calls: FetchCall[] = [];
+    const transformed = createProviderRequestTransformFetch(
+      provider([
+        {
+          when: { 'request.body.input': { $eq: 'TAIL' } },
+          update: [{ $set: { 'request.body.store': false } }],
+        },
+      ]),
+      recordingFetch(calls),
+    );
+    await withProviderAttempt(() => transformed(forwarded));
+    const sent = sentRequest(calls);
+    expect(await sent.json()).toMatchObject({ model: 'upstream-model', input: 'TAIL', store: false });
+    expect(sent.headers.get('content-encoding')).toBeNull();
+    expect(sent.headers.get('content-length')).toBeNull();
+  },
+);
+
+test.each(['create', 'compact'] as const)(
+  'keeps compressed Responses %s bytes when a body predicate only changes headers',
+  async (operation) => {
+    const original = Bun.gzipSync(Buffer.from(JSON.stringify({ model: 'upstream-model', input: 'TAIL' })));
+    const raw = new Request(`https://provider.test/v1/responses${operation === 'compact' ? '/compact' : ''}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'content-encoding': 'gzip',
+        'content-length': String(original.length),
+      },
+      body: original,
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, { operation });
+    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream-model', new Set(), { operation });
+    const calls: FetchCall[] = [];
+    const transformed = createProviderRequestTransformFetch(
+      provider([
+        {
+          when: { 'request.body.input': { $eq: 'TAIL' } },
+          update: [{ $set: { 'request.headers': headerSet('x-tail', 'seen') } }],
+        },
+      ]),
+      recordingFetch(calls),
+    );
+    await withProviderAttempt(() => transformed(forwarded));
+    const sent = sentRequest(calls);
+    expect(sent.headers.get('x-tail')).toBe('seen');
+    expect(sent.headers.get('content-encoding')).toBe('gzip');
+    expect(sent.headers.get('content-length')).toBe(String(original.length));
+    expect(new Uint8Array(await sent.arrayBuffer())).toEqual(original);
+  },
+);
+
+test('body transforms enforce the scoped decoded limit and retain its rejection diagnostic', async () => {
+  const raw = new Request('https://provider.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'content-encoding': 'gzip' },
+    body: Bun.gzipSync(Buffer.from(JSON.stringify({ model: 'upstream-model', input: 'x'.repeat(2000) }))),
+  });
+  const calls: FetchCall[] = [];
+  const transformed = createProviderRequestTransformFetch(
+    provider([
+      {
+        update: [{ $set: { 'request.body.store': false } }],
+      },
+    ]),
+    recordingFetch(calls),
+  );
+  await expect(
+    withRequestBodyLimits({ encoded: 1024, decoded: 512 }, () => withProviderAttempt(() => transformed(raw))),
+  ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+  expect(calls).toHaveLength(0);
 });

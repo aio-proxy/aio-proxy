@@ -15,7 +15,7 @@ const renderLabels = (protocols: readonly ProviderProtocol[]) =>
 test('a single protocol is named inline with no tooltip to discover', () => {
   renderLabels([ProviderProtocol.Anthropic]);
 
-  expect(screen.getByText('Anthropic')).toBeInTheDocument();
+  expect(screen.getByText('Anthropic Messages')).toBeInTheDocument();
   expect(screen.queryByTestId('provider-protocols-multi')).not.toBeInTheDocument();
 });
 
@@ -23,13 +23,13 @@ test('hovering the collapsed label reveals every protocol', async () => {
   renderLabels([ProviderProtocol.OpenAICompatible, ProviderProtocol.Anthropic]);
 
   const trigger = screen.getByTestId('provider-protocols-multi');
-  expect(screen.queryByText('OpenAI Compatible')).not.toBeInTheDocument();
+  expect(screen.queryByText('OpenAI Chat Completions')).not.toBeInTheDocument();
 
   fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
   fireEvent.mouseEnter(trigger);
 
-  expect(await screen.findByText('OpenAI Compatible')).toBeInTheDocument();
-  expect(screen.getByText('Anthropic')).toBeInTheDocument();
+  expect(await screen.findByText('OpenAI Chat Completions')).toBeInTheDocument();
+  expect(screen.getByText('Anthropic Messages')).toBeInTheDocument();
 });
 
 // The card's identity link stretches a positioned `::after` over the whole card. A statically

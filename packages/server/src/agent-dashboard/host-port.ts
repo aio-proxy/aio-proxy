@@ -3,6 +3,8 @@ import type {
   AgentOperationErrorCode,
   AgentOperationResult,
   AgentTarget,
+  ClaudeCodeConfigureInput,
+  ClaudeCodeSetupPlan,
   CodexConfigureInput,
   CodexSetupPlan,
 } from '@aio-proxy/types';
@@ -13,6 +15,12 @@ export type AgentOperationEvents = {
   readonly onDevice: (device: { readonly userCode: string }) => void;
 };
 
+/** The per-target form a configure carries; absent for one-click targets. */
+export type AgentConfigureInput = {
+  readonly codex?: CodexConfigureInput | undefined;
+  readonly claudeCode?: ClaudeCodeConfigureInput | undefined;
+};
+
 /**
  * Writes Agent files on the machine running aio-proxy. The CLI injects it only when the server
  * shares a home directory with the user's Agents; the server itself never touches those files.
@@ -21,11 +29,12 @@ export type AgentHostPort = {
   readonly inspect: () => Promise<readonly AgentLocalState[]>;
   readonly configure: (
     target: AgentTarget,
-    codex: CodexConfigureInput | undefined,
+    input: AgentConfigureInput,
     events: AgentOperationEvents,
   ) => Promise<AgentOperationResult>;
   readonly remove: (target: AgentTarget, events: AgentOperationEvents) => Promise<AgentOperationResult>;
   readonly codexPlan: () => Promise<CodexSetupPlan>;
+  readonly claudeCodePlan: () => Promise<ClaudeCodeSetupPlan>;
   readonly restoreCodexMigration: (operationId: string, events: AgentOperationEvents) => Promise<AgentOperationResult>;
 };
 

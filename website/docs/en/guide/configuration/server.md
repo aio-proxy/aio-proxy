@@ -44,3 +44,20 @@ By design, `config.jsonc` restricts the listening address to the local loopback 
 
 - By default, the Dashboard is accessible locally without a password.
 - When deploying to a remote host, configure `dashboard.password` to enforce session cookie authentication before granting access to traces, settings, and OAuth credentials.
+
+## Request capacity and body logging
+
+```jsonc
+{
+  "server": {
+    "requestBody": { "maxBytes": 268435456 },
+    "logging": { "captureMaxBytes": 67108864 },
+  },
+}
+```
+
+`server.requestBody.maxBytes` defaults to 256 MiB and accepts integers from 1 MiB to 512 MiB (`1048576..536870912`). Ordinary JSON requests check both encoded transport bytes and decoded bytes, including compressed requests. Explicit image, audio and video limits remain separate; image generations and video keep their existing 64/128 MiB limits.
+
+`server.logging.captureMaxBytes` defaults to 64 MiB and accepts integers from 0 to 64 MiB (`0..67108864`), per hop and direction. Setting it to 0 disables body capture while forwarding and diagnostics continue. Truncated logs retain the total observed `byteLength`, `truncated` and `captureLimitBytes`; omitted bodies use `privacy_policy`, `media_payload` or `capture_limit`. Sensitive or uninspectable bodies remain omitted. Privacy inspection keeps its independent 64 MiB budget, and the Dashboard keeps its existing 1,048,576 code-unit read limit.
+
+Both budgets support hot reload for new requests. A request already started retains its entry configuration snapshot. Parsing, Base64, cloning and retries may occupy several times the request size in memory; raising the limit is not an upstream capacity guarantee.

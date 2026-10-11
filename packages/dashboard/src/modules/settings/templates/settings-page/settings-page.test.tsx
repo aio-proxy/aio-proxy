@@ -52,7 +52,10 @@ rs.mock('../../hooks/use-reload-mutation', () => ({
 }));
 
 const settings: DashboardSettingsView = {
-  apiKeys: [{ key: 'sk-ci', label: 'ci' }, { key: '{{env.PROXY_KEY}}' }],
+  apiKeys: [
+    { key: 'sk-ci', label: 'ci' },
+    { key: '{{env.PROXY_KEY}}', label: 'proxy' },
+  ],
   hasPassword: true,
   host: '127.0.0.1',
   logging: { enabled: true, level: 'info', retentionDays: 3 },
@@ -269,7 +272,10 @@ test('serves configured keys as editable plaintext and saves the whole array', (
 
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
   expect(mocks.mutate).toHaveBeenCalledWith({
-    apiKeys: [{ key: 'sk-ci', label: 'ci-renamed' }, { key: '{{env.PROXY_KEY}}' }],
+    apiKeys: [
+      { key: 'sk-ci', label: 'ci-renamed' },
+      { key: '{{env.PROXY_KEY}}', label: 'proxy' },
+    ],
   });
 });
 
@@ -281,11 +287,16 @@ test('adds a new API key and sends it in plaintext exactly once', () => {
 
   const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
   fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: 'sk-added' } });
+  fireEvent.change(within(group).getAllByLabelText(/Label/u).at(-1) as HTMLElement, { target: { value: 'new-user' } });
   fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
 
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
   expect(mocks.mutate).toHaveBeenCalledWith({
-    apiKeys: [{ key: 'sk-ci', label: 'ci' }, { key: '{{env.PROXY_KEY}}' }, { key: 'sk-added' }],
+    apiKeys: [
+      { key: 'sk-ci', label: 'ci' },
+      { key: '{{env.PROXY_KEY}}', label: 'proxy' },
+      { key: 'sk-added', label: 'new-user' },
+    ],
   });
 });
 
@@ -301,6 +312,9 @@ test('adds, generates and saves a key when randomUUID is unavailable on HTTP', (
       name: /Generate a key|随机生成密钥|隨機產生金鑰|キーを生成|키 생성/u,
     });
     fireEvent.click(dice[dice.length - 1] as HTMLElement);
+    fireEvent.change(within(group).getAllByLabelText(/Label/u).at(-1) as HTMLElement, {
+      target: { value: 'new-user' },
+    });
 
     const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
     const generated = (values[values.length - 1] as HTMLInputElement).value;
@@ -309,7 +323,11 @@ test('adds, generates and saves a key when randomUUID is unavailable on HTTP', (
 
     fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
     expect(mocks.mutate).toHaveBeenCalledWith({
-      apiKeys: [{ key: 'sk-ci', label: 'ci' }, { key: '{{env.PROXY_KEY}}' }, { key: generated }],
+      apiKeys: [
+        { key: 'sk-ci', label: 'ci' },
+        { key: '{{env.PROXY_KEY}}', label: 'proxy' },
+        { key: generated, label: 'new-user' },
+      ],
     });
   } finally {
     if (descriptor) Object.defineProperty(crypto, 'randomUUID', descriptor);
@@ -317,7 +335,7 @@ test('adds, generates and saves a key when randomUUID is unavailable on HTTP', (
   }
 });
 
-test('puts the required key before the optional label in each row', () => {
+test('puts the required key before the required label in each row', () => {
   renderPage();
 
   const group = screen.getByTestId('settings-group-api-keys');
@@ -335,7 +353,7 @@ test('removes a stored API key', () => {
   fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
 
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
-  expect(mocks.mutate).toHaveBeenCalledWith({ apiKeys: [{ key: '{{env.PROXY_KEY}}' }] });
+  expect(mocks.mutate).toHaveBeenCalledWith({ apiKeys: [{ key: '{{env.PROXY_KEY}}', label: 'proxy' }] });
 });
 
 test('reseeds stored API key rows when a reload replaces the stored keys', () => {
@@ -386,12 +404,17 @@ test('submits a key exactly as typed rather than trimming the credential', () =>
   fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
   const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
   fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: ' sk-padded ' } });
+  fireEvent.change(within(group).getAllByLabelText(/Label/u).at(-1) as HTMLElement, { target: { value: 'new-user' } });
 
   // The proxy compares the authored key byte for byte, so trimming here would store a
   // different credential than the one the operator handed out.
   fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
   expect(mocks.mutate).toHaveBeenCalledWith({
-    apiKeys: [{ key: 'sk-ci', label: 'ci' }, { key: '{{env.PROXY_KEY}}' }, { key: ' sk-padded ' }],
+    apiKeys: [
+      { key: 'sk-ci', label: 'ci' },
+      { key: '{{env.PROXY_KEY}}', label: 'proxy' },
+      { key: ' sk-padded ', label: 'new-user' },
+    ],
   });
 });
 
@@ -402,12 +425,17 @@ test('submits a whitespace-only key instead of silently dropping the row', () =>
   fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
   const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
   fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: '   ' } });
+  fireEvent.change(within(group).getAllByLabelText(/Label/u).at(-1) as HTMLElement, { target: { value: 'new-user' } });
 
   // The schema accepts any nonempty string, so whitespace is a usable credential. Treating it as
   // an empty row would report a successful save for a key that was never persisted.
   fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
   expect(mocks.mutate).toHaveBeenCalledWith({
-    apiKeys: [{ key: 'sk-ci', label: 'ci' }, { key: '{{env.PROXY_KEY}}' }, { key: '   ' }],
+    apiKeys: [
+      { key: 'sk-ci', label: 'ci' },
+      { key: '{{env.PROXY_KEY}}', label: 'proxy' },
+      { key: '   ', label: 'new-user' },
+    ],
   });
 });
 
@@ -439,12 +467,13 @@ test('drops a saved new key row instead of leaving it beside its stored copy', (
   fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
   const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
   fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: 'sk-accepted' } });
+  fireEvent.change(within(group).getAllByLabelText(/Label/u).at(-1) as HTMLElement, { target: { value: 'new-user' } });
   fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
 
   // The accepted key comes back as a stored row; reseeding from the server is what retires the
   // draft, so the operator is not left staring at the same key twice.
   mocks.useSettingsQuery.mockReturnValue({
-    data: { ...settings, apiKeys: [...settings.apiKeys, { key: 'sk-accepted' }] },
+    data: { ...settings, apiKeys: [...settings.apiKeys, { key: 'sk-accepted', label: 'new-user' }] },
     isError: false,
     isLoading: false,
   });
@@ -508,4 +537,31 @@ test('proxy fallback stays disabled until a backup is saved, then toggles indepe
   fireEvent.click(toggle);
   expect(mocks.mutate).toHaveBeenLastCalledWith({ proxyFallback: false });
   expect(screen.getByLabelText(/Backup proxy|备用代理|備用代理/u)).toHaveValue('****');
+});
+
+test('requires a readable unique label before saving a new key', () => {
+  renderPage();
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key/u }));
+  fireEvent.change(within(group).getAllByLabelText(/^Key$/u).at(-1) as HTMLElement, { target: { value: 'sk-person' } });
+  const save = within(group).getByRole('button', { name: /Save keys/u });
+  expect(save).toBeDisabled();
+  const label = within(group).getAllByLabelText(/Label/u).at(-1) as HTMLElement;
+  fireEvent.change(label, { target: { value: ' ci ' } });
+  expect(save).toBeDisabled();
+  fireEvent.change(label, { target: { value: ' Alice ' } });
+  expect(save).toBeEnabled();
+  fireEvent.click(save);
+  expect(mocks.mutate).toHaveBeenCalledWith({ apiKeys: [...settings.apiKeys, { key: 'sk-person', label: 'Alice' }] });
+});
+
+test('a key rotation carries the stored caller ID rather than creating a new person', () => {
+  prepareMocks();
+  const id = 'e1c7db65-f7aa-4d3b-9bc9-661f111a4c7d';
+  const named = { ...settings, apiKeys: [{ id, key: 'old-key', label: 'Alice' }] };
+  render(<SettingsForm settings={named} />);
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.change(within(group).getByDisplayValue('old-key'), { target: { value: 'rotated-key' } });
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys/u }));
+  expect(mocks.mutate).toHaveBeenCalledWith({ apiKeys: [{ id, key: 'rotated-key', label: 'Alice' }] });
 });

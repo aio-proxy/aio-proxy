@@ -1,4 +1,8 @@
-import type { DashboardRoutingModelMutation, DashboardRoutingModelsResponse } from '@aio-proxy/types';
+import type {
+  DashboardRoutingModelMutation,
+  DashboardRoutingModelsResponse,
+  DashboardRoutingSelectionMutation,
+} from '@aio-proxy/types';
 import { queryOptions } from '@tanstack/react-query';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
@@ -29,3 +33,9 @@ export async function updateRoutingModelMutationFn(body: DashboardRoutingModelMu
 
 export const isStaleRoutingError = (error: unknown): error is Error & { readonly code: 'stale_revision' } =>
   error instanceof Error && 'code' in error && error.code === 'stale_revision';
+
+export async function updateRoutingSelectionMutationFn(body: DashboardRoutingSelectionMutation) {
+  const response = await dashboardClient.dashboard.api.routing.selection.$put({ json: body });
+  if (!response.ok) throw new Error(`update routing selection failed: ${response.status}`);
+  return response.json();
+}

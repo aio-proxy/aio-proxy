@@ -24,6 +24,8 @@ export const oauthAccount = sqliteTable(
     runtimeRevision: integer('runtime_revision').notNull(),
     label: text('label'),
     expiresAt: integer('expires_at'),
+    localSignIn: integer('local_sign_in', { mode: 'boolean' }).notNull().default(false),
+    localSignInConsumed: text('local_sign_in_consumed'),
     updatedAt: integer('updated_at').notNull(),
   },
   (table) => [unique().on(table.plugin, table.capability, table.fingerprint)],

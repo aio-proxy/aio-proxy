@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { IdSchema } from './common';
 import { UsageRowSchema } from './usage';
+import { UsageCallerSchema } from './usage-caller';
 
 const TraceBaseSchema = z.object({
   traceId: IdSchema,
@@ -43,6 +44,7 @@ export const TraceSpanKindSchema = z.enum(['INTERNAL', 'SERVER', 'CLIENT', 'PROD
 export const DashboardTracePageSizeSchema = z.union([z.literal(10), z.literal(20), z.literal(50), z.literal(100)]);
 
 export const DashboardTraceSummarySchema = z.object({
+  caller: UsageCallerSchema.optional(),
   traceId: z.string().regex(/^[0-9a-f]{32}$/u),
   rootSpanId: z.string().regex(/^[0-9a-f]{16}$/u),
   requestId: z.string().min(1),
@@ -206,6 +208,8 @@ const DashboardTraceWireBodySchema = z
     truncated: z.boolean().optional(),
     // 视频等二进制正文写侧不落 chunk，终态仍是 complete + 真实 byteLength + 空 text
     omitted: z.boolean().optional(),
+    captureLimitBytes: z.number().int().min(0).optional(),
+    omissionReason: z.enum(['privacy_policy', 'media_payload', 'capture_limit']).optional(),
   })
   .strict();
 

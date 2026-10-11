@@ -135,9 +135,10 @@ test('a migrated static catalog with revision 0 stays fresh', () => {
   );
 });
 
-test('materialize binds plugin capability runtimeRevision onto the catalog job', async () => {
+test('a materialized catalog job cannot commit after the account runtime revision moves', async () => {
   const fixture = runtimeFixture({ kind: 'ttl', ttlMs: 1 });
   const account = fixture.repository.readAccount('person');
+  if (account === null) throw new Error('missing fixture account');
 
   const result = await materializePluginProvider({
     config: {
@@ -154,10 +155,119 @@ test('materialize binds plugin capability runtimeRevision onto the catalog job',
     onDiagnosticChanged: () => {},
   });
 
-  expect(result.catalogJob?.plugin).toBe('@example/oauth');
-  expect(result.catalogJob?.capability).toBe('default');
-  expect(result.catalogJob?.accountRuntimeRevision).toBe(account?.runtimeRevision);
+  const job = result.catalogJob;
+  if (job === undefined) throw new Error('missing catalog job');
+  const commit = await job.discover(new AbortController().signal);
+  const replacementCatalog = { ...catalog, language: [{ id: 'replacement-model' }] };
+  const operation = fixture.repository.stageAccountOperation({
+    kind: 'update',
+    targetDigest: 'replace-account',
+    expectedRuntimeRevision: account.runtimeRevision,
+    account: {
+      ...account,
+      credential: { token: 'replacement-secret' },
+      catalog: { kind: 'replace', value: { catalog: replacementCatalog, refreshedAt: 1_000 } },
+    },
+  });
+  fixture.repository.completeAccountOperation(operation.operationId);
+
+  expect(fixture.repository.readAccount('person')?.runtimeRevision).toBeGreaterThan(account.runtimeRevision);
+  expect(commit()).toBe(false);
+  expect(job.markUnavailable(new Error('late failure'))).toBe(false);
+  expect(fixture.repository.readCatalog('person')?.catalog).toEqual(replacementCatalog);
+  expect(fixture.repository.readDiagnostics('person')).toEqual([]);
   expect(result.catalogJob).not.toHaveProperty('defaultAliases');
+});
+
+test('OAuth discovery validates the catalog and defers persistence until the synchronous commit', async () => {
+  const fixture = runtimeFixture(
+    { kind: 'ttl', ttlMs: 1 },
+    { discover: async () => ({ ...catalog, language: [{ id: ' fresh-model ' }] }) },
+  );
+  const result = await materializePluginProvider({
+    config: { id: 'person', kind: ProviderKind.OAuth, enabled: true, plugin: '@example/oauth', capability: 'default' },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  });
+  const job = result.catalogJob;
+  if (job === undefined) throw new Error('missing catalog job');
+  const before = fixture.repository.readCatalog('person');
+  expect(job.markUnavailable(new Error('previous failure'))).toBe(true);
+  const commit = await job.discover(new AbortController().signal);
+  expect(fixture.repository.readCatalog('person')).toEqual(before);
+  await Bun.sleep(2);
+  const commitAt = Date.now();
+
+  expect(commit()).toBe(true);
+  expect(fixture.repository.readCatalog('person')).toMatchObject({
+    catalog: { language: [{ id: 'fresh-model' }] },
+    revision: (before?.revision ?? 0) + 1,
+  });
+  expect(fixture.repository.readCatalog('person')?.refreshedAt).toBeGreaterThanOrEqual(commitAt);
+  expect(fixture.repository.readDiagnostics('person')).toEqual([]);
+});
+
+test('OAuth discovery records startedAt before awaiting the catalog so a newer stored result wins', async () => {
+  const discovery = Promise.withResolvers<ModelCatalog>();
+  const started = Promise.withResolvers<void>();
+  const fixture = runtimeFixture(
+    { kind: 'ttl', ttlMs: 1 },
+    {
+      discover: async () => {
+        started.resolve();
+        return await discovery.promise;
+      },
+    },
+  );
+  const result = await materializePluginProvider({
+    config: { id: 'person', kind: ProviderKind.OAuth, enabled: true, plugin: '@example/oauth', capability: 'default' },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  });
+  const job = result.catalogJob;
+  if (job === undefined) throw new Error('missing catalog job');
+  const pending = job.discover(new AbortController().signal);
+  await started.promise;
+  const newerCatalog = { ...catalog, language: [{ id: 'newer-model' }] };
+  fixture.repository.writeCatalog('person', newerCatalog, Date.now());
+  const newerStored = fixture.repository.readCatalog('person');
+  await Bun.sleep(5);
+  discovery.resolve({ ...catalog, language: [{ id: 'late-model' }] });
+  const commit = await pending;
+
+  expect(commit()).toBe(false);
+  expect(fixture.repository.readCatalog('person')).toEqual(newerStored);
+});
+
+test('a malformed OAuth discovery records unavailability without overwriting the last good catalog', async () => {
+  const fixture = runtimeFixture(
+    { kind: 'ttl', ttlMs: 1 },
+    { discover: async () => ({ language: 'invalid' }) as never },
+  );
+  const result = await materializePluginProvider({
+    config: { id: 'person', kind: ProviderKind.OAuth, enabled: true, plugin: '@example/oauth', capability: 'default' },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  });
+  const job = result.catalogJob;
+  if (job === undefined) throw new Error('missing catalog job');
+  const before = fixture.repository.readCatalog('person');
+
+  await expect(job.discover(new AbortController().signal)).rejects.toThrow('Plugin model catalog is invalid');
+  expect(job.markUnavailable(new Error('invalid catalog'))).toBe(true);
+  expect(fixture.repository.readCatalog('person')).toEqual(before);
+  expect(fixture.repository.readDiagnostics('person')).toEqual([
+    diagnostics('CATALOG_UNAVAILABLE', { providerId: 'person', retryable: true }),
+  ]);
 });
 
 test('an expired TTL catalog is ready but stale before a refresh diagnostic exists', async () => {

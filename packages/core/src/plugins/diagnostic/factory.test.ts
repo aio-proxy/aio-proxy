@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { DiagnosticSchema } from '@aio-proxy/types';
+
 import { createPluginDiagnosticFactory } from '.';
 
 describe('createPluginDiagnosticFactory', () => {
@@ -36,5 +38,16 @@ describe('createPluginDiagnosticFactory', () => {
       retryable: false,
       summary: 'Provider cursor-personal does not support the configured proxy',
     });
+  });
+
+  test('explains why syncModels cannot be used for an unsupported catalog', () => {
+    const diagnostic = createPluginDiagnosticFactory(() => 123)('CATALOG_UNSUPPORTED', {
+      providerId: 'upstream',
+      retryable: false,
+    });
+
+    expect(diagnostic.summary).toBe('Provider upstream cannot list its upstream models, so syncModels cannot be used');
+    expect(diagnostic.retryable).toBe(false);
+    expect(DiagnosticSchema.parse(diagnostic)).toEqual(diagnostic);
   });
 });

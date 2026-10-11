@@ -25,6 +25,7 @@ const TraceFiltersQuerySchema = z.object({
     .string()
     .regex(/^[0-9a-f]{32}$/u)
     .optional(),
+  callerId: z.string().min(1).max(128).optional(),
   requestId: z.string().trim().min(1).optional(),
   sessionSource: z.string().trim().min(1).optional(),
   sessionId: z.string().trim().min(1).max(512).optional(),
@@ -82,6 +83,7 @@ const traceIdParamsValidator = validator('param', (raw, context) => {
 
 function toTraceFilters(query: z.output<typeof TraceFiltersQuerySchema>) {
   return {
+    ...(query.callerId === undefined ? {} : { callerId: query.callerId }),
     ...(query.startedAfter === undefined ? {} : { startedAfter: query.startedAfter }),
     ...(query.startedBefore === undefined ? {} : { startedBefore: query.startedBefore }),
     ...(query.traceId === undefined ? {} : { traceId: query.traceId }),

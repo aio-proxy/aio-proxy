@@ -87,11 +87,12 @@ export class DashboardOverviewRequestError extends Error {
 
 export type OverviewQueryInput = {
   readonly range: DashboardOverviewRange;
+  readonly callerId?: string;
 };
 
 export const overviewQueryOptions = (input: OverviewQueryInput) =>
   queryOptions({
-    queryKey: queryKeys.overviewRange(input.range),
+    queryKey: [...queryKeys.overviewRange(input.range), ...(input.callerId === undefined ? [] : [input.callerId])],
     queryFn: () => getOverview(input),
     placeholderData: keepPreviousData,
     refetchInterval: input.range === '24h' ? (query) => (query.state.status === 'error' ? false : 5_000) : false,
@@ -100,17 +101,20 @@ export const overviewQueryOptions = (input: OverviewQueryInput) =>
 
 export const overviewDiagnosticsQueryOptions = (input: OverviewQueryInput) =>
   queryOptions({
-    queryKey: queryKeys.overviewDiagnostics(input.range),
+    queryKey: [
+      ...queryKeys.overviewDiagnostics(input.range),
+      ...(input.callerId === undefined ? [] : [input.callerId]),
+    ],
     queryFn: () => getOverviewDiagnostics(input),
     placeholderData: keepPreviousData,
     refetchInterval: input.range === '24h' ? 5_000 : false,
     staleTime: 60_000,
   });
 
-export const overviewActivityQueryOptions = () =>
+export const overviewActivityQueryOptions = (callerId?: string) =>
   queryOptions({
-    queryKey: queryKeys.overviewActivity,
-    queryFn: getOverviewActivity,
+    queryKey: [...queryKeys.overviewActivity, ...(callerId === undefined ? [] : [callerId])],
+    queryFn: () => getOverviewActivity(callerId),
     placeholderData: keepPreviousData,
     refetchInterval: false,
     staleTime: 60_000,
@@ -118,7 +122,7 @@ export const overviewActivityQueryOptions = () =>
 
 export const getOverview = async (input: OverviewQueryInput): Promise<OverviewData> => {
   const response = await dashboardClient.dashboard.api.overview.$get({
-    query: { range: input.range },
+    query: { range: input.range, ...(input.callerId === undefined ? {} : { callerId: input.callerId }) },
   });
   if (!response.ok) throw new DashboardOverviewRequestError(response.status);
   return decodeOverview(await response.json());
@@ -126,14 +130,29 @@ export const getOverview = async (input: OverviewQueryInput): Promise<OverviewDa
 
 export const getOverviewDiagnostics = async (input: OverviewQueryInput): Promise<OverviewDiagnosticsData> => {
   const response = await dashboardClient.dashboard.api.overview.diagnostics.$get({
-    query: { range: input.range },
+    query: { range: input.range, ...(input.callerId === undefined ? {} : { callerId: input.callerId }) },
   });
   if (!response.ok) throw new DashboardOverviewRequestError(response.status);
   return decodeOverviewDiagnostics(await response.json());
 };
 
-export const getOverviewActivity = async (): Promise<OverviewActivityData> => {
-  const response = await dashboardClient.dashboard.api.overview.activity.$get();
+export const getOverviewActivity = async (callerId?: string): Promise<OverviewActivityData> => {
+  const response = await dashboardClient.dashboard.api.overview.activity.$get({
+    query: { ...(callerId === undefined ? {} : { callerId }) },
+  });
   if (!response.ok) throw new DashboardOverviewRequestError(response.status);
   return decodeOverviewActivity(await response.json());
 };
+
+export const callerRankingQueryOptions = (input: OverviewQueryInput) =>
+  queryOptions({
+    queryKey: ['overview', 'caller-ranking', input.range],
+    queryFn: async () => {
+      const response = await dashboardClient.dashboard.api.overview['caller-ranking'].$get({
+        query: { range: input.range },
+      });
+      if (!response.ok) throw new DashboardOverviewRequestError(response.status);
+      return response.json();
+    },
+    refetchInterval: input.range === '24h' ? 5_000 : false,
+  });

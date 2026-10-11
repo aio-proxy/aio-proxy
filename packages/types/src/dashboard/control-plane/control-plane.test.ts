@@ -90,8 +90,18 @@ describe('dashboard settings control-plane contracts', () => {
 
     expect(mutation.parse({})).not.toHaveProperty('apiKeys');
     expect(mutation.parse({ apiKeys: [] })).toEqual({ apiKeys: [] });
-    expect(mutation.parse({ apiKeys: [{ key: '{{env.PROXY_KEY}}' }, { key: 'sk-new', label: 'renamed' }] })).toEqual({
-      apiKeys: [{ key: '{{env.PROXY_KEY}}' }, { key: 'sk-new', label: 'renamed' }],
+    expect(
+      mutation.parse({
+        apiKeys: [
+          { key: '{{env.PROXY_KEY}}', label: 'proxy' },
+          { key: 'sk-new', label: 'renamed' },
+        ],
+      }),
+    ).toEqual({
+      apiKeys: [
+        { key: '{{env.PROXY_KEY}}', label: 'proxy' },
+        { key: 'sk-new', label: 'renamed' },
+      ],
     });
     for (const entry of [
       { retain: 0 },

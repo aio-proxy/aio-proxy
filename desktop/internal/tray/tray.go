@@ -9,13 +9,13 @@ import (
 	"image/png"
 	"math"
 	"slices"
-	"time"
 
 	"github.com/egoist/mygo"
 
 	"github.com/aio-proxy/aio-proxy/desktop/assets"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/app"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/client/health"
+	"github.com/aio-proxy/aio-proxy/desktop/internal/live"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/logx"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/menubar"
 )
@@ -69,6 +69,7 @@ type Tray struct {
 	rows         [2]menubar.MetricRow
 	rowCount     int
 	showIcon     bool
+	dimmed       bool
 	marks        [3]image.Image
 }
 
@@ -104,25 +105,24 @@ func New(m *app.Model, toggle, hide func()) (*Tray, error) {
 	return t, nil
 }
 func (t *Tray) Sync(m *app.Model) {
+	stopped := m.Health.State() == health.Down || m.Discovery == nil || !m.Discovery.Instance.Reachable
 	state := TrayState(m.Health.State(), m.NeedsAttention())
-	rows, count := m.MenuBarStatistics.Rows(m.MenuBarDisplay, time.Now(), m.IsDown())
-	if state != t.state || rows != t.rows || count != t.rowCount || m.MenuBarDisplay.ShowIcon != t.showIcon {
-		data := t.icons[state]
-		var err error
-		if count > 0 {
-			var mark image.Image
-			if m.MenuBarDisplay.ShowIcon {
-				mark = t.marks[state]
-			}
-			data, err = metricsPNG(rows[:count], mark)
-		}
+	if stopped {
+		state = Down
+	}
+	drawn, showIcon, dimmed := live.Lines(m.MenuBarDisplay, m.Live, m.InstanceEpoch(), stopped)
+	var rows [2]menubar.MetricRow
+	copy(rows[:], drawn)
+	count := len(drawn)
+	if state != t.state || rows != t.rows || count != t.rowCount || showIcon != t.showIcon || dimmed != t.dimmed {
+		data, err := t.iconFor(state, rows[:count], showIcon, dimmed)
 		if err == nil {
 			err = t.Icon.SetIcon(data, true)
 		}
 		if err != nil {
 			logx.Infof("menu-bar metrics image: %v", err)
 		} else {
-			t.state, t.rows, t.rowCount, t.showIcon = state, rows, count, m.MenuBarDisplay.ShowIcon
+			t.state, t.rows, t.rowCount, t.showIcon, t.dimmed = state, rows, count, showIcon, dimmed
 		}
 	}
 	entries := Entries(m)

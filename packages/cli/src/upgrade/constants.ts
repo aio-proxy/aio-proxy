@@ -7,9 +7,15 @@ export const HOMEBREW_FORMULA = 'aio-proxy/tap/aio-proxy';
 // than GitHub Release assets, which the release pipeline never uploads.
 export const BINARY_NPM_SCOPE = '@aio-proxy';
 // os-arch keys that have a published @aio-proxy/cli-<key> package. `process.arch`
-// reports `x64`/`arm64` and `process.platform` reports `darwin`/`linux`, matching
+// reports `x64`/`arm64` and `process.platform` reports `darwin`/`linux`/`win32`, matching
 // the package suffixes exactly.
-export const SUPPORTED_BINARY_TARGETS = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'] as const;
+export const SUPPORTED_BINARY_TARGETS = [
+  'darwin-arm64',
+  'darwin-x64',
+  'linux-arm64',
+  'linux-x64',
+  'win32-x64',
+] as const;
 export const BINARY_DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
 
 export type UpgradeMethod = 'brew' | 'bun' | 'npm' | 'pnpm' | 'binary';

@@ -10,7 +10,7 @@ import { type RootRow, spanRows } from './span-rows';
 export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOverviewQuery): DashboardOverviewResponse {
   const now = query.now ?? new Date();
   const range = resolveRange(query.range, now);
-  const rows = rangeRows(db, range);
+  const rows = rangeRows(db, range, query.callerId);
   const chartBuckets = bucketKeys(query.range, range.start, range.end);
   const requests = aggregateRows(
     rows.map((row) => ({ ...row, terminationReason: null })),
@@ -22,7 +22,7 @@ export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOvervie
   const cost = aggregateRows(rows, 'cost', chartBuckets, 4);
   const previousRange = shiftRangeBack(range);
   const current = summarize(rows, range);
-  const previous = summarize(rangeRows(db, previousRange), previousRange);
+  const previous = summarize(rangeRows(db, previousRange, query.callerId), previousRange);
 
   return {
     range: query.range,
@@ -46,8 +46,8 @@ export function overviewDashboard(db: BunSQLiteDatabase, query: DashboardOvervie
  * range can read it. Day ranges come from the `usage_daily` rollup, which is never
  * pruned and is the only source that reaches the longest range.
  */
-export function rangeRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly RootRow[] {
-  return range.bucketUnit === 'hour' ? spanRows(db, range) : dailyRows(db, range);
+export function rangeRows(db: BunSQLiteDatabase, range: ResolvedRange, callerId?: string): readonly RootRow[] {
+  return range.bucketUnit === 'hour' ? spanRows(db, range, callerId) : dailyRows(db, range, callerId);
 }
 
 type SummaryTotals = {

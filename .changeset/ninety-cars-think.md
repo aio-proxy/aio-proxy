@@ -2,4 +2,4 @@
 'aio-proxy': patch
 ---
 
-Rebuild the macOS menu-bar companion with Go and native MyGo UI, preserving rounded scrolling cards, animated controls, service actions, usage and quota views, login items, and Sparkle updates. Menu Bar Display shows today's tokens and sampled throughput in compact, aligned TPS/TOK rows; the metrics and icon toggle independently, choices survive relaunch, and statistics update with the panel closed. Desktop builds no longer require Rust.
+Rebuild the desktop companion in Go with native MyGo UI on macOS, Linux, and Windows. macOS keeps the compact menu-bar metrics, Sparkle updates, and the login item. Linux and Windows keep tray or window operation, launch at login, the stable service copy, signed updates, and the AppImage and NSIS packages. Menu Bar Display reads live today tokens, cost, in-flight requests, and output tok/s from the local desktop API. Desktop builds no longer require Rust.

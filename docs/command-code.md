@@ -51,9 +51,9 @@ Point your client at AIO Proxy's local endpoint, normally `http://127.0.0.1:9317
 
 ## Dashboard
 
-Create an **API** Provider, select **OpenAI Compatible**, and enter `https://api.commandcode.ai/provider/v1` as its address. Enter your Command Code API key and add the non-Claude models you want to expose.
+Create an **API** Provider, select **OpenAI Chat Completions**, and enter `https://api.commandcode.ai/provider/v1` as its address. Enter your Command Code API key and add the non-Claude models you want to expose.
 
-For Claude, create a separate **API** Provider with **Anthropic** and the same address. The default `x-api-key` authentication is supported by Command Code; the independent-address editor also allows selecting **Bearer** to match the file example above. Add only the Claude models to this Provider.
+For Claude, create a separate **API** Provider with **Anthropic Messages** and the same address. The default `x-api-key` authentication is supported by Command Code; the independent-address editor also allows selecting **Bearer** to match the file example above. Add only the Claude models to this Provider.
 
 New single-protocol entries preserve the full address. An existing legacy `protocol`/`baseURL` configuration keeps its historical behavior; use the `endpoints` configuration above to migrate one that needs the `/provider/v1` prefix.
 

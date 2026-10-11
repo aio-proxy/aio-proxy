@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/aio-proxy/aio-proxy/desktop/internal/app"
-	nativeimages "github.com/aio-proxy/aio-proxy/desktop/internal/macos/images"
 	"github.com/egoist/mygo/ui"
 	_ "github.com/sergeymakinen/go-ico" // Remote plugin icons may be ICO, as in the original renderer.
 	_ "golang.org/x/image/tiff"         // Previously supported by GPUI; also decodes Cocoa's bitmap fallback.
@@ -46,11 +45,10 @@ func providerImageFor(m *app.Model, source string) ui.ImageSource {
 }
 
 func loadProviderImage(source string) (ui.ImageSource, error) {
-	response, err := nativeimages.Get(source)
+	contentType, data, err := fetchProvider(source)
 	if err != nil {
 		return nil, err
 	}
-	contentType, data := response.ContentType, response.Body
 	trimmed := bytes.TrimSpace(data)
 	if strings.HasPrefix(contentType, "image/svg+xml") || bytes.HasPrefix(trimmed, []byte("<svg")) || bytes.HasPrefix(trimmed, []byte("<?xml")) {
 		return ui.ParseSVG(data)
@@ -59,7 +57,7 @@ func loadProviderImage(source string) (ui.ImageSource, error) {
 	if err == nil {
 		return bitmap, nil
 	}
-	converted, err := nativeimages.TIFF(data)
+	converted, err := convertProvider(data)
 	if err != nil {
 		return nil, err
 	}

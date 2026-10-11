@@ -19,5 +19,10 @@
     "declaration": true,
     "declarationMap": true
   },
-  "include": ["**/*.ts"]
+  "include": ["**/*.ts"],
+  "references": [
+    {
+      "path": "../../packages/core"
+    }
+  ]
 }

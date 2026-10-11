@@ -7,7 +7,8 @@ import { logRequestRejected } from '../logging';
 import type { SpanTerminal } from '../tracing';
 import type { AnyAttemptLoopContext, AttemptStep, CandidateSlot } from './context';
 import { cooldownTtlMs } from './cooldown-write';
-import { attemptLog } from './emit';
+import { type AttemptOutcomeFacts, attemptLog } from './emit';
+import { warmQuotaOnRefusal } from './warm-quota';
 
 // Ends the candidate's attempt span: reuses the span opened before the provider
 // call when present, otherwise opens and closes one for pre-invocation failures.
@@ -16,11 +17,12 @@ function endAttemptSpan<TRequest, TContext>(
   slot: CandidateSlot,
   base: AttemptInfo,
   terminal: SpanTerminal,
+  facts?: AttemptOutcomeFacts,
 ): void {
   const open = slot.spanRef.current;
   if (open !== undefined) {
     slot.spanRef.current = undefined;
-    ctx.emitter.endAttempt(open, slot.observation, terminal);
+    ctx.emitter.endAttempt(open, slot.observation, terminal, facts);
     return;
   }
   ctx.emitter.emitAttempt(base, slot.index, slot.observation, terminal);
@@ -33,10 +35,11 @@ export function emitReject<TRequest, TContext>(
   slot: CandidateSlot,
   response: Response,
   errorCode?: string,
+  facts?: AttemptOutcomeFacts,
 ): AttemptStep {
   const { candidate, startedAt, hasNext } = slot;
   const base = attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace);
-  endAttemptSpan(ctx, slot, base, failureTerminal(response.status, errorCode));
+  endAttemptSpan(ctx, slot, base, failureTerminal(response.status, errorCode), facts);
   if (hasNext) {
     return { kind: 'fallback', lastFailure: response };
   }
@@ -118,6 +121,7 @@ export function handleAttemptError<TRequest, TContext>(
       const cooldownMs = cooldownTtlMs(status, retryAfter, ctx.retryAfterCapMs);
       if (cooldownMs > 0) ctx.cooldown.cool(provider.id, candidate.modelId, cooldownMs);
     }
+    warmQuotaOnRefusal(ctx.source, provider, status);
   }
 
   if (!cancelled) {

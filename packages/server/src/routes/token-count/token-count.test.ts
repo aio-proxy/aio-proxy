@@ -446,3 +446,33 @@ function anthropicGenerateRequest(sessionId?: string): Request {
     }),
   });
 }
+
+test.each(['invalid', 'declared'] as const)(
+  'token counting classifies %s length rejection before dispatch',
+  async (kind) => {
+    const limit = 1_048_576;
+    const fixture = countFixture([], {
+      config: ConfigSchema.parse({ server: { requestBody: { maxBytes: limit } }, providers: {} }),
+    });
+    const request = anthropicRequest();
+    request.headers.set('content-length', kind === 'invalid' ? 'private-input' : String(limit + 1));
+    const response = await fixture.anthropic(request);
+    expect(response.status).toBe(kind === 'invalid' ? 400 : 413);
+    const errorCode = kind === 'invalid' ? 'invalid_request' : 'request_too_large';
+    expect(await response.json()).toMatchObject({
+      type: 'error',
+      error: { type: 'invalid_request_error' },
+    });
+    const fields =
+      kind === 'invalid'
+        ? { bodyRejectReason: 'invalid_content_length' }
+        : { bodyLimitStage: 'encoded', bodyLimitBytes: limit, bodyMeasurement: 'declared', bodyBytes: limit + 1 };
+    expect(fixture.logs).toContainEqual(expect.objectContaining({ event: 'request.rejected', errorCode, ...fields }));
+    const root = fixture.recording.spans.find((span) => span.parentSpanId == null)!;
+    expect(root.attributes[kind === 'invalid' ? attributeName.bodyRejectReason : attributeName.bodyLimitStage]).toBe(
+      kind === 'invalid' ? 'invalid_content_length' : 'encoded',
+    );
+    expect(JSON.stringify(fixture.logs)).not.toContain('private-input');
+    expect(fixture.recording.attempts).toHaveLength(0);
+  },
+);

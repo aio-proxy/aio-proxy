@@ -58,6 +58,7 @@ export type ProviderEditorInitial = {
   readonly proxyBackup?: OAuthProviderMutationBody['proxyBackup'];
   readonly proxyFallback?: OAuthProviderMutationBody['proxyFallback'];
   readonly models?: readonly string[] | undefined;
+  readonly syncModels?: boolean | undefined;
   readonly excludedModels?: readonly string[] | undefined;
   readonly transforms?: unknown;
   readonly validationModel?: string | undefined;
@@ -120,6 +121,9 @@ export function useProviderEditorForm({ kind, initial }: UseProviderEditorFormOp
             : kind === 'oauth'
               ? toOAuthAliasRows(initial.alias)
               : toAliasRows(initial.alias as ProviderAlias),
+        ...(kind !== 'oauth' && initial?.syncModels === true
+          ? { models: [], excludedModels: initial.excludedModels ?? [] }
+          : {}),
         ...(kind === 'oauth'
           ? {
               excludedModels:

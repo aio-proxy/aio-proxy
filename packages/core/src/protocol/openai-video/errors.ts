@@ -7,7 +7,7 @@ import {
 } from '../../error';
 import type { ProtocolErrorMapper } from '../adapter';
 import { openAIInvalid, openAIProviderError, openAIRateLimited } from '../errors';
-import { InvalidCompressedRequestBodyError, RequestBodyIdleTimeoutError } from '../request';
+import { InvalidCompressedRequestBodyError, RequestBodyIdleTimeoutError } from '../request/index';
 
 const PREVIOUS_RESPONSE_CONFLICT_MESSAGE = 'previous_response_id matches multiple providers';
 const VIDEO_NOT_IMPLEMENTED_MESSAGE = 'No configured provider can generate videos for this model';

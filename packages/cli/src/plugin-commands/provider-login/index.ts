@@ -5,6 +5,7 @@ import { LocalizedTextSchema, resolveLocalizedText } from '@aio-proxy/plugin-sdk
 import { canonical, chooseCapability, targetCapability } from './capability';
 import { applyProviderLoginSession, createProviderLoginDefaultDeps, type ProviderLoginDeps } from './deps';
 import { ProviderCapabilityMismatchError, ProviderCapabilityNotFoundError } from './errors';
+import { detectLocalSignIn } from './local-sign-in';
 import { presentProviderLoginUserError } from './presentation';
 
 export { createCapabilitySelector, createManualOnlyConfirmation } from './capability';
@@ -17,7 +18,7 @@ export {
 export * from './errors';
 export { isProviderLoginUserError } from './presentation';
 
-export type ProviderLoginOptions = { readonly provider?: string };
+export type ProviderLoginOptions = { readonly provider?: string; readonly localSignIn?: boolean };
 
 export async function providerLogin(
   capabilityInput: string | undefined,
@@ -29,6 +30,7 @@ export async function providerLogin(
     deps.isTTY && deps.openSession !== undefined ? deps.openSession(m['cli.ui.title_provider_login']()) : undefined;
   const live = session === undefined ? deps : applyProviderLoginSession(deps, session);
   let failure: unknown;
+  let localSignInSource: string | undefined;
   try {
     await (deps.recover ?? recoverPendingAccountOperations)(deps.config, deps.repository, { mode: 'cli' });
     const target = options.provider === undefined ? undefined : await targetCapability(options.provider, deps.config);
@@ -42,8 +44,17 @@ export async function providerLogin(
     if (target !== undefined && (target.plugin !== resolved.plugin || target.capability !== resolved.capability)) {
       throw new ProviderCapabilityMismatchError(canonical(resolved), canonical(target));
     }
+    const localSignIn = deps.registry.resolveOAuth(resolved.plugin, resolved.capability)?.localSignIn;
+    localSignInSource = localSignIn === undefined ? undefined : resolveLocalizedText(localSignIn.source, getLocale());
+    let useLocalSignIn = options.localSignIn === true;
+    if (options.localSignIn === undefined && deps.isTTY && localSignIn !== undefined) {
+      if (await detectLocalSignIn(localSignIn)) {
+        useLocalSignIn = (await live.selectMethod(localSignInSource!, new AbortController().signal)) === 'local';
+      }
+    }
     const result = await (deps.login ?? loginOAuthAccount)({
       ...(options.provider === undefined ? {} : { targetProviderId: options.provider }),
+      ...(useLocalSignIn ? { localSignIn: true } : {}),
       capability: resolved,
       registry: deps.registry,
       repository: deps.repository,
@@ -60,7 +71,7 @@ export async function providerLogin(
     deps.print(result.providerId);
     session?.finish(m['cli.ui.outro_provider_login']());
   } catch (error) {
-    failure = presentProviderLoginUserError(error) ?? error;
+    failure = presentProviderLoginUserError(error, localSignInSource) ?? error;
     throw failure;
   } finally {
     session?.close(failure);

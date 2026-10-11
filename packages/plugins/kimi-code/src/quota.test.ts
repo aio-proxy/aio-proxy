@@ -59,6 +59,7 @@ test('maps the weekly usage and every valid rolling limit', async () => {
         remainingRatio: 0.75,
         resetsAt: 1_767_972_193_000,
         windowMinutes: 7 * 24 * 60,
+        scope: 'account',
       },
       {
         id: '300-time-unit-minute',
@@ -66,12 +67,15 @@ test('maps the weekly usage and every valid rolling limit', async () => {
         remainingRatio: 0.9,
         resetsAt: 1_767_713_582_000,
         windowMinutes: 300,
+        scope: 'account',
       },
       {
         id: '60-time-unit-minute',
         displayName: { default: '60 minute quota', 'zh-Hans': '60 分钟配额' },
         remainingRatio: 0.8,
         windowMinutes: 60,
+        // Kimi refuses every model once any of its windows is spent, so each gates the whole account.
+        scope: 'account',
       },
     ],
   });
@@ -123,6 +127,7 @@ test('drops malformed rows while preserving valid limits', async () => {
       displayName: { default: '3 minute quota', 'zh-Hans': '3 分钟配额' },
       remainingRatio: 0.25,
       windowMinutes: 3,
+      scope: 'account',
     },
   ]);
 });

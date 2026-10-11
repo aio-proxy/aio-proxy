@@ -60,6 +60,7 @@ function fixture(initial: Record<string, unknown> = { plugins: [], providers: {}
   return {
     root,
     path,
+    handle,
     config: new AtomicConfigFile(path),
     repository: createPluginRepository(handle.sqlite),
     sqlite: handle.sqlite,
@@ -81,6 +82,7 @@ function refreshCredential(state: ReturnType<typeof fixture>, expectedRevision: 
 
 type AdapterControls = {
   readonly supportsProxy?: boolean;
+  localSignIn?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>['localSignIn'];
   login?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>['login'];
   discover?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>['catalog']['discover'];
   initialFallback?: OAuthAdapter<
@@ -108,6 +110,7 @@ function registry(controls: AdapterControls = {}): PluginRegistry {
   staging.api.oauth.register({
     id: 'default',
     displayName: 'Example OAuth',
+    ...(controls.localSignIn === undefined ? {} : { localSignIn: controls.localSignIn }),
     ...(controls.supportsProxy === undefined ? {} : { supportsProxy: controls.supportsProxy }),
     account: {
       options: {

@@ -10,6 +10,7 @@ import type {
   AgentRemoveResult,
   AgentRevokeResult,
 } from './agent';
+import type { ClaudeCodeConfigureResult, ClaudeCodeListResult, ClaudeCodeRemoveResult } from './claude-code';
 import type { CodexConfigureOptions, CodexConfigureResult, CodexListResult, CodexRemoveResult } from './codex';
 
 const renderCodexConfigure = (result: CodexConfigureResult, style: Style): string[] => {
@@ -65,6 +66,23 @@ const renderCodexConfigure = (result: CodexConfigureResult, style: Style): strin
 const renderCodexRemove = (result: CodexRemoveResult, style: Style): string[] => [
   `${style.mark(result.status === 'blocked' ? 'warn' : 'ok')} ${m['cli.agent.codex.removed']({ configPath: result.configPath, status: result.status })}`,
   ...(result.status === 'blocked' ? [m['cli.agent.codex.remove_blocked']()] : []),
+  m['cli.agent.codex.keys_retained'](),
+];
+
+const renderClaudeCodeConfigure = (result: ClaudeCodeConfigureResult, style: Style): string[] => [
+  `${style.mark('ok')} ${m['cli.agent.claude_code.configured']({ status: result.status, configPath: result.configPath })}`,
+  result.credential === 'placeholder'
+    ? m['cli.agent.claude_code.credential_placeholder']()
+    : m['cli.agent.claude_code.credential_existing'](),
+  ...(result.connection === 'offline' ? [m['cli.agent.claude_code.offline']()] : []),
+  m['cli.agent.claude_code.restart'](),
+];
+
+const renderClaudeCodeRemove = (result: ClaudeCodeRemoveResult, style: Style): string[] => [
+  `${style.mark(result.status === 'partial' ? 'warn' : 'ok')} ${m['cli.agent.claude_code.removed']({ configPath: result.configPath, status: result.status })}`,
+  ...(result.preservedPaths.length === 0
+    ? []
+    : [m['cli.agent.claude_code.preserved']({ fields: result.preservedPaths.join(', ') })]),
   m['cli.agent.codex.keys_retained'](),
 ];
 
@@ -170,11 +188,33 @@ function codexBlock(style: Style, codex: CodexListResult): Block {
   };
 }
 
+function claudeCodeBlock(style: Style, claudeCode: ClaudeCodeListResult): Block {
+  const attention =
+    claudeCode.status !== 'managed' ||
+    claudeCode.endpointMatches === false ||
+    (claudeCode.connection !== 'ok' && claudeCode.connection !== 'not_checked');
+  return {
+    mark: claudeCode.status === 'absent' ? style.mark('off') : style.mark(attention ? 'warn' : 'ok'),
+    title: `${style.strong('claude-code')}  ${claudeCode.status}`,
+    fields: [
+      [m['cli.agent.list.label_config'](), claudeCode.configPath],
+      [
+        m['cli.agent.list.label_base_url'](),
+        `${claudeCode.baseUrl ?? '-'} (${endpointMatch(claudeCode.endpointMatches)})`,
+      ],
+      [m['cli.agent.list.label_credential'](), claudeCode.credential ?? '-'],
+      [m['cli.agent.list.label_connection'](), claudeCode.connection],
+      [m['cli.agent.list.label_changed_paths'](), claudeCode.changedPaths.join(', ') || '-'],
+    ],
+  };
+}
+
 export function renderAgentList(result: AgentListResult, json: boolean, style: Style = plainStyle): string[] {
   if (json) return [JSON.stringify(result)];
   const lines = formatBlocks(style, [
     ...result.targets.map((target) => targetBlock(style, target)),
     codexBlock(style, result.codex),
+    claudeCodeBlock(style, result.claudeCode),
   ]);
   const control = [
     ...(result.server === 'not_checked' ? [] : [m['cli.agent.list.server']({ status: result.server })]),
@@ -211,6 +251,7 @@ export function renderAgentList(result: AgentListResult, json: boolean, style: S
 
 export function renderAgentConfigure(result: AgentConfigureResult, style: Style = plainStyle): string[] {
   if (result.target === 'codex') return renderCodexConfigure(result, style);
+  if (result.target === 'claude-code') return renderClaudeCodeConfigure(result, style);
   const lines = [
     result.status === 'newer'
       ? `${style.mark('warn')} ${m['cli.agent.configure.newer']({ target: result.target })}`
@@ -242,6 +283,7 @@ export function renderAgentConfigure(result: AgentConfigureResult, style: Style 
 
 export const renderAgentRemove = (result: AgentRemoveResult, style: Style = plainStyle): string[] => {
   if (result.target === 'codex') return renderCodexRemove(result, style);
+  if (result.target === 'claude-code') return renderClaudeCodeRemove(result, style);
   const lines = [
     `${style.mark('ok')} ${m['cli.agent.remove.success']({ target: result.target, installationId: result.installationId })}`,
   ];
@@ -296,7 +338,7 @@ export function registerAgentCommands(
       emit(renderAgentList(await input.actions.list(normalized), normalized.json, style));
     });
   agent
-    .command('configure <opencode|pi|omp|codex|grok>')
+    .command('configure <opencode|pi|omp|codex|grok|claude-code>')
     .option('--restore-migration <operation-id>', m['cli.agent.codex.restore_option']())
     .action(async (target, options) => {
       if (target !== 'codex' && options.restoreMigration !== undefined)
@@ -310,7 +352,7 @@ export function registerAgentCommands(
         ),
       );
     });
-  agent.command('remove <opencode|pi|omp|codex|grok>').action(async (target) => {
+  agent.command('remove <opencode|pi|omp|codex|grok|claude-code>').action(async (target) => {
     emit(renderAgentRemove(await input.actions.remove(target), style));
   });
   agent.command('revoke <installation-id>').action(async (installationId) => {

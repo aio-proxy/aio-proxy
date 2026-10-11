@@ -1,7 +1,7 @@
 import type { AliasDimensions } from '@aio-proxy/types';
 
 import type { ProtocolRequestDiagnostic, SharedProtocolAdapter } from '../adapter';
-import { REQUEST_BODY_LIMITS, type RequestBodyLimits } from '../request';
+import { currentRequestBodyLimits, type RequestBodyLimits } from '../request/index';
 
 export type AudioCapability = 'speech' | 'transcription';
 
@@ -99,7 +99,7 @@ export type AudioProtocolAdapterDefinition<TRequest, TContext> = Omit<
 
 const noDimensions = (): AliasDimensions => ({});
 const noRequestDiagnostics = (): readonly ProtocolRequestDiagnostic[] => [];
-const defaultBodyLimits = (): RequestBodyLimits => REQUEST_BODY_LIMITS;
+const defaultBodyLimits = (): RequestBodyLimits => currentRequestBodyLimits();
 
 export function defineAudioProtocolAdapter<TRequest, TContext>(
   definition: AudioProtocolAdapterDefinition<TRequest, TContext>,

@@ -20,7 +20,7 @@ export const SpanMetricGrid: React.FC<SpanMetricGridProps> = ({ metrics }) => {
       ? m['dashboard.traces.span_metric_ttft_ambiguous']()
       : duration(metrics.ttftMs);
 
-  // Always six cells: a stable position beats saving space when a value is missing.
+  // The original six cells keep their positions. Send-specific facts follow.
   const cells = [
     [m['dashboard.traces.span_metric_total'](), duration(metrics.durationMs)],
     [m['dashboard.traces.span_metric_ttft'](), ttft],
@@ -28,6 +28,22 @@ export const SpanMetricGrid: React.FC<SpanMetricGridProps> = ({ metrics }) => {
     [m['dashboard.traces.input_tokens'](), count(metrics.inputTokens)],
     [m['dashboard.traces.output_tokens'](), count(metrics.outputTokens)],
     [m['dashboard.traces.span_metric_attempts'](), count(metrics.attemptCount)],
+    ...(metrics.httpSends === undefined
+      ? []
+      : [
+          [m['dashboard.traces.span_metric_http_sends'](), count(metrics.httpSends)],
+          [
+            m['dashboard.traces.span_metric_response_send'](),
+            count(metrics.responseSendIndex === undefined ? undefined : metrics.responseSendIndex + 1),
+          ],
+        ]),
+    ...(metrics.sendIndex === undefined
+      ? []
+      : [
+          [m['dashboard.traces.span_metric_send_index'](), count(metrics.sendIndex + 1)],
+          [m['dashboard.traces.span_metric_first_byte'](), duration(metrics.firstByteMs)],
+          [m['dashboard.traces.span_metric_first_sse_event'](), duration(metrics.firstSseEventMs)],
+        ]),
   ] as const;
 
   // 发丝线网格：容器铺 border 色、格子铺 card 色，1px 的 gap 就是分隔线，

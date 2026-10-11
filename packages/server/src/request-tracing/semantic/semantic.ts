@@ -80,7 +80,7 @@ export const spanRegistry = {
     nameShape: '{http.request.method}',
     kind: SpanKind.CLIENT,
     parent: ['inferenceAttempt', 'attempt'],
-    createdBy: 'request-logging/wire/wire.ts',
+    createdBy: 'request-logging/wire/upstream-span.ts',
   },
   tokenCount: {
     name: spanName.tokenCount,
@@ -112,6 +112,9 @@ export const eventName = {
 // OTel's incubating constants are marked deprecated and its cache/reasoning
 // suffixes differ from our projection, so we do not import them here.
 export const attributeName = {
+  callerId: 'aio_proxy.caller.id',
+  callerLabel: 'aio_proxy.caller.label',
+  callerKind: 'aio_proxy.caller.kind',
   requestId: 'aio_proxy.request.id',
   guardianParentRequestId: 'aio_proxy.guardian.parent_request_id',
   operation: 'aio_proxy.operation',
@@ -119,6 +122,12 @@ export const attributeName = {
   genAiOperationName: 'gen_ai.operation.name',
   stream: 'aio_proxy.request.stream',
   fast: 'aio_proxy.request.fast',
+  bodyLimitStage: 'aio_proxy.request.body.limit_stage',
+  bodyLimitBytes: 'aio_proxy.request.body.limit_bytes',
+  bodyMeasurement: 'aio_proxy.request.body.measurement',
+  bodyBytes: 'aio_proxy.request.body.bytes',
+  bodyRejectReason: 'aio_proxy.request.body.reject_reason',
+  bodyContentEncoding: 'aio_proxy.request.body.content_encoding',
   ttftMs: 'aio_proxy.response.ttft_ms',
   transportObservation: 'aio_proxy.upstream.transport_observation',
   upstreamHeadersMs: 'aio_proxy.upstream.headers_ms',
@@ -127,12 +136,20 @@ export const attributeName = {
   contentGapP95Ms: 'aio_proxy.upstream.content_gap_p95_ms',
   maxSseFramesPerRead: 'aio_proxy.upstream.max_sse_frames_per_read',
   contentEncoding: 'aio_proxy.upstream.content_encoding',
+  upstreamSendIndex: 'aio_proxy.upstream.send_index',
+  upstreamCandidateIndex: 'aio_proxy.upstream.candidate_index',
+  upstreamBodyOutcome: 'aio_proxy.upstream.body_outcome',
+  upstreamRetryReason: 'aio_proxy.upstream.retry_reason',
+  upstreamResponseSelected: 'aio_proxy.upstream.response_selected',
   inboundProtocol: 'aio_proxy.protocol.inbound',
   sessionSource: 'aio_proxy.session.source',
   sessionId: 'aio_proxy.session.id',
   sessionResolvedBy: 'aio_proxy.session.resolved_by',
   finalProviderId: 'aio_proxy.route.final_provider_id',
   routeCandidateCount: 'aio_proxy.route.candidate_count',
+  // `<providerId>:<reason>` for each candidate selection removed before any attempt (cooldown or
+  // known-exhausted quota), in candidate order. Absent when nothing was removed.
+  routeSkippedCandidates: 'aio_proxy.route.skipped_candidates',
   attemptIndex: 'aio_proxy.attempt.index',
   // attempt span 现在就是 inference span，带标准 gen_ai.*。这几个 aio_proxy.attempt.* 与它们
   // 并存不重复：model_id 是我们配置里的模型、ttft_ms 是不含转移的毫秒值、http_sends 数的是
@@ -140,6 +157,7 @@ export const attributeName = {
   attemptModelId: 'aio_proxy.attempt.model_id',
   attemptTtftMs: 'aio_proxy.attempt.ttft_ms',
   attemptHttpSends: 'aio_proxy.attempt.http_sends',
+  attemptResponseSendIndex: 'aio_proxy.attempt.response_send_index',
   // 逻辑操作层专属：试了几个 provider，以及转移烧掉多少毫秒。
   // gen_ai.gateway.* 落地后这两个自造 key 应换成标准名（见 spec「后续」）。
   inferenceAttemptCount: 'aio_proxy.inference.attempt_count',
@@ -171,6 +189,11 @@ export const attributeName = {
   genAiProviderName: 'gen_ai.provider.name',
   genAiResponseModel: 'gen_ai.response.model',
   genAiUsageInputTokens: 'gen_ai.usage.input_tokens',
+  genAiUsageTotalTokens: 'gen_ai.usage.total_tokens',
+  genAiUsageEstimatedCostUsd: 'gen_ai.usage.estimated_cost_usd',
+  consumedUsage: 'aio_proxy.usage.consumed',
+  usagePriceSource: 'aio_proxy.usage.price_source',
+  usagePriceModelId: 'aio_proxy.usage.price_model_id',
   genAiUsageOutputTokens: 'gen_ai.usage.output_tokens',
   genAiUsageCacheReadTokens: 'gen_ai.usage.cache_read.input_tokens',
   genAiUsageCacheCreationTokens: 'gen_ai.usage.cache_creation.input_tokens',

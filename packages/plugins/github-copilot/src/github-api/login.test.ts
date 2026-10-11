@@ -3,6 +3,8 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import type { LocalizedText, RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
+
 import { loginToGitHubCopilot } from '.';
 import { deviceFlowFetch, loginContext, withFetchMock } from './login.test-support';
 
@@ -11,6 +13,92 @@ afterEach(() => {
 });
 
 describe('GitHub Copilot login', () => {
+  test('preserves prototype fetch and signal through login completion with localized progress', async () => {
+    const controller = new AbortController();
+    const requests: { path: string; signal: AbortSignal | null | undefined }[] = [];
+    const progress: LocalizedText[] = [];
+    const refreshingToken = { default: 'Refreshing token', 'zh-Hans': '正在刷新令牌' };
+    const respond = deviceFlowFetch();
+    const unexpectedFetch = jest.fn(async () => {
+      throw new Error('unexpected global fetch');
+    });
+
+    class PrototypeLoginContext {
+      readonly authorization = loginContext().authorization;
+
+      get signal() {
+        return controller.signal;
+      }
+
+      async fetch(input: RequestInfo | URL, init?: RuntimeRequestInit) {
+        requests.push({ path: new URL(input.toString()).pathname, signal: init?.signal });
+        return await respond(input, init);
+      }
+
+      progress(message: LocalizedText) {
+        progress.push(message);
+      }
+    }
+
+    const result = await withFetchMock(unexpectedFetch, () =>
+      loginToGitHubCopilot(
+        new PrototypeLoginContext(),
+        { deploymentType: 'github.com' },
+        {
+          deviceInstructions: 'Enter code',
+          waitingForAuthorization: 'Waiting for authorization',
+          refreshingToken,
+        },
+      ),
+    );
+
+    expect(unexpectedFetch).toHaveBeenCalledTimes(0);
+    expect(requests.map(({ path }) => path)).toEqual([
+      '/login/device/code',
+      '/login/oauth/access_token',
+      '/copilot_internal/v2/token',
+      '/user',
+      '/user/emails',
+    ]);
+    for (const { signal } of requests) expect(signal).toBe(controller.signal);
+    expect(result).toMatchObject({ fingerprint: '12345', accountLabel: 'octocat@github.com' });
+    expect(progress).toEqual([refreshingToken]);
+  });
+
+  test('propagates cancellation from a prototype signal getter during login completion', async () => {
+    const controller = new AbortController();
+    const reason = new DOMException('cancelled', 'AbortError');
+    const respond = deviceFlowFetch();
+    const unexpectedFetch = jest.fn(async () => {
+      throw new Error('unexpected global fetch');
+    });
+
+    class PrototypeSignalContext {
+      readonly authorization = loginContext().authorization;
+      readonly fetch = (async (input: RequestInfo | URL, init?: RuntimeRequestInit) => {
+        if (new URL(input.toString()).pathname === '/user/emails') {
+          controller.abort(reason);
+          init?.signal?.throwIfAborted();
+          throw new Error('email lookup must not continue after abort');
+        }
+        return await respond(input, init);
+      }) as RuntimeFetch;
+
+      get signal() {
+        return controller.signal;
+      }
+
+      progress() {}
+    }
+
+    await withFetchMock(unexpectedFetch, async () => {
+      await expect(loginToGitHubCopilot(new PrototypeSignalContext(), { deploymentType: 'github.com' })).rejects.toBe(
+        reason,
+      );
+    });
+    expect(unexpectedFetch).toHaveBeenCalledTimes(0);
+  });
+
   test('supports injectable localized login progress copy', async () => {
     const progress: string[] = [];
 

@@ -1,5 +1,80 @@
 # @aio-proxy/plugin-sdk
 
+## 0.42.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/shared@0.42.1
+  - @aio-proxy/types@0.42.1
+
+## 0.42.0
+
+### Minor Changes
+
+- [#498](https://github.com/aio-proxy/aio-proxy/pull/498) [`a2c3d0e`](https://github.com/aio-proxy/aio-proxy/commit/a2c3d0e304db29be37a7284202e17ac3373f0dbb) Thanks @baranwang - Add the OpenAI Decisions API for predicate, choice, and score evaluations. Same-protocol requests pass through, including inline and HTTP(S) images; other evaluation providers share SystemOne routing, fallback, and conversion. Usage includes cache pricing, converted responses always include the full usage object, and evaluations that cannot be converted are still billed. Plugins can recognize the new Decisions protocol.
+
+### Patch Changes
+
+- Updated dependencies [[`3758dc9`](https://github.com/aio-proxy/aio-proxy/commit/3758dc9ed72259d33df567cf69e8ef86c59d5ca9), [`a2c3d0e`](https://github.com/aio-proxy/aio-proxy/commit/a2c3d0e304db29be37a7284202e17ac3373f0dbb)]:
+  - @aio-proxy/types@0.42.0
+  - @aio-proxy/shared@0.42.0
+
+## 0.41.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/shared@0.41.1
+  - @aio-proxy/types@0.41.1
+
+## 0.41.0
+
+### Patch Changes
+
+- Updated dependencies [[`855383c`](https://github.com/aio-proxy/aio-proxy/commit/855383cd5f462aa5ad9bab48aab81d4123dcd659)]:
+  - @aio-proxy/types@0.41.0
+  - @aio-proxy/shared@0.41.0
+
+## 0.40.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/shared@0.40.0
+  - @aio-proxy/types@0.40.0
+
+## 0.39.1
+
+### Patch Changes
+
+- Updated dependencies [[`d5218bf`](https://github.com/aio-proxy/aio-proxy/commit/d5218bfaf68e0af8d9b97cc09ac90b3ebe2f8593)]:
+  - @aio-proxy/types@0.39.1
+  - @aio-proxy/shared@0.39.1
+
+## 0.39.0
+
+### Minor Changes
+
+- [#486](https://github.com/aio-proxy/aio-proxy/pull/486) [`2763925`](https://github.com/aio-proxy/aio-proxy/commit/27639251609ad47a3d5265815c2a27bd7bc0abb9) Thanks @baranwang - Plugins can offer a vendor tool's existing local sign-in as an alternative to the browser OAuth flow.
+
+- [#483](https://github.com/aio-proxy/aio-proxy/pull/483) [`946073c`](https://github.com/aio-proxy/aio-proxy/commit/946073caf8219dd6309498aba893b77993193ef1) Thanks @baranwang - Quota items can declare a `scope` — the whole account, or a list of model patterns — to tell aio-proxy which models are refused once that window is exhausted, so routing can skip the Provider for those models until the window resets. Items without a scope stay display-only.
+
+### Patch Changes
+
+- Updated dependencies [[`94024af`](https://github.com/aio-proxy/aio-proxy/commit/94024af667f4b691cef234a3f305d6561c5a9192), [`a59559d`](https://github.com/aio-proxy/aio-proxy/commit/a59559db8ba07d62f1f2b8dab50a77b5fba272b8), [`dd47aa2`](https://github.com/aio-proxy/aio-proxy/commit/dd47aa2333b53934df5b65deec9d72894c629bfa), [`13ff41d`](https://github.com/aio-proxy/aio-proxy/commit/13ff41dba0d21ef4ec79589e0598d1973fb72f64), [`b2e7941`](https://github.com/aio-proxy/aio-proxy/commit/b2e7941313846cea0c6e179f64c73cc137565e13)]:
+  - @aio-proxy/types@0.39.0
+  - @aio-proxy/shared@0.39.0
+
+## 0.38.0
+
+### Patch Changes
+
+- [#468](https://github.com/aio-proxy/aio-proxy/pull/468) [`24d77d0`](https://github.com/aio-proxy/aio-proxy/commit/24d77d05fd4e27bfa918a568d904e71ce3593f3b) Thanks @baranwang - Preserve transport timings, retry failure reasons, and response attribution for each upstream HTTP send. Trace details now show send counts and indices, so retries with multiple responses no longer appear to be missing timing data.
+- Updated dependencies [[`24d77d0`](https://github.com/aio-proxy/aio-proxy/commit/24d77d05fd4e27bfa918a568d904e71ce3593f3b)]:
+  - @aio-proxy/shared@0.38.0
+  - @aio-proxy/types@0.38.0
+
 ## 0.37.0
 
 ### Patch Changes

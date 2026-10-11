@@ -25,7 +25,7 @@ features:
     details: Log in with OAuth to ChatGPT, Claude, GitHub Copilot, Google Antigravity, Cursor, xAI Grok, and more, and use them as standard API endpoints.
     icon: 🔑
   - title: Coding agents in one command
-    details: '`aiop agent configure` wires up Codex, Grok Build, OpenCode, Pi, and OMP; anything else only needs a base URL.'
+    details: '`aiop agent configure` wires up Codex, Claude Code, Grok Build, OpenCode, Pi, and OMP; anything else only needs a base URL.'
     icon: 🤖
   - title: Requests you can see
     details: The Dashboard records every request and Provider attempt with status, latency, tokens, cost, and full traces, exportable to OpenTelemetry.

@@ -6,7 +6,7 @@ import (
 
 	"github.com/aio-proxy/aio-proxy/desktop/internal/client/refresh"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/client/transport"
-	"github.com/aio-proxy/aio-proxy/desktop/internal/macos/loginitem"
+	"github.com/aio-proxy/aio-proxy/desktop/internal/login"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/summary"
 )
 
@@ -18,7 +18,7 @@ func summaryPath(r summary.UsageRange, quota bool) string {
 	return path
 }
 func (m *Model) PanelOpened() {
-	m.LoginItem = loginitem.Status()
+	m.LoginItem = login.Current()
 	m.dispatch(m.scheduler.Open(time.Now()))
 	m.CheckHealth()
 	m.Rediscover()
@@ -59,7 +59,8 @@ func (m *Model) instanceMaybeChanged() {
 		m.instance = key
 		m.instanceSet = set
 		m.instanceEpoch++
-		m.resetMenuBar()
+		m.Live.SetEpoch(m.instanceEpoch)
+		m.menuBarGeneration++
 		clear(m.usageCache)
 		m.authRetryUsed = false
 		m.refetchAfterDiscovery = false

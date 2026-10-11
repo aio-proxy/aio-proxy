@@ -50,12 +50,15 @@ test('maps the plan, auto, named-model, and on-demand lanes', () => {
         displayName: { default: 'Auto models', 'zh-Hans': 'Auto 模型' },
         remainingRatio: 0.9964,
         resetsAt: BILLING_CYCLE_END_MS,
+        // Auto mode itself (`default`) plus the Grok and Composer families draw from this pool.
+        scope: { models: ['default', 'grok-*', 'cursor-grok-*', 'composer-*'] },
       },
       {
         id: 'api',
         displayName: { default: 'Named models', 'zh-Hans': '指定模型' },
         remainingRatio: 0.75,
         resetsAt: BILLING_CYCLE_END_MS,
+        scope: { models: ['*', '!default', '!grok-*', '!cursor-grok-*', '!composer-*'] },
       },
       {
         id: 'on-demand',

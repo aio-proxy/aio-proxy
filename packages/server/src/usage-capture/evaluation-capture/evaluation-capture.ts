@@ -19,6 +19,8 @@ export async function evaluationCapture(
 ): Promise<UsageCompletion> {
   const inputTokens = validCount(usage?.inputTokens);
   const outputTokens = validCount(usage?.outputTokens);
+  const cacheReadTokens = validCount(usage?.cacheReadTokens);
+  const cacheWriteTokens = validCount(usage?.cacheWriteTokens);
   const totalTokens =
     inputTokens === undefined || outputTokens === undefined ? undefined : validCount(inputTokens + outputTokens);
   const row = await finalizeUsage({
@@ -28,6 +30,8 @@ export async function evaluationCapture(
       ...(inputTokens === undefined ? {} : { inputTokens }),
       ...(outputTokens === undefined ? {} : { outputTokens }),
       ...(totalTokens === undefined ? {} : { totalTokens }),
+      ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
+      ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
     },
     accounting: { source: 'ai-sdk' },
     providerId,

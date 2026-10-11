@@ -6,7 +6,7 @@ set -euo pipefail
 # Pin Bun to the version the repo requires. Keep in sync with .bun-version and
 # package.json `packageManager`/`engines` — a drift here silently bootstraps
 # Cloud Agent sessions on a Bun that violates the repo's engines floor.
-BUN_VERSION="1.4.2"
+BUN_VERSION="1.4.3"
 export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
 export PATH="$BUN_INSTALL/bin:$PATH"
 

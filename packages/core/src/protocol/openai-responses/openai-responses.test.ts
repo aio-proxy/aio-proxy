@@ -1,0 +1,239 @@
+import { expect, test } from 'bun:test';
+
+import { ProviderProtocol } from '@aio-proxy/types';
+
+import { openAIResponsesAdapter } from '../../index';
+
+test('drops background before raw forwarding while preserving unknown fields', async () => {
+  const body = Bun.zstdCompressSync(
+    new TextEncoder().encode(
+      JSON.stringify({
+        model: 'gpt-5.6-terra',
+        input: 'hello',
+        background: true,
+        beta_field: { retain: true },
+      }),
+    ),
+  );
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: {
+      'content-encoding': 'zstd',
+      'content-length': String(body.byteLength),
+      'content-type': 'application/json',
+    },
+    body,
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream-model', new Set(), {});
+
+  expect(forwarded.headers.get('content-encoding')).toBeNull();
+  expect(forwarded.headers.get('content-length')).toBeNull();
+  expect(await forwarded.json()).toEqual({
+    model: 'upstream-model',
+    input: 'hello',
+    beta_field: { retain: true },
+  });
+});
+
+test('forwards the original body bytes verbatim when model, background, and effort are unchanged', async () => {
+  // A same-model request with no background and an already-supported effort must
+  // not be round-tripped through JSON, which would truncate integers beyond
+  // Number.MAX_SAFE_INTEGER and drop the client's exact byte representation.
+  const bodyText = '{"model":"upstream-model","input":"hi","seed":9007199254740993}';
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: bodyText,
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+  const forwarded = await openAIResponsesAdapter.rawRequest(
+    raw,
+    parsed,
+    'upstream-model',
+    new Set(['low', 'medium', 'high']),
+    {},
+  );
+  expect(await forwarded.text()).toBe(bodyText);
+});
+
+test('accepts null instructions before raw forwarding', async () => {
+  const bodyText = '{"model":"upstream-model","input":"hi","instructions":null}';
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: bodyText,
+  });
+
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream-model', new Set(), {});
+
+  expect(await forwarded.text()).toBe(bodyText);
+});
+
+test('reports a safe diagnostic when background mode is downgraded', async () => {
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-5.6-terra', input: 'hello', background: true }),
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+  expect(openAIResponsesAdapter.requestDiagnostics(parsed, {})).toEqual([
+    { feature: 'background', action: 'dropped', effectiveMode: 'synchronous' },
+  ]);
+});
+
+test('carries non-empty model conversion diagnostics through target materialization', async () => {
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-5.6-terra',
+      input: [{ type: 'web_search_call', status: 'completed' }],
+    }),
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+  const invocation = openAIResponsesAdapter.modelInvocation(parsed, {});
+  expect(invocation.diagnostics).toEqual([
+    {
+      feature: 'web_search_call',
+      action: 'dropped',
+      reason: 'completed_without_results_or_sources',
+      inputIndex: 0,
+    },
+  ]);
+  expect(
+    openAIResponsesAdapter.modelInvocationForTarget(invocation, ProviderProtocol.OpenAIResponse, new Set()).diagnostics,
+  ).toBe(invocation.diagnostics);
+
+  const withoutDrops = await openAIResponsesAdapter.parse(
+    new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-5.6-terra', input: 'hello' }),
+    }),
+    {},
+  );
+  expect(openAIResponsesAdapter.modelInvocation(withoutDrops, {})).not.toHaveProperty('diagnostics');
+});
+
+test('rewrites a synthetic tool output without call_id before raw forwarding', async () => {
+  const body = {
+    model: 'grok-4.6',
+    input: [
+      {
+        type: 'function_call_output',
+        id: 'fco_01a0ad8a-1779-7b22-b029-a81a7bb703ba',
+        name: 'send_message_to_thread',
+        namespace: 'codex_app',
+        output: '<codex_delegation>watch failed</codex_delegation>',
+      },
+      { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'continue' }] },
+    ],
+  };
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'grok-4.6', new Set(), {});
+
+  expect(await forwarded.json()).toEqual({
+    model: 'grok-4.6',
+    input: [
+      {
+        type: 'message',
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: '[orphan tool result] <codex_delegation>watch failed</codex_delegation>',
+          },
+        ],
+      },
+      { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'continue' }] },
+    ],
+  });
+});
+
+test('keeps a tool output whose call lives in previous_response_id', async () => {
+  // Official create-with-previous_response_id sends only the new output; the
+  // matching call sits in stored state. Local pairing must not narrate it.
+  const bodyText = JSON.stringify({
+    model: 'grok-4.6',
+    previous_response_id: 'resp_1',
+    input: [{ type: 'function_call_output', call_id: 'call_1', output: 'Sunny' }],
+  });
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: bodyText,
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'grok-4.6', new Set(), {});
+
+  expect(await forwarded.text()).toBe(bodyText);
+});
+
+test('keeps a paired tool call and output on the raw path', async () => {
+  const bodyText = JSON.stringify({
+    model: 'grok-4.6',
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'exec_command', arguments: '{"cmd":"pwd"}' },
+      { type: 'function_call_output', call_id: 'call_1', output: '/tmp' },
+    ],
+  });
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: bodyText,
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'grok-4.6', new Set(), {});
+
+  expect(await forwarded.text()).toBe(bodyText);
+});
+
+test('holds a call-id-less tool output until the local batch closes', async () => {
+  const body = {
+    model: 'grok-4.6',
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'exec_command', arguments: '{}' },
+      {
+        type: 'function_call_output',
+        name: 'send_message_to_thread',
+        namespace: 'codex_app',
+        output: 'watch failed',
+      },
+      { type: 'function_call_output', call_id: 'call_1', output: '/tmp' },
+    ],
+  };
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'grok-4.6', new Set(), {});
+
+  expect(await forwarded.json()).toEqual({
+    model: 'grok-4.6',
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'exec_command', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: '/tmp' },
+      {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text: '[orphan tool result] watch failed' }],
+      },
+    ],
+  });
+});

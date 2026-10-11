@@ -12,10 +12,10 @@ import { catalogModelIds } from '../plugin-runtime';
 import type { SnapshotManager } from '../plugin-snapshot';
 import type { Snapshot } from './snapshot';
 
-export function oauthCapabilities(manager: SnapshotManager): readonly DashboardOAuthCapability[] {
+export async function oauthCapabilities(manager: SnapshotManager): Promise<readonly DashboardOAuthCapability[]> {
   const lease = manager.acquire();
   try {
-    return dashboardOAuthCapabilities((lease.snapshot as Snapshot).plugins.registry);
+    return await dashboardOAuthCapabilities((lease.snapshot as Snapshot).plugins.registry);
   } finally {
     lease.release();
   }

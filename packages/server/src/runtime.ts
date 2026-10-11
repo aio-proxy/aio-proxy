@@ -31,6 +31,7 @@ import type {
 } from '@aio-proxy/types';
 
 import type { LogicalSessionStore } from './logical-session-store';
+import type { OAuthQuotaCacheStatus } from './plugin-quota';
 import type { RequestTraceRecorder } from './request-tracing';
 import type { ProviderCooldownStore } from './routes/pipeline/provider-cooldown';
 import type { ServerLogSink } from './server-log';
@@ -249,7 +250,7 @@ export type ProviderRouteSource = {
     request: Request,
     snapshot: ProviderRouteSnapshot,
     maxBytes: number,
-  ) => Promise<{ readonly capturePayload: boolean }>;
+  ) => Promise<{ readonly capturePayload: boolean; readonly omissionReason?: 'privacy_policy' }>;
   readonly acquireProviderSnapshot: () => ProviderSnapshotLease;
   readonly cooldown: ProviderCooldownStore;
   readonly currentProviderSnapshot: () => ProviderRouteSnapshot;
@@ -260,4 +261,8 @@ export type ProviderRouteSource = {
   readonly usageCapture: UsageCapture;
   /** Optional: fire-and-forget OAuth quota refresh after a provider answers a request. */
   readonly warmProviderQuota?: (providerId: string) => void;
+  /** Optional: the quota cache's synchronous view, which selection reads to skip exhausted subscriptions. */
+  readonly quotaStatus?: (providerId: string) => OAuthQuotaCacheStatus;
+  /** Optional: fire-and-forget quota re-read that ignores the cache's read cooldown. */
+  readonly refreshProviderQuota?: (providerId: string) => void;
 };

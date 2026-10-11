@@ -41,6 +41,7 @@ export type Captured<T> = {
 };
 
 export type StreamUsageOptions = {
+  readonly live?: boolean;
   readonly stream: ReadableStream<TextStreamPart<ToolSet>>;
   readonly providerId: string;
   readonly modelId: string;
@@ -61,6 +62,7 @@ export type StreamUsageOptions = {
 };
 
 export type PassthroughUsageOptions = {
+  readonly live?: boolean;
   readonly response: Response;
   readonly protocol: ProviderProtocol;
   readonly providerId: string;

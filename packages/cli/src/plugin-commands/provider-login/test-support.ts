@@ -66,6 +66,7 @@ export function createProviderLoginTestScope() {
       registry: registry(),
       isTTY: false,
       selectCapability: async (choices) => choices[0]?.reference ?? '',
+      selectMethod: async () => 'browser',
       renderAccountOptions: async () => ({ publicValues: {}, secrets: {} }),
       createAuthorization: () => ({
         async presentDeviceCode() {},

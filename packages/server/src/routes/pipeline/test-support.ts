@@ -9,6 +9,7 @@ import {
   type TestProtocolContext,
   type TestProtocolRequest,
 } from '../../../__tests__/pipeline-helpers';
+import type { LiveMetrics } from '../../live-metrics';
 import type { UsageCompletion } from '../../usage-capture';
 import { handleProtocolRequest } from './index';
 
@@ -23,6 +24,7 @@ export function pipeline(
     readonly config?: Config;
     readonly httpRoute?: string;
     readonly random?: () => number;
+    readonly liveMetrics?: LiveMetrics;
   } = {},
 ) {
   const adapter = options.adapter ?? defineProtocolAdapter();
@@ -30,6 +32,7 @@ export function pipeline(
   const route = defineProviderRouteSource(fixtures, options.immediateStreamCompletion, options.debugLogging, {
     config: options.config,
     random: options.random,
+    liveMetrics: options.liveMetrics,
   });
   return {
     ...route,

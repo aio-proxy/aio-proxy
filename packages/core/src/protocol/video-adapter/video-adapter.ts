@@ -1,7 +1,7 @@
 import type { AliasDimensions } from '@aio-proxy/types';
 
 import type { ProtocolRequestDiagnostic, SharedProtocolAdapter } from '../adapter';
-import { REQUEST_BODY_LIMITS, type RequestBodyLimits } from '../request';
+import { currentRequestBodyLimits, type RequestBodyLimits } from '../request/index';
 
 export type VideoProtocolAdapter<TRequest, TContext> = SharedProtocolAdapter<TRequest, TContext> &
   Readonly<{
@@ -20,7 +20,7 @@ export type VideoProtocolAdapterDefinition<TRequest, TContext> = Omit<
 
 const noDimensions = (): AliasDimensions => ({});
 const noRequestDiagnostics = (): readonly ProtocolRequestDiagnostic[] => [];
-const defaultBodyLimits = (): RequestBodyLimits => REQUEST_BODY_LIMITS;
+const defaultBodyLimits = (): RequestBodyLimits => currentRequestBodyLimits();
 
 export function defineVideoProtocolAdapter<TRequest, TContext>(
   definition: VideoProtocolAdapterDefinition<TRequest, TContext>,

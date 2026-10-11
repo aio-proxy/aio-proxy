@@ -154,32 +154,36 @@ test('a present Grok marker still produces no Grok asset read or install calls',
   expect(readAssets.mock.calls.some((call) => call[0] === 'grok')).toBe(false);
 });
 
-test('post-upgrade after Grok configure still does not write Grok config or read Grok assets', async () => {
-  const g = await grokFixture();
-  try {
-    await configureGrok(g.input, g.deps);
-    const configPath = join(g.root, 'config.toml');
-    const before = createHash('sha256')
-      .update(Buffer.from(await Bun.file(configPath).arrayBuffer()))
-      .digest('hex');
-    const f = postUpgradeFixture({ targets: ['opencode', 'pi', 'omp'] });
-    const readAssets = mock(async (target: AgentPluginTarget) => {
-      expect(target).not.toBe('grok');
-      return new Map([['index.js', new TextEncoder().encode('adapter')]]);
-    });
-    f.deps.readAssets = readAssets;
-    await runAgentPostUpgrade(f.payload, f.deps);
-    expect(
-      createHash('sha256')
+// POSIX-only: Grok's root-safety check rejects Windows directories, which have no POSIX mode bits.
+test.skipIf(process.platform === 'win32')(
+  'post-upgrade after Grok configure still does not write Grok config or read Grok assets',
+  async () => {
+    const g = await grokFixture();
+    try {
+      await configureGrok(g.input, g.deps);
+      const configPath = join(g.root, 'config.toml');
+      const before = createHash('sha256')
         .update(Buffer.from(await Bun.file(configPath).arrayBuffer()))
-        .digest('hex'),
-    ).toBe(before);
-    expect(readAssets.mock.calls.some((call) => call[0] === 'grok')).toBe(false);
-    expect(f.install.mock.calls.some((call) => call[0]!.location.target === 'grok')).toBe(false);
-  } finally {
-    await g.cleanup();
-  }
-});
+        .digest('hex');
+      const f = postUpgradeFixture({ targets: ['opencode', 'pi', 'omp'] });
+      const readAssets = mock(async (target: AgentPluginTarget) => {
+        expect(target).not.toBe('grok');
+        return new Map([['index.js', new TextEncoder().encode('adapter')]]);
+      });
+      f.deps.readAssets = readAssets;
+      await runAgentPostUpgrade(f.payload, f.deps);
+      expect(
+        createHash('sha256')
+          .update(Buffer.from(await Bun.file(configPath).arrayBuffer()))
+          .digest('hex'),
+      ).toBe(before);
+      expect(readAssets.mock.calls.some((call) => call[0] === 'grok')).toBe(false);
+      expect(f.install.mock.calls.some((call) => call[0]!.location.target === 'grok')).toBe(false);
+    } finally {
+      await g.cleanup();
+    }
+  },
+);
 
 test('payload schema rejects a Grok target even when a Grok marker path is present', () => {
   expect(

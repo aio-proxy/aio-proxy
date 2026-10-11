@@ -12,6 +12,7 @@ import { Experimental_EvaluationUnsupportedQuestionTypeError } from 'ai';
 
 import { defineProviderRouteSource } from '../../../../__tests__/pipeline-helpers';
 import { lazyEvaluationTransport } from '../../../provider-runtime';
+import { attributeName } from '../../../request-tracing';
 import { createAttemptResponseObservation } from '../../../response-observation';
 import type { EvaluationDiscovery, EvaluationTransport, LazyEvaluationTransport } from '../../../runtime';
 import type { RuntimeProviderInstance } from '../../../runtime';
@@ -32,6 +33,39 @@ const NOUL_RESULT: EvaluationResult = {
   answers: { q: { type: 'noul', noul: 0.93 } },
   usage: { inputTokens: 312, outputTokens: 48 },
 };
+
+test('records billed refusal usage while retaining failure and candidate fallback', async () => {
+  for (const backup of [false, true]) {
+    const refused = convertProvider(
+      'decisions',
+      discoveredTransport(async () => ({
+        answers: { q: { type: 'refusal' } },
+        usage: { inputTokens: 100, outputTokens: 0 },
+      })),
+    );
+    const healthy = convertProvider(
+      'backup',
+      discoveredTransport(async () => NOUL_RESULT),
+    );
+    const { route, runLoop } = await harness();
+    const billedRefused = { ...refused, upstreamMetadata: { [MODEL_ID]: { cost: { input: 1 } } } };
+    const response = await runLoop(backup ? [billedRefused, healthy] : [billedRefused]);
+    expect(response.status).toBe(backup ? 200 : 501);
+    await route.recording.settle();
+    expect(route.usage.evaluation.map((call) => call.providerId)).toEqual(
+      backup ? ['decisions', 'backup'] : ['decisions'],
+    );
+    const attempt = route.recording.spans.find(
+      (span) =>
+        span.attributes[attributeName.attemptIndex] === 0 && span.attributes[attributeName.providerId] === 'decisions',
+    );
+    expect(attempt?.attributes[attributeName.genAiUsageInputTokens]).toBe(100);
+    expect(attempt?.attributes[attributeName.genAiUsageOutputTokens]).toBe(0);
+    expect(attempt?.attributes[attributeName.consumedUsage]).toBe(true);
+    expect(attempt?.attributes[attributeName.genAiUsageEstimatedCostUsd]).toBe(0.0001);
+    expect(route.recording.attempts[0]?.outcome).toBe('failure');
+  }
+});
 
 // A choice answer the SDK returned without a distribution. `systemOneJson` refuses
 // it; this layer owns turning that refusal into a candidate fallback.

@@ -3,6 +3,7 @@ import {
   type AccountContext,
   type LocalizedText,
   type OAuthQuotaItem,
+  type OAuthQuotaItemScope,
   type OAuthQuotaResetCredit,
   type OAuthQuotaResetCredits,
   type OAuthQuotaSnapshot,
@@ -39,7 +40,7 @@ export async function readOpenAIChatGPTQuota(
   ]);
   context.signal.throwIfAborted();
 
-  const items = dedupeQuotaItemIds([...laneItems(usage), ...additionalItems(usage)]);
+  const items = dedupeQuotaItemIds([...laneItems(usage, mainLaneScope(usage)), ...additionalItems(usage)]);
   if (items.length === 0) throw new Error('ChatGPT usage response contains no rate limit windows');
   const plan = planText(Reflect.get(usage, 'plan_type'));
   return {
@@ -113,13 +114,39 @@ function redeemable(entry: Readonly<Record<string, unknown>>): boolean {
 }
 
 /** `rate_limit.primary_window` / `secondary_window`: the session and weekly lanes. */
-function laneItems(usage: Readonly<Record<string, unknown>>): readonly OAuthQuotaItem[] {
+function laneItems(
+  usage: Readonly<Record<string, unknown>>,
+  scope: OAuthQuotaItemScope | undefined,
+): readonly OAuthQuotaItem[] {
   const rateLimit = Reflect.get(usage, 'rate_limit');
   if (!isPlainObject(rateLimit)) return [];
   return [
-    windowItem(Reflect.get(rateLimit, 'primary_window'), 'primary', undefined),
-    windowItem(Reflect.get(rateLimit, 'secondary_window'), 'secondary', undefined),
+    windowItem(Reflect.get(rateLimit, 'primary_window'), 'primary', undefined, scope),
+    windowItem(Reflect.get(rateLimit, 'secondary_window'), 'secondary', undefined, scope),
   ].filter((item): item is OAuthQuotaItem => item !== undefined);
+}
+
+/**
+ * The model a separate limit meters. ChatGPT names it in `limit_name` with the catalog slug's
+ * spelling in another case (`GPT-5.3-Codex-Spark` meters `gpt-5.3-codex-spark`); `metered_feature`
+ * is a feature key, not a model id, so it names nothing routable.
+ */
+function limitModel(entry: Readonly<Record<string, unknown>>): string | undefined {
+  return nonEmpty(Reflect.get(entry, 'limit_name'))?.toLowerCase();
+}
+
+/**
+ * The main lanes refuse every model except those with a pool of their own and the image models,
+ * which go through a separate endpoint with no evidence of sharing these lanes. A separate pool that
+ * names no model could be any of them, so then the main lanes' coverage is unknown and they gate
+ * nothing.
+ */
+function mainLaneScope(usage: Readonly<Record<string, unknown>>): OAuthQuotaItemScope | undefined {
+  const raw = Reflect.get(usage, 'additional_rate_limits');
+  const entries = Array.isArray(raw) ? raw.filter(isPlainObject) : [];
+  const models = entries.map(limitModel);
+  if (models.some((model) => model === undefined)) return undefined;
+  return { models: ['*', '!gpt-image-*', ...models.map((model) => `!${model}`)] };
 }
 
 /**
@@ -136,14 +163,21 @@ function additionalItems(usage: Readonly<Record<string, unknown>>): readonly OAu
     const name = nonEmpty(Reflect.get(entry, 'limit_name')) ?? nonEmpty(Reflect.get(entry, 'metered_feature'));
     const slug = slugify(nonEmpty(Reflect.get(entry, 'metered_feature')) ?? name ?? '');
     if (slug === '') return [];
+    const model = limitModel(entry);
+    const scope = model === undefined ? undefined : { models: [model] };
     return [
-      windowItem(Reflect.get(rateLimit, 'primary_window'), slug, name),
-      windowItem(Reflect.get(rateLimit, 'secondary_window'), `${slug}-secondary`, name),
+      windowItem(Reflect.get(rateLimit, 'primary_window'), slug, name, scope),
+      windowItem(Reflect.get(rateLimit, 'secondary_window'), `${slug}-secondary`, name, scope),
     ].filter((item): item is OAuthQuotaItem => item !== undefined);
   });
 }
 
-function windowItem(value: unknown, id: string, prefix: string | undefined): OAuthQuotaItem | undefined {
+function windowItem(
+  value: unknown,
+  id: string,
+  prefix: string | undefined,
+  scope: OAuthQuotaItemScope | undefined,
+): OAuthQuotaItem | undefined {
   if (!isPlainObject(value)) return undefined;
   const usedPercent = number(Reflect.get(value, 'used_percent'));
   const resetsAt = timestamp(Reflect.get(value, 'reset_at'));
@@ -157,6 +191,7 @@ function windowItem(value: unknown, id: string, prefix: string | undefined): OAu
     ...(usedPercent === undefined ? {} : { remainingRatio: 1 - Math.min(Math.max(usedPercent, 0), 100) / 100 }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
     ...(windowMinutes === undefined ? {} : { windowMinutes }),
+    ...(scope === undefined ? {} : { scope }),
   };
 }
 

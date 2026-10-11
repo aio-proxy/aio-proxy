@@ -123,6 +123,7 @@ export function createAttemptEmitter({ session, capability, onAttemptEnd }: Atte
     terminal: SpanTerminal,
     facts?: AttemptOutcomeFacts,
   ): void => {
+    observation.finishSends?.(terminal.outcome === 'success');
     const snapshot = observation.snapshot();
     if (snapshot.transportObservation !== undefined) {
       attemptSpan.span.setAttribute(attributeName.transportObservation, snapshot.transportObservation);
@@ -157,6 +158,9 @@ export function createAttemptEmitter({ session, capability, onAttemptEnd }: Atte
     if (snapshot.httpSends !== undefined) {
       attemptSpan.span.setAttribute(attributeName.attemptHttpSends, snapshot.httpSends);
     }
+    if (snapshot.responseSendIndex !== undefined) {
+      attemptSpan.span.setAttribute(attributeName.attemptResponseSendIndex, snapshot.responseSendIndex);
+    }
     // Response-side gen_ai.* only exist once the upstream answered, so they land
     // here rather than at span creation. A failed attempt simply omits them.
     if (capturePayload && facts?.responseModelId !== undefined) {
@@ -167,6 +171,17 @@ export function createAttemptEmitter({ session, capability, onAttemptEnd }: Atte
     }
     if (facts?.usage !== undefined) {
       attemptSpan.span.setAttributes(usageAttributes(facts.usage));
+      if (terminal.outcome !== 'success') {
+        attemptSpan.span.setAttribute(attributeName.consumedUsage, true);
+        if (facts.usage.priceModelId !== undefined)
+          attemptSpan.span.setAttribute(attributeName.usagePriceModelId, facts.usage.priceModelId);
+        if (facts.usage.totalTokens !== undefined)
+          attemptSpan.span.setAttribute(attributeName.genAiUsageTotalTokens, facts.usage.totalTokens);
+        if (facts.usage.priceSource !== undefined)
+          attemptSpan.span.setAttribute(attributeName.usagePriceSource, facts.usage.priceSource);
+        if (facts.usage.estimatedCostUsd !== undefined)
+          attemptSpan.span.setAttribute(attributeName.genAiUsageEstimatedCostUsd, facts.usage.estimatedCostUsd);
+      }
     }
     const begun = startedAt.get(attemptSpan);
     if (begun !== undefined) onAttemptEnd?.(Math.max(0, performance.now() - begun));

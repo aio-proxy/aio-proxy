@@ -5,7 +5,7 @@ import (
 
 	"github.com/aio-proxy/aio-proxy/desktop/internal/client/health"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/connect/policy"
-	"github.com/aio-proxy/aio-proxy/desktop/internal/macos/loginitem"
+	"github.com/aio-proxy/aio-proxy/desktop/internal/login"
 )
 
 func entryFor(t *testing.T, entries []MenuEntry, cmd MenuCommand) MenuEntry {
@@ -19,7 +19,7 @@ func entryFor(t *testing.T, entries []MenuEntry, cmd MenuCommand) MenuEntry {
 	return MenuEntry{}
 }
 func TestBusyOnlyDisablesServiceActions(t *testing.T) {
-	entries := MenuEntries(policy.Offered{Restart: true, Stop: true, Reload: true}, true, true, true, loginitem.RequiresApproval)
+	entries := MenuEntries(policy.Offered{Restart: true, Stop: true, Reload: true}, true, true, true, login.RequiresApproval)
 	for _, a := range []policy.UserAction{policy.UserRestart, policy.UserStop, policy.UserReload} {
 		if entryFor(t, entries, MenuCommand{Kind: Service, Action: a}).Enabled {
 			t.Fatalf("busy action %v enabled", a)
@@ -36,7 +36,7 @@ func TestBusyOnlyDisablesServiceActions(t *testing.T) {
 	}
 }
 func TestReadOnlyLoginCannotBeRegistered(t *testing.T) {
-	entries := MenuEntries(policy.Offered{Reload: true}, true, false, false, loginitem.Enabled)
+	entries := MenuEntries(policy.Offered{Reload: true}, true, false, false, login.Enabled)
 	login := entryFor(t, entries, MenuCommand{Kind: ToggleLogin})
 	if login.Enabled || login.Checked {
 		t.Fatal("read-only registration enabled")
@@ -46,7 +46,7 @@ func TestReadOnlyLoginCannotBeRegistered(t *testing.T) {
 	}
 }
 func TestDownServiceDisablesDashboardAndDoesNotOfferStop(t *testing.T) {
-	entries := MenuEntries(policy.Offered{Start: true}, false, false, true, loginitem.NotRegistered)
+	entries := MenuEntries(policy.Offered{Start: true}, false, false, true, login.NotRegistered)
 	if entryFor(t, entries, MenuCommand{Kind: OpenDashboard}).Enabled {
 		t.Fatal("dead dashboard enabled")
 	}

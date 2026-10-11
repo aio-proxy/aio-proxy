@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { defaultCliDeps } from '../../dashboard-assets';
 import { localAgentHost } from '../../run/run';
 import { shouldEnableAgentHost } from './gate';
 
@@ -39,5 +40,5 @@ test('Docker, remote endpoint, bind mismatch, and missing home never inject a lo
     { env: {}, resolveEndpoint: async () => 'http://127.0.0.1:1234', home: () => '/tmp/test-home' },
     { env: {}, resolveEndpoint: loopback, home: () => '' },
   ])
-    expect(await localAgentHost('127.0.0.1', 9317, gate)).toBeUndefined();
+    expect(await localAgentHost('127.0.0.1', 9317, defaultCliDeps, gate)).toBeUndefined();
 });

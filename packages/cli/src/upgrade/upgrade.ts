@@ -101,11 +101,17 @@ export const isDesktopManagedInstall = (
   env: NodeJS.ProcessEnv = process.env,
   execPath: string = process.execPath,
   realpath: (path: string) => string = realpathSync,
+  platform: NodeJS.Platform = process.platform,
 ): boolean => {
   if (env['AIO_PROXY_UPGRADE_METHOD'] === 'desktop') return true;
   if ((env['AIO_PROXY_DESKTOP_EXEC'] ?? '') !== '') return true;
   try {
-    return /\.app\/Contents\/MacOS\//u.test(realpath(execPath));
+    const real = realpath(execPath);
+    if (/\.app\/Contents\/MacOS\//u.test(real)) return true;
+    // Linux/Windows desktop clients run the CLI from a stable copy under
+    // <data dir>/aio-proxy-desktop/bin/; upgrading it would fork the daemon from the app.
+    const segments = (platform === 'win32' ? real.toLowerCase() : real).split(/[\\/]/u);
+    return segments.some((seg, i) => seg === 'aio-proxy-desktop' && segments[i + 1] === 'bin');
   } catch {
     return false;
   }

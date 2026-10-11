@@ -14,7 +14,7 @@ import { type AnthropicModelMessage, anthropicMessagesToModelMessages } from '..
 import { defineProtocolAdapter, type EmptyProtocolContext } from '../adapter';
 import { anthropicThinkingOption } from '../anthropic-thinking';
 import { anthropicMessagesErrors } from '../errors';
-import { readJsonRequest } from '../request';
+import { readJsonRequest } from '../request/index';
 import type { SessionCandidate } from '../session';
 import { functionToolSet } from '../tools';
 import { normalizeAnthropicInvocationEffort, rewriteAnthropicRawEffort } from './effort';

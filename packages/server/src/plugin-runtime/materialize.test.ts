@@ -42,6 +42,94 @@ test('a missing plugin degrades only its structured OAuth provider', async () =>
   expect(result.summary).toMatchObject({ id: 'person', enabled: true, clientModels: [] });
 });
 
+test.each(['ready', 'disabled', 'invalid-options', 'catalog-missing', 'runtime-failed', 'refresh-failed'] as const)(
+  'summary carries localSignInSource when %s without accessing the host',
+  async (state) => {
+    const source = { default: 'Example Tool', 'zh-CN': '示例工具' };
+    let hostCalls = 0;
+    const fixture = runtimeFixture(
+      { kind: 'static' },
+      {
+        accountLocalSignIn: {},
+        localSignIn: {
+          source,
+          async detect() {
+            hostCalls++;
+            return true;
+          },
+          async read() {
+            hostCalls++;
+            throw new Error('summary must not read the host');
+          },
+        },
+        ...(state === 'invalid-options' ? { accountOptionsSchema: zod.object({ region: zod.string() }) } : {}),
+        ...(state === 'catalog-missing' ? { catalog: null } : {}),
+        ...(state === 'runtime-failed'
+          ? {
+              createRuntime: async () => {
+                throw new Error('runtime unavailable');
+              },
+            }
+          : {}),
+      },
+    );
+    if (state === 'refresh-failed') {
+      fixture.repository.writeDiagnostic('person', diagnostics('CREDENTIAL_REFRESH_FAILED', { retryable: false }));
+    }
+    const result = await materializePluginProvider({
+      config: {
+        id: 'person',
+        kind: ProviderKind.OAuth,
+        enabled: state !== 'disabled',
+        plugin: '@example/oauth',
+        capability: 'default',
+      },
+      plugins: fixture.plugins,
+      repository: fixture.repository,
+      diagnostics,
+      logger: () => {},
+      onDiagnosticChanged: () => {},
+    });
+
+    expect(result.summary).toMatchObject({ localSignInSource: source, enabled: state !== 'disabled' });
+    expect(result.state.status).toBe(state === 'ready' || state === 'disabled' ? 'ready' : 'unavailable');
+    expect(hostCalls).toBe(0);
+  },
+);
+
+test.each([
+  [false, true],
+  [true, false],
+])('summary omits localSignInSource when linked=%s and capability=%s', async (linked, capability) => {
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      ...(linked ? { accountLocalSignIn: {} } : {}),
+      ...(capability
+        ? {
+            localSignIn: {
+              source: 'Example Tool',
+              detect: async () => true,
+              read: async () => {
+                throw new Error('summary must not read the host');
+              },
+            },
+          }
+        : {}),
+    },
+  );
+  const result = await materializePluginProvider({
+    config: { id: 'person', kind: ProviderKind.OAuth, enabled: true, plugin: '@example/oauth', capability: 'default' },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  });
+
+  expect(result.summary).not.toHaveProperty('localSignInSource');
+});
+
 test('runtime creation timeout isolates a hung provider from another provider materialization', async () => {
   const hung = runtimeFixture({ kind: 'static' }, { createRuntime: async () => new Promise<never>(() => {}) });
   const fast = runtimeFixture({ kind: 'static' });

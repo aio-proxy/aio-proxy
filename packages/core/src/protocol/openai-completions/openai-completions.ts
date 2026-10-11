@@ -6,7 +6,7 @@ import { openAICompletionsToModelMessages } from '../../transform/openai-complet
 import { defineProtocolAdapter, type EmptyProtocolContext } from '../adapter';
 import { openAICompletionsErrors } from '../errors';
 import { clampSdkReasoning } from '../reasoning-effort/index';
-import { readJsonRequest } from '../request';
+import { readJsonRequest } from '../request/index';
 import type { SessionCandidate } from '../session';
 import { functionToolSet } from '../tools';
 import { rewriteOpenAICompletionsRaw } from './completions-raw';

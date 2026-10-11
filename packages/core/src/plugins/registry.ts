@@ -107,6 +107,29 @@ function validateCredentialImports(value: unknown): OAuthAdapter['credentialImpo
   };
 }
 
+function validateLocalSignIn(value: unknown): OAuthAdapter['localSignIn'] | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error('Invalid OAuth adapter');
+  const { source, detect, read, write } = value;
+  const validatedSource = LocalizedTextSchema.safeParse(source);
+  if (
+    !validatedSource.success ||
+    typeof detect !== 'function' ||
+    typeof read !== 'function' ||
+    (write !== undefined && typeof write !== 'function')
+  ) {
+    throw new Error('Invalid OAuth adapter');
+  }
+  return {
+    source: validatedSource.data,
+    detect: detect.bind(value) as NonNullable<OAuthAdapter['localSignIn']>['detect'],
+    read: read.bind(value) as NonNullable<OAuthAdapter['localSignIn']>['read'],
+    ...(write === undefined
+      ? {}
+      : { write: write.bind(value) as NonNullable<NonNullable<OAuthAdapter['localSignIn']>['write']> }),
+  };
+}
+
 function validateAdapter(value: unknown): { readonly id: string; readonly adapter: OAuthAdapter } {
   if (!isRecord(value)) throw new Error('Invalid OAuth adapter');
   const {
@@ -121,6 +144,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
     catalog,
     quota,
     credentialImports,
+    localSignIn,
     refreshCredential,
   } = value;
   const id = CapabilityIdSchema.parse(rawId);
@@ -140,6 +164,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
   }
   const validatedQuota = validateQuota(quota);
   const validatedCredentialImports = validateCredentialImports(credentialImports);
+  const validatedLocalSignIn = validateLocalSignIn(localSignIn);
   if (!isRecord(catalog)) throw new Error('Invalid OAuth adapter');
   const { discover, policy, initialFallback, defaultAliases } = catalog;
   if (
@@ -187,6 +212,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
       createRuntime: createRuntime.bind(value) as OAuthAdapter['createRuntime'],
       ...(validatedQuota === undefined ? {} : { quota: validatedQuota }),
       ...(validatedCredentialImports === undefined ? {} : { credentialImports: validatedCredentialImports }),
+      ...(validatedLocalSignIn === undefined ? {} : { localSignIn: validatedLocalSignIn }),
       ...(refreshCredential === undefined
         ? {}
         : { refreshCredential: refreshCredential.bind(value) as NonNullable<OAuthAdapter['refreshCredential']> }),

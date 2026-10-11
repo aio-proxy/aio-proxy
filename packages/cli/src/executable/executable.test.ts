@@ -181,3 +181,31 @@ test('a relative AIO_PROXY_DESKTOP_EXEC is ignored', () => {
     ),
   ).toBe(launcher);
 });
+
+test('win32 registers the native aio-proxy.exe, never the npm .cmd shim on PATH', () => {
+  const exe = 'C:\\Users\\Ada\\AppData\\Roaming\\npm\\node_modules\\@aio-proxy\\cli-win32-x64\\bin\\aio-proxy.exe';
+  const resolve = (onPath: string | null) =>
+    resolveAgentExecutable(
+      () => onPath,
+      exe,
+      (path) => path,
+      (path) => path === exe,
+      {},
+      'win32',
+    );
+  expect(resolve('C:\\Users\\Ada\\AppData\\Roaming\\npm\\aio-proxy.cmd')).toBe(exe);
+  expect(resolve(null)).toBe(exe);
+});
+
+test('win32 refuses a PATH shim when the running binary is not aio-proxy', () => {
+  expect(() =>
+    resolveAgentExecutable(
+      () => 'C:\\npm\\aio-proxy.cmd',
+      'C:\\bun\\bun.exe',
+      (path) => path,
+      () => true,
+      {},
+      'win32',
+    ),
+  ).toThrow(CliExit);
+});

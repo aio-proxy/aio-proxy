@@ -10,6 +10,7 @@ export { pluginOptionsIdentityDigest } from './identity';
 export { materializePluginProvider } from './materialize';
 export { createRuntimeFetch, type RuntimeFetchInput } from './runtime-fetch';
 export {
+  type CatalogCommit,
   type CatalogJobDescriptor,
   type MaterializePluginProviderOptions,
   PLUGIN_RUNTIME_TIMEOUT_MS,

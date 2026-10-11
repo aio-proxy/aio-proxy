@@ -19,7 +19,8 @@ export type ProtocolId =
   | 'openai-image'
   | 'openai-audio'
   | 'openai-video'
-  | 'typesafe-systemone';
+  | 'typesafe-systemone'
+  | 'openai-decisions';
 
 /** Non-deprecated replacement for the AI SDK `CallSettings` type. */
 export type AiSdkCallSettings = LanguageModelCallOptions &

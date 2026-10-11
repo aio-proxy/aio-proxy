@@ -21,6 +21,7 @@ import type { CatalogRefreshOutcome } from '../catalog-scheduler';
 import type { ConfigStore } from '../config-store';
 import type { OAuthCredentialRefreshOperations } from '../credential-refresh';
 import type { DashboardEventHub, DashboardEventLimits } from '../dashboard-events';
+import type { LiveMetrics } from '../live-metrics';
 import type { ModelRoutingControlPlane } from '../model-routing';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import type { PluginControlPlane, PluginControlPlaneOptions } from '../plugin-control-plane';
@@ -102,12 +103,15 @@ export type ServerState = ProviderRouteSource & {
   readonly modelRouting: ModelRoutingControlPlane;
   readonly oauthQuota: OAuthQuotaOperations;
   readonly oauthCredentialRefresh: OAuthCredentialRefreshOperations;
-  /** Rediscovers one OAuth Provider's model catalog now, ignoring the catalog policy's TTL. */
+  /** Rediscovers one OAuth or synced API / AI SDK Provider's model catalog now, ignoring its TTL. */
   readonly refreshProviderCatalog: (providerId: string) => Promise<CatalogRefreshOutcome>;
   readonly quotaCache: OAuthQuotaCache;
   readonly pluginControlPlane: PluginControlPlane;
-  readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];
+  readonly oauthCapabilities: () => Promise<readonly DashboardOAuthCapability[]>;
   readonly oauthProviderEditView: (providerId: string) => DashboardOAuthProviderEdit | undefined;
+  readonly syncedProviderEditView: (
+    providerId: string,
+  ) => { readonly models: readonly string[]; readonly refreshedAt?: string } | undefined;
   readonly oauthLoginSessions: OAuthLoginSessionManager;
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;
@@ -117,6 +121,7 @@ export type ServerState = ProviderRouteSource & {
   readonly realtimeCalls: RealtimeCallStore;
   readonly videoJobs: VideoJobStore;
   readonly traceStore: TraceStore;
+  readonly liveMetrics: LiveMetrics;
 };
 
 export type ProviderSummaryOptions = { readonly filter?: string | undefined; readonly probe: boolean };

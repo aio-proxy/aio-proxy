@@ -1,4 +1,4 @@
-import type { LogicalRequestContext, RawTransport, RawTransportOptions } from '@aio-proxy/plugin-sdk';
+import type { Logger, LogicalRequestContext, RawTransport, RawTransportOptions } from '@aio-proxy/plugin-sdk';
 
 import type { ChatGPTPluginOptions } from '../../plugin-options';
 import { guardianDecision } from './decision';
@@ -27,6 +27,7 @@ type GuardianEvaluationInput = {
   readonly pluginOptions: Partial<ChatGPTPluginOptions>;
   readonly evaluate?: GuardianEvaluate;
   readonly timeoutSignal?: (milliseconds: number) => AbortSignal;
+  readonly logger?: Pick<Logger, 'info'>;
   readonly request: Request;
   readonly context?: LogicalRequestContext;
 };
@@ -36,6 +37,7 @@ export function createGuardianRawInvoke(input: {
   original: RawTransport['invoke'];
   evaluate?: GuardianEvaluate;
   timeoutSignal?: (milliseconds: number) => AbortSignal;
+  logger?: Pick<Logger, 'info'>;
 }): RawTransport['invoke'] {
   return async (request, context, options) => {
     const invocation = (options as InvocationOptions | undefined)?.__aioGuardianInvocation;
@@ -55,6 +57,7 @@ export function createGuardianPreRouteInvoke(input: {
   pluginOptions: Partial<ChatGPTPluginOptions>;
   evaluate?: GuardianEvaluate;
   timeoutSignal?: (milliseconds: number) => AbortSignal;
+  logger?: Pick<Logger, 'info'>;
 }): (request: Request, context: LogicalRequestContext) => Promise<Response | undefined> {
   return (request, context) => evaluateGuardian({ ...input, request, context });
 }
@@ -71,7 +74,15 @@ async function evaluateGuardian(input: GuardianEvaluationInput): Promise<Respons
     return;
   const providerId = pluginOptions.guardianProviderId;
   const modelId = pluginOptions.guardianModelId;
-  const projected = await projectGuardianRequest(request);
+  const fallback = (reason: string): undefined => {
+    input.logger?.info('Guardian evaluation deferred to the original request path', {
+      event: 'guardian.fallback',
+      reason,
+      requestId: context.requestId,
+    });
+    return;
+  };
+  const projected = await projectGuardianRequest(request, fallback);
   request.signal.throwIfAborted();
   if (projected === undefined) return;
   const deadlineAt = performance.now() + 8_000;
@@ -85,7 +96,7 @@ async function evaluateGuardian(input: GuardianEvaluationInput): Promise<Respons
     state: projected.state,
     questions: guardianQuestions(),
   };
-  if (expired()) return;
+  if (expired()) return fallback('evaluation_timeout');
   let evaluated: unknown;
   try {
     evaluated = await raceWithAbort(
@@ -101,18 +112,16 @@ async function evaluateGuardian(input: GuardianEvaluationInput): Promise<Respons
     );
   } catch {
     request.signal.throwIfAborted();
-    return;
+    return fallback(expired() ? 'evaluation_timeout' : 'evaluation_error');
   }
-  if (expired()) return;
+  if (expired()) return fallback('evaluation_timeout');
   const decision = guardianDecision(evaluated, projected);
-  if (expired()) return;
-  if (
-    decision === undefined ||
-    (decision['outcome'] === 'deny' && pluginOptions.guardianStrategy === 'systemOneReviewDenied')
-  )
-    return;
+  if (expired()) return fallback('evaluation_timeout');
+  if (decision === undefined) return fallback('invalid_result');
+  if (decision['outcome'] === 'deny' && pluginOptions.guardianStrategy === 'systemOneReviewDenied')
+    return fallback('denied_review');
   const response = guardianResponse(decision, projected.stream, projected.model);
-  if (expired()) return;
+  if (expired()) return fallback('evaluation_timeout');
   return response;
 }
 

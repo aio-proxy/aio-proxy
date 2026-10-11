@@ -1,5 +1,5 @@
 import { normalizeEffort } from '../reasoning-effort/index';
-import { readRequestText } from '../request';
+import { readRequestText } from '../request/index';
 
 export async function rewriteOpenAICompletionsRaw(
   raw: Request,

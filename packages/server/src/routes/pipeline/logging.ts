@@ -4,6 +4,7 @@ import { providerRequestTransformDiagnostic } from '../../provider-request-trans
 import type { ProviderRouteSource } from '../../runtime';
 import { logServerEvent, serverErrorDetails, serverErrorType } from '../../server-log';
 import type { AttemptInfo } from './attempt-base';
+import { requestBodyRejectionFields } from './request';
 
 // Failure facts a provider attempt log carries beyond the shared attempt info.
 export type AttemptLog = AttemptInfo & {
@@ -129,6 +130,7 @@ export function logRequestRejected(options: {
     errorCode: options.errorCode,
     errorType: serverErrorType(options.error),
     ...(issues === undefined ? {} : { issues }),
+    ...requestBodyRejectionFields(options.rawRequest, options.error),
   });
 }
 

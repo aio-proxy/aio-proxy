@@ -23,12 +23,14 @@ import {
   requireDashboardAuthentication,
 } from '../dashboard-auth';
 import { createDashboardRoutes } from '../dashboard-routes/config';
+import { createDesktopLiveRoute } from '../dashboard-routes/desktop-live';
 import { createDesktopSummaryRoute } from '../dashboard-routes/desktop-summary';
 import { createAnthropicMessagesRoutes } from '../routes/anthropic-messages';
 import { createGeminiGenerateContentRoutes } from '../routes/gemini-generate-content';
 import { createGeminiInteractionsRoutes } from '../routes/gemini-interactions';
 import { createOpenAIAudioRoutes } from '../routes/openai-audio';
 import { createOpenAICompletionsRoutes } from '../routes/openai-completions';
+import { createOpenAIDecisionsRoutes } from '../routes/openai-decisions';
 import { createOpenAIEmbeddingsRoutes } from '../routes/openai-embeddings';
 import { createOpenAIImagesRoutes } from '../routes/openai-images';
 import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
@@ -168,7 +170,7 @@ const mountAdminControlPlane = (
   });
 };
 
-/** Registered ahead of every `/dashboard/*` middleware on purpose: the desktop summary carries its own
+/** Registered ahead of every `/dashboard/*` middleware on purpose: the desktop routes carry their own
  *  guard (desktop token + loopback peer) and must not inherit dashboard-session authentication. */
 const mountHealthAndDesktopSummary = (app: Hono, state: ServerState, version: string): void => {
   app.get('/health', (context) =>
@@ -179,6 +181,7 @@ const mountHealthAndDesktopSummary = (app: Hono, state: ServerState, version: st
     }),
   );
   app.route('/dashboard/api/desktop-summary', createDesktopSummaryRoute(state, version));
+  app.route('/dashboard/api/desktop-live', createDesktopLiveRoute(state));
 };
 
 /** Narrows `ServerState` to what realtime is allowed to see: no usage capture, no
@@ -238,6 +241,7 @@ export const createRoutes = (
     // the config envelope transform — decides only whether an unmatched caller is rejected.
     apiKeys: () => state.currentConfig().server.apiKeys,
     enforceApiKeys: () => state.currentConfig().server.requireApiKey,
+    resolveCaller: (entry) => state.traceStore.resolveUsageCaller(entry),
     authenticateAgent: (token) => state.agentIdentity.authenticateAccessToken(token),
   });
   app.get(
@@ -355,6 +359,7 @@ export const createRoutes = (
     .route('/', openAIImagesRoutes)
     .route('/', openAIAudioRoutes)
     .route('/', systemOneRoutes)
+    .route('/', createOpenAIDecisionsRoutes(state))
     .route('/', videoRoutes)
     .route('/', realtimeRoutes)
     .route('/dashboard/api/auth', dashboardAuthRoutes)

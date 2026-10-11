@@ -6,6 +6,7 @@ import {
   createEmbeddedBuiltIns,
   createPluginDiagnosticFactory,
   createPluginRepository,
+  createProviderModelCatalogRepository,
   DesktopTokenRejectedError,
   type DiagnosticFactory,
   ensureDesktopToken,
@@ -33,6 +34,7 @@ import { watchConfigFile } from '../config-watcher';
 import { createOAuthCredentialRefresher } from '../credential-refresh';
 import { createDashboardEventHub } from '../dashboard-events';
 import { createFifoQueue } from '../fifo-queue';
+import { createLiveMetrics } from '../live-metrics';
 import { LogicalSessionStore } from '../logical-session-store';
 import { createModelRoutingControlPlane } from '../model-routing';
 import { createPluginControlPlane } from '../plugin-control-plane';
@@ -157,6 +159,7 @@ async function initializeServerState(
   const events = createDashboardEventHub(options.eventLimits);
   registerStartupCleanup(() => events.close());
   const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);
+  const providerModels = createProviderModelCatalogRepository(dbHandle.sqlite);
   const diagnostics = createServerDiagnosticFactory();
   const pluginLogger = options.pluginLogger ?? defaultPluginLogger;
   const logger = options.logger ?? defaultLogger;
@@ -170,6 +173,7 @@ async function initializeServerState(
     options,
     internalOptions,
     repository,
+    providerModels,
     diagnostics,
     pluginLogger,
     logger,
@@ -197,6 +201,7 @@ async function initializeServerState(
           undefined,
           options,
           repository,
+          providerModels,
           diagnostics,
           pluginLogger,
           () => queueRebuild(runtime),
@@ -214,8 +219,6 @@ async function initializeServerState(
     onRecoveryNeeded: (nextRunAt) => runtime.recovery?.schedule(nextRunAt),
   });
   runtime.scheduler = new CatalogScheduler({
-    repository,
-    diagnostics,
     logger: pluginLogger,
     rebuild: () => queue(() => commitConfig(runtime, (manager.current() as Snapshot).config, 'catalog')),
   });
@@ -226,7 +229,7 @@ async function initializeServerState(
     await queue(() => commitConfig(runtime, (manager.current() as Snapshot).config, 'credential-diagnostic'));
   } else replaceCatalogJobs(runtime, initial.catalogJobs);
 
-  const { traceStore, usageCapture, logicalSessionStore, requestRecorder } = createRequestServices(dbHandle, logger);
+  const requestServices = createRequestServices(dbHandle, logger);
   const cooldown = new ProviderCooldownStore();
   const realtimeCalls = createRealtimeCallStore();
   const videoJobs = createVideoJobStore();
@@ -246,6 +249,7 @@ async function initializeServerState(
     currentConfig: () => (manager.current() as Snapshot).config,
     currentSummaries: () => (manager.current() as Snapshot).summaries,
     repository,
+    providerModels,
     configStore,
     pluginDefaults: (provider) => {
       const adapter = (manager.current() as Snapshot).plugins.registry.resolveOAuth(
@@ -280,7 +284,6 @@ async function initializeServerState(
     databaseOwnership,
     configStore,
     events,
-    logicalSessionStore,
     cooldown,
     modelRouting,
     oauthQuota,
@@ -292,9 +295,7 @@ async function initializeServerState(
     pluginControlPlane,
     providerSummaries,
     reload,
-    traceStore,
-    requestRecorder,
-    usageCapture,
+    ...requestServices,
     watcher,
     closeRecovery: () => runtime.recovery?.close(),
   });
@@ -375,13 +376,15 @@ function guardianRuntimeOptions(
 
 function createRequestServices(dbHandle: OpenDbHandle, logger: ServerRuntime['logger']) {
   const traceStore = createTraceStore(dbHandle.db);
-  const usageCapture = createUsageCapture({ logger });
+  const liveMetrics = createLiveMetrics();
+  const usageCapture = createUsageCapture({ logger, liveMetrics });
   const logicalSessionStore = new LogicalSessionStore({ repository: traceStore, logger });
   const requestRecorder = createRequestTraceRecorder({
     store: traceStore,
+    liveMetrics,
     logger,
     onResponsePersisted: (responseId) => logicalSessionStore.reconcilePersistedResponse(responseId),
   });
 
-  return { traceStore, usageCapture, logicalSessionStore, requestRecorder };
+  return { traceStore, usageCapture, logicalSessionStore, requestRecorder, liveMetrics };
 }

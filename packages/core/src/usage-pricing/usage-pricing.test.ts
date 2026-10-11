@@ -23,6 +23,19 @@ const geminiPassthrough = {
 } as const;
 
 describe('calculateEstimatedCost billable normalization', () => {
+  test('Decisions charges priced cache subsets separately without counting them twice', () => {
+    const usage = { inputTokens: 100, outputTokens: 0, cacheReadTokens: 30, cacheWriteTokens: 10 };
+    const accounting = { source: 'passthrough', protocol: ProviderProtocol.OpenAIDecisions } as const;
+    expect(calculateEstimatedCost(usage, { id: 'judge', input: 10, cacheRead: 1, cacheWrite: 2 }, accounting)).toEqual({
+      priceModelId: 'judge',
+      estimatedCostUsd: 0.00065,
+    });
+    expect(calculateEstimatedCost(usage, { id: 'judge', input: 10 }, accounting)).toEqual({
+      priceModelId: 'judge',
+      estimatedCostUsd: 0.001,
+    });
+  });
+
   test('passthrough OpenAI peels priced cacheRead (CCH 2006/1920/300)', () => {
     expect(
       calculateEstimatedCost(

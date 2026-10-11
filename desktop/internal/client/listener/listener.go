@@ -4,12 +4,9 @@
 package listener
 
 import (
-	"bytes"
 	"context"
 	"net"
 	"net/netip"
-	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -75,9 +72,8 @@ func PeerOwnedByThisUser(ctx context.Context, conn net.Conn, deadline time.Time)
 	if !ok1 || !ok2 {
 		return false
 	}
-	uid := uint32(os.Getuid())
 	for {
-		if output, ok := lsof(ctx, local.Port(), deadline); ok && Serves(ParseListeners(output), uid, peer, local) {
+		if owns(ctx, local, peer, deadline) {
 			return true
 		}
 		if !time.Now().Add(retry).Before(deadline) {
@@ -99,23 +95,4 @@ func addrPort(addr net.Addr) (netip.AddrPort, bool) {
 	}
 	ap := tcp.AddrPort()
 	return netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port()), ap.IsValid()
-}
-
-// lsof returns `lsof`'s field output for the TCP sockets on `port` (either end), or false past
-// `deadline`. Its exit status is ignored: it exits 1 when it finds nothing.
-func lsof(ctx context.Context, port uint16, deadline time.Time) (string, bool) {
-	ctx, cancel := context.WithDeadline(ctx, deadline)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "/usr/sbin/lsof", "-nP", "-iTCP:"+strconv.Itoa(int(port)), "-Ftun")
-	var stdout bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.WaitDelay = 100 * time.Millisecond
-	err := cmd.Run()
-	if ctx.Err() != nil {
-		return "", false
-	}
-	if _, exited := err.(*exec.ExitError); err != nil && !exited {
-		return "", false
-	}
-	return strings.ToValidUTF8(stdout.String(), "\uFFFD"), true
 }

@@ -5,10 +5,12 @@ import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useState } from 'react';
 
 import { useAgentOperation } from '../../hooks/use-agent-operation';
+import { useClaudeCodePlan } from '../../hooks/use-claude-code-plan';
 import { useCodexPlan } from '../../hooks/use-codex-plan';
 import { actionLabel, errorMessage } from '../../lib/agent-labels';
 import { primaryAgentAction } from '../../lib/agent-state';
 import { AgentsRequestError } from '../../services/agents-service';
+import { ClaudeCodeSetupForm } from '../claude-code-setup-form';
 import { CodexSetupForm } from '../codex-setup-form';
 import { LoginPanel } from '../login-panel';
 import { OperationProgress } from '../operation-progress';
@@ -39,6 +41,9 @@ export const AgentSetupPanel: React.FC<AgentSetupPanelProps> = ({
   const [codexOpen, setCodexOpen] = useState(false);
   const isCodex = descriptor.target === 'codex';
   const plan = useCodexPlan(isCodex && codexOpen && localSetup === 'available');
+  const isClaudeCode = descriptor.target === 'claude-code';
+  const claudeCodePlan = useClaudeCodePlan();
+  const [claudeCodeOpen, setClaudeCodeOpen] = useState(false);
   const action = primaryAgentAction(local);
   const { state } = operation;
   const result = state?.status === 'succeeded' ? state.result : undefined;
@@ -56,10 +61,20 @@ export const AgentSetupPanel: React.FC<AgentSetupPanelProps> = ({
       {action === undefined ? null : (
         <Button
           type="button"
-          disabled={localSetup !== 'available' || operation.busy}
+          disabled={localSetup !== 'available' || operation.busy || claudeCodePlan.isFetching}
           onClick={() => {
             if (isCodex) {
               setCodexOpen(true);
+              return;
+            }
+            if (isClaudeCode) {
+              // Without proxy keys there is nothing to choose, so the click configures right away.
+              void claudeCodePlan.refetch().then(({ data, isError }) => {
+                if (isError || data === undefined) return;
+                if (data.keyChoices.length > 0) return setClaudeCodeOpen(true);
+                operation.reset();
+                operation.start({ kind: 'configure', target: 'claude-code', claudeCode: { key: { kind: 'none' } } });
+              });
               return;
             }
             operation.reset();
@@ -91,6 +106,22 @@ export const AgentSetupPanel: React.FC<AgentSetupPanelProps> = ({
             }}
           />
         )
+      ) : null}
+      {isClaudeCode && claudeCodePlan.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {requestError(claudeCodePlan.error)}
+        </p>
+      ) : null}
+      {claudeCodeOpen && claudeCodePlan.data !== undefined && claudeCodePlan.data.keyChoices.length > 0 ? (
+        <ClaudeCodeSetupForm
+          key={claudeCodePlan.dataUpdatedAt}
+          plan={claudeCodePlan.data}
+          busy={operation.busy}
+          onSubmit={(claudeCode) => {
+            operation.reset();
+            operation.start({ kind: 'configure', target: 'claude-code', claudeCode });
+          }}
+        />
       ) : null}
       {operation.startError === null ? null : (
         <p role="alert" className="text-sm text-destructive">

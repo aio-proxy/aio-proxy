@@ -28,13 +28,17 @@ export async function prepareSetupConfig(
     token,
     signal: context.signal,
   });
-  const prepared = await prepareCodexCatalog(context.location, catalog, lease);
+  // Codex refuses to start on a catalog without models. Leaving catalogPath unset keeps a
+  // previously applied catalog, or leaves Codex on its built-in one; the server's background
+  // sync writes the catalog once models are available and logs while it stays empty.
+  const catalogPath =
+    catalog.models.length === 0 ? undefined : (await prepareCodexCatalog(context.location, catalog, lease)).path;
   const input = {
     location: context.location,
     providerId,
     baseUrl: codexBaseUrl(context.endpoint),
     auth,
-    catalogPath: prepared.path,
+    catalogPath,
   };
   // Validation re-reads the durable file and verifies its digest before retiring any command identity.
   await validateCodexConfig(input, lease);

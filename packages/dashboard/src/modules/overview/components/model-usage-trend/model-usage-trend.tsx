@@ -95,8 +95,11 @@ export const ModelUsageTrend: React.FC<ModelUsageTrendProps> = ({ metric, range,
             />
             <YAxis axisLine={false} tickLine={false} width={56} tickFormatter={(value) => formatValue(Number(value))} />
             <ChartTooltip
-              content={
+              content={({ active, label, payload }) => (
                 <ChartTooltipContent
+                  active={active}
+                  label={label}
+                  payload={payload?.filter((item) => Number(item.value) !== 0)}
                   labelFormatter={(value) => formatBucket.format(new Date(String(value)))}
                   formatter={(value, name) => (
                     <div className="flex w-full items-center justify-between gap-4">
@@ -105,7 +108,7 @@ export const ModelUsageTrend: React.FC<ModelUsageTrendProps> = ({ metric, range,
                     </div>
                   )}
                 />
-              }
+              )}
             />
             <ChartLegend content={<ChartLegendContent className="flex-wrap" />} />
             {modelSeries.map((series, index) => (

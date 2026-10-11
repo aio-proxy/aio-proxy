@@ -129,7 +129,7 @@ type AgentOperationState =
 - The dashboard polls `GET /operations/:id` with TanStack Query while the status is `running` or `awaiting_approval`.
 - `awaiting_approval` is entered through the existing `onDevice` callback of the Codex setup. The dashboard shows the user code for comparison and a single **Approve** / **Deny** pair. Approval calls the existing challenge store with the same audit source as the authorize page. The dashboard never auto-approves: clicking Configure is not treated as approving a device.
 - Operations are kept for 10 minutes after they finish, then dropped. They are not persisted. After a restart, the existing Codex setup journal handles recovery exactly as it does after an interrupted CLI run. The next snapshot reports `recovery_required` for that target.
-- `AgentOperationError` is a closed code set (`host_missing`, `path_unavailable`, `not_configured`, `locked`, `invalid_provider_id`, `occupied_provider_id`, `endpoint_changed`, `authorization_denied`, `authorization_expired`, `recovery_required`, `plan_stale`, `cancelled`, `unknown`) mapped from the errors the CLI implementations already throw. Only `unknown` carries a server-logged detail.
+- `AgentOperationError` is a closed code set (`host_missing`, `path_unavailable`, `not_configured`, `locked`, `invalid_provider_id`, `occupied_provider_id`, `endpoint_changed`, `configuration_modified`, `authorization_denied`, `authorization_expired`, `recovery_required`, `plan_stale`, `cancelled`, `unknown`) mapped from the errors the CLI implementations already throw. Only `unknown` carries a server-logged detail.
 
 ### Login approval for plugin and Grok targets
 
@@ -190,7 +190,7 @@ type CodexConfigureInput = {
   - name and icon, integration-kind badge;
   - local state (`not_installed` when the host binary is missing; otherwise `not_configured`, `configured`, `modified`, `missing`, `recovery_required`);
   - server authorization summary (active / expired / revoked counts);
-  - one primary action: Configure, Update (adapter version newer than installed), or Repair (modified/missing).
+  - one primary action: Configure, Update (adapter version newer than installed), or Repair (missing files or a changed endpoint). A `modified` integration gets none: configure never overwrites user-edited managed fields, so the hint tells the user to Remove (which keeps their edits) and configure again.
 
 ### Detail page
 

@@ -25,6 +25,7 @@ const VERSION = packageJson.version;
 export const localAgentHost = async (
   host: string,
   port: number,
+  cliDeps: CliDeps,
   gate?: {
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly home: () => string;
@@ -47,11 +48,17 @@ export const localAgentHost = async (
     home: gate?.home ?? homedir,
   });
   if (!enabled || endpoint === undefined) return undefined;
+  const { createAgentCommandDeps } = await import('../agent');
+  const { createCodexDashboardDeps, resolveCodexExecutable } = await import('../agent/codex');
   const { configuredLocation } = await import('../agent/codex/runtime');
-  const { createLocalCodexCatalogSync } = await import('../agent/codex/model-catalog');
+  const { CODEX_CATALOG_EMPTY, createLocalCodexCatalogSync } = await import('../agent/codex/model-catalog');
   const logger = createLogger(['aio-proxy', 'server']);
   return {
-    agentHost: createAgentHostPort(),
+    agentHost: createAgentHostPort({
+      command: createAgentCommandDeps(cliDeps),
+      codex: () => createCodexDashboardDeps(),
+      codexDetected: () => resolveCodexExecutable() !== undefined,
+    }),
     localCodexCatalog: createLocalCodexCatalogSync({
       location: configuredLocation(),
       endpoint,
@@ -59,6 +66,7 @@ export const localAgentHost = async (
         logger.warn({
           event: 'codex.catalog_sync_failed',
           errorType: error instanceof Error ? 'Error' : typeof error,
+          ...(error instanceof Error && error.message === CODEX_CATALOG_EMPTY ? { code: 'empty_catalog' } : {}),
         } satisfies ServerLog),
     }),
   };
@@ -281,7 +289,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   assertPortAvailable(host, port);
   await migratePreMarkerManagedUnit();
   const dashboardAssets = deps.dashboardAssets();
-  const localAgents = await localAgentHost(host, port);
+  const localAgents = await localAgentHost(host, port, deps);
   const app = await bootProxyServer({
     config: raw,
     configPath: resolvedConfigPath,

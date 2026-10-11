@@ -34,6 +34,11 @@ export const SUCCEEDED = and(isNotNull(traceSpan.endedAt), not(ERRORED), NOT_CAN
 
 export function traceFilterConditions(filters: TraceFilters): (SQL | undefined)[] {
   return [
+    filters.callerId === undefined
+      ? undefined
+      : filters.callerId === 'legacy'
+        ? isNull(traceSpan.callerId)
+        : eq(traceSpan.callerId, filters.callerId),
     filters.startedAfter === undefined ? undefined : gte(traceSpan.startedAt, filters.startedAfter),
     filters.startedBefore === undefined ? undefined : lte(traceSpan.startedAt, filters.startedBefore),
     filters.traceId === undefined ? undefined : eq(traceSpan.traceId, filters.traceId),

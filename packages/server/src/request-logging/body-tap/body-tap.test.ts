@@ -192,3 +192,33 @@ function streamOf(...chunks: Uint8Array[]): ReadableStream<Uint8Array> {
     },
   });
 }
+
+test('bounded SSE diagnostics release an unfinished frame while full observers continue', async () => {
+  const first = 'data: ' + 'x'.repeat(128);
+  const second = '\n\ndata: usage\n\n';
+  const chunks: string[] = [];
+  const observed: string[] = [];
+  const frames: number[] = [];
+  const terminals: BodyTapTerminal[] = [];
+  const tapped = tapTextBody(
+    streamOf(encoder.encode(first), encoder.encode(second)),
+    'text/event-stream',
+    {
+      chunk: (text) => chunks.push(text),
+      text: (text) => observed.push(text),
+      sseFrames: (count) => frames.push(count),
+      terminal: (value) => terminals.push(value),
+    },
+    undefined,
+    16,
+  );
+  expect(await new Response(tapped).text()).toBe(first + second);
+  expect(chunks.join('')).toBe(first.slice(0, 16));
+  expect(observed.join('')).toBe(first + second);
+  expect(frames).toEqual([0, 2]);
+  expect(terminals[0]).toMatchObject({
+    byteLength: encoder.encode(first + second).byteLength,
+    truncated: true,
+    captureLimitBytes: 16,
+  });
+});

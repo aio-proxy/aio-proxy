@@ -12,10 +12,12 @@ import {
   type Link,
 } from '@opentelemetry/api';
 
+import type { LiveMetrics } from '../../live-metrics';
 import type { LogicalSessionResolution } from '../../logical-session-store';
 import { safeDiagnosticFields } from '../../request-logging/capture-policy';
 import { capturesRequestPayload } from '../../request-logging/context';
 import { logServerEvent, type ServerLogSink, serverErrorType } from '../../server-log';
+import { currentUsageCaller } from '../../usage-caller-context';
 import { getTraceRuntime } from '../runtime';
 import { attributeName, captureTraceDiagnostics } from '../semantic';
 import { applyTerminalAttributes, buildCompletion, captureTraceFinish } from './completion';
@@ -56,12 +58,15 @@ type IdentityState = {
   mutateSessionState: boolean;
 };
 
-export function createRequestTraceRecorder(options: {
+type RequestTraceRecorderOptions = {
   readonly store: RequestTraceWriteStore;
+  readonly liveMetrics?: Pick<LiveMetrics, 'requestStarted' | 'requestFinished'>;
   readonly now?: () => Date;
   readonly logger?: ServerLogSink;
   readonly onResponsePersisted?: (responseId: string) => void;
-}): RequestTraceRecorder {
+};
+
+export function createRequestTraceRecorder(options: RequestTraceRecorderOptions): RequestTraceRecorder {
   const now = options.now ?? (() => new Date());
   let lastPrunedAt = now();
   runPrune(options.store, options.logger, lastPrunedAt);
@@ -86,6 +91,7 @@ export function createRequestTraceRecorder(options: {
       const rootAttributes = safeDiagnosticFields(
         {
           [attributeName.requestId]: requestId,
+          ...usageCallerAttributes(),
           [attributeName.inboundProtocol]: input.inboundProtocol,
           ...requestHttpAttributes(input.inboundRequest, input.inboundProtocol, input.httpRoute),
           ...(input.operation === 'token_count' ? { [attributeName.operation]: input.operation } : {}),
@@ -141,6 +147,7 @@ export function createRequestTraceRecorder(options: {
       const complete = (finish: RequestTraceFinishInput): void => {
         if (state === 'finished') return;
         state = 'finished';
+        if (input.operation !== 'token_count') options.liveMetrics?.requestFinished();
         finish = captureTraceFinish(finish, capturePayload);
         try {
           if (finish.clientResponse !== undefined)
@@ -168,6 +175,7 @@ export function createRequestTraceRecorder(options: {
         }
       };
 
+      if (input.operation !== 'token_count') options.liveMetrics?.requestStarted();
       return {
         requestId,
         traceId,
@@ -290,4 +298,15 @@ function persistSafely<T>(
     }
     return undefined;
   }
+}
+
+function usageCallerAttributes(): Attributes {
+  const caller = currentUsageCaller();
+  return caller === undefined
+    ? {}
+    : {
+        [attributeName.callerId]: caller.id,
+        [attributeName.callerLabel]: caller.label,
+        [attributeName.callerKind]: caller.kind,
+      };
 }

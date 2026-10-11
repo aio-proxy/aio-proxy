@@ -79,3 +79,9 @@ description: AIO Proxy 常见使用故障排查：端口占用、429 限流机�
 
 - 对于开源深度思考模型（如 DeepSeek-R1），如果是通过 `ai-sdk` 接入，请确保在提供商配置中开启了 `"parseReasoningContent": true`。
 - 检查客户端使用的协议：AIO Proxy 已经为 OpenAI Chat Completions、Responses、Anthropic Messages 和 Gemini 实现了完备的双向工具转码，但在使用某些特殊专有格式时，推荐通过 `endpoints` 使用原生透传模式。
+
+## 6. 大图片历史或手动压缩请求返回 413
+
+默认普通请求上限为 256 MiB；可通过 `server.requestBody.maxBytes` 设置 1..512 MiB 的整数容量，热更新只影响新请求。压缩请求同时检查传输体与解压体，媒体专用限制仍单独生效。日志的 `bodyLimitStage`、`bodyLimitBytes`、`bodyMeasurement` 及已知的 `bodyBytes` 可区分本地 encoded/decoded 拒绝；`observed_lower_bound` 是已观察下界，不是完整 wire 大小。
+
+含图片的历史 JSON 文件大小或 token 数不能代替实际 HTTP 请求字节测量。正文日志有独立的 `server.logging.captureMaxBytes`（默认 64 MiB），日志截断不会截断转发；敏感或无法检查的正文不会落盘。提高接收容量后仍应留意 JSON、Base64 和克隆带来的数倍内存占用，并实际验证上游是否接受。正式版本升级后的原会话手动压缩成功需要运行环境验收，不能仅由本地测试推断。

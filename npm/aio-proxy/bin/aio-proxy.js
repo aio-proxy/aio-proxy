@@ -6,7 +6,7 @@ const { basename } = require('node:path');
 const pkg = `@aio-proxy/cli-${process.platform}-${process.arch}`;
 let binary;
 try {
-  binary = require.resolve(`${pkg}/bin/aio-proxy`);
+  binary = require.resolve(`${pkg}/bin/aio-proxy${process.platform === 'win32' ? '.exe' : ''}`);
 } catch {
   console.error(
     `aio-proxy: no prebuilt binary for ${process.platform}-${process.arch}.\n` +

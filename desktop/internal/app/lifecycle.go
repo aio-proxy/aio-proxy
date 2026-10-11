@@ -13,25 +13,20 @@ import (
 	"github.com/aio-proxy/aio-proxy/desktop/internal/connect/policy"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/connect/run"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/install"
+	"github.com/aio-proxy/aio-proxy/desktop/internal/login"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/logx"
-	"github.com/aio-proxy/aio-proxy/desktop/internal/macos/loginitem"
-	"github.com/aio-proxy/aio-proxy/desktop/internal/version"
 )
 
 func (m *Model) Start() {
-	m.menuBarStarted = true
-	m.refreshMenuBar()
+	m.startLive()
 	paths, bundle := m.Paths, m.Bundle
 	go func() {
-		state := install.InstallState{Kind: install.StateReadOnly, Reason: install.ReadOnlyReason{Kind: install.ReadOnlyLocation}}
-		if bundle != "" {
-			allowed := install.LocationAllowsPersistence(bundle, paths.Home, install.VolumeIsReadOnly(bundle))
-			state = install.Prepare(paths, bundle, allowed, version.App, install.ProbeVersion)
-		}
+		state := install.Startup(paths, bundle)
 		m.post(func() {
 			logx.Infof("install: %+v", state)
 			m.Install = &state
-			m.LoginItem = loginitem.Status()
+			_ = login.Refresh()
+			m.LoginItem = login.Current()
 			m.notify()
 			m.Rediscover()
 		})
@@ -240,18 +235,18 @@ func (m *Model) SetLoginItem(enabled bool) {
 		return
 	}
 	m.LoginItemError = ""
-	if err := loginitem.SetEnabled(enabled); err != nil {
+	if err := login.SetEnabled(enabled); err != nil {
 		m.LoginItemError = "Launch at login: " + err.Error()
 	}
-	m.LoginItem = loginitem.Status()
+	m.LoginItem = login.Current()
 	m.notify()
 }
 func (m *Model) ToggleLoginItem() {
-	if m.LoginItem == loginitem.RequiresApproval {
-		loginitem.OpenSettings()
+	if m.LoginItem == login.RequiresApproval {
+		login.OpenSettings()
 	} else {
-		m.SetLoginItem(m.LoginItem != loginitem.Enabled)
+		m.SetLoginItem(m.LoginItem != login.Enabled)
 	}
-	m.LoginItem = loginitem.Status()
+	m.LoginItem = login.Current()
 	m.notify()
 }

@@ -62,3 +62,25 @@ test('quotes spaces and single quotes in the relaunch command', () => {
   expect(spawned[0]).toContain("'/opt/aio proxy'");
   expect(spawned[0]).toContain(`'it'\\''s'`);
 });
+
+test('win32 spawns no relaunch helper and keeps this process running', () => {
+  let spawned = 0;
+  let exited = 0;
+  expect(() =>
+    scheduleUnmanagedRelaunch({
+      exec: 'C:\\aio-proxy.exe',
+      args: ['run'],
+      exitDelayMs: 0,
+      platform: 'win32',
+      spawn: (() => {
+        spawned += 1;
+        return { unref() {} };
+      }) as unknown as typeof Bun.spawn,
+      exit: () => {
+        exited += 1;
+      },
+    }),
+  ).toThrow();
+  expect(spawned).toBe(0);
+  expect(exited).toBe(0);
+});

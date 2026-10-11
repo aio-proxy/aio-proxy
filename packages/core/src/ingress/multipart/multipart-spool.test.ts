@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 
-import { RequestBodyTooLargeError } from '../../protocol/request';
+import { RequestBodyTooLargeError } from '../../protocol/request/index';
 import {
   acquireMultipartSlot,
   multipartSpoolPath,

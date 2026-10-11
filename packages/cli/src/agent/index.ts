@@ -16,3 +16,4 @@ export {
   type PluginAgentListTargetResult,
 } from './agent';
 export { agentList } from './list';
+export type { ClaudeCodeConfigureResult, ClaudeCodeListResult, ClaudeCodeRemoveResult } from './claude-code';

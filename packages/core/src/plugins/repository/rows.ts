@@ -14,6 +14,8 @@ export type AccountRow = {
   readonly runtime_revision: number;
   readonly label: string | null;
   readonly expires_at: number | null;
+  readonly local_sign_in: number;
+  readonly local_sign_in_consumed: string | null;
   readonly updated_at: number;
 };
 export type AccountSummaryRow = Omit<AccountRow, 'options_json' | 'secret_json' | 'credential_json'>;
@@ -58,6 +60,9 @@ export function storedAccount(row: AccountRow): StoredAccount {
     runtimeRevision: row.runtime_revision,
     ...(row.label === null ? {} : { label: row.label }),
     ...(row.expires_at === null ? {} : { expiresAt: row.expires_at }),
+    ...(row.local_sign_in === 0
+      ? {}
+      : { localSignIn: row.local_sign_in_consumed === null ? {} : { consumed: row.local_sign_in_consumed } }),
     updatedAt: row.updated_at,
   };
 }
@@ -71,6 +76,9 @@ export function storedAccountSummary(row: AccountSummaryRow): StoredAccountSumma
     runtimeRevision: row.runtime_revision,
     ...(row.label === null ? {} : { label: row.label }),
     ...(row.expires_at === null ? {} : { expiresAt: row.expires_at }),
+    ...(row.local_sign_in === 0
+      ? {}
+      : { localSignIn: row.local_sign_in_consumed === null ? {} : { consumed: row.local_sign_in_consumed } }),
     updatedAt: row.updated_at,
   };
 }
@@ -86,6 +94,6 @@ export function pendingOperation(row: PendingRow): PendingAccountOperation {
   };
 }
 export const ACCOUNT_COLUMNS = `provider_id, plugin, capability, fingerprint, options_json, secret_json,
-  credential_json, revision, runtime_revision, label, expires_at, updated_at`;
+  credential_json, revision, runtime_revision, label, expires_at, local_sign_in, local_sign_in_consumed, updated_at`;
 export const ACCOUNT_SUMMARY_COLUMNS = `provider_id, plugin, capability, fingerprint, revision,
-  runtime_revision, label, expires_at, updated_at`;
+  runtime_revision, label, expires_at, local_sign_in, local_sign_in_consumed, updated_at`;

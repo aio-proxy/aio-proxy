@@ -11,8 +11,9 @@ import (
 	"github.com/aio-proxy/aio-proxy/desktop/internal/connect/discovery"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/connect/policy"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/install"
+	"github.com/aio-proxy/aio-proxy/desktop/internal/live"
+	"github.com/aio-proxy/aio-proxy/desktop/internal/login"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/logx"
-	"github.com/aio-proxy/aio-proxy/desktop/internal/macos/loginitem"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/menubar"
 	"github.com/aio-proxy/aio-proxy/desktop/internal/summary"
 )
@@ -71,12 +72,14 @@ type Model struct {
 	LastSummaryAt       time.Time
 	Action              ActionState
 	UpdatePending       string
-	LoginItem           loginitem.LoginItemStatus
+	LoginItem           login.Status
 	LoginItemError      string
 	UsageRange          summary.UsageRange
 	MenuBarDisplay      menubar.Preferences
-	MenuBarStatistics   menubar.Statistics
 	MenuBarDisplayError string
+	Live                live.Display
+	LiveSchedule        live.Schedule
+	goneRediscovered    time.Time
 
 	// Set before Start. Post runs fn on the main thread. Changed synchronizes the tray and windows.
 	Post         func(func())
@@ -84,6 +87,7 @@ type Model struct {
 	OpenURL      func(string)
 	RevealPath   func(string)
 	CheckUpdates func()
+	OpenPanel    func()
 	Quit         func()
 
 	usageCache            map[summary.UsageRange]*summary.Usage
@@ -100,7 +104,7 @@ type Model struct {
 	fetchCancel           context.CancelFunc
 	timer                 *time.Timer
 	healthCancel          context.CancelFunc
-	menuBarTimer          *time.Timer
+	liveCancel            context.CancelFunc
 	menuBarCancel         context.CancelFunc
 	menuBarGeneration     uint64
 	menuBarStarted        bool
@@ -117,7 +121,7 @@ func NewModel(paths install.Paths, bundle string) *Model {
 	if err != nil {
 		logx.Infof("menu bar display preferences: %v", err)
 	}
-	return &Model{Paths: paths, Bundle: bundle, LoginItem: loginitem.Unavailable, usageCache: make(map[summary.UsageRange]*summary.Usage), MenuBarDisplay: p}
+	return &Model{Paths: paths, Bundle: bundle, LoginItem: login.Unavailable, usageCache: make(map[summary.UsageRange]*summary.Usage), MenuBarDisplay: p}
 }
 func (m *Model) notify() {
 	if m.Changed != nil {
@@ -151,6 +155,7 @@ func (m *Model) UpdatedText() string {
 	}
 	return updatedMinutes(minutes)
 }
+func (m *Model) InstanceEpoch() uint64 { return m.instanceEpoch }
 func (m *Model) Persistent() bool {
 	return m.Install != nil && m.Install.Kind == install.StatePersistent
 }
@@ -162,7 +167,6 @@ func (m *Model) acceptSummary(s *summary.SummaryV1) {
 	m.Summary = SummaryState{Kind: SummaryReady, Value: s}
 	m.SummaryError = ""
 	m.LastSummaryAt = time.Now()
-	m.MenuBarStatistics.Observe(s, m.LastSummaryAt)
 }
 func (m *Model) Stop() {
 	m.stopped = true

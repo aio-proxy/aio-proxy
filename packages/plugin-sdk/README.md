@@ -8,6 +8,30 @@ Plugin runtime hooks execute inside the aio-proxy Bun host. Bun `>=1.4.0` is the
 target. Plugin authors may use Node-based tooling for development and type checking, but execution under Node
 or undici is not part of the v1 compatibility promise.
 
+## Using a sign-in already on this machine
+
+An OAuth adapter can declare `localSignIn?: OAuthLocalSignIn<AccountOptions, Credential>` to offer a vendor
+tool's existing local sign-in as an alternative to its browser OAuth flow. `source` is a `LocalizedText`
+label for the tool, such as `Codex`. The capability is optional; existing adapters keep their browser flow.
+
+- `detect(context: OAuthLocalSignInContext)` returns `Promise<boolean>` and checks presence only. It must
+  never parse the host store, read secrets, or return account details. The context contains only `signal`.
+- `read(context: OAuthCredentialImportContext, options: AccountOptions)` returns
+  `Promise<OAuthLoginResult<Credential>>`. Read the host store only after explicit user consent for the
+  account. The context supplies `progress`, `signal`, and an optional `fetch`, as with credential imports.
+- `write?(context: OAuthLocalSignInContext, next: Credential, previous: Credential)` returns `Promise<void>`.
+  Implement it only for stores whose refresh tokens rotate; omit it for stores that need only a one-time
+  credential copy.
+
+For adapters with `write`, identical host-store contents must produce identical credential values from
+`read`: the framework compares canonical credential digests between reads. Do not synthesize credential
+fields from the current time or generate random values on each read.
+
+Before an atomic replacement, `write` must re-check that the host still holds `previous`, including the
+same account and refresh token. If either changed, return without writing. Finish writeback even if the
+signal was aborted after rotation consumed the token. Removing a Provider never calls `write` or changes
+the host store. Keep host credentials out of logs, traces, diagnostics, errors, and API responses.
+
 ## Catalog model metadata
 
 `ModelDescriptor.modelMetadata` reports typed model information that the host can merge into its upstream

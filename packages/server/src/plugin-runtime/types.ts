@@ -4,9 +4,8 @@ import type {
   PluginLogSink,
   PluginRegistrySnapshot,
   PluginRepository,
-  StoredCatalog,
 } from '@aio-proxy/core';
-import type { CredentialPort, ModelCatalog, OAuthAdapter, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import type { DashboardProviderSummary, OAuthProvider, ProviderState } from '@aio-proxy/types';
 
 import type { PayloadCaptureHint, RuntimeProviderInstance } from '../runtime';
@@ -35,19 +34,17 @@ export class PluginRawTransportError extends Error {
 
 export type CatalogJobDescriptor = {
   readonly providerId: string;
-  readonly plugin: string;
-  readonly capability: string;
-  readonly accountRuntimeRevision: number;
-  readonly policy: OAuthAdapter['catalog']['policy'];
-  readonly discover: (signal: AbortSignal) => Promise<ModelCatalog>;
-  readonly stored: StoredCatalog | null;
-  readonly unavailableOccurredAt?: number;
-  /**
-   * A disabled Provider still carries a job so a manual refresh can reach it, but the scheduler
-   * never arms a timer for one: nothing routes through it, so nothing needs a fresh catalog.
-   */
   readonly enabled: boolean;
+  readonly policy: { readonly kind: 'static' } | { readonly kind: 'ttl'; readonly ttlMs: number };
+  readonly stored: { readonly refreshedAt: number; readonly revision: number } | null;
+  readonly unavailableOccurredAt?: number;
+  /** Discovers and returns the synchronous commit for that result. Throws on discovery failure. */
+  readonly discover: (signal: AbortSignal) => Promise<CatalogCommit>;
+  /** Records a failed discovery. Returns true when stored state changed and the snapshot must rebuild. */
+  readonly markUnavailable: (error: unknown) => boolean;
 };
+/** Returns false when the write was fenced off. */
+export type CatalogCommit = () => boolean;
 
 export type PluginRuntimeCacheEntry = {
   readonly payloadCaptureHint?: PayloadCaptureHint;

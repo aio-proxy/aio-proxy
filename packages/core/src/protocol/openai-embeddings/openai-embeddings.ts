@@ -10,7 +10,7 @@ import {
   type EmptyProtocolContext,
 } from '../adapter';
 import { openAIEmbeddingsErrors } from '../errors';
-import { readJsonRequest, rewriteJsonRequestModel } from '../request';
+import { readJsonRequest, rewriteJsonRequestModel } from '../request/index';
 
 export const openAIEmbeddingsAdapter = defineEmbeddingProtocolAdapter<OpenAIEmbeddingsRequest, EmptyProtocolContext>({
   capability: 'embedding',

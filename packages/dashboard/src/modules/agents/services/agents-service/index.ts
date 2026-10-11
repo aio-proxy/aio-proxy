@@ -1,5 +1,6 @@
 export {
   AgentsRequestError,
+  agentClaudeCodePlanQueryOptions,
   agentCodexPlanQueryOptions,
   agentOperationQueryOptions,
   agentPendingLoginQueryOptions,

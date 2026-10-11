@@ -5,14 +5,17 @@ import type {
   ProviderMutationBody,
 } from '@aio-proxy/types';
 import { queryOptions } from '@tanstack/react-query';
+import type { InferResponseType } from 'hono/client';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
 import { queryKeys } from '@/lib/query-keys';
 
 const dashboardClient = createDashboardClient();
+const providerEditView = dashboardClient.dashboard.api.providers[':id']['edit-view'];
+export type ProviderSyncView = NonNullable<InferResponseType<typeof providerEditView.$get, 200>['sync']>;
 
 /**
- * Reads the editor's view of one Provider. `refreshCatalog` opts an OAuth Provider into an upstream
+ * Reads the editor's view of one Provider. `refreshCatalog` opts a discovered Provider into an upstream
  * catalog rediscovery before the read, which is what the editor's reload button needs: without it the
  * view can only report the stored catalog, so it would redraw the same rows until the plugin's TTL
  * expired. It goes out as a POST to the same path, because the server's Origin/Fetch-Site guard only
@@ -20,9 +23,10 @@ const dashboardClient = createDashboardClient();
  * hit upstream.
  */
 export const fetchProviderEditView = async (id: string, options: { readonly refreshCatalog?: boolean } = {}) => {
-  const editView = dashboardClient.dashboard.api.providers[':id']['edit-view'];
   const response =
-    options.refreshCatalog === true ? await editView.$post({ param: { id } }) : await editView.$get({ param: { id } });
+    options.refreshCatalog === true
+      ? await providerEditView.$post({ param: { id } })
+      : await providerEditView.$get({ param: { id } });
   return response.json();
 };
 

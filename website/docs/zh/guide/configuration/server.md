@@ -24,7 +24,9 @@ AIO Proxy 的服务本体与安全行为通过配置文件的顶级 `server` 字
       "dir": "~/.aio-proxy/logs",
       "level": "info",
       "retentionDays": 7,
+      "captureMaxBytes": 67108864,
     },
+    "requestBody": { "maxBytes": 268435456 },
     "retry": {
       "retryAfterCapMs": 30000,
     },
@@ -67,3 +69,11 @@ AIO Proxy 可以作为一个安全的模型网关，防止未经授权的客户�
 ## 限流与重试控制 (`retry`)
 
 - **`retryAfterCapMs`**：当上游提供商返回 HTTP 429 且附带 `Retry-After` 响应头时，AIO Proxy 在冷却该提供商时所能采纳的最大等待毫秒数上限（默认为 `30000` ms 即 30 秒）。避免某些极端上游返回数天的冷却时间导致该 Provider 被永久挂起。
+
+## 请求容量与正文捕获
+
+`server.requestBody.maxBytes` 默认 `268435456`（256 MiB），接受 `1048576..536870912`（1..512 MiB）的整数。普通 JSON 请求分别检查传输体和解压后的正文，压缩请求也受双重检查。图片、音频、视频的显式专用限制优先；图片生成及视频保留既有 64/128 MiB 限制，不随普通请求预算改变。
+
+`server.logging.captureMaxBytes` 默认 `67108864`（64 MiB），接受 `0..67108864` 的整数，按每 hop、每方向独立计量。设为 0 只关闭正文捕获，转发和请求诊断继续。超限日志保留完整观察字节数 `byteLength`，并标记 `truncated` 与 `captureLimitBytes`；省略原因只使用 `privacy_policy`、`media_payload`、`capture_limit`。敏感或无法完成检查的正文继续省略；隐私探测独立保持 64 MiB 预算，Dashboard 读侧仍只保留 1,048,576 个 UTF-16 code unit。
+
+两项预算均可热更新，只影响新请求；已开始的请求保留入口配置快照。JSON 解析、Base64、克隆和重试可能使内存占用达到正文的数倍。提高本地容量不能保证上游接受相同大小的请求。

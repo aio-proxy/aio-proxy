@@ -10,6 +10,7 @@ import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 import { queryKeys } from '@/lib/query-keys';
+import { usageCallerLabel } from '@/lib/usage-caller-label';
 
 import { TraceDetailTabs } from '../../components/trace-detail-tabs';
 import { TraceStatus } from '../../components/trace-status';
@@ -111,6 +112,9 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
         </div>
       }
     >
+      <p className="mb-3 text-sm text-muted-foreground">
+        {m['dashboard.callers.label']()}: {usageCallerLabel(trace.caller)}
+      </p>
       <TraceDetailTabs
         detail={query.data}
         selectedSpan={selectedSpan}

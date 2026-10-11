@@ -43,5 +43,10 @@
     "type": "file",
     "name": "typesafe-systemone",
     "label": "System One 评估协议"
+  },
+  {
+    "type": "file",
+    "name": "openai-decisions",
+    "label": "OpenAI Decisions"
   }
 ]

@@ -1,10 +1,10 @@
 import { existsSync, realpathSync } from 'node:fs';
-import { basename, isAbsolute } from 'node:path';
+import { basename, isAbsolute, win32 } from 'node:path';
 
 import { m } from '@aio-proxy/i18n';
 
 import { CliExit, EXIT } from '../exit';
-import { resolveStableManagedExec } from '../upgrade/installed-launcher';
+import { isStableLauncherName, resolveStableManagedExec } from '../upgrade/installed-launcher';
 
 // Resolve the single executable the service manager should launch. The npm
 // `aio-proxy` bin on PATH is a Node shim (`#!/usr/bin/env node`) that spawns the
@@ -29,7 +29,9 @@ import { resolveStableManagedExec } from '../upgrade/installed-launcher';
 // Only when execPath is an interpreter (dev `bun run`) or gone do we resolve via
 // PATH, failing fast if even that is missing rather than render `ExecStart=<bun>
 // run`, which would invoke bun's own `run` subcommand and never start.
-// which/execPath/realpath/exists are injectable to keep this testable.
+// On Windows the binary is `aio-proxy.exe`, and PATH may instead offer npm's `.cmd` (or a PowerShell)
+// shim, which the service supervisor cannot spawn without a shell: such a shim is never the exec.
+// which/execPath/realpath/exists/platform are injectable to keep this testable.
 // ponytail: no AVX2/musl variant probing like opencode — we ship one binary per
 // platform with no variants, so execPath basename is enough.
 export function resolveAgentExecutable(
@@ -38,6 +40,7 @@ export function resolveAgentExecutable(
   realpath: (path: string) => string = realpathSync,
   exists: (path: string) => boolean = existsSync,
   env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
 ): string {
   // The desktop app points launchd at a stable symlink it owns. Returned verbatim: resolving it (or
   // passing it through resolveStableManagedExec) would pin the plist inside one app bundle version.
@@ -50,11 +53,13 @@ export function resolveAgentExecutable(
       return a === b;
     }
   };
-  const onPath = which('aio-proxy');
+  const found = which('aio-proxy');
+  const onPath = found !== null && platform === 'win32' && /\.(?:cmd|bat|ps1)$/iu.test(found) ? null : found;
+  const execName = platform === 'win32' ? win32.basename(execPath) : basename(execPath);
   const resolved =
     onPath !== null && sameBinary(onPath, execPath)
       ? onPath
-      : basename(execPath) === 'aio-proxy' && exists(execPath)
+      : isStableLauncherName(execName) && exists(execPath)
         ? execPath
         : onPath !== null
           ? onPath

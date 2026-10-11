@@ -17,6 +17,7 @@ import type { SectionSummary } from '../../../lib/section-status';
 import { OAuthAccountFields } from '../../oauth-account-fields';
 import { OAuthAuthorizationPanel } from '../../oauth-authorization-panel';
 import { OAuthCapabilityCombobox } from '../../oauth-capability-combobox';
+import { OAuthLocalSignInButton } from '../../oauth-local-sign-in-button';
 import { OAuthProviderEditFields } from '../../oauth-provider-edit-fields';
 import { ProviderFormFieldsAiSdk } from '../../provider-form-fields-ai-sdk';
 import { ProviderFormFieldsApi } from '../../provider-form-fields-api';
@@ -39,6 +40,7 @@ interface ConnectionSectionProps {
   readonly isAuthorizationPending?: boolean | undefined;
   /** OAuth create only: starts the authorization from inside this section. */
   readonly onAuthorize?: (() => void) | undefined;
+  readonly onLocalSignIn?: (() => void) | undefined;
   readonly onOptionsValidityChange?: ((valid: boolean) => void) | undefined;
   readonly summary: SectionSummary;
   readonly session?: DashboardOAuthSession | undefined;
@@ -62,6 +64,7 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
   isReauthorizeBlocked,
   isAuthorizationPending,
   onAuthorize,
+  onLocalSignIn,
   onOptionsValidityChange,
   summary,
   session,
@@ -116,6 +119,14 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
                   {isAuthorizationPending === true ? <Spinner data-icon="inline-start" /> : null}
                   {m['dashboard.providers.oauth.authorize_in_browser']()}
                 </Button>
+                {selected?.localSignIn === undefined ? null : (
+                  <OAuthLocalSignInButton
+                    key={capabilityKey(selected)}
+                    source={selected.localSignIn.source}
+                    disabled={isAuthorizationPending === true || accountLocked || onLocalSignIn === undefined}
+                    onConfirm={onLocalSignIn ?? (() => undefined)}
+                  />
+                )}
                 <p className="text-sm text-muted-foreground">{m['dashboard.providers.oauth.authorize_popup_hint']()}</p>
               </div>
             </>
@@ -136,6 +147,12 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
         isReauthorizing={isAuthorizationPending ?? false}
         isReauthorizeBlocked={isReauthorizeBlocked ?? false}
         accountLocked={accountLocked}
+        localSignIn={
+          capabilities?.find(
+            (candidate) => candidate.plugin === provider.plugin && candidate.capability === provider.capability,
+          )?.localSignIn
+        }
+        onLocalSignIn={onLocalSignIn}
       />
     ) : null}
     {session !== undefined &&

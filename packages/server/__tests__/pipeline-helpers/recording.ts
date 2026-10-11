@@ -1,6 +1,7 @@
 import type { StoredSpan, TraceCompletion } from '@aio-proxy/core/db';
 import type { ProviderProtocol } from '@aio-proxy/types';
 
+import type { LiveMetrics } from '../../src/live-metrics';
 import {
   attributeName,
   createRequestTraceRecorder,
@@ -14,7 +15,10 @@ import type { Recording, RecordedAttempt, RecordedFinal } from './types';
 // projects each completed trace back into the legacy {begins, identities,
 // attempts, finals} shapes the pipeline tests assert against. This keeps the
 // tests behavior-level while exercising the production recorder + span buffer.
-export function createRecording(): Recording & { readonly recorder: RequestTraceRecorder } {
+export function createRecording(liveMetrics?: LiveMetrics): Recording & {
+  readonly recorder: RequestTraceRecorder;
+  readonly liveMetrics: LiveMetrics | undefined;
+} {
   const begins: Recording['begins'] = [];
   const identities: Recording['identities'] = [];
   const attempts: RecordedAttempt[] = [];
@@ -39,7 +43,7 @@ export function createRecording(): Recording & { readonly recorder: RequestTrace
       return true;
     },
   };
-  const real = createRequestTraceRecorder({ store });
+  const real = createRequestTraceRecorder({ store, liveMetrics });
 
   const recorder: RequestTraceRecorder = {
     begin(input) {
@@ -61,6 +65,7 @@ export function createRecording(): Recording & { readonly recorder: RequestTrace
     finals,
     identities,
     recorder,
+    liveMetrics,
     spans,
     settle() {
       const target = begins.length;

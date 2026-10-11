@@ -219,6 +219,24 @@ test('refresh metadata uses stored email when rotated tokens omit one', async ()
   }
 });
 
+test('runtime refresh retains the previous id_token when the response omits it', async () => {
+  const idToken = buildJwt({ chatgpt_account_id: 'acct-123', email: 'person@example.test' });
+  const expired = credential({ expiresAt: 0, idToken });
+  const port: CredentialPort<ChatGPTCredential> = {
+    read: async () => ({ revision: 1, value: expired }),
+    refresh: async (revision, exchange) => {
+      const exchanged = await exchange({ revision, value: expired }, new AbortController().signal);
+      return { status: 'updated', snapshot: { revision: revision + 1, value: exchanged.value } };
+    },
+  };
+  const refreshed = await currentCredential(port, async () =>
+    Response.json({
+      access_token: buildJwt({ chatgpt_account_id: 'acct-123' }),
+    }),
+  );
+  expect(refreshed.idToken).toBe(idToken);
+});
+
 test('normalizes Responses requests for the Codex backend', async () => {
   const calls: FetchCall[] = [];
   const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));

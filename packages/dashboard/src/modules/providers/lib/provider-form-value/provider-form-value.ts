@@ -27,7 +27,8 @@ export type ProviderFormInitial = Partial<ProviderFormShape>;
 
 export function normalizeProviderFormValue(value: ProviderFormShape): unknown {
   const { validationModel: _validationModel, ...provider } = value;
-  const withoutName = provider.name?.trim() === '' ? omit(provider, ['name']) : provider;
+  const modeFields = provider.syncModels === true ? provider : omit(provider, ['syncModels', 'excludedModels']);
+  const withoutName = modeFields.name?.trim() === '' ? omit(modeFields, ['name']) : modeFields;
   if (withoutName.kind !== ProviderKind.Api) {
     return omit(withoutName, ['protocol', 'baseURL', 'endpoints', 'apiKey']);
   }

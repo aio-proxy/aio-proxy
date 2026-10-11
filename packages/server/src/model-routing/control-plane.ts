@@ -1,10 +1,11 @@
-import type { PluginRepository } from '@aio-proxy/core';
+import type { PluginRepository, ProviderModelCatalogRepository } from '@aio-proxy/core';
 import type {
   Config,
   DashboardProviderSummary,
   DashboardRoutingModelMutation,
   DashboardRoutingModelsResponse,
   DashboardRoutingNumber,
+  DashboardRoutingSelectionMutation,
   Provider,
   ProviderAlias,
 } from '@aio-proxy/types';
@@ -23,6 +24,7 @@ export type ProviderRoutingNumberViews = {
 export type ModelRoutingControlPlane = {
   readonly list: () => Promise<DashboardRoutingModelsResponse>;
   readonly update: (input: DashboardRoutingModelMutation) => Promise<DashboardRoutingModelsResponse>;
+  readonly updateSelection: (input: DashboardRoutingSelectionMutation) => Promise<DashboardRoutingModelsResponse>;
   readonly providerNumberViews: (providerId: string) => Promise<ProviderRoutingNumberViews | undefined>;
 };
 
@@ -30,6 +32,7 @@ export type ModelRoutingControlPlaneOptions = {
   readonly currentConfig: () => Config;
   readonly currentSummaries: () => readonly DashboardProviderSummary[];
   readonly repository: PluginRepository;
+  readonly providerModels: ProviderModelCatalogRepository;
   readonly configStore: ConfigStore;
   readonly pluginDefaults?: (provider: Extract<Provider, { kind: 'oauth' }>) => ProviderAlias | undefined;
 };
@@ -49,6 +52,7 @@ export function createModelRoutingControlPlane(options: ModelRoutingControlPlane
       config: options.currentConfig(),
       summaries: options.currentSummaries(),
       repository: options.repository,
+      providerModels: options.providerModels,
       writable,
       pluginDefaults: options.pluginDefaults,
     });
@@ -58,6 +62,14 @@ export function createModelRoutingControlPlane(options: ModelRoutingControlPlane
     list,
     async update(input) {
       await options.configStore.mutateConfig((current) => applyRoutingMutation(current, input));
+      return list();
+    },
+    async updateSelection({ selection }) {
+      // Only `router.selection` changes; `models` and any other authored `router` keys stay as written.
+      await options.configStore.mutateConfig((current) => ({
+        ...current,
+        router: { ...objectRecord(current['router']), selection },
+      }));
       return list();
     },
     async providerNumberViews(providerId) {

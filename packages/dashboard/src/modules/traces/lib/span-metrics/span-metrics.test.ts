@@ -90,6 +90,41 @@ test('reads new logical and upstream metrics while retaining legacy fallbacks', 
   expect(readSpanMetrics({ span: upstream, spans: [upstream], trace }).upstreamMs).toBe(220);
 });
 
+test('send metrics retain their own timing and inherit the candidate identity without increasing attempt count', () => {
+  const attempt = createAttemptSpan({
+    spanId: '1'.repeat(16),
+    attributes: {
+      'aio_proxy.provider.id': 'primary',
+      'gen_ai.request.model': 'primary-model',
+      'aio_proxy.attempt.http_sends': 2,
+      'aio_proxy.attempt.response_send_index': 1,
+    },
+  });
+  const send = createSpan({
+    spanId: '2'.repeat(16),
+    name: 'POST',
+    parentSpanId: attempt.spanId,
+    attributes: {
+      'aio_proxy.attempt.index': 0,
+      'aio_proxy.upstream.send_index': 1,
+      'aio_proxy.upstream.headers_ms': 25,
+      'aio_proxy.upstream.first_byte_ms': 40,
+      'aio_proxy.upstream.first_sse_event_ms': 45,
+    },
+  });
+  const spans = [attempt, send];
+  expect(readSpanMetrics({ span: send, spans, trace })).toMatchObject({
+    providerId: 'primary',
+    modelId: 'primary-model',
+    attemptCount: 1,
+    sendIndex: 1,
+    upstreamMs: 25,
+    firstByteMs: 40,
+    firstSseEventMs: 45,
+  });
+  expect(readSpanMetrics({ span: attempt, spans, trace })).toMatchObject({ httpSends: 2, responseSendIndex: 1 });
+});
+
 test('falls back to the trace row when the root span carries no attributes', () => {
   const root = createSpan({ spanId: trace.rootSpanId, name: 'aio_proxy.request', kind: 'SERVER', durationMs: 3_420 });
 

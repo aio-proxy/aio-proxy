@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -45,7 +44,7 @@ func RunWithTimeout(cmd *exec.Cmd, timeout time.Duration) (Output, error) {
 	case <-time.After(timeout):
 		// The waiter goroutine still reaps it. Not waiting here: a grandchild holding the pipes open
 		// would block past the timeout.
-		_ = cmd.Process.Signal(syscall.SIGKILL)
+		killProcess(cmd.Process)
 		return Output{}, fmt.Errorf("%w after %s", ErrTimedOut, timeout)
 	}
 }

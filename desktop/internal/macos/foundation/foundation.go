@@ -1,3 +1,5 @@
+//go:build darwin
+
 // Package foundation holds the few Objective-C runtime helpers the macOS packages (loginitem,
 // sparkle) share. Everything goes through purego, so the app keeps building with CGO_ENABLED=0 and
 // frameworks are reached at runtime by Dlopen instead of being linked.

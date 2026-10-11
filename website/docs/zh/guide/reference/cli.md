@@ -73,6 +73,7 @@ Options:
 - `aio-proxy provider list`：列出当前运行实例加载的全部提供商。
   - `--probe`：对所有提供商并发执行在线存活探测。
 - `aio-proxy provider login [capability]`：交互式执行 OAuth 厂商登录。
+  - `--local-sign-in`：使用厂商工具在本机上的已有登录，跳过登录方式选择。支持 ChatGPT（Codex）和 GitHub Copilot；只有明确选择后才读取凭据，账号选项仍会按提示填写。不传此参数时，检测到本机登录也可在交互提示中选择。
 - `aio-proxy provider import [path]`：从本地认证文件或目录中导入提供商凭据。
 - `aio-proxy provider test <provider-id>`：针对特定的提供商发起在线探针测试。
 
@@ -81,8 +82,8 @@ Options:
 ### 5. 原生 Agent 集成 (`agent`)
 
 - `aio-proxy agent list`：列出已识别的 Agent 宿主环境及配置漂移检测报告。
-- `aio-proxy agent configure <opencode|pi|omp|codex|grok>`：一键配置指定 Agent，免贴 Token 安全桥接。
-- `aio-proxy agent remove <opencode|pi|omp|codex|grok>`：从指定 Agent 中移除 AIO Proxy 集成并还原用户配置。
+- `aio-proxy agent configure <opencode|pi|omp|codex|grok|claude-code>`：一键配置指定 Agent，免贴 Token 安全桥接。
+- `aio-proxy agent remove <opencode|pi|omp|codex|grok|claude-code>`：从指定 Agent 中移除 AIO Proxy 集成并还原用户配置。
 - `aio-proxy agent revoke <installation-id>`：根据安装 ID 撤销特定客户端的访问令牌。
 - `aio-proxy agent auth <codex|grok>`：触发 Agent 专用认证流程。
 

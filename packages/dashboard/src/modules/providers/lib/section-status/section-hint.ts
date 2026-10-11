@@ -50,13 +50,13 @@ export const connectionHint = (input: SectionStatusInput, status: SectionStatus)
 };
 
 /**
- * oauth's unknown catalog means "expose the whole upstream catalog" (`section-status.ts`), so counting a
+ * An unknown discovered catalog means "expose the whole upstream catalog" (`section-status.ts`), so counting a
  * catalog the dashboard never fetched would print "0 models" for a provider that exposes all of them.
  * Once the catalog is known, the count is how many ids are still exposed after the denylist.
- * api and ai-sdk route only what their whitelist plus alias map name, so 0 is true there.
+ * Manual Providers route only what their whitelist plus alias map name, so 0 is true there.
  */
 const exposureText = (input: SectionStatusInput): string => {
-  if (input.kind === 'oauth') {
+  if (input.kind === 'oauth' || input.syncModels === true) {
     if (input.discoveredModels === undefined) return m['dashboard.providers.editor.hint_models_all']();
     const count = oauthEditorExposedModels(input.discoveredModels, input.excludedModels).length;
     if (count === input.discoveredModels.length) return m['dashboard.providers.editor.hint_models_all']();

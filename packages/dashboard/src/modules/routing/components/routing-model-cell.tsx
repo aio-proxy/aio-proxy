@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardRoutingModel } from '@aio-proxy/types';
+import type { DashboardRoutingModel, RouterSelection } from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
 import type React from 'react';
 
@@ -10,10 +10,11 @@ import { RoutingRiskBadge } from './routing-risk-badge';
 interface RoutingModelCellProps {
   readonly model: DashboardRoutingModel;
   readonly totals: readonly RoutingTrafficProviderTotals[] | undefined;
+  readonly selection?: RouterSelection;
 }
 
-export const RoutingModelCell: React.FC<RoutingModelCellProps> = ({ model, totals }) => {
-  const risks = modelRisks(model, totals);
+export const RoutingModelCell: React.FC<RoutingModelCellProps> = ({ model, totals, selection }) => {
+  const risks = modelRisks(model, totals, selection);
   // The count only earns its place when something is missing; a full house is the normal case.
   const partial = model.eligibleProviderCount < model.providerCount;
 

@@ -1,4 +1,4 @@
-import { decodedRequestStream, type RequestBodyLimits } from '../../protocol/request';
+import { decodedRequestStream, type RequestBodyLimits } from '../../protocol/request/index';
 import {
   acquireMultipartSlot,
   multipartBoundary,

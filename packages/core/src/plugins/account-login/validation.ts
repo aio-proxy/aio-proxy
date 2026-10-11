@@ -113,8 +113,12 @@ export function inMemoryCredentialPort<Credential>(
   adapter: OAuthAdapter<unknown, Credential>,
   initial: Credential,
   signal: AbortSignal,
-  metadata: { accountLabel?: string; expiresAt?: number },
-): { readonly port: CredentialPort<Credential>; readonly current: () => Credential } {
+  metadata: { accountLabel?: string; expiresAt?: number; localSignInConsumed?: string },
+): {
+  readonly port: CredentialPort<Credential>;
+  readonly current: () => Credential;
+  readonly currentRevision: () => number;
+} {
   let value = initial;
   let revision = 0;
   type RefreshResult = Awaited<ReturnType<CredentialPort<Credential>['refresh']>>;
@@ -129,6 +133,9 @@ export function inMemoryCredentialPort<Credential>(
         const flight = (async (): Promise<RefreshResult> => {
           if (expectedRevision !== revision) return { status: 'superseded', snapshot: { value, revision } };
           const exchanged = await exchange({ value, revision }, signal);
+          const exchangedMetadata = exchanged.metadata as
+            | (typeof exchanged.metadata & { readonly localSignInConsumed?: string })
+            | undefined;
           const parsed = await withAbort(signal, () => parsePluginSchema(adapter.credentials, exchanged.value));
           if (!parsed.ok) throw new OAuthLoginResultValidationError();
           if (exchanged.metadata?.accountLabel !== undefined) metadata.accountLabel = exchanged.metadata.accountLabel;
@@ -139,6 +146,9 @@ export function inMemoryCredentialPort<Credential>(
             metadata.expiresAt = exchanged.metadata.expiresAt;
           }
           value = parsed.value;
+          if (exchangedMetadata?.localSignInConsumed !== undefined) {
+            metadata.localSignInConsumed = exchangedMetadata.localSignInConsumed;
+          }
           revision += 1;
           return { status: 'updated', snapshot: { value, revision } };
         })();
@@ -151,6 +161,7 @@ export function inMemoryCredentialPort<Credential>(
       },
     },
     current: () => value,
+    currentRevision: () => revision,
   };
 }
 export function providerEntry(

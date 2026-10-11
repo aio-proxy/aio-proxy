@@ -1,8 +1,11 @@
 import { expect, test } from 'bun:test';
 
+import { z } from 'zod';
+
 import {
   ConfigAuthoringSchema,
   ConfigSchema,
+  buildConfigJsonSchema,
   DashboardOAuthProviderPatchSchema,
   ProviderKind,
   ProviderMutationAuthoringBodySchema,
@@ -12,6 +15,36 @@ import {
 const transforms = {
   request: [{ update: [{ $unset: 'request.body.store' }] }],
 };
+
+test('defaults the runtime request capacity when server settings are omitted', () => {
+  expect(ConfigSchema.parse({ providers: {} }).server.requestBody.maxBytes).toBe(268435456);
+});
+
+test.each([1048576, 536870912])('accepts request capacity %i in runtime and authoring schemas', (maxBytes) => {
+  const input = { providers: {}, server: { requestBody: { maxBytes } } };
+  expect(ConfigSchema.parse(input).server.requestBody.maxBytes).toBe(maxBytes);
+  expect(ConfigAuthoringSchema.parse(input).server.requestBody.maxBytes).toBe(maxBytes);
+});
+
+test.each([0, -1, 1.5, 1048575, 536870913, Infinity])(
+  'rejects invalid request capacity %s rather than silently clamping it',
+  (maxBytes) => {
+    const input = { providers: {}, server: { requestBody: { maxBytes } } };
+    expect(ConfigSchema.safeParse(input).success).toBe(false);
+    expect(ConfigAuthoringSchema.safeParse(input).success).toBe(false);
+  },
+);
+
+test('emits the same request capacity contract for JSON-schema authoring tools', () => {
+  const json = buildConfigJsonSchema() as {
+    properties: { server: { properties: { requestBody: z.core.JSONSchema.BaseSchema } } };
+  };
+  const requestBody = z.fromJSONSchema(json.properties.server.properties.requestBody);
+  expect(requestBody.safeParse({ maxBytes: 536870912 }).success).toBe(true);
+  for (const maxBytes of [0, -1, 1.5, 1048575, 536870913]) {
+    expect(requestBody.safeParse({ maxBytes }).success).toBe(false);
+  }
+});
 
 test('preserves an exact non-empty dashboard password', () => {
   expect(ConfigSchema.parse({ server: { password: '  ' }, providers: {} }).server.password).toBe('  ');
@@ -24,6 +57,39 @@ test.each(['0.0.0.0', '192.168.1.20', 'example.test', '127.0.0.1', '::1', 'local
     expect(ConfigSchema.parse({ server: { host }, providers: {} }).server.host).toBe(host);
   },
 );
+
+test('rejects a repeated explicit API key ID on runtime and authoring config', () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const duplicate = {
+    server: {
+      apiKeys: [
+        { id, key: 'sk-one', label: 'One' },
+        { id, key: 'sk-two', label: 'Two' },
+      ],
+    },
+    providers: {},
+  };
+  for (const schema of [ConfigSchema, ConfigAuthoringSchema]) {
+    const parsed = schema.safeParse(duplicate);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.some((issue) => issue.path.join('.') === 'server.apiKeys.1.id')).toBe(true);
+    }
+  }
+
+  const distinct = {
+    server: {
+      apiKeys: [
+        { id, key: 'sk-one' },
+        { id: '22222222-2222-4222-8222-222222222222', key: 'sk-two' },
+        { key: 'sk-three' },
+      ],
+    },
+    providers: {},
+  };
+  expect(ConfigSchema.safeParse(distinct).success).toBe(true);
+  expect(ConfigAuthoringSchema.safeParse(distinct).success).toBe(true);
+});
 
 test('accepts labeled caller API keys and authoring templates', () => {
   expect(
@@ -455,4 +521,21 @@ test('enabled proxy fallback requires primary and backup addresses', () => {
       providers: {},
     }).success,
   ).toBe(true);
+});
+
+test('router selection defaults to the weighted draw and accepts quota-reset', () => {
+  expect(ConfigSchema.parse({ providers: {} }).router.selection).toBe('weighted');
+  expect(ConfigSchema.parse({ providers: {}, router: { selection: 'quota-reset' } }).router.selection).toBe(
+    'quota-reset',
+  );
+  expect(ConfigSchema.safeParse({ providers: {}, router: { selection: 'soonest' } }).success).toBe(false);
+});
+
+test.each([0, 16, 67108864])('accepts an independent logging capture budget %i', (captureMaxBytes) => {
+  const input = { providers: {}, server: { logging: { captureMaxBytes } } };
+  expect(ConfigSchema.parse(input).server.logging?.captureMaxBytes).toBe(captureMaxBytes);
+  expect(ConfigAuthoringSchema.parse(input).server.logging?.captureMaxBytes).toBe(captureMaxBytes);
+});
+test.each([-1, 1.5, 67108865, Infinity])('rejects invalid logging capture budget %s', (captureMaxBytes) => {
+  expect(ConfigSchema.safeParse({ providers: {}, server: { logging: { captureMaxBytes } } }).success).toBeFalse();
 });

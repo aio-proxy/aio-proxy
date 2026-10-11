@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardRoutingModel } from '@aio-proxy/types';
+import type { DashboardRoutingModel, RouterSelection } from '@aio-proxy/types';
 import type { UsageOverviewRange } from '@aio-proxy/types';
 import {
   AlertDialog,
@@ -32,6 +32,7 @@ interface RoutingModelPageEditorProps {
   readonly removed?: boolean;
   readonly range: UsageOverviewRange;
   readonly actual: readonly RoutingTierShare[] | undefined;
+  readonly selection?: RouterSelection;
   readonly onReload: () => void | Promise<DashboardRoutingModel | null | undefined>;
 }
 
@@ -41,6 +42,7 @@ export const RoutingModelPageEditor: React.FC<RoutingModelPageEditorProps> = ({
   removed = false,
   range,
   actual,
+  selection = 'weighted',
   onReload,
 }) => {
   const editor = useRoutingModelEditor({ model, writable: writable && !removed, onReload });
@@ -69,7 +71,13 @@ export const RoutingModelPageEditor: React.FC<RoutingModelPageEditorProps> = ({
               <CardTitle>{m['dashboard.routing.detail.section_route']()}</CardTitle>
             </CardHeader>
             <CardContent>
-              <RoutingModelTopologyTab form={editor.form} model={model} writable={editable} actual={actual} />
+              <RoutingModelTopologyTab
+                form={editor.form}
+                model={model}
+                writable={editable}
+                actual={actual}
+                selection={selection}
+              />
             </CardContent>
           </Card>
           <Card>

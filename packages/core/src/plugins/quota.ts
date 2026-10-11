@@ -1,6 +1,11 @@
 import { isProxy } from 'node:util/types';
 
-import { type LocalizedText, LocalizedTextSchema, type OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
+import {
+  type LocalizedText,
+  LocalizedTextSchema,
+  type OAuthQuotaItemScope,
+  type OAuthQuotaSnapshot,
+} from '@aio-proxy/plugin-sdk';
 
 type Path = readonly (string | number)[];
 
@@ -156,13 +161,27 @@ function optionalWindowMinutes(value: unknown, path: Path): number | undefined {
   return value as number;
 }
 
+function optionalScope(value: unknown, path: Path, ancestors: Set<object>): OAuthQuotaItemScope | undefined {
+  if (value === undefined || value === 'account') return value;
+  return withPlainRecord(value, path, SCOPE_KEYS, ancestors, ({ models }) => ({
+    models: withDenseArray(models, [...path, 'models'], ancestors, (patterns) => {
+      if (patterns.length === 0) invalid([...path, 'models']);
+      return patterns.map((pattern, index) => {
+        if (typeof pattern !== 'string' || pattern.replace(/^!/u, '') === '') invalid([...path, 'models', index]);
+        return pattern;
+      });
+    }),
+  }));
+}
+
 function resetCount(value: unknown, path: Path): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) invalid(path);
   return value as number;
 }
 
 const SNAPSHOT_KEYS = new Set(['items', 'resetCredits', 'plan']);
-const ITEM_KEYS = new Set(['id', 'displayName', 'remainingRatio', 'resetsAt', 'windowMinutes']);
+const ITEM_KEYS = new Set(['id', 'displayName', 'remainingRatio', 'resetsAt', 'windowMinutes', 'scope']);
+const SCOPE_KEYS = new Set(['models']);
 const RESET_KEYS = new Set(['availableCount', 'items']);
 const CREDIT_KEYS = new Set(['id', 'expiresAt']);
 
@@ -180,6 +199,7 @@ export function validateOAuthQuotaSnapshot(value: unknown): OAuthQuotaSnapshot {
             remainingRatio: inputRatio,
             resetsAt: inputResetsAt,
             windowMinutes: inputWindowMinutes,
+            scope: inputScope,
           } = item;
           const id = quotaId(itemId, ['items', index, 'id']);
           if (itemIds.has(id)) invalid(['items', index, 'id']);
@@ -187,12 +207,14 @@ export function validateOAuthQuotaSnapshot(value: unknown): OAuthQuotaSnapshot {
           const remainingRatio = optionalRatio(inputRatio, ['items', index, 'remainingRatio']);
           const resetsAt = optionalTimestamp(inputResetsAt, ['items', index, 'resetsAt']);
           const windowMinutes = optionalWindowMinutes(inputWindowMinutes, ['items', index, 'windowMinutes']);
+          const scope = optionalScope(inputScope, ['items', index, 'scope'], ancestors);
           return {
             id,
             displayName: localizedText(displayName, ['items', index, 'displayName']),
             ...(remainingRatio === undefined ? {} : { remainingRatio }),
             ...(resetsAt === undefined ? {} : { resetsAt }),
             ...(windowMinutes === undefined ? {} : { windowMinutes }),
+            ...(scope === undefined ? {} : { scope }),
           };
         }),
       ),

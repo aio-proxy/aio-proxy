@@ -2,11 +2,16 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { REQUEST_BODY_LIMITS } from '../request';
+import {
+  readJsonRequest,
+  RequestBodyTooLargeError,
+  withRequestBodyLimits,
+  REQUEST_BODY_LIMITS,
+} from '../request/index';
 import { defineVideoProtocolAdapter } from './video-adapter';
 
 describe('defineVideoProtocolAdapter', () => {
-  test('freezes a video adapter with no convert hooks', () => {
+  test('freezes a video adapter with no convert hooks', async () => {
     const adapter = defineVideoProtocolAdapter({
       protocol: ProviderProtocol.OpenAIVideo,
       async parse() {
@@ -34,6 +39,12 @@ describe('defineVideoProtocolAdapter', () => {
     expect(adapter.protocol).toBe(ProviderProtocol.OpenAIVideo);
     expect(adapter.convertSkipReason?.({ model: 'sora-2' }, 'sora-2')).toBe('video_convert');
     expect(adapter.bodyLimits(new Request('https://x'), undefined)).toEqual(REQUEST_BODY_LIMITS);
+    await withRequestBodyLimits({ encoded: 8, decoded: 8 }, async () => {
+      const raw = new Request('https://proxy.test', { method: 'POST', body: '{"model":"too-long"}' });
+      await expect(readJsonRequest(raw, adapter.bodyLimits(raw, undefined))).rejects.toBeInstanceOf(
+        RequestBodyTooLargeError,
+      );
+    });
     expect('modelInvocation' in adapter).toBe(false);
     expect('imageInvocation' in adapter).toBe(false);
   });

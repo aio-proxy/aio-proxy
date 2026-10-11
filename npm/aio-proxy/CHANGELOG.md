@@ -1,5 +1,89 @@
 # aio-proxy
 
+## 0.42.1
+
+### Patch Changes
+
+- [#501](https://github.com/aio-proxy/aio-proxy/pull/501) [`9c1470d`](https://github.com/aio-proxy/aio-proxy/commit/9c1470d72ccb347e9eaa3e2db5de4ca4f06b1050) Thanks @baranwang - Build and ship on Bun 1.4.3. Outbound TLS now checks the server certificate during the handshake and accepts only valid host names and canonical IP addresses. The Docker image runs on Alpine 3.24 so its libstdc++ matches the musl build.
+
+## 0.42.0
+
+### Minor Changes
+
+- [#499](https://github.com/aio-proxy/aio-proxy/pull/499) [`3758dc9`](https://github.com/aio-proxy/aio-proxy/commit/3758dc9ed72259d33df567cf69e8ef86c59d5ca9) Thanks @olivewind - Track shared proxy usage by named API key with an independent user ranking, whole-dashboard user filtering and caller attribution in traces. The ranking is shown when API key access is enabled, including for a single user. Saving keys requires unique labels, and a config file cannot reuse the same key ID. Caller identity survives key rotation and usage history remains available after traces expire.
+
+- [#498](https://github.com/aio-proxy/aio-proxy/pull/498) [`a2c3d0e`](https://github.com/aio-proxy/aio-proxy/commit/a2c3d0e304db29be37a7284202e17ac3373f0dbb) Thanks @baranwang - Add the OpenAI Decisions API for predicate, choice, and score evaluations. Same-protocol requests pass through, including inline and HTTP(S) images; other evaluation providers share SystemOne routing, fallback, and conversion. Usage includes cache pricing, converted responses always include the full usage object, and evaluations that cannot be converted are still billed. Plugins can recognize the new Decisions protocol.
+
+## 0.41.1
+
+### Patch Changes
+
+- [#496](https://github.com/aio-proxy/aio-proxy/pull/496) [`e2d1228`](https://github.com/aio-proxy/aio-proxy/commit/e2d12289890af16a4e8143b0ee425b51a0144744) Thanks @baranwang - The macOS menu bar metrics always show both a prefix label and a unit, with today's cost shown as COST and a dollar value. The label-style setting has been removed, and labels and values remain aligned on the left.
+
+## 0.41.0
+
+### Minor Changes
+
+- [#494](https://github.com/aio-proxy/aio-proxy/pull/494) [`855383c`](https://github.com/aio-proxy/aio-proxy/commit/855383cd5f462aa5ad9bab48aab81d4123dcd659) Thanks @baranwang - The macOS menu bar can show one or two live metrics next to the icon: today's tokens, today's cost, requests in flight, and real-time output tokens per second. Pick them from the menu bar icon's right-click menu.
+
+## 0.40.0
+
+### Minor Changes
+
+- [#481](https://github.com/aio-proxy/aio-proxy/pull/481) [`0a41886`](https://github.com/aio-proxy/aio-proxy/commit/0a4188627a2bd86a56da5a73e07e41ab10a9b790) Thanks @baranwang - The AIO Proxy desktop app is now available for Linux (AppImage, x86_64 and arm64) and Windows (x64 installer), with a tray menu, launch at login, the `aiop` command and signed in-app updates. The CLI now ships for Windows, where `aio-proxy service` is backed by a per-user scheduled task. On Linux and Windows, a service you stopped or uninstalled now stays stopped, and installing the Linux service without a systemd user session now says so instead of failing with an internal error.
+
+### Patch Changes
+
+- [#481](https://github.com/aio-proxy/aio-proxy/pull/481) [`0a41886`](https://github.com/aio-proxy/aio-proxy/commit/0a4188627a2bd86a56da5a73e07e41ab10a9b790) Thanks @baranwang - The desktop app starts the proxy faster. Its service check no longer waits about 2 seconds after it has its answer whenever the proxy is running, runs alongside the app's startup checks instead of after them, and an automatic install or start skips two redundant service checks.
+
+- [#481](https://github.com/aio-proxy/aio-proxy/pull/481) [`0a41886`](https://github.com/aio-proxy/aio-proxy/commit/0a4188627a2bd86a56da5a73e07e41ab10a9b790) Thanks @baranwang - The desktop panel now shows the proxy as stopped soon after it is stopped outside the app, such as with `aio-proxy service stop`, instead of reporting it running with a usage refresh error.
+
+- [#493](https://github.com/aio-proxy/aio-proxy/pull/493) [`6c3a88e`](https://github.com/aio-proxy/aio-proxy/commit/6c3a88ebd254397c4aa4ec3bc4d89b3ba8267445) Thanks @baranwang - Time to first token is now recorded for streamed responses that only produce a tool call. Agent turns that streamed tool-call arguments without any text or reasoning summary previously showed no TTFT in the dashboard.
+
+## 0.39.1
+
+### Patch Changes
+
+- [#489](https://github.com/aio-proxy/aio-proxy/pull/489) [`ec485f0`](https://github.com/aio-proxy/aio-proxy/commit/ec485f035dfea998bed00c2852bb74bfb730d6b5) Thanks @baranwang - Codex no longer fails to start with "model_catalog_json ... must contain at least one model" when model metadata is briefly unavailable. An empty model catalog is never written, and one written by an earlier version is no longer kept: the last non-empty catalog is kept, or, with none, Codex uses its built-in catalog. The server logs a `codex.catalog_sync_failed` warning with code `empty_catalog` while the catalog stays empty.
+
+- [#491](https://github.com/aio-proxy/aio-proxy/pull/491) [`d5218bf`](https://github.com/aio-proxy/aio-proxy/commit/d5218bfaf68e0af8d9b97cc09ac90b3ebe2f8593) Thanks @baranwang - Allow large image histories and compressed recovery requests with a configurable 256 MiB request limit, including ChatGPT and Provider body transforms. Bound body logs independently to 64 MiB per hop and direction while preserving full forwarding, request diagnostics, and privacy protections.
+
+- [#487](https://github.com/aio-proxy/aio-proxy/pull/487) [`7ba11b2`](https://github.com/aio-proxy/aio-proxy/commit/7ba11b2ef78af331754be0e94bda7bc19de19312) Thanks @baranwang - Align desktop usage trend colors with the Dashboard: higher-usage series appear first in lighter colors, while lower-usage series use darker colors. Hide zero-valued entries in Dashboard model trend hover tooltips.
+
+## 0.39.0
+
+### Minor Changes
+
+- [#477](https://github.com/aio-proxy/aio-proxy/pull/477) [`94024af`](https://github.com/aio-proxy/aio-proxy/commit/94024af667f4b691cef234a3f305d6561c5a9192) Thanks @baranwang - `aiop agent configure claude-code` points Claude Code at aio-proxy by merging `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` into the global `~/.claude/settings.json`, leaving every other setting in place. Without proxy API keys it writes a placeholder token so Claude Code stops using its claude.ai login; with keys you choose one, in the terminal or on the Dashboard's Agents page. `agent list` shows the integration, and `agent remove claude-code` restores only those two keys.
+
+- [#486](https://github.com/aio-proxy/aio-proxy/pull/486) [`a59559d`](https://github.com/aio-proxy/aio-proxy/commit/a59559db8ba07d62f1f2b8dab50a77b5fba272b8) Thanks @baranwang - ChatGPT and GitHub Copilot Providers can use the sign-in Codex or Copilot already keeps on this machine instead of a browser login; aio-proxy keeps Codex signed in when it refreshes, and removing the Provider never signs the tool out.
+
+- [#483](https://github.com/aio-proxy/aio-proxy/pull/483) [`4a26f10`](https://github.com/aio-proxy/aio-proxy/commit/4a26f10bde2ee22dccd0312c484327bc92bf1578) Thanks @baranwang - A Kimi Code, Muse Code, ChatGPT, or Cursor subscription whose quota window is known to be exhausted is now skipped for the models that window covers until it resets, instead of being attempted and failing on every request. Quota that is unknown or older than 10 minutes never skips a Provider. When every candidate is exhausted or cooling down, the client gets a 429 with `Retry-After` set to the earliest reset, and the request trace lists the skipped Providers and why.
+
+- [#483](https://github.com/aio-proxy/aio-proxy/pull/483) [`13ff41d`](https://github.com/aio-proxy/aio-proxy/commit/13ff41dba0d21ef4ec79589e0598d1973fb72f64) Thanks @baranwang - New opt-in `router.selection: quota-reset` (also a switch on the Dashboard Routing page): within each Provider priority tier, the subscription whose quota allowance expires soonest is tried first instead of the weighted draw, so allowance is not left to lapse on one subscription while another is drained. Session affinity still takes precedence, Providers without quota data follow in their weighted order, and the routing list and model details show measured traffic shares without deviation warnings. Nothing changes while the setting stays `weighted`.
+
+- [#484](https://github.com/aio-proxy/aio-proxy/pull/484) [`b2e7941`](https://github.com/aio-proxy/aio-proxy/commit/b2e7941313846cea0c6e179f64c73cc137565e13) Thanks @baranwang - API and discoverable AI SDK Providers can set `syncModels: true` to follow upstream model lists without editing the config: models refresh every hour or on demand in the Dashboard, upstream outages and empty responses keep the last good list, and `excludedModels` hides exact model IDs while aliases can still target them. The Dashboard supports switching between manual and synced models, hiding models, and viewing the last refreshed time; hand-written `models` lists work as before.
+
+### Patch Changes
+
+- [#479](https://github.com/aio-proxy/aio-proxy/pull/479) [`1c501d4`](https://github.com/aio-proxy/aio-proxy/commit/1c501d4dfe3e5a84f1c170891b02c8cd460b5608) Thanks @baranwang - The dashboard protocol pickers now offer OpenAI Images, Audio, and Videos endpoints, so media providers can be configured and their traces filtered without editing the config file. Protocols are also labelled by their official API name (OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, Gemini generateContent, Gemini Interactions) instead of the ambiguous "Gemini" and "OpenAI Compatible".
+
+- [#482](https://github.com/aio-proxy/aio-proxy/pull/482) [`a4d8780`](https://github.com/aio-proxy/aio-proxy/commit/a4d8780eeb767e00a56c151f657f888021ab69f5) Thanks @baranwang - Guardian System One approvals now evaluate the supplied review policy, including custom rules, without falling back just because its wording or formatting changed. Requests without review instructions, incompatible requests, unusable results, and failed evaluations retain the original-model fallback with diagnostic reason codes.
+
+- [#478](https://github.com/aio-proxy/aio-proxy/pull/478) [`dd47aa2`](https://github.com/aio-proxy/aio-proxy/commit/dd47aa2333b53934df5b65deec9d72894c629bfa) Thanks @baranwang - The dashboard no longer offers Repair for a Codex or Grok Build integration whose managed fields you edited. Setup deliberately does not overwrite your edits, so Repair always failed with "Something went wrong". The card now tells you to remove the integration (your edits are kept) and configure it again, and setup that hits edited fields reports exactly that instead of an unknown error.
+
+## 0.38.0
+
+### Minor Changes
+
+- [#467](https://github.com/aio-proxy/aio-proxy/pull/467) [`e6b2bfd`](https://github.com/aio-proxy/aio-proxy/commit/e6b2bfd0303784a19c23fa504a35a070987ebb30) Thanks @baranwang - The macOS app's menu offers Install aiop command when your shell cannot find `aiop` and the app is in `/Applications`. After the system password prompt it adds `aiop` to `/usr/local/bin`, plus `aio-proxy` when your shell has none, both pointing at the CLI inside the app so they keep working across app updates. A command already installed there by something else is never replaced.
+
+### Patch Changes
+
+- [#466](https://github.com/aio-proxy/aio-proxy/pull/466) [`4e3078f`](https://github.com/aio-proxy/aio-proxy/commit/4e3078fcc014f81825e2bf144336d2f920e8f6a6) Thanks @baranwang - Fix Dashboard installation and updates for Pi, OMP, and OpenCode in standalone and desktop builds.
+
+- [#468](https://github.com/aio-proxy/aio-proxy/pull/468) [`24d77d0`](https://github.com/aio-proxy/aio-proxy/commit/24d77d05fd4e27bfa918a568d904e71ce3593f3b) Thanks @baranwang - Preserve transport timings, retry failure reasons, and response attribution for each upstream HTTP send. Trace details now show send counts and indices, so retries with multiple responses no longer appear to be missing timing data.
+
 ## 0.37.0
 
 ### Minor Changes

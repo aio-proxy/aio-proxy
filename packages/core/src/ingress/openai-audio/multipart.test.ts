@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { OpenAIAudioInvalidRequestError } from '../../error';
-import { RequestBodyTooLargeError } from '../../protocol/request';
+import { RequestBodyTooLargeError } from '../../protocol/request/index';
 import { multipartSpoolPath, releaseMultipartSpool } from '../multipart';
 import {
   AUDIO_MULTIPART_ENCODED_LIMIT,

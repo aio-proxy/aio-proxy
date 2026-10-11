@@ -1,5 +1,37 @@
 # @aio-proxy/cli-darwin-x64
 
+## 0.42.1
+
+No changes in this release.
+
+## 0.42.0
+
+No changes in this release.
+
+## 0.41.1
+
+No changes in this release.
+
+## 0.41.0
+
+No changes in this release.
+
+## 0.40.0
+
+No changes in this release.
+
+## 0.39.1
+
+No changes in this release.
+
+## 0.39.0
+
+No changes in this release.
+
+## 0.38.0
+
+No changes in this release.
+
 ## 0.37.0
 
 No changes in this release.

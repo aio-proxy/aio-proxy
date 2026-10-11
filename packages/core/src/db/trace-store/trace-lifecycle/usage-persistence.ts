@@ -2,8 +2,10 @@ import { and, eq } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
 
 import { parseSqliteInteger, usdToNanoUsd } from '../../../usage-numbers';
-import { usageDaily } from '../../schema';
+import { usageDaily, usageCallerDaily, usageCaller } from '../../schema';
+import { consumedUsage } from '../consumed-usage';
 import type { StoredSpan, TraceCompletion, TraceTerminalSummary } from '../types';
+import { usageLocalDate } from '../usage-range';
 
 export type PreparedUsage = {
   readonly estimatedCostNanoUsd: number | undefined;
@@ -29,13 +31,6 @@ type UsageDailyDelta = {
   readonly normalizedPromptTokens: bigint;
 };
 
-function localDay(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 export function prepareUsage(usage: TraceTerminalSummary['usage']): PreparedUsage {
   const estimatedCostNanoUsd = usage?.estimatedCostUsd === undefined ? undefined : usdToNanoUsd(usage.estimatedCostUsd);
   const hasUsage =
@@ -60,8 +55,30 @@ export function upsertUsageDelta(
   childSpans: readonly StoredSpan[],
 ): void {
   const { summary, session } = input;
+  const attributes = input.spans.find((span) => span.spanId === input.rootSpanId)?.attributes;
+  const callerId = attributes?.['aio_proxy.caller.id'];
+  if (typeof callerId === 'string') {
+    const caller = {
+      id: callerId,
+      label: String(attributes?.['aio_proxy.caller.label'] ?? ''),
+      kind: String(attributes?.['aio_proxy.caller.kind'] ?? 'key'),
+    };
+    // Do not overwrite a renamed key with an old in-flight request's label snapshot.
+    tx.insert(usageCaller).values(caller).onConflictDoNothing().run();
+  }
   const modelDimension = session?.requestedModelId ?? summary.finalModelId ?? 'unknown';
   const usage = summary.usage;
+  const consumed = childSpans.flatMap((span) => {
+    const row = consumedUsage(span);
+    return row === undefined ? [] : [row];
+  });
+  const extraInput = consumed.reduce((sum, row) => sum + BigInt(row.inputTokens ?? 0), 0n);
+  const extraOutput = consumed.reduce((sum, row) => sum + BigInt(row.outputTokens ?? 0), 0n);
+  const extraTotal = consumed.reduce(
+    (sum, row) => sum + BigInt(row.totalTokens ?? (row.inputTokens ?? 0) + (row.outputTokens ?? 0)),
+    0n,
+  );
+  const extraCost = consumed.reduce((sum, row) => sum + BigInt(prepareUsage(row).estimatedCostNanoUsd ?? 0), 0n);
   const success = summary.terminationReason === undefined;
   const inputTokens = BigInt(usage?.inputTokens ?? 0);
   const outputTokens = BigInt(usage?.outputTokens ?? 0);
@@ -70,7 +87,7 @@ export function upsertUsageDelta(
 
   addUsageDailyDelta(
     tx,
-    localDay(now),
+    usageLocalDate(now),
     modelDimension,
     usageDailyDelta({
       requestCount: 1n,
@@ -78,17 +95,24 @@ export function upsertUsageDelta(
       errorCount: summary.terminationReason === 'failure' ? 1n : 0n,
       cancelledCount: summary.terminationReason === 'cancelled' ? 1n : 0n,
       interruptedCount: summary.terminationReason === 'interrupted' ? 1n : 0n,
-      usageRequestCount: prepared.hasUsage ? 1n : 0n,
-      pricedRequestCount: prepared.estimatedCostNanoUsd === undefined ? 0n : 1n,
-      inputTokens,
-      outputTokens,
-      totalTokens: usage?.totalTokens === undefined ? inputTokens + outputTokens : BigInt(usage.totalTokens),
+      usageRequestCount: prepared.hasUsage || consumed.some((row) => prepareUsage(row).hasUsage) ? 1n : 0n,
+      pricedRequestCount:
+        prepared.estimatedCostNanoUsd !== undefined || consumed.some((row) => row.estimatedCostUsd !== undefined)
+          ? 1n
+          : 0n,
+      inputTokens: inputTokens + extraInput,
+      outputTokens: outputTokens + extraOutput,
+      totalTokens:
+        (usage?.totalTokens === undefined ? inputTokens + outputTokens : BigInt(usage.totalTokens)) + extraTotal,
       cacheReadTokens,
       cacheWriteTokens,
       reasoningTokens: BigInt(usage?.reasoningTokens ?? 0),
-      estimatedCostNanoUsd: BigInt(prepared.estimatedCostNanoUsd ?? 0),
+      estimatedCostNanoUsd: BigInt(prepared.estimatedCostNanoUsd ?? 0) + extraCost,
       ...normalizedCache(childSpans, inputTokens, cacheReadTokens, cacheWriteTokens),
+      normalizedPromptTokens:
+        normalizedCache(childSpans, inputTokens, cacheReadTokens, cacheWriteTokens).normalizedPromptTokens + extraInput,
     }),
+    String(input.spans.find((span) => span.spanId === input.rootSpanId)?.attributes['aio_proxy.caller.id'] ?? 'legacy'),
   );
 }
 
@@ -127,12 +151,13 @@ function normalizedCache(
   };
 }
 
-export function upsertInterruptedUsage(tx: BunSQLiteDatabase, count: number, now: Date): void {
+export function upsertInterruptedUsage(tx: BunSQLiteDatabase, count: number, now: Date, callerId = 'legacy'): void {
   addUsageDailyDelta(
     tx,
-    localDay(now),
+    usageLocalDate(now),
     'unknown',
     usageDailyDelta({ requestCount: BigInt(count), interruptedCount: BigInt(count) }),
+    callerId,
   );
 }
 
@@ -163,36 +188,48 @@ function addUsageDailyDelta(
   localDay: string,
   modelDimension: string,
   delta: UsageDailyDelta,
+  callerId: string,
 ): void {
-  const where = and(eq(usageDaily.localDay, localDay), eq(usageDaily.modelDimension, modelDimension));
-  const existing = tx.select().from(usageDaily).where(where).get();
-  const values = {
-    requestCount: addDecimal(existing?.requestCount, delta.requestCount),
-    successCount: addDecimal(existing?.successCount, delta.successCount),
-    errorCount: addDecimal(existing?.errorCount, delta.errorCount),
-    cancelledCount: addDecimal(existing?.cancelledCount, delta.cancelledCount),
-    interruptedCount: addDecimal(existing?.interruptedCount, delta.interruptedCount),
-    usageRequestCount: addDecimal(existing?.usageRequestCount, delta.usageRequestCount),
-    pricedRequestCount: addDecimal(existing?.pricedRequestCount, delta.pricedRequestCount),
-    inputTokens: addDecimal(existing?.inputTokens, delta.inputTokens),
-    outputTokens: addDecimal(existing?.outputTokens, delta.outputTokens),
-    totalTokens: addDecimal(existing?.totalTokens, delta.totalTokens),
-    cacheReadTokens: addDecimal(existing?.cacheReadTokens, delta.cacheReadTokens),
-    cacheWriteTokens: addDecimal(existing?.cacheWriteTokens, delta.cacheWriteTokens),
-    reasoningTokens: addDecimal(existing?.reasoningTokens, delta.reasoningTokens),
-    estimatedCostNanoUsd: addDecimal(existing?.estimatedCostNanoUsd, delta.estimatedCostNanoUsd),
-    normalizedCacheReadTokens: addDecimal(existing?.normalizedCacheReadTokens, delta.normalizedCacheReadTokens),
-    normalizedPromptTokens: addDecimal(existing?.normalizedPromptTokens, delta.normalizedPromptTokens),
-    cacheHitRateAvailable: existing?.cacheHitRateAvailable ?? 1,
-  };
+  for (const table of [usageDaily, usageCallerDaily]) {
+    const where = and(
+      eq(table.localDay, localDay),
+      eq(table.modelDimension, modelDimension),
+      table === usageCallerDaily ? eq(usageCallerDaily.callerId, callerId) : undefined,
+    );
+    const existing = tx.select().from(table).where(where).get();
+    const values = {
+      requestCount: addDecimal(existing?.requestCount, delta.requestCount),
+      successCount: addDecimal(existing?.successCount, delta.successCount),
+      errorCount: addDecimal(existing?.errorCount, delta.errorCount),
+      cancelledCount: addDecimal(existing?.cancelledCount, delta.cancelledCount),
+      interruptedCount: addDecimal(existing?.interruptedCount, delta.interruptedCount),
+      usageRequestCount: addDecimal(existing?.usageRequestCount, delta.usageRequestCount),
+      pricedRequestCount: addDecimal(existing?.pricedRequestCount, delta.pricedRequestCount),
+      inputTokens: addDecimal(existing?.inputTokens, delta.inputTokens),
+      outputTokens: addDecimal(existing?.outputTokens, delta.outputTokens),
+      totalTokens: addDecimal(existing?.totalTokens, delta.totalTokens),
+      cacheReadTokens: addDecimal(existing?.cacheReadTokens, delta.cacheReadTokens),
+      cacheWriteTokens: addDecimal(existing?.cacheWriteTokens, delta.cacheWriteTokens),
+      reasoningTokens: addDecimal(existing?.reasoningTokens, delta.reasoningTokens),
+      estimatedCostNanoUsd: addDecimal(existing?.estimatedCostNanoUsd, delta.estimatedCostNanoUsd),
+      normalizedCacheReadTokens: addDecimal(existing?.normalizedCacheReadTokens, delta.normalizedCacheReadTokens),
+      normalizedPromptTokens: addDecimal(existing?.normalizedPromptTokens, delta.normalizedPromptTokens),
+      cacheHitRateAvailable: existing?.cacheHitRateAvailable ?? 1,
+    };
 
-  if (existing === undefined) {
-    tx.insert(usageDaily)
-      .values({ localDay, modelDimension, ...values })
-      .run();
-    return;
+    if (existing === undefined) {
+      if (table === usageCallerDaily)
+        tx.insert(usageCallerDaily)
+          .values({ callerId, localDay, modelDimension, ...values })
+          .run();
+      else
+        tx.insert(usageDaily)
+          .values({ localDay, modelDimension, ...values })
+          .run();
+    } else {
+      tx.update(table).set(values).where(where).run();
+    }
   }
-  tx.update(usageDaily).set(values).where(where).run();
 }
 
 function addDecimal(existing: string | undefined, delta: bigint): string {

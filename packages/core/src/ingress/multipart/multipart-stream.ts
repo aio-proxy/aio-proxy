@@ -1,4 +1,4 @@
-import { RequestBodyTooLargeError, withAbortAndIdle } from '../../protocol/request';
+import { RequestBodyTooLargeError, withAbortAndIdle } from '../../protocol/request/index';
 import { ByteWindow } from './byte-window';
 
 const TEXT_DECODER = new TextDecoder();

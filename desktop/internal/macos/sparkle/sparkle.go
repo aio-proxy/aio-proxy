@@ -1,3 +1,5 @@
+//go:build darwin
+
 // Package sparkle is Sparkle 2.10.0 on the main thread: `SPUStandardUpdaterController` plus a
 // `SPUStandardUserDriverDelegate` with gentle reminders, because a background (`LSUIElement`) app
 // gets none from Sparkle. Updates only ever install through Sparkle's "Install and Relaunch"

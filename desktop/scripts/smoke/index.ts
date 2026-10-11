@@ -1,1 +1,1 @@
-export { hasJitRegion, runtimeSmoke } from './smoke';
+export { hasJitRegion, runtimeSmoke, serviceSmoke, type ServiceSmokeDeps } from './smoke';

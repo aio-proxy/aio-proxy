@@ -15,6 +15,7 @@ import { cooldownTtlMs } from './cooldown-write';
 import { resolveSupportedEffortsForDimensions } from './effort-capability';
 import { attemptLog } from './emit';
 import { resolveRawRetry, type RawInvocationResult } from './raw-retry';
+import { warmQuotaOnRefusal } from './warm-quota';
 
 // Raw passthrough for one candidate. The attempt span opens before the provider
 // call so its duration covers the upstream request, not just post-response work.
@@ -110,6 +111,7 @@ export async function completeRawAttempt<TRequest, TContext>(
     throw error;
   }
   const { response, invocation } = final;
+  observation.selectResponse?.(response);
   // A plugin can return 4xx/5xx or a cached 2xx without reading. Parse already
   // cloned, so this copy can hold a full tee branch until GC — including across
   // fallback, which clones from the original again. Do not await: `upstream` is
@@ -124,14 +126,19 @@ export async function completeRawAttempt<TRequest, TContext>(
   if (fallback || response.status < 200 || response.status >= 400) {
     const cooldownMs = cooldownTtlMs(response.status, response.headers.get('retry-after'), ctx.retryAfterCapMs);
     if (cooldownMs > 0) ctx.cooldown.cool(provider.id, candidate.modelId, cooldownMs);
+    warmQuotaOnRefusal(ctx.source, provider, response.status);
     const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
     logFailure(index, attemptLog(base, response.status), 'response', fallback, { response });
-    slot.spanRef.current = undefined;
-    ctx.emitter.endAttempt(attemptSpan, observation, failureTerminal(response.status));
     if (fallback) {
+      // Start cancellation before flushing send spans so their body terminal is
+      // visible. Do not await a provider cancellation that may never settle.
       try {
         void response.body?.cancel().catch(() => undefined);
       } catch {}
+    }
+    slot.spanRef.current = undefined;
+    ctx.emitter.endAttempt(attemptSpan, observation, failureTerminal(response.status));
+    if (fallback) {
       return { kind: 'fallback', lastFailure: response };
     }
     const retained = retainedFailure(response, ctx);
@@ -152,6 +159,7 @@ export async function completeRawAttempt<TRequest, TContext>(
           provider.upstreamMetadata?.[candidate.modelId]?.cost,
         );
   const captured = source.usageCapture.passthrough({
+    live: ctx.streamRequested,
     response: normalizedResponse,
     protocol: adapter.protocol,
     providerId: provider.id,

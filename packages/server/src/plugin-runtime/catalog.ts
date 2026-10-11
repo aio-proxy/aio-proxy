@@ -12,6 +12,7 @@ import {
 import { uniq } from 'es-toolkit/array';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import type { OAuthAccountSummary } from '../plugin-account';
 import type { RuntimeModelMetadata, RuntimeProviderInstance } from '../runtime';
 import type { MaterializePluginProviderOptions, PluginProviderMaterialization } from './types';
 
@@ -22,9 +23,7 @@ export function diagnosticState(diagnostic: Diagnostic): ProviderState {
 export function summary(
   config: OAuthProvider,
   provider: RuntimeProviderInstance | undefined,
-  persisted?: {
-    readonly accountLabel?: string;
-    readonly expiresAt?: number;
+  persisted?: OAuthAccountSummary & {
     readonly catalogLastSuccessAt?: string;
   },
   hasQuota = false,
@@ -49,6 +48,7 @@ export function summary(
     capability: config.capability,
     ...(persisted?.accountLabel === undefined ? {} : { accountLabel: persisted.accountLabel }),
     ...(persisted?.expiresAt === undefined ? {} : { expiresAt: persisted.expiresAt }),
+    ...(persisted?.localSignInSource === undefined ? {} : { localSignInSource: persisted.localSignInSource }),
     ...(persisted?.catalogLastSuccessAt === undefined ? {} : { catalogLastSuccessAt: persisted.catalogLastSuccessAt }),
   };
 }

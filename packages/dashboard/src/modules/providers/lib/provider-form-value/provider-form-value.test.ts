@@ -1,4 +1,4 @@
-import { ProviderKind } from '@aio-proxy/types';
+import { ProviderKind, ProviderMutationBodySchema } from '@aio-proxy/types';
 import { describe, expect, test } from '@rstest/core';
 
 import { normalizeProviderFormValue, parseProviderFormInitial, type ProviderFormShape } from './provider-form-value';
@@ -13,6 +13,16 @@ const apiValues = (overrides: Partial<ProviderFormShape> = {}): ProviderFormShap
   }) as ProviderFormShape;
 
 describe('normalizeProviderFormValue', () => {
+  test.each([ProviderKind.Api, ProviderKind.AiSdk])('manual %s submission omits leftover sync fields', (kind) => {
+    const values =
+      kind === ProviderKind.Api
+        ? apiValues({ models: ['a'] })
+        : { kind, id: 'provider', packageName: '@ai-sdk/openai', models: ['a'] };
+    const body = normalizeProviderFormValue({ ...values, syncModels: false, excludedModels: [] });
+    expect(body).not.toHaveProperty('syncModels');
+    expect(body).not.toHaveProperty('excludedModels');
+    expect(ProviderMutationBodySchema.safeParse(body).success).toBe(true);
+  });
   // `replaceProvider` writes this body verbatim into the user's hand-editable config file, so a
   // display name the user cleared must leave no key behind rather than stamp a dead `name: ""`. The
   // OAuth write path already drops it (`providerEntry` in core account-login/validation.ts); this is

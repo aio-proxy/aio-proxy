@@ -6,6 +6,9 @@ import {
   OAuthCapabilityUnavailableError,
   OAuthLoginResultValidationError,
   OAuthLoginTimeoutError,
+  OAuthLocalSignInUnavailableError,
+  OAuthLocalSignInInvalidError,
+  OAuthLocalSignInStaleError,
   OAuthProxyUnsupportedError,
   ProviderAccountAlreadyExistsError,
   ProviderAccountChangedError,
@@ -58,7 +61,7 @@ function presentationError(message: string): Error {
   return presented;
 }
 
-export function presentProviderLoginUserError(error: unknown): Error | null {
+export function presentProviderLoginUserError(error: unknown, localSignInSource?: string): Error | null {
   if (error instanceof ProviderAccountAlreadyExistsError) {
     const provider = safeIdentifier(safeProperty(error, 'existingProviderId'));
     if (provider === null) return null;
@@ -92,6 +95,17 @@ export function presentProviderLoginUserError(error: unknown): Error | null {
     return presentationError(m['cli.provider.login.error_config_invalid']());
   } else if (error instanceof OAuthLoginTimeoutError) {
     return presentationError(m['cli.provider.login.error_timeout']());
+  } else if (error instanceof OAuthLocalSignInUnavailableError) {
+    const source = localSignInSource === undefined ? null : safeText(localSignInSource);
+    return presentationError(
+      source === null
+        ? m['cli.provider_login.error_local_sign_in_unavailable_generic']()
+        : m['cli.provider_login.error_local_sign_in_unavailable']({ source }),
+    );
+  } else if (error instanceof OAuthLocalSignInInvalidError) {
+    return presentationError(m['cli.provider_login.error_local_sign_in_invalid']());
+  } else if (error instanceof OAuthLocalSignInStaleError) {
+    return presentationError(m['cli.provider_login.error_local_sign_in_stale']());
   } else if (error instanceof OAuthCapabilityRequiredError) {
     return presentationError(m['cli.provider.login.error_capability_required']());
   } else if (error instanceof OAuthProxyUnsupportedError) {

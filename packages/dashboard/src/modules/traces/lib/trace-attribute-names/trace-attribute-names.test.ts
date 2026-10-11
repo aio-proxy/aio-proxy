@@ -51,6 +51,15 @@ test('a skipped token-count candidate carries an index but is not an attempt', (
   expect(isAttemptSpan(span)).toBe(false);
 });
 
+test('an actual send carries its candidate index without becoming a second attempt', () => {
+  const span = createSpan({
+    name: 'POST /v1/responses',
+    kind: 'CLIENT',
+    attributes: { 'aio_proxy.attempt.index': 0, 'aio_proxy.upstream.send_index': 1 },
+  });
+  expect(isAttemptSpan(span)).toBe(false);
+});
+
 test.each([traceSpanName.inference, 'aio_proxy.request', 'aio_proxy.request.parse', 'POST'])(
   'treats %s as not an attempt because it carries no attempt index',
   (name) => {

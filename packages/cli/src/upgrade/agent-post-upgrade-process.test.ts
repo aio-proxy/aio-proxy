@@ -47,20 +47,29 @@ else console.log(JSON.stringify([{ target: "opencode", status: "updated" }]));
   return binary;
 }
 
-test('verified new binary receives one closed-stdin JSON payload and returns typed JSON', async () => {
-  const binary = await fakeBinary('success');
-  await expect(resolveNewAgentBinary({ method: 'binary', path: binary }, '2.0.0')).resolves.toBe(binary);
-  await expect(invokeAgentPostUpgrade(binary, PROCESS_PAYLOAD, { timeoutMs: 1_000 })).resolves.toEqual([
-    { target: 'opencode', status: 'updated' },
-  ]);
-});
+// POSIX-only: the fake aio-proxy is an extensionless shebang script, which Windows cannot spawn.
+test.skipIf(process.platform === 'win32')(
+  'verified new binary receives one closed-stdin JSON payload and returns typed JSON',
+  async () => {
+    const binary = await fakeBinary('success');
+    await expect(resolveNewAgentBinary({ method: 'binary', path: binary }, '2.0.0')).resolves.toBe(binary);
+    await expect(invokeAgentPostUpgrade(binary, PROCESS_PAYLOAD, { timeoutMs: 1_000 })).resolves.toEqual([
+      { target: 'opencode', status: 'updated' },
+    ]);
+  },
+);
 
-test('wrong installed version fails before the hidden command can run', async () => {
-  const binary = await fakeBinary('wrong_version');
-  await expect(resolveNewAgentBinary({ method: 'binary', path: binary }, '2.0.0')).rejects.toThrow('expected 2.0.0');
-});
+// POSIX-only: the fake aio-proxy is an extensionless shebang script, which Windows cannot spawn.
+test.skipIf(process.platform === 'win32')(
+  'wrong installed version fails before the hidden command can run',
+  async () => {
+    const binary = await fakeBinary('wrong_version');
+    await expect(resolveNewAgentBinary({ method: 'binary', path: binary }, '2.0.0')).rejects.toThrow('expected 2.0.0');
+  },
+);
 
-test('a package-manager upgrade uses target.bin rather than PATH', async () => {
+// POSIX-only: the fake aio-proxy is an extensionless shebang script, which Windows cannot spawn.
+test.skipIf(process.platform === 'win32')('a package-manager upgrade uses target.bin rather than PATH', async () => {
   const binary = await fakeBinary('success');
   await expect(
     resolveNewAgentBinary({ method: 'bun', command: join(dirname(binary), 'bun'), bin: binary }, '2.0.0'),
@@ -75,7 +84,8 @@ test.each(['nonzero', 'malformed', 'schema_invalid'] as const)(
   },
 );
 
-test('the hidden child is killed at the configured timeout', async () => {
+// POSIX-only: the fake aio-proxy is an extensionless shebang script, which Windows cannot spawn.
+test.skipIf(process.platform === 'win32')('the hidden child is killed at the configured timeout', async () => {
   const binary = await fakeBinary('timeout');
   await expect(invokeAgentPostUpgrade(binary, PROCESS_PAYLOAD, { timeoutMs: 25 })).rejects.toThrow('timed out');
 });

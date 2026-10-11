@@ -2,7 +2,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 import { createParser } from 'eventsource-parser';
 
-import { hasContentDelta, hasTtftFallbackContent } from './content';
+import { contentDeltaLength, createTtftFallbackDetector, hasContentDelta, hasToolCallOutput } from './content';
 import { countResponseItems, createResponseItemCounter, type ResponseItemCounts, withItemCounts } from './event-counts';
 import {
   anthropicTotalTokens,
@@ -36,7 +36,8 @@ export type PassthroughSseUsageObserver = {
 
 export type PassthroughSseCallbacks = {
   readonly onEvent?: () => void;
-  readonly onContent?: () => void;
+  readonly onToolOutput?: () => void;
+  readonly onContent?: (chars: number) => void;
   readonly onTerminal?: (observation: PassthroughObservation) => void;
 };
 
@@ -63,6 +64,7 @@ export function createPassthroughSseUsageObserver(
   let observed: UsageExtraction = { kind: 'absent' };
   let responseId: string | undefined;
   let sawContent = false;
+  const isTtftFallback = createTtftFallbackDetector(protocol);
   let failed = false;
   const itemCounter = createResponseItemCounter(protocol);
   let linePrefix = '';
@@ -129,15 +131,16 @@ export function createPassthroughSseUsageObserver(
           safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed, itemCounter.totals())));
         return;
       }
+      if (hasToolCallOutput(protocol, event.event, parsed)) safely(callbacks.onToolOutput);
       observed = mergeObservedUsage(protocol, observed, usageFromJson(protocol, parsed));
       itemCounter.observe(event.event, parsed);
       responseId = completedResponseId(protocol, parsed) ?? responseId;
       if (hasContentDelta(protocol, event.event, parsed)) {
         sawContent = true;
-        safely(callbacks.onContent);
-      } else if (!sawContent && hasTtftFallbackContent(protocol, event.event, parsed)) {
+        safely(() => callbacks.onContent?.(contentDeltaLength(protocol, event.event, parsed)));
+      } else if (!sawContent && isTtftFallback(event.event, parsed)) {
         sawContent = true;
-        safely(callbacks.onContent);
+        safely(() => callbacks.onContent?.(0));
       }
       if (failEvent || failParsed || isSuccessTerminal(protocol, event.event, parsed)) {
         safely(() => callbacks.onTerminal?.(observation(observed, responseId, failed, itemCounter.totals())));
@@ -262,6 +265,7 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
     // System One has no SSE terminal sentinel because it has no SSE: the response
     // is one buffered JSON body, so completion is settled at EOF, which is where
     // the whole payload — and therefore the usage object — is observed anyway.
+    case ProviderProtocol.OpenAIDecisions:
     case ProviderProtocol.TypeSafeSystemOne:
       return false;
     default:

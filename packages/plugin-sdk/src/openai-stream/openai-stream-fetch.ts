@@ -1,3 +1,4 @@
+import { inheritUpstreamResponseIdentity } from '@aio-proxy/shared';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { createContentDecodedReader, type ContentDecodedReader } from './content-decoding';
@@ -192,11 +193,14 @@ function rebuildResponse(response: Response, body: ReadableStream<Uint8Array> | 
   const headers = new Headers(response.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  return inheritUpstreamResponseIdentity(
+    response,
+    new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    }),
+  );
 }
 
 function normalizeControlledResponse(

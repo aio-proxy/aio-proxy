@@ -3,6 +3,32 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { OAuthAuthorizationPanel } from './oauth-authorization-panel';
 
+test.each([
+  [
+    'OAUTH_LOCAL_SIGN_IN_UNAVAILABLE',
+    'The sign-in on this machine is no longer available. Sign in with the tool, then try again.',
+  ],
+  [
+    'OAUTH_LOCAL_SIGN_IN_INVALID',
+    'The sign-in on this machine could not be used. Sign in again with the tool, then try again.',
+  ],
+  [
+    'OAUTH_LOCAL_SIGN_IN_STALE',
+    'aio-proxy already has a newer sign-in. The sign-in on this machine will be updated when tokens refresh.',
+  ],
+])('explains local sign-in failure %s without exposing an internal code', (code, message) => {
+  render(
+    <OAuthAuthorizationPanel
+      session={{ id: '550e8400-e29b-41d4-a716-446655440000', status: 'failed', code }}
+      onSubmitCallback={rs.fn()}
+      onCancel={rs.fn()}
+      isPending={false}
+    />,
+  );
+  expect(screen.getByText(message)).toBeInTheDocument();
+  expect(screen.queryByText(new RegExp(code, 'u'))).toBeNull();
+});
+
 test('shows specific fingerprint mismatch guidance', () => {
   render(
     <OAuthAuthorizationPanel

@@ -1,5 +1,61 @@
 # @aio-proxy/plugin-xai-grok
 
+## 0.42.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.42.1
+
+## 0.42.0
+
+### Patch Changes
+
+- Updated dependencies [[`a2c3d0e`](https://github.com/aio-proxy/aio-proxy/commit/a2c3d0e304db29be37a7284202e17ac3373f0dbb)]:
+  - @aio-proxy/plugin-sdk@0.42.0
+
+## 0.41.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.41.1
+
+## 0.41.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.41.0
+
+## 0.40.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.40.0
+
+## 0.39.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.39.1
+
+## 0.39.0
+
+### Patch Changes
+
+- Updated dependencies [[`2763925`](https://github.com/aio-proxy/aio-proxy/commit/27639251609ad47a3d5265815c2a27bd7bc0abb9), [`946073c`](https://github.com/aio-proxy/aio-proxy/commit/946073caf8219dd6309498aba893b77993193ef1)]:
+  - @aio-proxy/plugin-sdk@0.39.0
+
+## 0.38.0
+
+### Patch Changes
+
+- Updated dependencies [[`24d77d0`](https://github.com/aio-proxy/aio-proxy/commit/24d77d05fd4e27bfa918a568d904e71ce3593f3b)]:
+  - @aio-proxy/plugin-sdk@0.38.0
+
 ## 0.37.0
 
 ### Patch Changes

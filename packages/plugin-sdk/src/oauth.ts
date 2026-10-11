@@ -98,6 +98,29 @@ export type OAuthCredentialImporter<AccountOptions, Credential> = {
   ) => Promise<OAuthLoginResult<Credential>>;
 };
 
+export type OAuthLocalSignInContext = { readonly signal: AbortSignal };
+
+export type OAuthLocalSignIn<AccountOptions, Credential> = {
+  readonly source: LocalizedText;
+  /** Checks presence only; never parses the host store or reads or returns secrets. */
+  readonly detect: (context: OAuthLocalSignInContext) => Promise<boolean>;
+  /**
+   * Reads the host sign-in after explicit user consent for this account. For adapters with `write`,
+   * the same store contents must map to the same credential value: the framework compares canonical
+   * digests of two reads. Never include host credentials in logs, diagnostics, or errors.
+   */
+  readonly read: (
+    context: OAuthCredentialImportContext,
+    options: AccountOptions,
+  ) => Promise<OAuthLoginResult<Credential>>;
+  /**
+   * Only for rotating stores. Replace only while the host still holds `previous` (same account and
+   * refresh token), re-checked immediately before the atomic replace; otherwise return without writing.
+   * Complete the write even if the signal is aborted, since rotation has already consumed the token.
+   */
+  readonly write?: (context: OAuthLocalSignInContext, next: Credential, previous: Credential) => Promise<void>;
+};
+
 export type CredentialSnapshot<Credential> = {
   readonly value: Credential;
   readonly revision: number;
@@ -138,7 +161,20 @@ export type OAuthQuotaItem = {
    * upstream states the duration or both ends of the period, never as a guess from the label.
    */
   readonly windowMinutes?: number;
+  /**
+   * Which models this window gates. Declare it only when the upstream **refuses** requests for the
+   * covered models once `remainingRatio` reaches 0, until `resetsAt`: aio-proxy then skips the
+   * Provider for those models instead of attempting a request bound to fail. Omit it for windows that
+   * overflow into paid usage or only inform; an item without a scope never affects routing.
+   *
+   * `'account'` covers every model the account serves. `models` entries match the upstream model id
+   * case-insensitively, `*` matches any run of characters, and a leading `!` excludes; a model is
+   * covered when it matches an inclusion and no exclusion.
+   */
+  readonly scope?: OAuthQuotaItemScope;
 };
+
+export type OAuthQuotaItemScope = 'account' | { readonly models: readonly string[] };
 
 export type OAuthQuotaResetCredit = {
   readonly id: string;
@@ -229,6 +265,7 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   readonly credentialImports?: {
     readonly cpa?: OAuthCredentialImporter<AccountOptions, Credential>;
   };
+  readonly localSignIn?: OAuthLocalSignIn<AccountOptions, Credential>;
   readonly catalog: {
     readonly policy: { readonly kind: 'static' } | { readonly kind: 'ttl'; readonly ttlMs: number };
     readonly discover: (context: AccountContext<Credential, AccountOptions>) => Promise<ModelCatalog>;

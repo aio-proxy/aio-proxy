@@ -1,3 +1,5 @@
+//go:build darwin
+
 // Package menu measures the companion's AppKit command menu. MyGo exposes PopupAt but no menu
 // bounds; matching its native template lets the footer preserve its bottom-right anchor.
 package menu

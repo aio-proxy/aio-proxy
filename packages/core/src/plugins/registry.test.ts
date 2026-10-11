@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
-import { definePlugin, type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
+import { definePlugin, type OAuthAdapter, type OAuthCredentialImportContext, zod } from '@aio-proxy/plugin-sdk';
 
 import { npmPackageCacheDir } from '../npm';
 import type { DiagnosticFactory } from './diagnostic';
@@ -75,6 +75,128 @@ const base = {
 };
 
 describe('PluginRegistry staging', () => {
+  test('registers an adapter with localSignIn and keeps its methods bound', async () => {
+    class LocalSignIn {
+      readonly source = { default: 'Example tool', 'zh-Hans': '示例工具' };
+      readonly calls: string[] = [];
+      #token = 'previous-token';
+
+      async detect(context: { readonly signal: AbortSignal }) {
+        context.signal.throwIfAborted();
+        this.calls.push('detect');
+        return this.#token !== '';
+      }
+
+      async read(context: OAuthCredentialImportContext, options: { readonly accountId: string }) {
+        context.signal.throwIfAborted();
+        this.calls.push('read');
+        context.progress('Reading example sign-in');
+        return {
+          fingerprint: options.accountId,
+          suggestedKey: options.accountId,
+          credentials: { token: this.#token },
+        };
+      }
+
+      async write(
+        _context: { readonly signal: AbortSignal },
+        next: { readonly token: string },
+        previous: { readonly token: string },
+      ) {
+        this.calls.push('write');
+        if (this.#token === previous.token) this.#token = next.token;
+      }
+    }
+
+    const localSignIn = new LocalSignIn();
+    const host = createPluginRegistryHost();
+    const staging = host.stage('@example/local-sign-in');
+    staging.api.oauth.register(fakeAdapter('default', { localSignIn }));
+    staging.seal();
+    staging.commit();
+
+    expect(localSignIn.calls).toEqual([]);
+    const resolved = host.registry.resolveOAuth('@example/local-sign-in', 'default')?.localSignIn;
+    expect(resolved).toBeDefined();
+    if (resolved === undefined) throw new Error('local sign-in not registered');
+    expect(resolved.source).toEqual(localSignIn.source);
+    const { detect, read, write } = resolved;
+    const signal = new AbortController().signal;
+    const progress: string[] = [];
+    const context = { signal, progress: (message: unknown) => progress.push(String(message)) };
+    const options = { accountId: 'example-account' };
+    await expect(detect({ signal })).resolves.toBe(true);
+    await expect(read(context, options)).resolves.toEqual({
+      fingerprint: 'example-account',
+      suggestedKey: 'example-account',
+      credentials: { token: 'previous-token' },
+    });
+    expect(write).toBeDefined();
+    if (write === undefined) throw new Error('local sign-in write not registered');
+    await write({ signal }, { token: 'next-token' }, { token: 'previous-token' });
+    await expect(read(context, options)).resolves.toMatchObject({ credentials: { token: 'next-token' } });
+    expect(localSignIn.calls).toEqual(['detect', 'read', 'write', 'read']);
+    expect(progress).toEqual(['Reading example sign-in', 'Reading example sign-in']);
+  });
+
+  test('registers a read-only local sign-in without adding write', async () => {
+    const localSignIn = {
+      source: 'Example tool',
+      async detect() {
+        return true;
+      },
+      async read() {
+        return { fingerprint: 'example', suggestedKey: 'example', credentials: { token: 'example-token' } };
+      },
+    };
+    const host = createPluginRegistryHost();
+    const staging = host.stage('@example/read-only-local-sign-in');
+    staging.api.oauth.register(fakeAdapter('default', { localSignIn }));
+    staging.seal();
+    staging.commit();
+
+    const resolved = host.registry.resolveOAuth('@example/read-only-local-sign-in', 'default')?.localSignIn;
+    expect(resolved).toBeDefined();
+    if (resolved === undefined) throw new Error('local sign-in not registered');
+    expect(resolved.source).toBe('Example tool');
+    expect(resolved).not.toHaveProperty('write');
+    await expect(
+      resolved.read({ signal: new AbortController().signal, progress: () => {} }, {}),
+    ).resolves.toMatchObject({
+      credentials: { token: 'example-token' },
+    });
+  });
+
+  const validLocalSignIn = {
+    source: 'Example tool',
+    detect: async () => true,
+    read: async () => ({ fingerprint: 'example', suggestedKey: 'example', credentials: {} }),
+  };
+  test.each([
+    ['null', null],
+    ['array', []],
+    ['primitive', true],
+    ['missing detect', { source: validLocalSignIn.source, read: validLocalSignIn.read }],
+    ['missing read', { source: validLocalSignIn.source, detect: validLocalSignIn.detect }],
+    ['non-function detect', { ...validLocalSignIn, detect: true }],
+    ['non-function read', { ...validLocalSignIn, read: true }],
+    ['non-function write', { ...validLocalSignIn, write: true }],
+    ['missing source', { detect: validLocalSignIn.detect, read: validLocalSignIn.read }],
+    ['empty source', { ...validLocalSignIn, source: '' }],
+    ['padded source', { ...validLocalSignIn, source: ' Example tool ' }],
+    ['source without default', { ...validLocalSignIn, source: { 'zh-Hans': '示例工具' } }],
+    ['invalid source translation', { ...validLocalSignIn, source: { default: 'Example tool', 'zh-Hans': 1 } }],
+  ])('rejects invalid localSignIn: %s', (_reason, localSignIn) => {
+    const host = createPluginRegistryHost();
+    const staging = host.stage('@example/invalid-local-sign-in');
+    expect(() => staging.api.oauth.register(fakeAdapter('default', { localSignIn }))).toThrow(
+      new Error('Invalid OAuth adapter'),
+    );
+    staging.seal();
+    staging.commit();
+    expect(host.registry.oauthCapabilities()).toHaveLength(0);
+  });
+
   test('setup throw leaves no staged capabilities', async () => {
     const descriptor = definePlugin((api) => {
       api.oauth.register(fakeAdapter('first'));

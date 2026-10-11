@@ -145,7 +145,7 @@ func TestNewSystemHostPrefersTheSymlinkThenTheBundledSidecar(t *testing.T) {
 	}
 	writeScript(t, sidecar, "#!/bin/sh\n")
 	h, ok := NewSystemHost(paths, bundle)
-	if !ok || h.Exec != sidecar || h.DesktopExec != paths.Symlink || h.UID != uint32(os.Getuid()) {
+	if !ok || h.Exec != sidecar || h.DesktopExec != paths.Symlink || h.UID != currentUID() {
 		t.Errorf("sidecar host %+v %v", h, ok)
 	}
 	if err := os.MkdirAll(filepath.Dir(paths.Symlink), 0o755); err != nil {
