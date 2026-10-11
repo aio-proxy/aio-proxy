@@ -1,6 +1,9 @@
 package update
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestDecide(t *testing.T) {
 	if outcome, version := Decide("0.40.0", "0.41.0", true, false); outcome != CheckAvailable || version != "0.41.0" {
@@ -21,10 +24,12 @@ func TestDecide(t *testing.T) {
 }
 
 func TestInstallPlan(t *testing.T) {
-	if action, url := InstallPlan("/opt/AIO Proxy.AppImage", func(string) bool { return false }, "0.41.0"); action != InstallOpenURL || url != ReleasePage("0.41.0") {
+	image := filepath.Join("/opt", "AIO Proxy.AppImage")
+	dir := filepath.Dir(image)
+	if action, url := InstallPlan(image, func(string) bool { return false }, "0.41.0"); action != InstallOpenURL || url != ReleasePage("0.41.0") {
 		t.Fatal(action, url)
 	}
-	if action, _ := InstallPlan("/opt/AIO Proxy.AppImage", func(dir string) bool { return dir == "/opt" }, "0.41.0"); action != InstallInPlace {
+	if action, _ := InstallPlan(image, func(got string) bool { return got == dir }, "0.41.0"); action != InstallInPlace {
 		t.Fatal(action)
 	}
 	if action, _ := InstallPlan("", func(string) bool { return true }, "0.41.0"); action != InstallOpenURL {

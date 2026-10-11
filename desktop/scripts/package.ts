@@ -24,6 +24,12 @@ import { $ } from 'bun';
 
 import { assetName, checkRehearsalEnv, packagerConfig, targetBuild, withVersion } from './package/index';
 
+// type2-runtime 20251108. The continuous tag moves, so the digest is the GitHub release asset's.
+const appImageRuntimeSHA256: Record<string, string> = {
+  'runtime-aarch64': '00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444',
+  'runtime-x86_64': '2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d',
+};
+
 const NATIVE_TARGETS: Record<string, string> = {
   'linux-x64': 'linux-x86_64',
   'linux-arm64': 'linux-aarch64',
@@ -168,12 +174,6 @@ async function assembleAppImage(image: string): Promise<void> {
   await Bun.write(image, new Blob([header, filesystem]));
   chmodSync(image, 0o755);
 }
-
-// type2-runtime 20251108. The continuous tag moves, so the digest is the GitHub release asset's.
-const appImageRuntimeSHA256: Record<string, string> = {
-  'runtime-aarch64': '00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444',
-  'runtime-x86_64': '2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d',
-};
 
 async function appImageRuntime(): Promise<string> {
   const name = process.arch === 'arm64' ? 'runtime-aarch64' : 'runtime-x86_64';

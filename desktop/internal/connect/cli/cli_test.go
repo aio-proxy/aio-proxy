@@ -67,7 +67,15 @@ func writeScript(t *testing.T, path, body string) {
 	}
 }
 
+func skipUnixShell(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("runs a Unix shell script")
+	}
+}
+
 func TestDiscoveryReadsTheChildsStdoutAndReportsFailuresWithoutIt(t *testing.T) {
+	skipUnixShell(t)
 	script := filepath.Join(t.TempDir(), "aio-proxy")
 	writeScript(t, script, "#!/bin/sh\n[ \"$1\" = __desktop-connect ] || exit 9\ncat <<'JSON'\n"+discoverytest.SpecExample+"JSON\n")
 	found, err := host(script).Discover()
@@ -86,6 +94,7 @@ func TestDiscoveryReadsTheChildsStdoutAndReportsFailuresWithoutIt(t *testing.T) 
 }
 
 func TestAFailingDiscoveryIsAnErrorEvenWhenStdoutIsValidJSON(t *testing.T) {
+	skipUnixShell(t)
 	script := filepath.Join(t.TempDir(), "aio-proxy")
 	writeScript(t, script, "#!/bin/sh\ncat <<'JSON'\n"+discoverytest.SpecExample+"JSON\necho boom >&2\nexit 1\n")
 	_, err := host(script).Discover()
@@ -95,6 +104,7 @@ func TestAFailingDiscoveryIsAnErrorEvenWhenStdoutIsValidJSON(t *testing.T) {
 }
 
 func TestServiceVerbsRunTheCLIWithThePlistHome(t *testing.T) {
+	skipUnixShell(t)
 	dir := t.TempDir()
 	script, record := filepath.Join(dir, "aio-proxy"), filepath.Join(dir, "record")
 	writeScript(t, script, "#!/bin/sh\necho \"$1 $2 $AIO_PROXY_HOME $AIO_PROXY_DESKTOP_EXEC\" > '"+record+"'\n")
@@ -114,6 +124,7 @@ func TestServiceVerbsRunTheCLIWithThePlistHome(t *testing.T) {
 }
 
 func TestPidAliveCountsOnlyExistingProcesses(t *testing.T) {
+	skipUnixShell(t)
 	h := host("/bin/sh")
 	if !h.PidAlive(uint32(os.Getpid())) {
 		t.Error("this process reads as dead")
@@ -131,20 +142,27 @@ func TestPidAliveCountsOnlyExistingProcesses(t *testing.T) {
 }
 
 func TestBundledSidecarUsesThePlatformLayout(t *testing.T) {
-	if got := bundledSidecar("darwin", "/Applications/AIO Proxy.app", ""); got != "/Applications/AIO Proxy.app/Contents/MacOS/aio-proxy" {
-		t.Fatalf("darwin %s", got)
-	}
-	if got := bundledSidecar("linux", "/opt/aio-proxy-desktop", ""); got != "/opt/aio-proxy" {
-		t.Fatalf("linux beside the host %s", got)
-	}
-	if got := bundledSidecar("linux", "/opt/aio-proxy-desktop", "relative"); got != "/opt/aio-proxy" {
-		t.Fatalf("relative APPDIR %s", got)
-	}
-	if got := bundledSidecar("linux", "/opt/AIO.AppImage", "/tmp/mount"); got != "/tmp/mount/usr/bin/aio-proxy" {
-		t.Fatalf("APPDIR %s", got)
-	}
-	if got := bundledSidecar("windows", filepath.Join("/AIO Proxy", "aio-proxy-desktop.exe"), ""); filepath.Base(got) != "aio-proxy.exe" || filepath.Dir(got) != filepath.Dir(filepath.Join("/AIO Proxy", "aio-proxy-desktop.exe")) {
-		t.Fatalf("windows %s", got)
+	switch runtime.GOOS {
+	case "darwin":
+		bundle := filepath.Join("/Applications", "AIO Proxy.app")
+		if got := bundledSidecar("darwin", bundle, ""); got != install.SidecarOf(bundle) {
+			t.Fatalf("darwin %s", got)
+		}
+	case "windows":
+		bundle := filepath.Join(`C:\AIO Proxy`, "aio-proxy-desktop.exe")
+		if got, want := bundledSidecar("windows", bundle, ""), filepath.Join(`C:\AIO Proxy`, "aio-proxy.exe"); got != want {
+			t.Fatalf("windows %s", got)
+		}
+	default:
+		if got := bundledSidecar("linux", "/opt/aio-proxy-desktop", ""); got != "/opt/aio-proxy" {
+			t.Fatalf("linux beside the host %s", got)
+		}
+		if got := bundledSidecar("linux", "/opt/aio-proxy-desktop", "relative"); got != "/opt/aio-proxy" {
+			t.Fatalf("relative APPDIR %s", got)
+		}
+		if got := bundledSidecar("linux", "/opt/AIO.AppImage", "/tmp/mount"); got != "/tmp/mount/usr/bin/aio-proxy" {
+			t.Fatalf("APPDIR %s", got)
+		}
 	}
 }
 
