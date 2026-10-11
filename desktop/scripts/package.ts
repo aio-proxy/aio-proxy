@@ -12,6 +12,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -96,8 +97,8 @@ try {
   step('4. go build');
   const ldflags = ['-s', '-w', `-X github.com/aio-proxy/aio-proxy/desktop/internal/version.App=${version}`];
   if (build.format === 'nsis') ldflags.push('-H=windowsgui');
-  const feed = process.env.AIO_PROXY_DESKTOP_FEED_URL;
-  const key = process.env.AIO_PROXY_DESKTOP_UPDATE_KEY;
+  const feed = process.env['AIO_PROXY_DESKTOP_FEED_URL'];
+  const key = process.env['AIO_PROXY_DESKTOP_UPDATE_KEY'];
   if (feed !== undefined) ldflags.push(`-X github.com/aio-proxy/aio-proxy/desktop/internal/update.FeedURL=${feed}`);
   if (key !== undefined) ldflags.push(`-X github.com/aio-proxy/aio-proxy/desktop/internal/update.PublicKeyB64=${key}`);
   await $`go build -trimpath -ldflags=${ldflags.join(' ')} -o ${app} .`
@@ -206,7 +207,12 @@ Unicode true
 !include FileFunc.nsh
 !include nsExec.nsh
 !define MAINBINARYNAME "aio-proxy-desktop"
+!define PRODUCTNAME "AIO Proxy"
 Name "AIO Proxy"
+!insertmacro MUI_LANGUAGE "English"
+LangString appRunning \${LANG_ENGLISH} "\${PRODUCTNAME} is running! Please close it first then try again."
+LangString appRunningOkKill \${LANG_ENGLISH} "\${PRODUCTNAME} is running!$\\nClick OK to kill it"
+LangString failedToKillApp \${LANG_ENGLISH} "Failed to kill \${PRODUCTNAME}. Please close it first then try again"
 OutFile "${image.replaceAll('\\', '\\\\')}"
 InstallDir "$LOCALAPPDATA\\AIO Proxy"
 RequestExecutionLevel user

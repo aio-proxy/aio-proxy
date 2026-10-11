@@ -1,12 +1,10 @@
-; Spliced into cargo-packager 0.11.8's installer.nsi as `nsis.preinstallSection` by
-; desktop/scripts/package.ts. It lands ahead of the template's `Section Uninstall`, so this `un.`
-; section runs first in the uninstaller.
+; Included by desktop/scripts/package.ts ahead of `Section Uninstall`, so this `un.`
+; section runs first. That script defines the English strings used when the app is still open.
 ;
-; The template runs the previous version's uninstaller as `uninstall.exe /P _?=<dir>` only during an
-; interactive upgrade (PageLeaveReinstall); a passive or silent update never runs it. A user uninstall
-; (Settings, Control Panel, `uninstall.exe` with or without /S) passes no /P. Only then does this
-; section remove what the app set up outside $INSTDIR, so an upgrade keeps the service, its stop/start
-; intent, the aiop shims and the login item.
+; An upgrade can run `uninstall.exe /P`. A user uninstall (Settings, Control Panel, or
+; `uninstall.exe` with or without /S) passes no /P. Only then does this section remove what the
+; app set up outside $INSTDIR, so an upgrade keeps the service, its stop/start intent, the aiop
+; shims and the login item.
 
 !define AIOP_SUPPORT "$LOCALAPPDATA\aio-proxy-desktop"
 !define AIOP_SHIMS "$LOCALAPPDATA\aio-proxy-desktop\bin\shims"

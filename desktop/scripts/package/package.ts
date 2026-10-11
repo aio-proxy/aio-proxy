@@ -65,7 +65,7 @@ export function checkRehearsalEnv(env: Env, rehearsal: boolean): void {
   if (set.length > 0) throw new Error(`${set.join(' and ')} must be unset outside a --rehearsal build`);
 }
 
-/** The values the generated cargo-packager config takes from this build rather than from Cargo.toml. */
+/** The version and optional Windows sign command this build takes from the environment. */
 export function packagerConfig(version: string, env: Env): { version: string; signCommand?: string } {
   const signCommand = env['WINDOWS_SIGN_COMMAND'];
   return signCommand === undefined || signCommand === '' ? { version } : { version, signCommand };
