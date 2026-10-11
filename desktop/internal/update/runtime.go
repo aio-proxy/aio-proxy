@@ -131,7 +131,13 @@ func check(interactive bool) {
 	if target != "" && ok {
 		asset = path.Base(entry.URL)
 		if err := CheckTrusted(entry.Signature, Offer{Version: feed.Version, Target: target, Asset: asset}); err != nil {
-			ok = false
+			// A bad signature is not "up to date": Decide only hears that no offer verified.
+			log.Printf("updater: signature rejected: %v", err)
+			clearPending()
+			if interactive {
+				report("Could not check for updates: "+err.Error(), true)
+			}
+			return
 		}
 	} else {
 		ok = false
@@ -146,16 +152,20 @@ func check(interactive bool) {
 			onOffer(found)
 		}
 	default:
-		pendingMu.Lock()
-		had := pending != nil
-		pending = nil
-		pendingMu.Unlock()
-		if had && onClear != nil {
-			onClear()
-		}
+		clearPending()
 		if outcome == CheckUpToDate {
 			report("AIO Proxy is up to date.", false)
 		}
+	}
+}
+
+func clearPending() {
+	pendingMu.Lock()
+	had := pending != nil
+	pending = nil
+	pendingMu.Unlock()
+	if had && onClear != nil {
+		onClear()
 	}
 }
 

@@ -28,6 +28,7 @@ func RunWithTimeout(cmd *exec.Cmd, timeout time.Duration) (Output, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdin = nil
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	hideWindow(cmd)
 	if err := cmd.Start(); err != nil {
 		return Output{}, err
 	}
