@@ -1,5 +1,15 @@
 # aio-proxy
 
+## 0.42.2
+
+### Patch Changes
+
+- [#506](https://github.com/aio-proxy/aio-proxy/pull/506) [`976475a`](https://github.com/aio-proxy/aio-proxy/commit/976475a537d498d6b97d5dd8163a11c608dd3324) Thanks @olivewind - Reduce peak memory and processing overhead for large image-heavy Responses requests by reusing their wire document during raw forwarding and provider fallback. Preserve original bytes when no rewrite is needed, unknown fields, request limits, compressed uploads, and cancellation behavior.
+
+- [#503](https://github.com/aio-proxy/aio-proxy/pull/503) [`12f70a5`](https://github.com/aio-proxy/aio-proxy/commit/12f70a55504b3023fabe38d90c64d2181bbe474f) Thanks @olivewind - Finish cancelled request uploads promptly so their traces no longer remain in progress after clients disconnect.
+
+- [#505](https://github.com/aio-proxy/aio-proxy/pull/505) [`2916fb8`](https://github.com/aio-proxy/aio-proxy/commit/2916fb862b6e5f4d8c321046e1756263b0b4fb58) Thanks @baranwang - Rebuild the desktop companion in Go with native MyGo UI on macOS, Linux, and Windows. macOS keeps the compact menu-bar metrics, Sparkle updates, and the login item. Linux and Windows keep tray or window operation, launch at login, the stable service copy, signed updates, and the AppImage and NSIS packages. Menu Bar Display reads live today tokens, cost, in-flight requests, and output tok/s from the local desktop API. Desktop builds no longer require Rust.
+
 ## 0.42.1
 
 ### Patch Changes
