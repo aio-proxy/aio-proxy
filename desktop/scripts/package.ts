@@ -222,7 +222,6 @@ Unicode true
 !include MUI2.nsh
 !include LogicLib.nsh
 !include FileFunc.nsh
-!include nsExec.nsh
 !define MAINBINARYNAME "aio-proxy-desktop"
 !define PRODUCTNAME "AIO Proxy"
 Name "AIO Proxy"
