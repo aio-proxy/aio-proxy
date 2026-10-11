@@ -50,7 +50,7 @@ if (release !== undefined && release.feedUrl !== DEFAULT_FEED_URL) {
 const step = (name: string): void => console.error(`\n==> ${name}`);
 
 step('1. verify tools');
-const tools = ['cargo', 'codesign', 'vtool', 'lipo', 'ditto', 'tar', 'plutil', 'xcrun'];
+const tools = ['go', 'codesign', 'vtool', 'lipo', 'ditto', 'tar', 'plutil', 'xcrun'];
 if (release !== undefined) tools.push('hdiutil', 'spctl', 'syspolicy_check');
 for (const tool of tools) {
   if (Bun.which(tool) === null) throw new Error(`missing tool: ${tool}`);
@@ -58,7 +58,8 @@ for (const tool of tools) {
 for (const tool of ['actool', ...(release === undefined ? [] : ['notarytool', 'stapler'])]) {
   if ((await $`xcrun --find ${tool}`.nothrow().quiet()).exitCode !== 0) throw new Error(`missing tool: xcrun ${tool}`);
 }
-const sparkle = await fetchSparkle(join(desktop, 'vendor'));
+// A Go module treats vendor/ as module vendoring, not a native-framework download cache.
+const sparkle = await fetchSparkle(join(desktop, '.cache'));
 const version = ((await Bun.file(join(root, 'npm/aio-proxy/package.json')).json()) as { version: string }).version;
 
 let sidecar = values.sidecar;
@@ -74,17 +75,30 @@ if (sidecar === undefined) {
 const notices = join(dirname(sidecar), 'THIRD_PARTY_NOTICES');
 if (!existsSync(notices)) throw new Error(`${notices} is missing`);
 
-step('4. cargo build --release');
-await $`cargo build --release --target aarch64-apple-darwin`
+step('4. go build');
+// mygo's own `mygo build` would link the same flags; the app is assembled here instead, so they are
+// spelled out: production mode, the inspector left out, and the app identity mygo reports. Go's
+// -ldflags splits on spaces outside quotes, hence the quoted name. Sparkle is not linked: the host
+// dlopens it from Contents/Frameworks at runtime.
+const hostBuild = join(out, 'aio-proxy-desktop');
+const ldflags = [
+  '-s -w',
+  '-X github.com/egoist/mygo.production=1',
+  `-X 'github.com/egoist/mygo.packageName=AIO Proxy'`,
+  `-X github.com/egoist/mygo.packageVersion=${version}`,
+  '-X github.com/egoist/mygo.packageIdentifier=com.aio-proxy.desktop',
+  `-X github.com/aio-proxy/aio-proxy/desktop/internal/version.App=${version}`,
+].join(' ');
+await $`go build -trimpath -tags mygo_noinspector -ldflags ${ldflags} -o ${hostBuild} .`
   .cwd(desktop)
-  .env({ ...process.env, MACOSX_DEPLOYMENT_TARGET: MINIMUM_MACOS, SPARKLE_DIR: sparkle });
+  .env({ ...process.env, CGO_ENABLED: '0', GOOS: 'darwin', GOARCH: 'arm64' });
 
 step('5. assemble the .app');
 rmSync(app, { recursive: true, force: true });
 for (const dir of ['MacOS', 'Frameworks', 'Resources']) mkdirSync(join(app, 'Contents', dir), { recursive: true });
 const host = join(app, 'Contents/MacOS/aio-proxy-desktop');
 const bundledSidecar = join(app, 'Contents/MacOS/aio-proxy');
-cpSync(join(desktop, 'target/aarch64-apple-darwin/release/aio-proxy-desktop'), host);
+cpSync(hostBuild, host);
 cpSync(sidecar, bundledSidecar);
 const framework = join(app, 'Contents/Frameworks/Sparkle.framework');
 // ditto keeps the framework's Versions/Current symlinks.
@@ -143,7 +157,7 @@ for (const { path, exactArm64 } of machOs) {
 }
 if (problems.length > 0) throw new Error(`Mach-O checks failed:\n${problems.join('\n')}`);
 
-// The host runs only if dyld resolves Sparkle through the rpath.
+// The host must start and report the version linked into it.
 const hostRuns = async (when: string): Promise<void> => {
   const reported = (await $`${host} --version`.text()).trim();
   if (reported !== version)

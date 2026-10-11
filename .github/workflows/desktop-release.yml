@@ -86,11 +86,12 @@ jobs:
 
       - run: bun install --frozen-lockfile --prefer-offline
 
-      - name: Install the pinned Rust toolchain
-        working-directory: desktop
-        run: |
-          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --target aarch64-apple-darwin
+      # No cache, like bun install above: the job holding the release secrets builds from fresh
+      # downloads (checked against go.sum), not from state other workflow runs saved.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache: false
 
       # Signing material comes from the organization's APPLE_* secrets; the scripts keep their own
       # names (also used for local releases), mapped here.
@@ -193,11 +194,9 @@ jobs:
           # The oldest supported Ubuntu LTS keeps the AppImage's glibc floor low.
           - os: ubuntu-22.04
             target: linux-x86_64
-            rust-target: x86_64-unknown-linux-gnu
             arch: x86_64
           - os: ubuntu-22.04-arm
             target: linux-aarch64
-            rust-target: aarch64-unknown-linux-gnu
             arch: aarch64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -217,17 +216,13 @@ jobs:
 
       - run: bun install --frozen-lockfile --prefer-offline
 
-      # libfuse2 runs linuxdeploy's AppImage plugins; squashfs-tools repacks the image with the original CLI.
       - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev pkg-config libfuse2 squashfs-tools
+        run: sudo apt-get update && sudo apt-get install -y libfuse2 squashfs-tools
 
-      - name: Install the pinned Rust toolchain
-        working-directory: desktop
-        run: |
-          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --target ${{ matrix.rust-target }}
-
-      - run: cargo install cargo-packager --version 0.11.8 --locked
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache: false
 
       - run: bun run desktop:package --target ${{ matrix.target }} --version "$VERSION"
         env:
@@ -263,13 +258,13 @@ jobs:
 
       - run: bun install --frozen-lockfile --prefer-offline
 
-      - name: Install the pinned Rust toolchain
-        working-directory: desktop
-        run: |
-          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
-          rustup toolchain install "$channel" --profile minimal --target x86_64-pc-windows-msvc
+      - name: Install NSIS
+        run: bash desktop/scripts/install-nsis.sh
 
-      - run: cargo install cargo-packager --version 0.11.8 --locked
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: desktop/go.mod
+          cache: false
 
       - run: bun run desktop:package --target windows-x86_64 --version "$VERSION"
         env:

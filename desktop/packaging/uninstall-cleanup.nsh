@@ -1,12 +1,10 @@
-; Spliced into cargo-packager 0.11.8's installer.nsi as `nsis.preinstallSection` by
-; desktop/scripts/package.ts. It lands ahead of the template's `Section Uninstall`, so this `un.`
-; section runs first in the uninstaller.
+; Included by desktop/scripts/package.ts ahead of `Section Uninstall`, so this `un.`
+; section runs first. That script defines the English strings used when the app is still open.
 ;
-; The template runs the previous version's uninstaller as `uninstall.exe /P _?=<dir>` only during an
-; interactive upgrade (PageLeaveReinstall); a passive or silent update never runs it. A user uninstall
-; (Settings, Control Panel, `uninstall.exe` with or without /S) passes no /P. Only then does this
-; section remove what the app set up outside $INSTDIR, so an upgrade keeps the service, its stop/start
-; intent, the aiop shims and the login item.
+; An upgrade can run `uninstall.exe /P`. A user uninstall (Settings, Control Panel, or
+; `uninstall.exe` with or without /S) passes no /P. Only then does this section remove what the
+; app set up outside $INSTDIR, so an upgrade keeps the service, its stop/start intent, the aiop
+; shims and the login item.
 
 !define AIOP_SUPPORT "$LOCALAPPDATA\aio-proxy-desktop"
 !define AIOP_SHIMS "$LOCALAPPDATA\aio-proxy-desktop\bin\shims"
@@ -19,20 +17,9 @@ Section un.AioProxyCleanup
   ${GetOptions} $CMDLINE "/P" $R0
   IfErrors 0 cleanup_done
 
-  ; The template's own check comes after this section; the app must be gone first, because it holds
-  ; its lock file under AIOP_SUPPORT and would restart the proxy.
-  nsis_tauri_utils::FindProcess "${MAINBINARYNAME}.exe"
-  Pop $R0
-  ${If} $R0 = 0
-    IfSilent kill 0
-    MessageBox MB_OKCANCEL "$(appRunningOkKill)" IDOK kill
-    Abort "$(appRunning)"
-    kill:
-    nsis_tauri_utils::KillProcess "${MAINBINARYNAME}.exe"
-    Pop $R0
-    Sleep 500
-    ${IfThen} $R0 <> 0 ${|} Abort "$(failedToKillApp)" ${|}
-  ${EndIf}
+  ; The app must be gone first, because it holds its lock file under AIOP_SUPPORT and would
+  ; restart the proxy. Only this install's executable is stopped.
+  !insertmacro AioProxyCloseRunning
 
   ; Same rule as the CLI's readDesktopOwnedUnit: a unit is the app's when its program is the path the
   ; app recorded as AIO_PROXY_DESKTOP_EXEC. A service the user installed from the CLI stays.

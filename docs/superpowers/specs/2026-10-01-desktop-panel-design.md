@@ -18,7 +18,8 @@ Service actions (start, stop, restart, reload) are secondary. They move out of t
 
 A fixed 360 × 560 pt panel (rev 4's PopUp, unchanged), in three bands:
 
-- **Surface:** frosted glass. The window is transparent, with the system `popover` NSVisualEffectView (behind-window blending, always active) inserted under GPUI's content view; GPUI's own `Blurred` background strips that view's layers for a colorless blur, which leaves no blur on macOS 27. The panel paints no fill of its own; the material shows around three opaque group cards (`--popover`, large radius, one 8 pt gutter between cards and to the panel edges, and 12 pt padding on every side inside a card, no border: `--border` is lighter than the glass and reads as a pale halo), which hold all the body's content. The sticky group header is the top of a card: opaque `--popover` with rounded top corners and a bottom `--border` rule, shown once the top card's header has scrolled past the edge. The header and footer sit on the glass without divider lines, inset 20 pt (gutter plus card padding) so their text lines up with the cards' content; the footer's end buttons sit their own padding further out, so the Open Dashboard label and the ⋯ glyph are what line up. No translucent fill sits under other content: GPUI blends alpha additively, so anti-aliased edges over a translucent fill come out dark-rimmed. GPUI Component's root plugin fills the window with the theme background, so the panel window clears its Root's background. Cards are `--muted`. The window switch and the trend's split are GPUI Kit `TabBar::segmented()` (extra small), its track mapped to `--muted`, its thumb to `--popover`, and its labels to `--muted-foreground` / `--foreground`. The selected card follows shadcn's checked radio card: `color-mix(in oklab, --primary 5%, --popover)` with a `--primary` 30% border. Colors come from the Dashboard's Tailwind and shadcn tokens (`packages/ui/src/styles.css`), mirrored as constants in `desktop/src/theme/`, light or dark with the system.
+- **Surface:** frosted glass, using MyGo's transparent native window with `VibrancyPopover`. The root paints no background; the material shows around opaque `--popover` group cards with an 8 pt gutter, 12 pt inner padding, and no border. The sticky heading uses the same opaque surface, rounded top corners, and a bottom border. Header and footer text align with the cards' content. Metric cards use `--muted`; range and split controls use a muted track, popover thumb, and muted/normal foreground labels. The selected card uses a 5% primary tint over the popover and a 30% primary border. Dashboard Tailwind/shadcn tokens are mirrored in `desktop/internal/theme`, following system light/dark appearance.
+- **Scroll clipping:** the body viewport and sticky heading share rounded top clipping, inset by the 8 pt gutter. The inner Scroll must repeat those radii: MyGo's GPU renderer shapes only the innermost clip, whereas the software renderer combines every clip. This keeps scrolling card fill out of the rounded corner cutouts on Metal as well as CPU.
 
 
 | Band | Contents | Scrolls |
@@ -45,7 +46,17 @@ The organizing rule is time scope: **only the Usage group follows the time windo
 
 - The **Open Dashboard** primary button, while the proxy is up. A stopped or unresponsive proxy serves no Dashboard, so the button is gone, and the menus' Open Dashboard is disabled by the same down state (live health, not only the last discovery).
 - **Update to <version>…** when `update_pending` is set (rev 4 Task 14), placed next to Open Dashboard.
-- A **⋯** button at the right opens a GPUI Kit dropdown menu, upward, with exactly the right-click menu's entries (`tray::entries`) and the same commands (`tray::run`), so the menu is reachable without leaving the panel. The open-at-login check appears there as in the right-click menu.
+- A **⋯** button at the right opens a native AppKit menu upward, anchored at its bottom-right, with exactly the right-click menu's entries (`tray.Entries`) and commands (`tray.Run`). The open-at-login check is shared with the right-click menu. Opening is posted to the main thread after the surface input and frame return: AppKit's blocking tracking loop must not re-enter either. A queued opening is discarded if that panel has closed or been replaced.
+- Both command menus include **Menu Bar Display**, after service actions and before Open logs. Today Tokens, Tokens per Second, and Show Icon are independent checked choices, initially on, saved in `~/Library/Application Support/aio-proxy-desktop/menu-bar-display.json`. The last visible component cannot be disabled, so the menu remains reachable. Today Cost and Requests in Flight remain disabled: the desktop summary has no independent calendar-day cost or active-request counter.
+- Today Tokens uses the local calendar day's activity total, not the panel's rolling Usage range. Tokens per Second is aggregate **accounted-token throughput** between fresh summary samples, not per-request streaming generation speed. The app polls the authenticated local desktop summary every 15 seconds while either metric is selected, even with the panel closed; it never forces quota refresh or changes the panel's selected range. Unknown/stopped/stale data reads `—`; the rate needs two fresh samples and resets at midnight, counter rollback, or instance change. Icon-only mode stops background metric polling. Save errors keep the previous choice and appear in the submenu.
+- Menu-bar metrics are drawn by AppKit into the same 18 pt-high, 2x template image as the icon, not appended as a status-item title. Two selected metrics use 9 pt regular monospaced-digit system text with `TPS` above `TOK`, a shared label column, and left-aligned value/unit runs (`tok/s`, `tok`). One selected metric is centered at 12 pt. The icon-to-text gap is 4 pt; hiding the icon removes its entire 29 pt slot and gap. Template tint follows macOS appearance. Only changed metric rows, visibility, or status rebuild the bitmap.
+
+### Native control styling and motion
+
+- Metric labels, values, and deltas are left-aligned inside their 6 pt padding. Header/body/footer typography and control heights match the previous panel: 16 pt headline on a 24 pt line, 12 pt small text on a 16 pt line, 20 pt range controls and refresh, and 24 pt footer buttons. Icons are vector paths, not Unicode substitutes.
+- Range and split controls keep native radio-group keyboard behavior and share a single sliding thumb (200 ms). Quota disclosures reveal/collapse over 200 ms, keeping closing content mounted until the reveal ends; their down/up chevrons rotate with it. Quota bar updates move smoothly from their current value, without a zero-to-value sweep on first display.
+- Hover/press and metric-selection colors transition over 120 ms. Native Reduce Motion skips these transitions. Stable immutable element keys retain focus and animation state across updates; settled controls request no continuous frames. Panel open/close remains unanimated and releases its Metal surface on close.
+
 
 ## Group 1 · Usage
 
@@ -76,14 +87,14 @@ Four cards sit in one row: **Requests**, **Failed**, **Tokens**, **Cost**.
 - **No legend:** the hover tooltip names each series with its color.
 - **Hover:** a band marks the bucket and a tooltip lists `<bucket label> · per hour|day`, one row per series with a value in that bucket (top first), and `Total`. There is no click selection.
 - The axis is labelled with the first, middle and last bucket labels: hours for `24h`, weekday names for `7d`, `Mon D` dates for `30d`.
-- Drawn as a GPUI Kit `Plot` (stacked `Bar` shapes, `Tooltip`, `CrossLine`), as the kit's stacked bar chart story is; the kit's `BarChart` has a single series.
+- Drawn with MyGo's `ui.Painter`: stacked rectangles, immediate series tooltip, and a bucket crossline.
 
 ### Breakdown
 
 - One list under the trend, following its `Model | Provider` switch: a row per trend series (the top 4, then Other), largest first. It is the trend's legend and replaces separate Top models and By Provider lists.
 - **Row:** the series' color swatch, its name, its value over the window, and its share of the window's total for the metric (`<1%` for a nonzero share under 1%).
 - **Names:** the series label, as the tooltip names it: model ids in monospace; a Provider by its title, with ` · <subtitle>` only when another Provider shares the title, and its id once gone from config; Other as plain text. No plugin marks: the swatch is the row's only lead.
-- When the selected metric's total is 0 (for example Failed with no failures), the trend and the breakdown give way to one GPUI Kit `Empty` state: an inbox icon and `No failures in this window`, or the equivalent for that metric.
+- When the selected metric's total is 0 (for example Failed with no failures), the trend and breakdown give way to an inbox icon and `No failures in this window`, or the equivalent for that metric.
 
 ## Group 2 · Quota
 
@@ -92,14 +103,14 @@ Four cards sit in one row: **Requests**, **Failed**, **Tokens**, **Cost**.
 
 ### Provider block
 
-Each block is a GPUI Kit `Accordion` item (several may be open at once, no border, flush with the panel's padding). Blocks needing attention (sorting ranks 1 and 2: failed, a diagnostic, or a window below 15%) start open; the rest start collapsed. A block the user opens or closes keeps that state until the panel closes.
+Each block is a native UI accordion item (several may be open at once, no border, flush with the panel's padding). Blocks needing attention (sorting ranks 1 and 2: failed, a diagnostic, or a window below 15%) start open; the rest start collapsed. User choices last until the panel closes.
 
 1. **Title row (the accordion trigger):** for an OAuth Provider, the plugin mark; then the title (bold), the subtitle (muted, truncated), the headline, and the accordion's chevron.
    - **Headline:** the tightest window, the one with the lowest remaining ratio: a 32 pt bar (amber below 15%, else `--chart-success`) and `<n>%`, red when that window is behind pace. `Loading…` while loading, `Failed` (red) when failed or diagnosed; nothing when no window reports a ratio. An open block hides the headline, and the subtitle takes its width.
    - **Title:** `service` for an OAuth Provider, otherwise the Provider name. An OAuth Provider's name defaults to its account email, so two plugins logged in with one email would otherwise read alike.
    - **Subtitle:** `accountLabel`, else the Provider name when the title is the service. It is omitted when it repeats the title.
    - Several accounts of one plugin each get their own block, side by side through the ordering below.
-   - **Plugin mark:** a 16 pt `--muted` square holding the plugin `icon` at 12 pt, resolved as the Dashboard's `PluginIcon` does: an http(s) URL as is, a Lobe Icons slug from `@lobehub/icons-static-png` for the current appearance. No icon, a `data:` icon, or a failed load shows the title's first letter. The app loads it through NSURLSession, which GPUI lacks natively.
+   - **Plugin mark:** a 16 pt muted square holding the plugin icon at 12 pt: an http(s) URL as is or a Lobe Icons slug from `@lobehub/icons-static-png` for the current appearance. No icon, a `data:` icon, or a failed load shows the title's first letter. Remote requests use NSURLSession for the system proxy and HTTP cache, separate from the authenticated loopback client.
 2. **Meta row (first in the open block):** `Updated <relative sampledAt>` on the left, `plan`, and a `›` (tooltip `Open in Dashboard`) that opens `/dashboard/providers/<id>/edit`. Updated and plan are omitted when unknown.
 3. **One entry per quota window, in plugin order:**
    - **Title line:** `<label> · <n>% left`, with `resets in <duration>` at the right.
@@ -148,7 +159,7 @@ Only ranks 1 and 2 count toward `need attention`. Being merely over pace sorts a
 - The group header shows the title, plus `<n> active days · <total> tokens`.
 - **Grid:** 52 weekly columns × 7 days (the source starts 51 weeks before this week, as the Dashboard heatmap does), Sunday first. Cells are 10 pt with 2 pt gaps and five token levels (`--heat-0..4`, built from the dashboard's teal ramp). Month labels sit above the column where each month starts; one starting in the last two columns is right-aligned to the grid's end instead, so it is not clipped.
 - **Scrolling:** the grid is wider than the panel, so it scrolls horizontally on its own. It opens scrolled to the latest week and keeps its offset across refreshes within a panel session.
-- **Interaction:** hovering a day opens a GPUI Kit `HoverCard` at once, above the cell with left edges aligned, matching the Dashboard's day hover: the date (`October 1st, 2026`), `<compact tokens> Token`, and under a `Model breakdown` rule, one row per model (id, its tokens, its share of the day) with a `--primary` share bar. There is no click selection. A Less → More legend sits below the grid.
+- **Interaction:** hovering a day opens an immediate native UI overlay above the cell, left-aligned: date (`October 1st, 2026`), `<compact tokens> Token`, then a Model breakdown rule and rows containing model id, tokens, share, and a primary share bar. There is no click selection. A Less → More legend sits below the grid.
 - **Data:** `activity`, unchanged from rev 4.
 
 ## Right-click menu
@@ -177,7 +188,7 @@ The menu is rebuilt (`set_menu`) whenever the offer set changes: after each disc
 | State | Header | Body | Footer |
 | --- | --- | --- | --- |
 | Running, summary ready | Running, version, refresh, endpoint, alerts | The three groups | Open Dashboard, ⋯ |
-| Stopped | Stopped | GPUI Kit `Empty`: power-off icon, `The proxy is not running`, `It stays stopped until you start it.`, and the one action that starts it: **Start**, or **Install and start** when a fresh install is offered | ⋯ |
+| Stopped | Stopped | Empty state: power-off icon, `The proxy is not running`, `It stays stopped until you start it.`, and **Start** or **Install and start** when offered | ⋯ |
 | Stopped, CLI uninstalled (orphaned plist) | Stopped | `Empty`: unplug icon, `Its CLI was uninstalled`, and **Take over and start** | ⋯ |
 | Not responding | Not responding | `Empty`: server-off icon and a pointer to Restart in the ⋯ and right-click menus | ⋯ |
 | Degraded: missing route, no token, unsupported version | Running, version, endpoint | rev 4 degraded text ("older than the app") | Open Dashboard, ⋯ |
@@ -324,8 +335,8 @@ Each test guards one concrete failure.
     - `refresh=true` re-runs it.
     - `24h` always runs.
   - `quota.plan` and `accountLabel` pass through. A Provider without them yields `null`, and they do not appear as `undefined` keys.
-  - The golden fixture is regenerated and parsed by the Rust tests.
-- **Rust**
+  - The golden fixture is regenerated and parsed by the Go tests.
+- **Go**
   - Pace math table:
     - ahead of pace;
     - behind and running out;

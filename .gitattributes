@@ -1,2 +1,4 @@
 *.sql text eol=lf
+*.go text eol=lf
+desktop/internal/update/testdata/** -text
 desktop/src/platform/update_key/fixture/** -text

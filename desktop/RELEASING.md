@@ -52,11 +52,11 @@ them to the names the scripts read (the same names a local release sets).
    again. Keep one offline backup, and never change it once a version has shipped.
 
    ```bash
-   desktop/vendor/sparkle-2.10.0/bin/generate_keys --account aio-proxy-desktop
-   desktop/vendor/sparkle-2.10.0/bin/generate_keys --account aio-proxy-desktop -x sparkle-private.key
+   desktop/.cache/sparkle-2.10.0/bin/generate_keys --account aio-proxy-desktop
+   desktop/.cache/sparkle-2.10.0/bin/generate_keys --account aio-proxy-desktop -x sparkle-private.key
    ```
 
-   (`bun run desktop:bundle --unsigned` downloads `desktop/vendor` first.)
+   (`bun run desktop:bundle --unsigned` downloads `desktop/.cache` first.)
    - Repository variable `SPARKLE_PUBLIC_ED_KEY`: the printed public key.
    - `desktop-release` environment secret `SPARKLE_ED_PRIVATE_KEY` (see step 0): the contents of `sparkle-private.key`. Delete the file afterwards.
 
@@ -68,10 +68,25 @@ them to the names the scripts read (the same names a local release sets).
    CI passes the key to `generate_appcast` only on stdin. Do not use `--account` in automation:
    it blocks on a Keychain prompt.
 
+## Native development
+
+The desktop host is a Go module using MyGo native UI, not a web frontend. macOS stays 13 or newer on Apple silicon. Linux and Windows use the same module: `CGO_ENABLED=0 go test ./...` is the check CI runs on all three. Install the pinned Go toolchain with `mise -C desktop install`. A bundled build injects the product version from `npm/aio-proxy/package.json`; plain `go run .` reports `0.0.0-dev` and, on macOS, runs read-only outside an installed bundle. Rust is no longer needed.
+
+The native panel tests include real Metal corner coverage in light and dark modes. That test uses an isolated temporary SDK adapter and never modifies the installed MyGo module or shipped binary; only a missing Metal device skips it. `CapturePage` renders the last scene on the CPU, so it is not proof of native GPU clipping.
+
+The footer menu regression opens a real AppKit window and menu, sends a native mouse press to the footer, and selects a command. It checks that menu tracking starts after the surface frame returns, disabled commands stay disabled, and selection dispatches once; it also exercises and reloads a Menu Bar Display choice in an isolated home. Run it in a graphical macOS session; it needs no Accessibility permission and does not start or stop the proxy.
+
+Menu Bar Display preferences live in `preferences.json` and survive relaunch. Up to two of Today Tokens, Tokens per Second, Today Cost, and Requests in Flight can be shown; an empty selection keeps the icon. While any metric is selected and the proxy is up, the app polls `/dashboard/api/desktop-live` (every second for throughput or in-flight requests, otherwise every 15 seconds) even with the panel closed. A failed poll keeps the last value dimmed, and the third failure shows dashes. Linux and Windows trays stay icon-only.
+
+Menu-bar text uses AppKit's monospaced-digit system font in a template image: 9 pt stacked TPS/TOK rows or one centered 12 pt row. Verify it on the actual menu bar, including one-metric and hidden-icon states; the native status-item title remains empty, and the image remains 18 pt high. Neither a software panel capture nor a formatted string proves this layout.
+
+The bundle layout, Icon Composer assets, Bun sidecar, Sparkle appcast and signing keys stay unchanged. Sparkle and ServiceManagement are loaded through purego at runtime. Native framework downloads live in `desktop/.cache`, not `vendor` (which Go reserves for module vendoring).
+
 ## Local rehearsal (no publishing)
 
 Bundling needs Xcode 26 on macOS 26 (its `actool` compiles the app icon); select it with
-`xcode-select` or `DEVELOPER_DIR`. Store the notary credentials once, with
+`xcode-select` or `DEVELOPER_DIR`. It also needs the Go toolchain named in `desktop/go.mod`
+(`mise -C desktop install` provides it; use `mise -C desktop exec -- bun run desktop:bundle` if Go is not on your PATH). Store the notary credentials once, with
 `xcrun notarytool store-credentials aio-proxy-notary --apple-id <id> --team-id <TEAMID>`, then run:
 
 ```bash
@@ -114,14 +129,14 @@ on the Release, and to replace the feed when the new item has no valid EdDSA sig
 
 Without signing, the installer triggers SmartScreen ("More info" then "Run anyway"); the README
 says so. To sign, set `WINDOWS_SIGN_COMMAND` in the environment of the `build-windows` packaging
-step. cargo-packager runs it per file with `%1` as the path, split on spaces, so the command
-cannot contain quoted arguments with spaces. Either of these works:
+step. `desktop:package` runs it through `cmd /c` with `%1` replaced by the file path, on the app and
+then the installer. Either of these works:
 
 - Azure Artifact Signing: `signtool sign /dlib <Azure.CodeSigning.Dlib.dll> /dmdf <metadata.json> /fd SHA256 /tr <timestamp-url> /td SHA256 %1`
 - A certificate in the runner's store: `signtool sign /sha1 <thumbprint> /fd SHA256 /tr <timestamp-url> /td SHA256 %1`
 
-cargo-packager signs the app, the installer and the uninstaller, but NOT the sidecar
-`aio-proxy.exe` inside the install directory. The build job has no secrets today, so adding signing
+The script signs the app and the installer, but not the sidecar `aio-proxy.exe` inside the install
+directory. The build job has no secrets today, so adding signing
 means giving it the credentials (or moving the Windows package step behind the `desktop-release`
 environment) deliberately.
 

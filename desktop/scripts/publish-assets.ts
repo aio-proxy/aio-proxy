@@ -44,10 +44,10 @@ if (process.env['SPARKLE_PUBLIC_ED_KEY'] !== publicKey) {
   );
 }
 // The pair must also be the key the Linux/Windows app embeds, or every shipped updater rejects these assets.
-const updateKeySource = await Bun.file(join(import.meta.dir, '..', 'src', 'platform', 'update_key.rs')).text();
-const embeddedKey = /None => "([A-Za-z0-9+/=]+)"/u.exec(updateKeySource)?.[1];
+const updateKeySource = await Bun.file(join(import.meta.dir, '..', 'internal', 'update', 'minisign.go')).text();
+const embeddedKey = /var PublicKeyB64 = "([A-Za-z0-9+/=]+)"/u.exec(updateKeySource)?.[1];
 if (embeddedKey !== publicKey) {
-  throw new Error(`the signing key is not the update key the app embeds (desktop/src/platform/update_key.rs)`);
+  throw new Error('the signing key is not the update key the app embeds (desktop/internal/update/minisign.go)');
 }
 
 // download-artifact nests each artifact in its own folder, so the inputs are found by name anywhere
