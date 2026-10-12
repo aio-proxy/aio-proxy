@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.42.4
+
+### Patch Changes
+
+- [#510](https://github.com/aio-proxy/aio-proxy/pull/510) [`6a8bf8c`](https://github.com/aio-proxy/aio-proxy/commit/6a8bf8c59bd76f10f40a0bcf8da8f9a0cedb36c3) Thanks @baranwang - Models served through the Cursor provider, such as `grok-4.7`, now reliably call the client's function tools. Previously they often tried Cursor's own Shell or Read tools, were told those were unavailable, and then answered in prose instead of returning a tool call.
+
 ## 0.42.3
 
 ### Patch Changes

@@ -1,5 +1,9 @@
 # @aio-proxy/brand
 
+## 0.42.4
+
+No changes in this release.
+
 ## 0.42.3
 
 No changes in this release.
