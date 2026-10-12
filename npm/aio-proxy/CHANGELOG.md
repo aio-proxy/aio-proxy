@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.42.3
+
+### Patch Changes
+
+- [#508](https://github.com/aio-proxy/aio-proxy/pull/508) [`11c4195`](https://github.com/aio-proxy/aio-proxy/commit/11c41952a9b57f70624bcee686d02fdeeef8cfc4) Thanks @baranwang - Fix xAI Grok OAuth requests being rejected with `426 Upgrade Required`. The provider now identifies as the current Grok Build client, so `grok-4.7` requests no longer fail over to another provider of the same model, where client tool calls could come back as "Tool not available" text instead of real function calls.
+
 ## 0.42.2
 
 ### Patch Changes
