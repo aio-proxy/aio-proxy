@@ -48,10 +48,10 @@ describe('xAI Grok runtime', () => {
     expect(request?.url).toBe('https://cli-chat-proxy.grok.com/v1/responses');
     expect(request?.headers.get('authorization')).toBe('Bearer access-token');
     expect(request?.headers.get('x-xai-token-auth')).toBe('xai-grok-cli');
-    expect(request?.headers.get('x-grok-client-version')).toBe('0.2.120');
+    expect(request?.headers.get('x-grok-client-version')).toBe('1.0.50');
     expect(request?.headers.get('x-grok-client-identifier')).toBe('grok-shell');
     expect(request?.headers.get('x-authenticateresponse')).toBe('authenticate-response');
-    expect(request?.headers.get('user-agent')).toBe('xai-grok-workspace/0.2.120');
+    expect(request?.headers.get('user-agent')).toBe('grok-shell/1.0.50');
   });
 
   test('exposes Responses language models and reserves raw transport for video', async () => {
@@ -127,10 +127,10 @@ describe('xAI Grok runtime', () => {
     expect(captured?.url).toBe('https://cli-chat-proxy.grok.com/v1/responses');
     expect(captured?.headers.get('authorization')).toBe('Bearer access-token');
     expect(captured?.headers.get('x-xai-token-auth')).toBe('xai-grok-cli');
-    expect(captured?.headers.get('x-grok-client-version')).toBe('0.2.120');
+    expect(captured?.headers.get('x-grok-client-version')).toBe('1.0.50');
     expect(captured?.headers.get('x-grok-client-identifier')).toBe('grok-shell');
     expect(captured?.headers.get('x-authenticateresponse')).toBe('authenticate-response');
-    expect(captured?.headers.get('user-agent')).toBe('xai-grok-workspace/0.2.120');
+    expect(captured?.headers.get('user-agent')).toBe('grok-shell/1.0.50');
     expect(captured?.headers.get('x-keep')).toBe('yes');
     expect(await captured?.json()).toEqual({
       model: 'grok-4.5',

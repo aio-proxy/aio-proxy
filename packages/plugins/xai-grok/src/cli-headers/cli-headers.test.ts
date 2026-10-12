@@ -9,12 +9,13 @@ describe('xAI Grok CLI headers', () => {
       refreshToken: 'refresh',
       expiresAt: 1,
     });
-    expect(XAI_GROK_CLI_CLIENT_VERSION).toBe('0.2.120');
+    expect(XAI_GROK_CLI_CLIENT_VERSION).toBe('1.0.50');
     expect(headers.get('authorization')).toBe('Bearer access-token');
     expect(headers.get('x-xai-token-auth')).toBe('xai-grok-cli');
-    expect(headers.get('x-grok-client-version')).toBe('0.2.120');
+    expect(headers.get('x-grok-client-version')).toBe('1.0.50');
     expect(headers.get('x-grok-client-identifier')).toBe('grok-shell');
+    expect(headers.get('x-grok-client-mode')).toBe('headless');
     expect(headers.get('x-authenticateresponse')).toBe('authenticate-response');
-    expect(headers.get('user-agent')).toBe('xai-grok-workspace/0.2.120');
+    expect(headers.get('user-agent')).toBe('grok-shell/1.0.50');
   });
 });
