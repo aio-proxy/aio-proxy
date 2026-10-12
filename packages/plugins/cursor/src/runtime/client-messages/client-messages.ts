@@ -19,8 +19,7 @@ import {
 } from '../../gen/agent_pb';
 import { blobKey } from '../../store/blobs';
 import { frameConnectMessage } from '../../wire/frame';
-import { buildRequestContextResult, respondToExec } from '../exec-policy';
-import { NOT_AVAILABLE } from '../exec-results';
+import { buildRequestContextResult, nativeUnavailableReason, respondToExec } from '../exec-policy';
 
 // Turns the shared blob store into KV responses Cursor can read back. Returns
 // framed AgentClientMessage bytes, or undefined for an unknown KV case.
@@ -54,7 +53,9 @@ export function buildExecResponses(
   requestContextTools: McpToolDefinition[],
 ): AgentClientMessage['message'][] {
   const response =
-    exec.message.case === 'requestContextArgs' ? buildRequestContextResult(requestContextTools) : respondToExec(exec);
+    exec.message.case === 'requestContextArgs'
+      ? buildRequestContextResult(requestContextTools)
+      : respondToExec(exec, requestContextTools);
   if ('error' in response) {
     return [
       {
@@ -79,7 +80,9 @@ export function buildExecResponses(
   // executor's result + streamClose handshake even when no command was run.
   const events = [
     create(ShellStreamSchema, { event: { case: 'start', value: {} } }),
-    create(ShellStreamSchema, { event: { case: 'stderr', value: { data: NOT_AVAILABLE } } }),
+    create(ShellStreamSchema, {
+      event: { case: 'stderr', value: { data: nativeUnavailableReason(requestContextTools) } },
+    }),
     create(ShellStreamSchema, {
       event: { case: 'exit', value: { code: 1, cwd: exec.message.value.workingDirectory, aborted: true } },
     }),

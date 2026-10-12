@@ -58,28 +58,39 @@ type ExecArgs = {
   workingDirectory?: string;
 };
 
+// Cursor hides forwarded tools behind CallDynamicTool, so models reach for
+// native Shell/Read first and, told only that they are unavailable, often give
+// up in prose. Spelling out the dynamic call steers them to the client tools.
+export function nativeUnavailableReason(tools: readonly McpToolDefinition[]): string {
+  const namespace = tools[0]?.providerIdentifier;
+  if (namespace === undefined) return NOT_AVAILABLE;
+  const names = tools.map((tool) => tool.toolName).join(', ');
+  return `${NOT_AVAILABLE} in this environment. Use the client's tools instead: call CallDynamicTool with namespace "${namespace}" and toolName set to one of: ${names}.`;
+}
+
 // Every unavailable operation has an explicit failure. An unset result oneof
 // leaves the upstream executor without a terminal answer.
-export function respondToExec(exec: ExecServerMessage): ExecClientResponse {
+export function respondToExec(exec: ExecServerMessage, tools: readonly McpToolDefinition[] = []): ExecClientResponse {
+  const reason = nativeUnavailableReason(tools);
   const args = (exec.message.value ?? undefined) as ExecArgs | undefined;
   const path = args?.path ?? '';
   const shell = { command: args?.command ?? '', workingDirectory: args?.workingDirectory ?? '' };
   switch (exec.message.case) {
     case 'readArgs':
-      return readRejected({ path, reason: NOT_AVAILABLE });
+      return readRejected({ path, reason });
     case 'lsArgs':
-      return lsRejected({ path, reason: NOT_AVAILABLE });
+      return lsRejected({ path, reason });
     case 'grepArgs':
-      return grepError(NOT_AVAILABLE);
+      return grepError(reason);
     case 'writeArgs':
-      return writeRejected({ path, reason: NOT_AVAILABLE });
+      return writeRejected({ path, reason });
     case 'deleteArgs':
-      return deleteRejected({ path, reason: NOT_AVAILABLE });
+      return deleteRejected({ path, reason });
     case 'diagnosticsArgs':
-      return diagnosticsRejected({ path, reason: NOT_AVAILABLE });
+      return diagnosticsRejected({ path, reason });
     case 'shellArgs':
     case 'shellStreamArgs':
-      return shellRejected({ ...shell, reason: NOT_AVAILABLE });
+      return shellRejected({ ...shell, reason });
     case 'backgroundShellSpawnArgs':
       return backgroundShellRejected({ ...shell, reason: NOT_IMPLEMENTED });
     case 'writeShellStdinArgs':
