@@ -1,5 +1,13 @@
 # @aio-proxy/plugin-google-antigravity
 
+## 0.42.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.42.5
+  - @aio-proxy/shared@0.42.5
+
 ## 0.42.4
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.42.5
+
+### Patch Changes
+
+- [#514](https://github.com/aio-proxy/aio-proxy/pull/514) [`3e30902`](https://github.com/aio-proxy/aio-proxy/commit/3e30902c214746ab25399e55e692b343313f6bc4) Thanks @olivewind - ChatGPT requests now keep a stable upstream session when clients supply session identifiers or prompt cache keys. Previously each request replaced the session with a random identifier, preventing repeated prompts from reliably reusing the upstream cache.
+
 ## 0.42.4
 
 ### Patch Changes
