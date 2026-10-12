@@ -1,5 +1,13 @@
 # @aio-proxy/plugin-openai-chatgpt
 
+## 0.42.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.42.4
+  - @aio-proxy/types@0.42.4
+
 ## 0.42.3
 
 ### Patch Changes
