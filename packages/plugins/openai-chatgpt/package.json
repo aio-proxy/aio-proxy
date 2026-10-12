@@ -21,7 +21,9 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "catalog:",
+    "@ai-sdk/provider": "catalog:",
     "@aio-proxy/plugin-sdk": "workspace:*",
+    "@aio-proxy/shared": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "es-toolkit": "catalog:",
     "jose": "catalog:"

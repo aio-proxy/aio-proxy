@@ -1,10 +1,18 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import type { CredentialPort, OAuthRuntimeResult, RuntimeContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import type { LanguageModelV4, LanguageModelV4CallOptions } from '@ai-sdk/provider';
+import type {
+  CredentialPort,
+  LogicalRequestContext,
+  OAuthRuntimeResult,
+  RuntimeContext,
+  RuntimeFetch,
+} from '@aio-proxy/plugin-sdk';
 import {
   createOpenAIStreamFetch,
   type OpenAIStreamFetch,
   type OpenAIStreamFetchCallOptions,
 } from '@aio-proxy/plugin-sdk/openai-stream';
+import { isRecord } from '@aio-proxy/shared';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { refreshAccessToken } from '../oauth-flow';
@@ -21,6 +29,13 @@ const CHATGPT_CODEX_IMAGE_EDITS_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/images/edi
 const PLACEHOLDER_CREDENTIAL = 'dynamic-credential' as const;
 
 type JsonRequestReader = (request: Request) => Promise<unknown>;
+type ChatGPTDynamicFetch = OpenAIStreamFetch &
+  ((
+    input: RequestInfo | URL,
+    init?: RequestInit,
+    options?: OpenAIStreamFetchCallOptions,
+    logicalRequest?: LogicalRequestContext,
+  ) => Promise<Response>);
 type ChatGPTRuntimeContext = RuntimeContext<ChatGPTCredential, Record<string, unknown>> & {
   // The built-in host owns decoding and request-scoped admission; avoid a core dependency here.
   readonly __aioReadJsonRequest?: JsonRequestReader;
@@ -47,7 +62,7 @@ export async function createOpenAIChatGPTRuntime(
     genAiProviderName: 'openai',
     provider: {
       specificationVersion: 'v4',
-      languageModel: (modelId) => openAI.languageModel(modelId),
+      languageModel: (modelId) => withModelSession(openAI.languageModel(modelId)),
       embeddingModel: (modelId) => openAI.embeddingModel(modelId),
       imageModel: (modelId) => openAI.imageModel(modelId),
     },
@@ -65,7 +80,7 @@ export async function createOpenAIChatGPTRuntime(
         ? undefined
         : protocol === 'openai-response' || protocol === 'openai-image'
           ? {
-              invoke: (request, _context, options) => dynamicFetch(request, undefined, options),
+              invoke: (request, logicalRequest, options) => dynamicFetch(request, undefined, options, logicalRequest),
             }
           : undefined,
   };
@@ -76,7 +91,7 @@ export function createOpenAIChatGPTDynamicFetch(
   fetcher: RuntimeFetch = globalThis.fetch,
   pluginOptions?: Partial<ChatGPTPluginOptions>,
   readJsonRequest: JsonRequestReader = (request) => request.json(),
-): OpenAIStreamFetch {
+): ChatGPTDynamicFetch {
   const fetchOpenAIResponses = createOpenAIStreamFetch('openai-response', fetcher, {
     acceptEncoding: 'identity',
     upstreamStream: true,
@@ -85,9 +100,10 @@ export function createOpenAIChatGPTDynamicFetch(
     input: RequestInfo | URL,
     init?: RequestInit,
     options?: OpenAIStreamFetchCallOptions,
+    logicalRequest?: LogicalRequestContext,
   ): Promise<Response> => {
     const credential = await currentCredential(credentials, fetcher);
-    const request = new Request(input, init);
+    const request = input instanceof Request && init === undefined ? input : new Request(input, init);
     const headers = new Headers(request.headers);
     headers.delete('authorization');
     headers.delete('accept-encoding');
@@ -99,10 +115,15 @@ export function createOpenAIChatGPTDynamicFetch(
       'User-Agent',
       (await resolveChatGPTRequestIdentity(pluginOptions, headers.get('user-agent'), fetcher)).userAgent,
     );
-    headers.set('session-id', crypto.randomUUID());
+    const clientSession = headers.get('session_id') || headers.get('session-id') || headers.get('x-session-id');
+    if (clientSession) headers.set('session-id', clientSession);
+    else if (logicalRequest !== undefined && logicalRequest.session.source !== 'generated') {
+      headers.set('session-id', logicalRequest.session.key);
+    }
     const body = shouldRewriteResponsesBody(request)
       ? await rewriteResponsesBody(request, headers, readJsonRequest)
       : request.body;
+    if (!headers.get('session-id')) headers.set('session-id', crypto.randomUUID());
     const url = rewriteCodexUrl(request.url);
     const upstreamInit = {
       method: request.method,
@@ -122,7 +143,39 @@ export function createOpenAIChatGPTDynamicFetch(
 
     return await fetchOpenAIResponses(url, upstreamInit, options);
   };
-  return dynamicFetch as OpenAIStreamFetch;
+  return dynamicFetch as ChatGPTDynamicFetch;
+}
+
+// The model transport receives the host's session via private invocation options,
+// including for clients whose protocol requires conversion. Keep it call-scoped:
+// a provider/model instance may serve several sessions concurrently.
+function withModelSession(model: LanguageModelV4): LanguageModelV4 {
+  return {
+    specificationVersion: model.specificationVersion,
+    provider: model.provider,
+    modelId: model.modelId,
+    get supportedUrls() {
+      return model.supportedUrls;
+    },
+    doGenerate: (options) => model.doGenerate(withModelSessionOptions(options)),
+    doStream: (options) => model.doStream(withModelSessionOptions(options)),
+  };
+}
+
+function withModelSessionOptions(options: LanguageModelV4CallOptions): LanguageModelV4CallOptions {
+  const context = options.providerOptions?.['aioProxy']?.['logicalRequest'];
+  if (!isRecord(context) || !isRecord(context['session'])) return options;
+  const session = context['session'];
+  if (typeof session['source'] !== 'string' || session['source'] === 'generated') return options;
+  const key = session['key'];
+  if (typeof key !== 'string' || !/^sha256:[0-9a-f]{64}$/u.test(key)) return options;
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(options.headers ?? {})) {
+    if (value !== undefined) headers.set(name, value);
+  }
+  if (headers.get('session_id') || headers.get('session-id') || headers.get('x-session-id')) return options;
+  headers.set('session-id', key);
+  return { ...options, headers: Object.fromEntries(headers) };
 }
 
 // Only the create endpoint. Compaction is stateless and takes no `store`, so
@@ -146,6 +199,11 @@ async function rewriteResponsesBody(
     throw new TypeError('ChatGPT Codex Responses request body must be an object');
   }
   const body = value as Record<string, unknown>;
+  const cacheKey = body['prompt_cache_key'];
+  if (!headers.get('session-id') && typeof cacheKey === 'string' && cacheKey.trim() !== '') {
+    // JSON keys may contain Unicode/control characters; use a bounded header-safe identity.
+    headers.set('session-id', new Bun.CryptoHasher('sha256').update(cacheKey).digest('hex'));
+  }
   // Codex rejects this Responses parameter, including the one-token limit used by model probes.
   delete body['max_output_tokens'];
   headers.delete('content-encoding');
