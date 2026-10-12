@@ -41,6 +41,8 @@ export default defineConfig({
     (route) => ['meta', { property: 'og:locale:alternate', content: route.lang === 'zh' ? 'en_US' : 'zh_CN' }],
     // English is served at the root and is the fallback for unmatched languages.
     (route) => ['link', { rel: 'alternate', hreflang: 'x-default', href: pageUrl(route.pureRoutePath) }],
+    // Tuple tags are emitted unclosed. A script has to be the raw element so the rest of the document stays intact.
+    '<script defer src="https://u.baran.wang/script.js" data-website-id="6781b1e7-f4cc-4fa3-8be0-e8388fa7996b"></script>',
   ],
   lang: 'en',
   llms: true,
