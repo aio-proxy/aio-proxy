@@ -1,5 +1,22 @@
 # @aio-proxy/cli
 
+## 0.42.5
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/core@0.42.5
+  - @aio-proxy/server@0.42.5
+  - @aio-proxy/dashboard@0.42.5
+  - @aio-proxy/opencode-provider@0.42.5
+  - @aio-proxy/pi-provider@0.42.5
+  - @aio-proxy/agent-provider-runtime@0.42.5
+  - @aio-proxy/i18n@0.42.5
+  - @aio-proxy/logger@0.42.5
+  - @aio-proxy/plugin-sdk@0.42.5
+  - @aio-proxy/shared@0.42.5
+  - @aio-proxy/types@0.42.5
+
 ## 0.42.4
 
 ### Patch Changes
