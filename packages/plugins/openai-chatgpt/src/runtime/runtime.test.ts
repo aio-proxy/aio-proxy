@@ -138,6 +138,169 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(requiredCall(calls, 1).headers.get('session-id')).not.toBe(first.headers.get('session-id'));
   });
 
+  test.each(['session-id', 'session_id', 'x-session-id'])(
+    'keeps the client session stable through the %s header',
+    async (header) => {
+      const calls: FetchCall[] = [];
+      const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+      for (let index = 0; index < 2; index++) {
+        await dynamicFetch('https://api.openai.com/v1/responses', {
+          method: 'POST',
+          headers: { [header]: 'client-session' },
+          body: JSON.stringify({ input: 'hello' }),
+        });
+      }
+      expect(calls.map((call) => call.headers.get('session-id'))).toEqual(['client-session', 'client-session']);
+    },
+  );
+
+  test('reuses cache-key sessions without merging distinct keys or changing request fields', async () => {
+    const calls: FetchCall[] = [];
+    const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+    for (const key of ['cache-session', 'cache-session', 'other-session', '会话\n名称', '会话\n名称']) {
+      await dynamicFetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        body: JSON.stringify({ input: 'hello', prompt_cache_key: key }),
+      });
+    }
+    const ids = calls.map((call) => call.headers.get('session-id'));
+    expect(ids[0]).toBe(ids[1]);
+    expect(ids[2]).not.toBe(ids[0]);
+    expect(ids[3]).toBe(ids[4]);
+    expect(ids[3]).toMatch(/^[a-f0-9]{64}$/u);
+    expect(JSON.parse(requiredCall(calls, 3).body).prompt_cache_key).toBe('会话\n名称');
+  });
+
+  test.each([undefined, '', '  ', null, 42])(
+    'does not share sessions for absent or invalid cache keys: %s',
+    async (key) => {
+      const calls: FetchCall[] = [];
+      const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+      for (let index = 0; index < 2; index++) {
+        await dynamicFetch('https://api.openai.com/v1/responses', {
+          method: 'POST',
+          body: JSON.stringify({ input: 'hello', prompt_cache_key: key }),
+        });
+      }
+      expect(requiredCall(calls, 0).headers.get('session-id')).not.toBe(
+        requiredCall(calls, 1).headers.get('session-id'),
+      );
+    },
+  );
+
+  test('explicit headers take precedence over cache-key fallback', async () => {
+    const calls: FetchCall[] = [];
+    const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+    await dynamicFetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: { 'session-id': 'explicit-session' },
+      body: JSON.stringify({ input: 'hello', prompt_cache_key: 'cache-session' }),
+    });
+    expect(requiredCall(calls, 0).headers.get('session-id')).toBe('explicit-session');
+  });
+
+  test('raw requests use the host session across body metadata and compact requests without rereading the body', async () => {
+    const calls: FetchCall[] = [];
+    let reads = 0;
+    const runtime = await createOpenAIChatGPTRuntime({
+      credentials: staticCredentialPort(credential()),
+      options: {},
+      catalog: emptyCatalog(),
+      fetch: captureFetch(calls),
+      __aioReadJsonRequest: async (request) => {
+        reads++;
+        return await request.json();
+      },
+    });
+    const raw = runtime.raw?.({ protocol: 'openai-response', modelId: 'gpt-5.5' });
+    if (raw === undefined) throw new Error('raw Responses transport unavailable');
+    const context = {
+      requestId: 'request',
+      session: { key: 'sha256:stable-host-session' as const, source: 'body-session' as const },
+    };
+    const body = JSON.stringify({ input: 'hello', metadata: { session_id: 'client-session' } });
+    await raw.invoke(new Request('https://api.openai.com/v1/responses', { method: 'POST', body }), context);
+    await raw.invoke(new Request('https://api.openai.com/v1/responses/compact', { method: 'POST', body }), context);
+    expect(calls.map((call) => call.headers.get('session-id'))).toEqual([context.session.key, context.session.key]);
+    expect(reads).toBe(1);
+    expect(requiredCall(calls, 1).body).toBe(body);
+  });
+
+  test('normalizes case-insensitive aliases in host order and skips empty hints', async () => {
+    const calls: FetchCall[] = [];
+    const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+    for (const headers of [
+      { Session_Id: 'underscore', 'Session-Id': 'hyphen', 'X-Session-Id': 'alternate' },
+      { session_id: ' ', 'session-id': 'hyphen', 'x-session-id': 'alternate' },
+      { 'session-id': '', 'X-Session-Id': 'alternate' },
+    ]) {
+      await dynamicFetch('https://api.openai.com/v1/responses', { method: 'POST', headers, body: '{}' });
+    }
+    expect(calls.map((call) => call.headers.get('session-id'))).toEqual(['underscore', 'hyphen', 'alternate']);
+  });
+
+  test('raw retries keep client identity ahead of host context and preserve the body-reader request', async () => {
+    const calls: FetchCall[] = [];
+    const requests: Request[] = [];
+    const runtime = await createOpenAIChatGPTRuntime({
+      credentials: staticCredentialPort(credential()),
+      options: {},
+      catalog: emptyCatalog(),
+      fetch: captureFetch(calls),
+      __aioReadJsonRequest: async (request) => {
+        requests.push(request);
+        return await request.clone().json();
+      },
+    });
+    const raw = runtime.raw?.({ protocol: 'openai-response', modelId: 'gpt-5.5' });
+    if (raw === undefined) throw new Error('raw transport missing');
+    for (let index = 0; index < 2; index++) {
+      const request = new Request('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: { 'session-id': 'client-session' },
+        body: JSON.stringify({ input: 'x'.repeat(128_000), prompt_cache_key: 'another-session' }),
+      });
+      await raw.invoke(request, {
+        requestId: `retry-${index}`,
+        session: { key: 'sha256:host', source: 'body-session' },
+      });
+      expect(requests[index]).toBe(request);
+      expect(request.headers.get('session-id')).toBe('client-session');
+      expect(JSON.parse(requiredCall(calls, index).body).input[0].content[0].text).toHaveLength(128_000);
+    }
+    expect(calls.map((call) => call.headers.get('session-id'))).toEqual(['client-session', 'client-session']);
+  });
+
+  test('raw generated contexts do not merge anonymous calls or parse compact/image bodies', async () => {
+    const calls: FetchCall[] = [];
+    const runtime = await createOpenAIChatGPTRuntime({
+      credentials: staticCredentialPort(credential()),
+      options: {},
+      catalog: emptyCatalog(),
+      fetch: captureFetch(calls),
+      __aioReadJsonRequest: async () => {
+        throw new Error('opaque body must not be decoded');
+      },
+    });
+    const context = {
+      requestId: 'request',
+      session: { key: 'sha256:generated' as const, source: 'generated' as const },
+    };
+    for (const [protocol, path] of [
+      ['openai-response', 'responses/compact'],
+      ['openai-image', 'images/edits'],
+    ] as const) {
+      const raw = runtime.raw?.({ protocol, modelId: 'test-model' });
+      if (raw === undefined) throw new Error('raw transport missing');
+      await raw.invoke(
+        new Request(`https://api.openai.com/v1/${path}`, { method: 'POST', body: 'opaque bytes' }),
+        context,
+      );
+    }
+    expect(new Set(calls.map((call) => call.headers.get('session-id'))).size).toBe(2);
+    expect(calls.every((call) => call.body === 'opaque bytes')).toBe(true);
+  });
+
   test('an endpoint-owned query parameter is not erased by an inbound request without one', async () => {
     const calls: FetchCall[] = [];
     const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));

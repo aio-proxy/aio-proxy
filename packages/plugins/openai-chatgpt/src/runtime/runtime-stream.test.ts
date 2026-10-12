@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { LanguageModelV4CallOptions } from '@ai-sdk/provider';
 import type { CredentialPort } from '@aio-proxy/plugin-sdk';
 
 import { createOpenAIChatGPTRuntime } from '.';
@@ -42,6 +43,143 @@ describe('OpenAI ChatGPT runtime stream protection', () => {
     const parts = await Array.fromAsync(result.stream);
     expect(parts.some((part) => part.type === 'finish')).toBe(true);
     expect(parts.some((part) => part.type === 'error')).toBe(false);
+  });
+
+  test.each(['doStream', 'doGenerate'] as const)(
+    '%s propagates host sessions per invocation under concurrency without changing authentication or usage',
+    async (method) => {
+      const calls: { headers: Headers; body: Record<string, unknown> }[] = [];
+      const fetcher = (async (input, init) => {
+        const request = new Request(input, init);
+        calls.push({ headers: request.headers, body: await request.json() });
+        const response = {
+          id: 'resp_test',
+          created_at: 1,
+          model: 'gpt-5.5',
+          status: 'completed',
+          incomplete_details: null,
+          output: [],
+          usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 64 }, output_tokens: 1 },
+        };
+        return method === 'doGenerate'
+          ? Response.json(response)
+          : new Response(`data: ${JSON.stringify({ type: 'response.completed', response })}\n\n`, {
+              headers: { 'content-type': 'text/event-stream' },
+            });
+      }) as typeof fetch;
+      const runtime = await runtimeWithFetch(fetcher);
+      const model = runtime.provider.languageModel('gpt-5.5');
+      const contexts = ['a', 'b', 'a', 'c'];
+      const options = contexts.map(
+        (session) =>
+          ({
+            prompt: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
+            headers: { authorization: 'Bearer caller-token', 'x-keep': 'retained' },
+            providerOptions: {
+              aioProxy: {
+                logicalRequest: {
+                  requestId: `request-${session}`,
+                  session: { key: `sha256:${session.repeat(64)}`, source: 'body-session' },
+                },
+              },
+            },
+          }) satisfies LanguageModelV4CallOptions,
+      );
+      await Promise.all(
+        options.map(async (options) => {
+          if (method === 'doGenerate') {
+            const result = await model.doGenerate(options);
+            expect(result.usage.inputTokens.cacheRead).toBe(64);
+          } else {
+            const result = await model.doStream(options);
+            const parts = await Array.fromAsync(result.stream);
+            expect(parts.some((part) => part.type === 'finish' && part.usage.inputTokens.cacheRead === 64)).toBe(true);
+            expect(parts.some((part) => part.type === 'error')).toBe(false);
+          }
+        }),
+      );
+      expect(calls.map((call) => call.headers.get('session-id'))).toEqual(
+        contexts.map((session) => `sha256:${session.repeat(64)}`),
+      );
+      expect(calls.every((call) => call.headers.get('authorization') === 'Bearer access-token')).toBe(true);
+      expect(calls.every((call) => call.headers.get('ChatGPT-Account-Id') === 'acct-123')).toBe(true);
+      expect(calls.every((call) => call.headers.get('x-keep') === 'retained')).toBe(true);
+      expect(calls.every((call) => !('aioProxy' in call.body) && call.body.store === false)).toBe(true);
+      expect(options.every((option) => !('session-id' in option.headers))).toBe(true);
+      expect(model.specificationVersion).toBe('v4');
+      expect(model.modelId).toBe('gpt-5.5');
+      expect(model.provider).toBe('openai-chatgpt.responses');
+      expect(await model.supportedUrls).toBeDefined();
+    },
+  );
+
+  test('model calls preserve explicit headers, cache-key fallback, and anonymous isolation', async () => {
+    const sessions: (string | null)[] = [];
+    const fetcher = (async (input, init) => {
+      sessions.push(new Request(input, init).headers.get('session-id'));
+      return new Response(RESPONSES_TERMINAL, { headers: { 'content-type': 'text/event-stream' } });
+    }) as typeof fetch;
+    const runtime = await runtimeWithFetch(fetcher);
+    const model = runtime.provider.languageModel('gpt-5.5');
+    const context = { requestId: 'request', session: { key: `sha256:${'a'.repeat(64)}`, source: 'header-session' } };
+    for (const headers of [{ 'Session-Id': 'explicit' }, { session_id: 'alias' }, { 'X-Session-Id': 'alternate' }]) {
+      const result = await model.doStream({
+        prompt: [],
+        headers,
+        providerOptions: { aioProxy: { logicalRequest: context } },
+      });
+      await Array.fromAsync(result.stream);
+    }
+    const blankHeaderResult = await model.doStream({
+      prompt: [],
+      headers: { 'Session-Id': '', 'x-keep': 'retained' },
+      providerOptions: { aioProxy: { logicalRequest: context } },
+    });
+    await Array.fromAsync(blankHeaderResult.stream);
+    for (const logicalRequest of [
+      undefined,
+      null,
+      [],
+      {},
+      { session: null },
+      { session: { source: 'generated', key: context.session.key } },
+      { session: { source: 'body-session', key: 'unsafe\nheader' } },
+    ]) {
+      const result = await model.doStream({ prompt: [], providerOptions: { aioProxy: { logicalRequest } } });
+      await Array.fromAsync(result.stream);
+    }
+    for (let index = 0; index < 2; index++) {
+      const result = await model.doStream({
+        prompt: [],
+        providerOptions: { openai: { promptCacheKey: 'sdk-cache-key' } },
+      });
+      await Array.fromAsync(result.stream);
+    }
+    expect(sessions.slice(0, 3)).toEqual(['explicit', 'alias', 'alternate']);
+    expect(sessions[3]).toBe(context.session.key);
+    expect(new Set(sessions.slice(4, 11)).size).toBe(7);
+    expect(sessions[11]).toBe(sessions[12]);
+  });
+
+  test('session propagation retains model cancellation', async () => {
+    const controller = new AbortController();
+    const fetcher = (async (input, init) => {
+      const request = new Request(input, init);
+      controller.abort();
+      expect(request.signal.aborted).toBe(true);
+      request.signal.throwIfAborted();
+      throw new Error('cancelled fetch continued');
+    }) as typeof fetch;
+    const runtime = await runtimeWithFetch(fetcher);
+    await expect(
+      runtime.provider.languageModel('gpt-5.5').doStream({
+        prompt: [],
+        abortSignal: controller.signal,
+        providerOptions: {
+          aioProxy: { logicalRequest: { session: { key: `sha256:${'a'.repeat(64)}`, source: 'body-session' } } },
+        },
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   test('raw path requests identity and tolerates a compressed terminal response', async () => {
